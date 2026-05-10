@@ -27,7 +27,7 @@ The `-l` flag writes the package reference to `.pi/settings.json` for the curren
 ```json
 {
   "pi": {
-    "extensions": ["./extensions", "./extensions/**/index.ts"],
+    "extensions": ["./extensions"],
     "skills": [
       "./skills",
       "./extensions/**/skills",
@@ -60,7 +60,7 @@ First-class Gentic surfaces are only things Pi discovers directly from package m
 
 | Surface | Location | Discovery |
 | --- | --- | --- |
-| `package` | `package.json`, `catalog/surfaces.ts` | package manifest |
+| `package` | `package.json`, `src/pi-contract.ts` | package manifest |
 | `extension` | `extensions/` | `pi.extensions` |
 | `skill` | `skills/`, `extensions/**/skills` | `pi.skills` |
 | `prompt-template` | `prompts/`, `extensions/**/prompts` | `pi.prompts` |
@@ -79,7 +79,7 @@ Example: load all Gentic extensions, include only review skills and planning/rev
   "packages": [
     {
       "source": "npm:gentic",
-      "extensions": ["extensions", "extensions/**/index.ts"],
+      "extensions": ["extensions"],
       "skills": ["skills/review/**", "extensions/**/skills/review/**"],
       "prompts": ["prompts/review/**/*.md", "prompts/planning/**/*.md", "extensions/**/prompts/review/**/*.md"],
       "themes": ["themes/dark/*.json", "extensions/**/themes/dark/*.json"]
@@ -91,7 +91,7 @@ Example: load all Gentic extensions, include only review skills and planning/rev
 ## Repository shape
 
 ```txt
-catalog/      # first-class surface metadata
+src/         # Shared Gentic source, including Pi contract constants
 extensions/   # Pi extensions plus extension-owned skills/prompts/themes
 skills/       # Package-level Pi skills
 prompts/      # Package-level Pi prompt templates

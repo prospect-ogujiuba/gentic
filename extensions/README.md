@@ -8,7 +8,6 @@ Code-backed Gentic behavior lives here as normal Pi extensions.
 
 ```txt
 extensions
-extensions/**/index.ts
 extensions/**/skills
 extensions/**/prompts/**/*.md
 extensions/**/themes/**/*.json

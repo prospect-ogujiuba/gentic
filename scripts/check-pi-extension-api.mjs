@@ -6,7 +6,7 @@ const root = resolve(new URL("..", import.meta.url).pathname);
 const piRoot = join(root, "node_modules", "@earendil-works", "pi-coding-agent");
 const piPackageJson = join(piRoot, "package.json");
 const extensionTypes = join(piRoot, "dist", "core", "extensions", "types.d.ts");
-const catalogPath = join(root, "catalog", "surfaces.ts");
+const contractPath = join(root, "src", "pi-contract.ts");
 const packageJsonPath = join(root, "package.json");
 
 function fail(message) {
@@ -16,16 +16,16 @@ function fail(message) {
 
 if (!existsSync(piPackageJson)) fail("installed @earendil-works/pi-coding-agent package not found");
 if (!existsSync(extensionTypes)) fail("installed Pi extension type declarations not found");
-if (!existsSync(catalogPath)) fail("catalog/surfaces.ts not found");
+if (!existsSync(contractPath)) fail("src/pi-contract.ts not found");
 if (!existsSync(packageJsonPath)) fail("package.json not found");
 if (process.exitCode) process.exit();
 
 const piPackage = JSON.parse(readFileSync(piPackageJson, "utf8"));
 const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
 const dts = readFileSync(extensionTypes, "utf8");
-const catalog = readFileSync(catalogPath, "utf8");
+const contract = readFileSync(contractPath, "utf8");
 
-for (const path of [catalogPath, packageJsonPath]) {
+for (const path of [contractPath, packageJsonPath]) {
   const text = readFileSync(path, "utf8");
   if (text.includes(".model-artifacts/extension-types.ts") || text.includes(".model-artifacts\\extension-types.ts")) {
     fail(`${path} must not rely on generated .model-artifacts extension type snapshots`);
@@ -33,7 +33,7 @@ for (const path of [catalogPath, packageJsonPath]) {
 }
 
 const expectedManifest = {
-  extensions: ["./extensions", "./extensions/**/index.ts"],
+  extensions: ["./extensions"],
   skills: ["./skills", "./extensions/**/skills", "!./skills/**/README.md", "!./extensions/**/skills/**/README.md"],
   prompts: ["./prompts/**/*.md", "./extensions/**/prompts/**/*.md", "!./prompts/**/README.md", "!./extensions/**/prompts/**/README.md"],
   themes: ["./themes/**/*.json", "./extensions/**/themes/**/*.json"],
@@ -46,14 +46,21 @@ for (const [key, expected] of Object.entries(expectedManifest)) {
 }
 
 const expectedSurfaceIds = ["package", "extension", "skill", "prompt-template", "theme"];
-const surfaceArray = catalog.match(/SURFACE_IDS\s*=\s*\[([\s\S]*?)\]/)?.[1] ?? "";
+const surfaceArray = contract.match(/PI_PACKAGE_SURFACE_IDS\s*=\s*\[([\s\S]*?)\]\s*as const/)?.[1] ?? "";
 const actualSurfaceIds = [...surfaceArray.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
 if (JSON.stringify(actualSurfaceIds) !== JSON.stringify(expectedSurfaceIds)) {
-  fail(`SURFACE_IDS should be ${JSON.stringify(expectedSurfaceIds)}, got ${JSON.stringify(actualSurfaceIds)}`);
+  fail(`PI_PACKAGE_SURFACE_IDS should be ${JSON.stringify(expectedSurfaceIds)}, got ${JSON.stringify(actualSurfaceIds)}`);
 }
 
 for (const marker of ["interface ExtensionAPI", "registerTool", "registerCommand"]){
   if (!dts.includes(marker)) fail(`installed Pi extension declarations are missing expected marker: ${marker}`);
+}
+
+const expectedEvents = [...new Set([...dts.matchAll(/on\(event: "([^"]+)"/g)].map((match) => match[1]))];
+const eventGroupsObject = contract.match(/PI_EXTENSION_EVENT_GROUPS\s*=\s*\{([\s\S]*?)\}\s*as const/)?.[1] ?? "";
+const actualEvents = [...eventGroupsObject.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+if (JSON.stringify(actualEvents) !== JSON.stringify(expectedEvents)) {
+  fail(`PI_EXTENSION_EVENTS should match installed Pi events. expected=${JSON.stringify(expectedEvents)}, got=${JSON.stringify(actualEvents)}`);
 }
 
 if (!process.exitCode) {

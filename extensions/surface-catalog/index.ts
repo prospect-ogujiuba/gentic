@@ -1,13 +1,19 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
-import { SCHEMA_VERSION, SURFACES, type SurfaceDefinition } from "../../catalog/surfaces.ts";
+import {
+  PI_EXTENSION_EVENT_GROUPS,
+  PI_EXTENSION_EVENTS,
+  PI_PACKAGE_SURFACES,
+  SCHEMA_VERSION,
+  type PiPackageSurfaceDefinition,
+} from "../../src/pi-contract.ts";
 
-function toolNameFor(surface: SurfaceDefinition): string {
+function toolNameFor(surface: PiPackageSurfaceDefinition): string {
   return `gentic_surface_${surface.id.replaceAll("-", "_")}`;
 }
 
-function surfaceText(surface: SurfaceDefinition): string {
+function surfaceText(surface: PiPackageSurfaceDefinition): string {
   return [
     `# ${surface.id}`,
     "",
@@ -31,15 +37,37 @@ export default function genticSurfaceCatalogTools(pi: ExtensionAPI): void {
         content: [
           {
             type: "text",
-            text: JSON.stringify({ schemaVersion: SCHEMA_VERSION, surfaces: SURFACES }, null, 2),
+            text: JSON.stringify({ schemaVersion: SCHEMA_VERSION, surfaces: PI_PACKAGE_SURFACES }, null, 2),
           },
         ],
-        details: { schemaVersion: SCHEMA_VERSION, count: SURFACES.length },
+        details: { schemaVersion: SCHEMA_VERSION, count: PI_PACKAGE_SURFACES.length },
       };
     },
   });
 
-  for (const surface of SURFACES) {
+  pi.registerTool({
+    name: "gentic_pi_extension_events",
+    label: "Pi Extension Events",
+    description: "List Pi extension event constants tracked by Gentic.",
+    parameters: Type.Object({}),
+    async execute() {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              { schemaVersion: SCHEMA_VERSION, events: PI_EXTENSION_EVENTS, groups: PI_EXTENSION_EVENT_GROUPS },
+              null,
+              2,
+            ),
+          },
+        ],
+        details: { schemaVersion: SCHEMA_VERSION, count: PI_EXTENSION_EVENTS.length },
+      };
+    },
+  });
+
+  for (const surface of PI_PACKAGE_SURFACES) {
     pi.registerTool({
       name: toolNameFor(surface),
       label: `Gentic Surface: ${surface.id}`,
