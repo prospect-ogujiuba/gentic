@@ -1,0 +1,69 @@
+{
+  "$schema": "https://raw.githubusercontent.com/badlogic/pi-mono/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json",
+  "name": "gentic-dark",
+  "colors": {
+    "accent": "#7EA6BE",
+    "border": "#2A3238",
+    "borderAccent": "#526674",
+    "borderMuted": "#1F262B",
+
+    "success": "#8FBC8F",
+    "error": "#D18A8A",
+    "warning": "#D4B06F",
+
+    "muted": "#7B858C",
+    "dim": "#596269",
+    "text": "#D6D9DC",
+    "thinkingText": "#9AA4AA",
+
+    "selectedBg": "#202A31",
+
+    "userMessageBg": "#1C252B",
+    "userMessageText": "#E1E4E6",
+
+    "customMessageBg": "#1A2228",
+    "customMessageText": "#D1D5D8",
+    "customMessageLabel": "#8EA8B8",
+
+    "toolPendingBg": "#222930",
+    "toolSuccessBg": "#1F2E25",
+    "toolErrorBg": "#321F22",
+
+    "toolTitle": "#B4C1C8",
+    "toolOutput": "#AEB6BB",
+
+    "mdHeading": "#DCE2E6",
+    "mdLink": "#8FBAD3",
+    "mdLinkUrl": "#6F8795",
+    "mdCode": "#D0B978",
+    "mdCodeBlock": "#C3C8CB",
+    "mdCodeBlockBorder": "#354149",
+    "mdQuote": "#A1ABB1",
+    "mdQuoteBorder": "#48545C",
+    "mdHr": "#333D44",
+    "mdListBullet": "#7EA6BE",
+
+    "toolDiffAdded": "#8FBC8F",
+    "toolDiffRemoved": "#D18A8A",
+    "toolDiffContext": "#7B858C",
+
+    "syntaxComment": "#6E787F",
+    "syntaxKeyword": "#A7B8D8",
+    "syntaxFunction": "#A8C79F",
+    "syntaxVariable": "#D0D4D7",
+    "syntaxString": "#C7B878",
+    "syntaxNumber": "#D1A86F",
+    "syntaxType": "#9FC7BA",
+    "syntaxOperator": "#A8B0B5",
+    "syntaxPunctuation": "#858E94",
+
+    "thinkingOff": "#4F6F58",
+    "thinkingMinimal": "#6F8F5F",
+    "thinkingLow": "#A5A85F",
+    "thinkingMedium": "#C99A58",
+    "thinkingHigh": "#C87558",
+    "thinkingXhigh": "#D18A8A",
+
+    "bashMode": "#8FBC8F"
+  }
+}

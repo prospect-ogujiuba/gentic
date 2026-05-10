@@ -1,0 +1,4 @@
+.model-artifacts/
+.pi/
+/node_modules
+/catalog/gentic-legacy

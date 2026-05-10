@@ -1,0 +1,38 @@
+{
+  "name": "gentic",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "gentic",
+    "suite"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/**/*.test.ts"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/*/*/index.ts"
+    ],
+    "skills": [
+      "./skills/**/SKILL.md"
+    ],
+    "prompts": [
+      "./prompts/**/*.md",
+      "!./prompts/**/README.md"
+    ],
+    "themes": [
+      "./themes/**/*.json"
+    ]
+  }
+}
