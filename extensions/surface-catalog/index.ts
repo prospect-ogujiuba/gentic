@@ -13,7 +13,10 @@ function surfaceText(surface: SurfaceDefinition): string {
     "",
     surface.description,
     "",
-    `Runtime directory: ${surface.directory ?? "catalog/design surface or extension-backed when needed"}`,
+    `Runtime directory: ${surface.directory ?? "package manifest"}`,
+    `Pi discovery: ${surface.discovery}`,
+    "",
+    "This is a first-class Gentic surface because Pi discovers it directly from package metadata.",
   ].join("\n");
 }
 
@@ -21,7 +24,7 @@ export default function genticSurfaceCatalogTools(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "gentic_surfaces",
     label: "Gentic Surfaces",
-    description: "List Gentic's first-class surface catalog.",
+    description: "List Gentic's first-class Pi package resource surfaces.",
     parameters: Type.Object({}),
     async execute() {
       return {
@@ -40,7 +43,7 @@ export default function genticSurfaceCatalogTools(pi: ExtensionAPI): void {
     pi.registerTool({
       name: toolNameFor(surface),
       label: `Gentic Surface: ${surface.id}`,
-      description: `Describe the Gentic ${surface.id} surface.`,
+      description: `Describe the first-class Gentic ${surface.id} surface.`,
       parameters: Type.Object({}),
       async execute() {
         return {

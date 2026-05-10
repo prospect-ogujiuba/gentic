@@ -18,21 +18,30 @@
     "@earendil-works/pi-coding-agent": "*"
   },
   "scripts": {
+    "check": "npm run check:pi-api",
+    "check:pi-api": "node scripts/check-pi-extension-api.mjs",
     "test": "node --experimental-strip-types --test test/**/*.test.ts"
   },
   "pi": {
     "extensions": [
-      "./extensions/*/*/index.ts"
+      "./extensions",
+      "./extensions/**/index.ts"
     ],
     "skills": [
-      "./skills/**/SKILL.md"
+      "./skills",
+      "./extensions/**/skills",
+      "!./skills/**/README.md",
+      "!./extensions/**/skills/**/README.md"
     ],
     "prompts": [
       "./prompts/**/*.md",
-      "!./prompts/**/README.md"
+      "./extensions/**/prompts/**/*.md",
+      "!./prompts/**/README.md",
+      "!./extensions/**/prompts/**/README.md"
     ],
     "themes": [
-      "./themes/**/*.json"
+      "./themes/**/*.json",
+      "./extensions/**/themes/**/*.json"
     ]
   }
 }
