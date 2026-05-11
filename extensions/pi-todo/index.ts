@@ -157,7 +157,7 @@ async function executeTodoAction(pi: ExtensionAPI, ctx: ExtensionContext, params
   }
   if (params.action === "list") {
     const state = await svc.state();
-    return { content: [{ type: "text" as const, text: renderTodoDocketLines(state, ansiTodoTheme, { width: 100, limit: 20, includeDone: params.includeDone as boolean | undefined }).join("\n") }], details: { state } };
+    return { content: [{ type: "text" as const, text: renderTodoDocketLines(state, ansiTodoTheme, { width: 100, limit: 20, includeDone: params.includeDone as boolean | undefined, detail: "summary" }).join("\n") }], details: { state } };
   }
   if (params.action === "next" || params.action === "next_ready") {
     const todo = await svc.next({ actor: params.actor as string | undefined, actorCapabilities: params.actor_capabilities as string[] | undefined, actorScope: params.actor_scope as Parameters<TodoService["next"]>[0]["actorScope"] });

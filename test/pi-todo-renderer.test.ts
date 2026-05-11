@@ -35,6 +35,30 @@ test("todo docket concises repeated scenario titles and shows dependencies", () 
   assert.match(output, /⧗ waits 1/);
 });
 
+test("todo compact docket omits noisy row metadata", () => {
+  const at = "2026-05-11T00:00:00.000Z";
+  const state = reduceTodoState([
+    { id: "e1", type: "todo.created", at, todo: { description: undefined, priority: "high" as const, createdAt: at, updatedAt: at, dependsOn: [], tags: [], acceptanceCriteria: [], evidence: [], notes: [], revision: 2, id: "todo_1", title: "Declutter me", status: "completed" } },
+  ] satisfies TodoEvent[]);
+  const output = renderTodoDocketLines(state, plainTodoTheme, { width: 100, includeDone: true }).join("\n");
+
+  assert.match(output, /\[✓\] Declutter me/);
+  assert.match(output, /!/);
+  assert.doesNotMatch(output, /completed \| high \| v2 \| 05-11/);
+  assert.doesNotMatch(output, /v2/);
+  assert.doesNotMatch(output, /05-11/);
+});
+
+test("todo summary docket keeps detailed row metadata for observability commands", () => {
+  const at = "2026-05-11T00:00:00.000Z";
+  const state = reduceTodoState([
+    { id: "e1", type: "todo.created", at, todo: { description: undefined, priority: "high" as const, createdAt: at, updatedAt: at, dependsOn: [], tags: [], acceptanceCriteria: [], evidence: [], notes: [], revision: 2, id: "todo_1", title: "Summarize me", status: "completed" } },
+  ] satisfies TodoEvent[]);
+  const output = renderTodoDocketLines(state, plainTodoTheme, { width: 100, includeDone: true, detail: "summary" }).join("\n");
+
+  assert.match(output, /completed \| high \| v2 \| 05-11/);
+});
+
 test("todo docket labels total and open counts accurately when all closed", () => {
   const at = "2026-05-11T00:00:00.000Z";
   const base = { description: undefined, priority: "normal" as const, createdAt: at, updatedAt: at, dependsOn: [], tags: [], acceptanceCriteria: [], evidence: [], notes: [], revision: 0 };

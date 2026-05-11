@@ -10,6 +10,13 @@ function statusLabel(status: TodoStatus): string {
   return status;
 }
 
+function prioritySignal(priority: Todo["priority"], theme: TodoTheme): string | undefined {
+  if (priority === "urgent" || priority === "critical") return theme.fg("error", "‼");
+  if (priority === "high") return theme.fg("warning", "!");
+  if (priority === "low") return theme.fg("dim", "↓");
+  return undefined;
+}
+
 function statusColor(status: TodoStatus): string {
   if (["done", "completed", "verified"].includes(status)) return "syntaxComment";
   if (["blocked", "cancelled", "failed", "abandoned"].includes(status)) return "error";
@@ -95,7 +102,7 @@ function summaryTitle(state: TodoState): string | undefined {
   return title ? formatTodoTitleForTui(title, { commonPrefix: prefix, maxWidth: 80 }) : undefined;
 }
 
-export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, options: { width?: number; limit?: number; includeDone?: boolean } = {}): string[] {
+export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, options: { width?: number; limit?: number; includeDone?: boolean; detail?: "compact" | "summary" } = {}): string[] {
   const width = options.width ?? 80;
   const counts = summarizeTodos(state);
   const activeCount = counts.byStatus.in_progress + counts.byStatus.claimed;
@@ -117,9 +124,12 @@ export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, option
     const title = formatTodoTitleForTui(todo.title, { commonPrefix: prefix, maxWidth: Math.max(24, width - 28) });
     const titleText = theme.fg(todo.status === "cancelled" ? "muted" : "text", title);
     const deps = dependencyBadge(todo, state, theme);
-    const close = readyToClose(todo, state) ? theme.fg("accent", "Ready to close") : undefined;
-    const metaParts = [close, statusLabel(todo.status), todo.priority, deps, todo.claimedBy ? `@${todo.claimedBy}` : undefined, `v${todo.revision}`, todo.updatedAt.slice(5, 16).replace("T", " ")].filter(Boolean);
-    const meta = index === 0 || deps ? theme.fg("dim", metaParts.join(" | ")) : "";
+    const close = readyToClose(todo, state) ? theme.fg("accent", "close") : undefined;
+    const priority = prioritySignal(todo.priority, theme);
+    const compactMeta = [close, deps, todo.claimedBy ? theme.fg("dim", `@${todo.claimedBy}`) : undefined, priority].filter(Boolean);
+    const summaryMeta = [close && theme.fg("accent", "Ready to close"), statusLabel(todo.status), todo.priority, deps, todo.claimedBy ? `@${todo.claimedBy}` : undefined, `v${todo.revision}`, todo.updatedAt.slice(5, 16).replace("T", " ")].filter(Boolean);
+    const metaParts = options.detail === "summary" ? summaryMeta : compactMeta;
+    const meta = metaParts.length > 0 ? theme.fg("dim", metaParts.join(options.detail === "summary" ? " | " : " ")) : "";
     const line = meta ? leftRight(width, `${rowPrefix(todo, state)}${icon} ${titleText}`, meta) : `${rowPrefix(todo, state)}${icon} ${titleText}`;
     lines.push(...wrap(width, line));
   }
