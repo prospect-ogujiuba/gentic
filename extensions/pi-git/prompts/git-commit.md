@@ -4,13 +4,32 @@ argument-hint: "[extra instructions]"
 ---
 Commit the work. Follow this exact git flow:
 
-1. Run `git_snapshot` and `git status --short` first.
-2. Identify this session's intended scope. Do not include unrelated user/agent changes.
-3. Inspect candidate diffs before staging (`git diff`, and `git diff --cached` if anything is already staged).
-4. Stage only scoped source files. Do not stage `.gitignore` or any files and folders listed in it unless explicitly asked.
-5. If there is nothing scoped to commit, say so and stop.
-6. Commit with a concise one-line message: lowercase, prefixed by work type (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`).
-7. Show the final commit hash and remaining `git status --short`.
-8. You must absolutely never touch other files in the work tree that you have used tools on
+# Version Control
+
+- commit messages should be in lower case with a prefix for the type of work done in the commit
+- Use surgical, concise, one-line commits focused on one unit of work.
+- "Commit your work" means only the files touched by the agent in this session.
+
+Before committing:
+
+- Run `git status --short`.
+- Check whether candidate files are ignored or tracked.
+- Never assume generated plan or artifact paths should be tracked or committed.
+
+Do not force-add ignored files with `git add -f` unless the user explicitly says to track that ignored path.
+
+Treat all non-documentation markdown that clearly represents plans, specs, TODOs, or phase files as local runnable artifacts:
+
+- Write them only when asked.
+- Do not add or commit them unless explicitly requested.
+
+When asked to commit:
+
+- Stage only tracked or intended files.
+- Stage only files, or sections of files, touched in this context window.
+- Ignore unrelated diffs and work done by other agents in the worktree.
+- Leave ignored artifacts local.
+
+Never commit `.gitignore` without explicit instructions.
 
 Extra instructions: $ARGUMENTS
