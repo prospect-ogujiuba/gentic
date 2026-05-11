@@ -66,6 +66,12 @@ export interface HudState {
   warningCalls: number;
   thinkingLevel?: string;
   modal?: HudModalHandle;
+  workTimer: {
+    active: boolean;
+    startedAt?: number;
+    elapsedMs: number;
+    lastRunMs: number;
+  };
 }
 
 export type SnapshotContext = Pick<ExtensionContext, "cwd" | "model" | "getContextUsage">;
