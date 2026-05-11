@@ -1,15 +1,15 @@
-import { isToolCallEventType, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent";
+import { DynamicBorder, isToolCallEventType, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Container, Key, matchesKey, Spacer, Text, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { existsSync, readFileSync, mkdirSync, appendFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
- type Action = "allow" | "deny" | "ask";
- type Source = "agent" | "user";
- type Remember = false | "session" | "cwd" | "project" | "project-prefix" | "global" | "global-prefix";
- type Permissions = Partial<Record<Action, string[]>>;
- type Rule = { id: string; pattern: string; action: Action; reason?: string; remember?: Remember; timeoutSeconds?: number; defaultOnTimeout?: Action };
- type Config = {
+type Action = "allow" | "deny" | "ask";
+type Source = "agent" | "user";
+type Remember = false | "session" | "project";
+type PermissionChoice = { k: string; label: string; action: Action; remember: Remember };
+type Permissions = Partial<Record<Action, string[]>>;
+type Rule = { id: string; pattern: string; action: Action; reason?: string; timeoutSeconds?: number; defaultOnTimeout?: Action };
+type Config = {
   $schema?: string;
   version?: number;
   enabled?: boolean;
@@ -18,8 +18,8 @@ import { dirname, join, resolve } from "node:path";
   audit?: { enabled?: boolean; path?: string };
   permissions?: Permissions;
 };
- type Request = { source: Source; command: string; cwd: string };
- type Decision = { action: Action; ruleId: string; reason: string; remember?: Remember; timeoutSeconds?: number; defaultOnTimeout?: Action };
+type Request = { source: Source; command: string; cwd: string };
+type Decision = { action: Action; ruleId: string; reason: string; timeoutSeconds?: number; defaultOnTimeout?: Action };
 
 const EXT = "pi-gate";
 const SCHEMA_URL = new URL("./pi-gate.schema.json", import.meta.url).href;
@@ -38,7 +38,6 @@ type LoadedConfig = Required<Omit<Config, "$schema">> & Pick<Config, "$schema">;
 let config: LoadedConfig = defaultConfig();
 let configPaths: string[] = [];
 const sessionMemory = new Map<string, Action>();
-const cwdMemory = new Map<string, Action>();
 let stats = { allowed: 0, denied: 0, asked: 0 };
 
 function defaultConfig(): LoadedConfig {
@@ -80,20 +79,11 @@ function rulesFromPermissions(permissions: Permissions, prefix = "config"): Rule
   }
   return rules;
 }
-function memoryKey(req: Request, scope: Remember): string {
-  return scope === "cwd" || scope === "project" ? `${req.cwd}\0${req.command}` : req.command;
-}
 function projectConfigPath(ctx: ExtensionContext): string {
   return join(ctx.cwd, ".pi/pi-gate.json");
 }
-function globalConfigPath(): string {
-  return join(process.env.HOME || "", ".pi/agent/pi-gate.json");
-}
 function normalizeCommand(command: string): string {
   return command.trim().replace(/\s+/g, " ");
-}
-function commandPrefixPattern(command: string): string {
-  return `${normalizeCommand(command)}*`;
 }
 function persistRule(ctx: ExtensionContext, path: string, pattern: string, action: Action): void {
   const existing = readJson(path) || {};
@@ -125,13 +115,11 @@ function decide(req: Request): Decision {
   if (!config.enabled) return { action: "allow", ruleId: "disabled", reason: "pi-gate disabled" };
   if (config.mode === "permissive") return { action: "allow", ruleId: "mode", reason: "permissive mode" };
   if (config.mode === "strict") return { action: "deny", ruleId: "mode", reason: "strict mode" };
-  for (const [scope, mem] of [["session", sessionMemory], ["cwd", cwdMemory]] as const) {
-    const v = mem.get(memoryKey(req, scope));
-    if (v) return { action: v, ruleId: `remember:${scope}`, reason: "remembered decision" };
-  }
+  const remembered = sessionMemory.get(req.command);
+  if (remembered) return { action: remembered, ruleId: "remember:session", reason: "remembered decision" };
   const all = [...rulesFromPermissions(config.permissions), ...rulesFromPermissions(BUILTIN_PERMISSIONS, "builtin")];
   const rule = all.find((r) => hit(r, req));
-  if (rule) return { action: rule.action, ruleId: rule.id, reason: rule.reason || rule.id, remember: rule.remember, timeoutSeconds: rule.timeoutSeconds, defaultOnTimeout: rule.defaultOnTimeout };
+  if (rule) return { action: rule.action, ruleId: rule.id, reason: rule.reason || rule.id, timeoutSeconds: rule.timeoutSeconds, defaultOnTimeout: rule.defaultOnTimeout };
   return { action: config.defaultAction, ruleId: "default", reason: "default policy" };
 }
 function audit(ctx: ExtensionContext, req: Request, d: Decision): void {
@@ -151,15 +139,12 @@ function visibleSlice(lines: string[], offset: number, maxLines: number, marker:
 async function prompt(ctx: ExtensionContext, req: Request, d: Decision): Promise<Action> {
   if (!ctx.hasUI) return d.defaultOnTimeout || "deny";
   stats.asked++;
-  const result = await ctx.ui.custom<{ action: Action; remember: Remember }>((tui, theme, _kb, done) => {
-    const opts: Array<{ k: string; label: string; action: Action; remember: Remember }> = [
-      { k: "a", label: "allow once", action: "allow", remember: false },
-      { k: "s", label: "allow session", action: "allow", remember: "session" },
-      { k: "p", label: "allow project exact", action: "allow", remember: "project" },
-      { k: "w", label: "allow project starts-with", action: "allow", remember: "project-prefix" },
-      { k: "g", label: "allow global exact", action: "allow", remember: "global" },
-      { k: "x", label: "allow global starts-with", action: "allow", remember: "global-prefix" },
-      { k: "d", label: "deny once", action: "deny", remember: false },
+  const result = await ctx.ui.custom<PermissionChoice>((tui, theme, _kb, done) => {
+    const opts: PermissionChoice[] = [
+      { k: "y", label: "yes, run once", action: "allow", remember: false },
+      { k: "s", label: "yes, remember this session", action: "allow", remember: "session" },
+      { k: "p", label: "yes, remember for this project", action: "allow", remember: "project" },
+      { k: "n", label: "no, block it", action: "deny", remember: false },
     ];
     let selected = 0;
     let commandOffset = 0;
@@ -191,32 +176,28 @@ async function prompt(ctx: ExtensionContext, req: Request, d: Decision): Promise
         commandOffset = clamp(commandOffset, 0, maxCommandOffset);
         const c = new Container();
         c.addChild(new DynamicBorder((s: string) => theme.fg("warning", s)));
-        c.addChild(new Text(`${theme.fg("warning", theme.bold("pi-gate"))} ${theme.fg("muted", "wants permission to run bash")}`, 1, 0));
+        c.addChild(new Text(`${theme.fg("warning", theme.bold("pi-gate"))} ${theme.fg("muted", "run this command?")}`, 1, 0));
         c.addChild(new Spacer(1));
         c.addChild(new Text(theme.fg("accent", "command"), 1, 0));
         c.addChild(new Text(visibleSlice(commandLines, commandOffset, commandLineBudget, (s) => theme.fg("dim", s)).join("\n"), 2, 0));
         c.addChild(new Spacer(1));
         c.addChild(new Text(`${theme.fg("warning", "reason")} ${d.reason}\n${theme.fg("dim", `rule ${d.ruleId} • ${req.source} • ${req.cwd}`)}`, 1, 0));
         c.addChild(new Spacer(1));
-        c.addChild(new Text(theme.fg("accent", "choose"), 1, 0));
+        c.addChild(new Text(theme.fg("accent", "answer"), 1, 0));
         c.addChild(new Text(opts.map((o, i) => {
           const marker = i === selected ? theme.fg("accent", "›") : " ";
           const label = i === selected ? theme.fg("accent", o.label) : o.label;
           return `${marker} ${theme.fg("muted", o.k)}  ${label}`;
         }).join("\n"), 2, 0));
         c.addChild(new Spacer(1));
-        c.addChild(new Text(theme.fg("dim", "↑/↓ select • pgup/pgdn or ←/→ scroll command • enter confirm • esc deny"), 1, 0));
+        c.addChild(new Text(theme.fg("dim", "y/n/s/p or ↑/↓ then enter • esc blocks"), 1, 0));
         c.addChild(new DynamicBorder((s: string) => theme.fg("warning", s)));
         return c.render(width).slice(0, maxPromptLines).map((l) => truncateToWidth(l, width));
       },
     };
   }, { overlay: true, overlayOptions: { width: "80%", maxHeight: "80%", minWidth: 50, margin: 1 } });
-  if (result.remember === "session") sessionMemory.set(memoryKey(req, "session"), result.action);
-  if (result.remember === "cwd") cwdMemory.set(memoryKey(req, "cwd"), result.action);
+  if (result.remember === "session") sessionMemory.set(req.command, result.action);
   if (result.remember === "project") persistRule(ctx, projectConfigPath(ctx), normalizeCommand(req.command), result.action);
-  if (result.remember === "project-prefix") persistRule(ctx, projectConfigPath(ctx), commandPrefixPattern(req.command), result.action);
-  if (result.remember === "global") persistRule(ctx, globalConfigPath(), normalizeCommand(req.command), result.action);
-  if (result.remember === "global-prefix") persistRule(ctx, globalConfigPath(), commandPrefixPattern(req.command), result.action);
   return result.action;
 }
 async function gate(ctx: ExtensionContext, req: Request): Promise<{ block: boolean; reason?: string }> {
