@@ -24,7 +24,7 @@ export default function implementationFileCompletion(pi: ExtensionAPI, ctx: Prim
   if (!injection) return;
 
   pi.on("before_agent_start", (event) => {
-    const text = [event.systemPromptOptions?.customPrompt, event.systemPromptOptions?.appendSystemPrompt, event.systemPromptOptions?.contextFiles]
+    const text = [event.prompt, event.systemPromptOptions?.customPrompt, event.systemPromptOptions?.appendSystemPrompt, event.systemPromptOptions?.contextFiles]
       .filter(Boolean)
       .join("\n");
 
