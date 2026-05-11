@@ -20,20 +20,36 @@ class TodoModalComponent {
   private requestRender: () => void;
   private closeModal: () => void;
   private getRows: () => number;
+  private refreshState: () => Promise<TodoState>;
+  private pollTimer?: ReturnType<typeof setInterval>;
+  private refreshInFlight = false;
   private cachedWidth?: number;
   private cachedLines?: string[];
   private scrollOffset = 0;
   private showAll = false;
 
-  constructor(theme: TodoTheme, state: TodoState, requestRender: () => void, closeModal: () => void, getRows: () => number) {
+  constructor(theme: TodoTheme, state: TodoState, requestRender: () => void, closeModal: () => void, getRows: () => number, refreshState: () => Promise<TodoState>, pollMs = 750) {
     this.theme = theme;
     this.state = state;
     this.requestRender = requestRender;
     this.closeModal = closeModal;
     this.getRows = getRows;
+    this.refreshState = refreshState;
+    this.pollTimer = setInterval(() => void this.refresh(), pollMs);
+  }
+
+  async refresh(): Promise<void> {
+    if (this.refreshInFlight) return;
+    this.refreshInFlight = true;
+    try {
+      this.update(await this.refreshState());
+    } finally {
+      this.refreshInFlight = false;
+    }
   }
 
   update(state: TodoState): void {
+    if (state.lastEventId === this.state.lastEventId && Object.keys(state.todos).length === Object.keys(this.state.todos).length) return;
     this.state = state;
     this.invalidate();
     this.requestRender();
@@ -75,11 +91,21 @@ class TodoModalComponent {
     this.cachedWidth = undefined;
     this.cachedLines = undefined;
   }
+
+  dispose(): void {
+    if (this.pollTimer) clearInterval(this.pollTimer);
+    this.pollTimer = undefined;
+  }
+}
+
+export function createLiveTodoModalComponent(options: { theme: TodoTheme; state: TodoState; requestRender: () => void; closeModal: () => void; getRows: () => number; refreshState: () => Promise<TodoState>; pollMs?: number }): TodoModalComponent {
+  return new TodoModalComponent(options.theme, options.state, options.requestRender, options.closeModal, options.getRows, options.refreshState, options.pollMs);
 }
 
 export async function openTodoModal(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
-  const state = await new TodoService(new PiTodoEventStore(pi, ctx)).state();
-  await ctx.ui.custom<void>((tui, theme, _kb, done) => new TodoModalComponent(theme, state, () => tui.requestRender(), () => done(), () => tui.terminal.rows), {
+  const svc = new TodoService(new PiTodoEventStore(pi, ctx));
+  const state = await svc.state();
+  await ctx.ui.custom<void>((tui, theme, _kb, done) => createLiveTodoModalComponent({ theme, state, requestRender: () => tui.requestRender(), closeModal: () => done(), getRows: () => tui.terminal.rows, refreshState: () => svc.state() }), {
     overlay: true,
     overlayOptions: { anchor: "center", width: "82%", minWidth: 54, maxHeight: "88%", margin: 1, visible: (termWidth) => termWidth >= 54 },
   });

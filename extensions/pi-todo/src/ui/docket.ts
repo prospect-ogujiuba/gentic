@@ -1,5 +1,5 @@
 import type { Todo, TodoState, TodoStatus } from "../domain/types.ts";
-import { activeTodo, nextTodo, orderedTodos, readyToClose, summarizeTodos } from "../app/query.ts";
+import { activeTodo, nextTodo, openDependencyIds, orderedTodos, readyToClose, summarizeTodos } from "../app/query.ts";
 import { leftRight, wrap } from "./format.ts";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { TodoTheme } from "./theme.ts";
@@ -57,10 +57,6 @@ function commonColonPrefix(todos: Todo[]): string | undefined {
   if (prefixes.length < 2) return undefined;
   const [first] = prefixes;
   return prefixes.every((prefix) => prefix === first) ? first : undefined;
-}
-
-function openDependencyIds(todo: Todo, state: TodoState): string[] {
-  return todo.dependsOn.filter((id) => state.todos[id]?.status !== "done");
 }
 
 function dependencyBadge(todo: Todo, state: TodoState, theme: TodoTheme): string | undefined {
