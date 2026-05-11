@@ -6,7 +6,7 @@ import { dirname, join, resolve } from "node:path";
 
  type Action = "allow" | "deny" | "ask";
  type Source = "agent" | "user";
- type Remember = false | "session" | "cwd" | "project" | "forever";
+ type Remember = false | "session" | "cwd" | "project" | "project-prefix" | "global" | "global-prefix";
  type Permissions = Partial<Record<Action, string[]>>;
  type Rule = { id: string; pattern: string; action: Action; reason?: string; remember?: Remember; timeoutSeconds?: number; defaultOnTimeout?: Action };
  type Config = {
@@ -22,6 +22,7 @@ import { dirname, join, resolve } from "node:path";
  type Decision = { action: Action; ruleId: string; reason: string; remember?: Remember; timeoutSeconds?: number; defaultOnTimeout?: Action };
 
 const EXT = "pi-gate";
+const SCHEMA_URL = new URL("./pi-gate.schema.json", import.meta.url).href;
 const MIN_PROMPT_LINES = 12;
 const PROMPT_SCREEN_RATIO = 0.78;
 const MIN_COMMAND_LINES = 3;
@@ -32,14 +33,15 @@ const BUILTIN_PERMISSIONS: Permissions = {
   allow: ["ls*", "pwd", "rg*", "grep*", "git status*", "git diff*", "git log*", "git branch*", "git remote*", "git rev-parse*"],
 };
 
-let config: Required<Config> = defaultConfig();
+type LoadedConfig = Required<Omit<Config, "$schema">> & Pick<Config, "$schema">;
+
+let config: LoadedConfig = defaultConfig();
 let configPaths: string[] = [];
 const sessionMemory = new Map<string, Action>();
 const cwdMemory = new Map<string, Action>();
-const foreverMemory = new Map<string, Action>();
 let stats = { allowed: 0, denied: 0, asked: 0 };
 
-function defaultConfig(): Required<Config> {
+function defaultConfig(): LoadedConfig {
   return { version: 2, enabled: true, mode: "ask", defaultAction: "ask", audit: { enabled: true, path: ".pi/pi-gate-audit.jsonl" }, permissions: {} };
 }
 function readJson(path: string): Partial<Config> | undefined {
@@ -62,8 +64,7 @@ function patternRegex(pattern: string): RegExp {
   return new RegExp(`^${escapeRegex(pattern.trim()).replace(/\\\*/g, ".*").replace(/\\\?/g, ".")}$`, "i");
 }
 function hit(rule: Rule, req: Request): boolean {
-  const command = req.command.trim().replace(/\s+/g, " ");
-  return patternRegex(rule.pattern).test(command);
+  return patternRegex(rule.pattern).test(normalizeCommand(req.command));
 }
 function mergePermissions(...items: Permissions[]): Permissions {
   return {
@@ -85,12 +86,21 @@ function memoryKey(req: Request, scope: Remember): string {
 function projectConfigPath(ctx: ExtensionContext): string {
   return join(ctx.cwd, ".pi/pi-gate.json");
 }
-function persistProjectRule(ctx: ExtensionContext, req: Request, action: Action): void {
-  const path = projectConfigPath(ctx);
+function globalConfigPath(): string {
+  return join(process.env.HOME || "", ".pi/agent/pi-gate.json");
+}
+function normalizeCommand(command: string): string {
+  return command.trim().replace(/\s+/g, " ");
+}
+function commandPrefixPattern(command: string): string {
+  return `${normalizeCommand(command)}*`;
+}
+function persistRule(ctx: ExtensionContext, path: string, pattern: string, action: Action): void {
   const existing = readJson(path) || {};
   const permissions = existing.permissions || {};
+  const current = permissions[action] || [];
   const next = {
-    $schema: existing.$schema || "https://earendil.works/pi-gate.schema.json",
+    $schema: existing.$schema || SCHEMA_URL,
     version: existing.version || 2,
     enabled: existing.enabled ?? true,
     mode: existing.mode || "ask",
@@ -103,7 +113,7 @@ function persistProjectRule(ctx: ExtensionContext, req: Request, action: Action)
       allow: permissions.allow || [],
       ask: permissions.ask || [],
       deny: permissions.deny || [],
-      [action]: [...(permissions[action] || []), req.command],
+      [action]: current.includes(pattern) ? current : [...current, pattern],
     },
   } satisfies Config;
   mkdirSync(dirname(path), { recursive: true });
@@ -115,7 +125,7 @@ function decide(req: Request): Decision {
   if (!config.enabled) return { action: "allow", ruleId: "disabled", reason: "pi-gate disabled" };
   if (config.mode === "permissive") return { action: "allow", ruleId: "mode", reason: "permissive mode" };
   if (config.mode === "strict") return { action: "deny", ruleId: "mode", reason: "strict mode" };
-  for (const [scope, mem] of [["session", sessionMemory], ["cwd", cwdMemory], ["forever", foreverMemory]] as const) {
+  for (const [scope, mem] of [["session", sessionMemory], ["cwd", cwdMemory]] as const) {
     const v = mem.get(memoryKey(req, scope));
     if (v) return { action: v, ruleId: `remember:${scope}`, reason: "remembered decision" };
   }
@@ -143,9 +153,13 @@ async function prompt(ctx: ExtensionContext, req: Request, d: Decision): Promise
   stats.asked++;
   const result = await ctx.ui.custom<{ action: Action; remember: Remember }>((tui, theme, _kb, done) => {
     const opts: Array<{ k: string; label: string; action: Action; remember: Remember }> = [
-      { k: "a", label: "allow once", action: "allow", remember: false }, { k: "s", label: "allow session", action: "allow", remember: "session" },
-      { k: "p", label: "allow project", action: "allow", remember: "project" }, { k: "d", label: "deny once", action: "deny", remember: false },
-      { k: "x", label: "deny session", action: "deny", remember: "session" }, { k: "b", label: "deny project", action: "deny", remember: "project" },
+      { k: "a", label: "allow once", action: "allow", remember: false },
+      { k: "s", label: "allow session", action: "allow", remember: "session" },
+      { k: "p", label: "allow project exact", action: "allow", remember: "project" },
+      { k: "w", label: "allow project starts-with", action: "allow", remember: "project-prefix" },
+      { k: "g", label: "allow global exact", action: "allow", remember: "global" },
+      { k: "x", label: "allow global starts-with", action: "allow", remember: "global-prefix" },
+      { k: "d", label: "deny once", action: "deny", remember: false },
     ];
     let selected = 0;
     let commandOffset = 0;
@@ -199,8 +213,10 @@ async function prompt(ctx: ExtensionContext, req: Request, d: Decision): Promise
   }, { overlay: true, overlayOptions: { width: "80%", maxHeight: "80%", minWidth: 50, margin: 1 } });
   if (result.remember === "session") sessionMemory.set(memoryKey(req, "session"), result.action);
   if (result.remember === "cwd") cwdMemory.set(memoryKey(req, "cwd"), result.action);
-  if (result.remember === "project") persistProjectRule(ctx, req, result.action);
-  if (result.remember === "forever") foreverMemory.set(memoryKey(req, "forever"), result.action);
+  if (result.remember === "project") persistRule(ctx, projectConfigPath(ctx), normalizeCommand(req.command), result.action);
+  if (result.remember === "project-prefix") persistRule(ctx, projectConfigPath(ctx), commandPrefixPattern(req.command), result.action);
+  if (result.remember === "global") persistRule(ctx, globalConfigPath(), normalizeCommand(req.command), result.action);
+  if (result.remember === "global-prefix") persistRule(ctx, globalConfigPath(), commandPrefixPattern(req.command), result.action);
   return result.action;
 }
 async function gate(ctx: ExtensionContext, req: Request): Promise<{ block: boolean; reason?: string }> {
