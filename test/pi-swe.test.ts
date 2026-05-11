@@ -67,6 +67,8 @@ test("pi-swe registers runtime event wiring and /swe command", async () => {
 
 
 const baseStages = ["plan", "diagnose", "implement", "verify", "review", "finalize"] as const;
+const dsaReferenceFiles = ["decision-rubric", "algorithm-playbook", "data-structures-catalog"] as const;
+const tddReferences = ["rgr-playbook", "tdd-architecture", "red-green-refactor"] as const;
 
 test("all base pi-swe prompt templates are discoverable", () => {
   const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
@@ -93,4 +95,87 @@ test("all base pi-swe skills are discoverable", () => {
     assert.match(content, /description:/);
     assert.doesNotMatch(content, /\/sop\b|programming_sop|sop-/);
   }
+});
+
+test("swe-dsa resources are discoverable and resource-only", () => {
+  const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  assert.ok(packageJson.pi?.prompts?.includes("./extensions/**/prompts/**/*.md"));
+  assert.ok(packageJson.pi?.skills?.includes("./extensions/**/skills"));
+
+  const promptPath = join(root, "extensions/pi-swe/prompts/swe-dsa.md");
+  const skillPath = join(root, "extensions/pi-swe/skills/swe-dsa/SKILL.md");
+  assert.equal(existsSync(promptPath), true, "missing /swe-dsa prompt");
+  assert.equal(existsSync(skillPath), true, "missing swe-dsa skill");
+
+  const prompt = readFileSync(promptPath, "utf8");
+  const skill = readFileSync(skillPath, "utf8");
+  assert.match(prompt, /^---\n[\s\S]*description:/);
+  assert.match(skill, /name: swe-dsa/);
+  assert.match(skill, /problem summary/i);
+  assert.match(skill, /current implementation/i);
+  assert.match(skill, /workload \/ constraints/i);
+  assert.match(skill, /recommendation/i);
+  assert.match(skill, /rejected alternatives/i);
+  assert.match(skill, /complexity impact/i);
+  assert.match(skill, /memory tradeoff/i);
+  assert.match(skill, /migration advice/i);
+  assert.match(skill, /validation plan/i);
+  assert.match(skill, /confidence/i);
+  assert.match(skill, /semantic requirements/i);
+  assert.match(`${prompt}\n${skill}`, /measure first|no change/i);
+
+  for (const reference of dsaReferenceFiles) {
+    const referencePath = join(root, `extensions/pi-swe/references/dsa/${reference}.md`);
+    assert.equal(existsSync(referencePath), true, `missing DSA reference ${reference}`);
+    assert.match(readFileSync(referencePath, "utf8"), /^# /);
+  }
+
+  const extensionEntrypoint = readFileSync(join(root, "extensions/pi-swe/index.ts"), "utf8");
+  assert.doesNotMatch(`${prompt}\n${skill}\n${extensionEntrypoint}`, /\/dsa-advisor\b|dsa_advisor|dsa-assessment|registerTool\([^)]*dsa/i);
+});
+
+test("swe-tdd prompt, skill, and compact references are discoverable", () => {
+  const promptPath = join(root, "extensions/pi-swe/prompts/swe-tdd.md");
+  assert.equal(existsSync(promptPath), true);
+  const promptContent = readFileSync(promptPath, "utf8");
+  assert.match(promptContent, /^---\n[\s\S]*description:/);
+  assert.match(promptContent, /Next Observable Behavior/);
+  assert.match(promptContent, /Test Level/);
+
+  const skillPath = join(root, "extensions/pi-swe/skills/swe-tdd/SKILL.md");
+  assert.equal(existsSync(skillPath), true);
+  const skillContent = readFileSync(skillPath, "utf8");
+  assert.match(skillContent, /name: swe-tdd/);
+  assert.match(skillContent, /description:/);
+
+  for (const reference of tddReferences) {
+    assert.equal(existsSync(join(root, `extensions/pi-swe/references/tdd-rgr/${reference}.md`)), true, `missing TDD reference ${reference}`);
+  }
+});
+
+test("swe-tdd guidance separates Red, Green, Refactor, and verification", () => {
+  const promptContent = readFileSync(join(root, "extensions/pi-swe/prompts/swe-tdd.md"), "utf8");
+  const skillContent = readFileSync(join(root, "extensions/pi-swe/skills/swe-tdd/SKILL.md"), "utf8");
+  const combined = `${promptContent}\n${skillContent}`;
+
+  for (const required of ["Next Observable Behavior", "Test Level", "Red", "Green", "Refactor", "Verification"]) {
+    assert.match(combined, new RegExp(`\\b${required}\\b`));
+  }
+  assert.match(combined, /one failing test|failing test first/i);
+  assert.match(combined, /smallest production change/i);
+  assert.match(combined, /only after green/i);
+});
+
+test("pi-swe TDD resources do not add legacy namespace or model-callable TDD tool", () => {
+  const files = [
+    "extensions/pi-swe/prompts/swe-tdd.md",
+    "extensions/pi-swe/skills/swe-tdd/SKILL.md",
+    "extensions/pi-swe/index.ts",
+  ];
+  const content = files.map((file) => readFileSync(join(root, file), "utf8")).join("\n");
+
+  assert.equal(existsSync(join(root, "extensions/pi-swe/prompts/tdd-rgr.md")), false);
+  assert.equal(existsSync(join(root, "extensions/pi-swe/skills/tdd-rgr/SKILL.md")), false);
+  assert.doesNotMatch(content, /(^|[\s`])\/tdd-rgr\b/m);
+  assert.doesNotMatch(content, /registerTool\([^)]*(?:tdd|swe-tdd)/i);
 });
