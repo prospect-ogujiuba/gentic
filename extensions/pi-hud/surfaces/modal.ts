@@ -60,14 +60,24 @@ class PiHudModalComponent {
   private scrollOffset = 0;
 
   private readonly timer: ReturnType<typeof setInterval>;
+  private theme: Theme;
+  private snapshot: HudSnapshot;
+  private requestRender: () => void;
+  private closeModal: () => void;
+  private getRows: () => number;
 
   constructor(
-    private theme: Theme,
-    private snapshot: HudSnapshot,
-    private requestRender: () => void,
-    private closeModal: () => void,
-    private getRows: () => number,
+    theme: Theme,
+    snapshot: HudSnapshot,
+    requestRender: () => void,
+    closeModal: () => void,
+    getRows: () => number,
   ) {
+    this.theme = theme;
+    this.snapshot = snapshot;
+    this.requestRender = requestRender;
+    this.closeModal = closeModal;
+    this.getRows = getRows;
     this.timer = setInterval(() => this.requestRender(), 1000);
   }
 
