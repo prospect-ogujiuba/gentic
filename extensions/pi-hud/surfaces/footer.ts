@@ -1,5 +1,5 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { renderAgentStatus } from "../components/agent.ts";
+import { renderWorktime } from "../components/worktime.ts";
 import { renderContextBar, renderUsageSummary } from "../components/context.ts";
 import { renderHarnessEvents } from "../components/events.ts";
 import { renderGitStatus } from "../components/git.ts";
@@ -47,17 +47,23 @@ export function renderFooterLines(s: HudSnapshot, theme: Theme, width: number): 
 
   const gitFull = state.components.git ? renderGitStatus(s, theme) : "";
   const gitCandidates = [gitFull, ...compactGitStatus(gitFull, width)].filter((value, index, all) => value && all.indexOf(value) === index);
-  const lineTwo = fitResponsive(width, gitCandidates.length ? gitCandidates : [gitFull], [state.components.agent ? renderAgentStatus(s, theme) : ""]);
+  const lineTwo = fitResponsive(width, gitCandidates.length ? gitCandidates : [gitFull], [state.components.worktime ? renderWorktime(s, theme) : ""]);
   const lineThree = state.components.tools ? fitToolLine(width, renderToolBadges(s, theme), renderToolSummary(s, theme)) : "";
   const eventLine = state.components.events ? cleanTruncate(renderHarnessEvents(s, theme), width) : "";
   return [lineOne, lineTwo, lineThree, eventLine].filter(Boolean);
 }
 
 export function createHudComponent(s: HudSnapshot) {
-  return (_tui: unknown, theme: Theme) => ({
-    invalidate() {},
-    render(width: number): string[] {
-      return renderFooterLines(s, theme, width);
-    },
-  });
+  return (tui: { requestRender?: () => void }, theme: Theme) => {
+    const timer = state.components.worktime ? setInterval(() => tui.requestRender?.(), 1000) : undefined;
+    return {
+      dispose() {
+        if (timer) clearInterval(timer);
+      },
+      invalidate() {},
+      render(width: number): string[] {
+        return renderFooterLines(s, theme, width);
+      },
+    };
+  };
 }

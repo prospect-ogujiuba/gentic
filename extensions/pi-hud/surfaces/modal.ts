@@ -1,6 +1,6 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import { renderAgentStatus } from "../components/agent.ts";
+import { renderWorktime, renderWorktimeDetails } from "../components/worktime.ts";
 import { renderContextBar, renderUsageSummary } from "../components/context.ts";
 import { renderGitStatus } from "../components/git.ts";
 import { renderModel, renderThinkingLevel } from "../components/model.ts";
@@ -39,15 +39,17 @@ function framed(theme: Theme, width: number, title: string, body: string[]): str
 function modalBody(s: HudSnapshot, theme: Theme, width: number): string[] {
   const bodyWidth = Math.max(24, width - 2);
   const modelLine = [renderModel(s, theme), renderThinkingLevel(s, theme), renderContextBar(s, theme)].filter(Boolean).join(theme.fg("dim", "  "));
+  const workLine = state.components.worktime ? renderWorktime(s, theme) : "";
   const lines = bodyWidth >= 84
-    ? [fitLeftRight(bodyWidth, modelLine, renderUsageSummary(s, theme)), fitLeftRight(bodyWidth, renderGitStatus(s, theme), renderAgentStatus(s, theme))]
-    : [modelLine, renderUsageSummary(s, theme), renderGitStatus(s, theme), renderAgentStatus(s, theme)];
+    ? [fitLeftRight(bodyWidth, modelLine, renderUsageSummary(s, theme)), fitLeftRight(bodyWidth, renderGitStatus(s, theme), workLine)]
+    : [modelLine, renderUsageSummary(s, theme), renderGitStatus(s, theme), workLine].filter(Boolean);
 
   const badges = renderToolBadges(s, theme);
   const summary = renderToolSummary(s, theme);
   lines.push(...sectionTitle(theme, "tools", bodyWidth));
   if (badges) lines.push(badges);
   if (summary) lines.push(summary);
+  if (state.components.worktime) lines.push(...sectionTitle(theme, "work time", bodyWidth), ...renderWorktimeDetails(s, theme));
   lines.push(...sectionTitle(theme, "session", bodyWidth), `turn ${state.turn} · ${s.worktreeId}`);
   return lines;
 }
@@ -57,13 +59,17 @@ class PiHudModalComponent {
   private cachedLines?: string[];
   private scrollOffset = 0;
 
+  private readonly timer: ReturnType<typeof setInterval>;
+
   constructor(
     private theme: Theme,
     private snapshot: HudSnapshot,
     private requestRender: () => void,
-    private close: () => void,
+    private closeModal: () => void,
     private getRows: () => number,
-  ) {}
+  ) {
+    this.timer = setInterval(() => this.requestRender(), 1000);
+  }
 
   update(snapshot: HudSnapshot): void {
     this.snapshot = snapshot;
@@ -91,6 +97,11 @@ class PiHudModalComponent {
     if (matchesKey(data, Key.up)) this.scrollOffset = Math.max(0, this.scrollOffset - 1);
     this.invalidate();
     this.requestRender();
+  }
+
+  close(): void {
+    clearInterval(this.timer);
+    this.closeModal();
   }
 
   invalidate(): void {
