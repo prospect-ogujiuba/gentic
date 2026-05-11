@@ -17,6 +17,9 @@ export type PiSweConfig = {
   enabled?: boolean;
   mode?: PiSweMode;
   stages?: Record<string, Record<string, unknown>>;
+  surgicalChange?: {
+    maxFiles?: number;
+  };
 };
 
 export type EffectivePiSweConfig = Required<Omit<PiSweConfig, "$schema">>;
@@ -54,6 +57,7 @@ export const DEFAULT_PI_SWE_CONFIG: Readonly<EffectivePiSweConfig> = Object.free
   enabled: true,
   mode: "advisory",
   stages: DEFAULT_PI_SWE_CHECKS,
+  surgicalChange: { maxFiles: 5 },
 });
 
 export function loadEffectiveSweConfig(options: LoadEffectiveSweConfigOptions = {}): LoadEffectiveSweConfigResult {
@@ -97,6 +101,7 @@ function mergeConfig(...configs: Array<PiSweConfig | EffectivePiSweConfig | unde
     if (config.enabled !== undefined) merged.enabled = config.enabled;
     if (config.mode !== undefined) merged.mode = config.mode;
     if (config.stages !== undefined) merged.stages = { ...(merged.stages ?? {}), ...config.stages };
+    if (config.surgicalChange !== undefined) merged.surgicalChange = { ...(merged.surgicalChange ?? {}), ...config.surgicalChange };
   }
 
   return merged;
@@ -104,7 +109,7 @@ function mergeConfig(...configs: Array<PiSweConfig | EffectivePiSweConfig | unde
 
 function normalizeConfigInput(input: Record<string, unknown>, diagnostics: PiSweConfigDiagnostic[], path: string): PiSweConfig {
   const normalized: PiSweConfig = {};
-  const known = new Set(["$schema", "version", "enabled", "mode", "stages"]);
+  const known = new Set(["$schema", "version", "enabled", "mode", "stages", "surgicalChange"]);
 
   for (const key of Object.keys(input)) {
     if (!known.has(key)) diagnostics.push({ path, message: `unknown pi-swe config field '${key}' ignored` });
@@ -125,6 +130,9 @@ function normalizeConfigInput(input: Record<string, unknown>, diagnostics: PiSwe
   if (isPlainObject(input.stages)) normalized.stages = normalizeStages(input.stages as Record<string, unknown>, diagnostics, path);
   else if (input.stages !== undefined) diagnostics.push({ path, message: "invalid 'stages'; expected object" });
 
+  if (isPlainObject(input.surgicalChange)) normalized.surgicalChange = normalizeSurgicalChange(input.surgicalChange as Record<string, unknown>, diagnostics, path);
+  else if (input.surgicalChange !== undefined) diagnostics.push({ path, message: "invalid 'surgicalChange'; expected object" });
+
   return normalized;
 }
 
@@ -136,6 +144,7 @@ function normalizeConfig(config: PiSweConfig, diagnostics: PiSweConfigDiagnostic
     enabled: normalized.enabled ?? DEFAULT_PI_SWE_CONFIG.enabled,
     mode: normalized.mode ?? DEFAULT_PI_SWE_CONFIG.mode,
     stages: { ...DEFAULT_PI_SWE_CONFIG.stages, ...(normalized.stages ?? {}) },
+    surgicalChange: { ...DEFAULT_PI_SWE_CONFIG.surgicalChange, ...(normalized.surgicalChange ?? {}) },
   };
 }
 
@@ -149,6 +158,19 @@ function normalizeStages(stages: Record<string, unknown>, diagnostics: PiSweConf
     }
     normalized[name] = { ...(value as Record<string, unknown>) };
   }
+
+  return normalized;
+}
+
+function normalizeSurgicalChange(surgicalChange: Record<string, unknown>, diagnostics: PiSweConfigDiagnostic[], path: string): { maxFiles?: number } {
+  const normalized: { maxFiles?: number } = {};
+
+  for (const key of Object.keys(surgicalChange)) {
+    if (key !== "maxFiles") diagnostics.push({ path, message: `unknown surgicalChange field '${key}' ignored` });
+  }
+
+  if (Number.isInteger(surgicalChange.maxFiles) && Number(surgicalChange.maxFiles) >= 1) normalized.maxFiles = Number(surgicalChange.maxFiles);
+  else if (surgicalChange.maxFiles !== undefined) diagnostics.push({ path, message: "invalid 'surgicalChange.maxFiles'; expected integer >= 1" });
 
   return normalized;
 }

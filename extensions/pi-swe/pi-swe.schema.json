@@ -29,6 +29,18 @@
         "additionalProperties": true
       },
       "default": {}
+    },
+    "surgicalChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxFiles": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 5
+        }
+      },
+      "default": { "maxFiles": 5 }
     }
   }
 }
