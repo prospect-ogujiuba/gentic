@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://earendil.works/pi-gate.schema.json",
+  "title": "pi-gate config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "number", "default": 2 },
+    "enabled": { "type": "boolean", "default": true },
+    "mode": { "enum": ["ask", "strict", "permissive"], "default": "ask" },
+    "defaultAction": { "enum": ["allow", "deny", "ask"], "default": "ask" },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "path": { "type": "string", "default": ".pi/pi-gate-audit.jsonl" }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "description": "Command patterns by action. * matches any text, ? matches one character.",
+      "additionalProperties": false,
+      "properties": {
+        "allow": { "$ref": "#/$defs/patterns" },
+        "ask": { "$ref": "#/$defs/patterns" },
+        "deny": { "$ref": "#/$defs/patterns" }
+      },
+      "default": {}
+    }
+  },
+  "$defs": {
+    "patterns": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  }
+}
