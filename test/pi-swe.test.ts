@@ -15,19 +15,44 @@ test("package discovery sees pi-swe extension", () => {
   assert.equal(metadata.id, "pi-swe");
 });
 
-test("pi-swe skeleton loads without registering behavior", () => {
-  const calls: string[] = [];
-  const pi = new Proxy({}, {
-    get(_target, property) {
-      calls.push(String(property));
-      return () => undefined;
+test("pi-swe registers runtime event wiring and /swe command", async () => {
+  const handlers = new Map<string, Function>();
+  const commands = new Map<string, { handler: Function }>();
+  const notifications: Array<{ message: string; type?: string }> = [];
+  const pi = {
+    on(event: string, handler: Function) {
+      handlers.set(event, handler);
     },
-  });
-  const ctx = { cwd: root, sessionId: "test", ui: {} };
+    registerCommand(name: string, command: { handler: Function }) {
+      commands.set(name, command);
+    },
+    getCommands() {
+      return [{ name: "todo" }];
+    },
+  };
+  const ctx = { cwd: root, sessionId: "test", hasUI: true, ui: { notify: (message: string, type?: string) => notifications.push({ message, type }) } };
 
   assert.equal(piSwe(pi as never, ctx as never), undefined);
-  assert.deepEqual(calls, []);
+  assert.deepEqual([...handlers.keys()], ["session_start", "turn_start", "tool_call", "tool_result"]);
+  assert.equal(commands.has("swe"), true);
+
+  handlers.get("session_start")?.({ type: "session_start" }, ctx);
+  handlers.get("turn_start")?.({ type: "turn_start" }, ctx);
+  handlers.get("tool_call")?.({ type: "tool_call", toolName: "read", input: { path: "extensions/pi-swe/index.ts" } }, ctx);
+  handlers.get("tool_call")?.({ type: "tool_call", toolName: "edit", input: { path: "extensions/pi-swe/index.ts" } }, ctx);
+  handlers.get("tool_result")?.({ type: "tool_result", toolName: "bash", input: { command: "node --test test/pi-swe.test.ts" }, details: { exitCode: 0 }, isError: false }, ctx);
+
+  await commands.get("swe")?.handler("status", ctx);
+  await commands.get("swe")?.handler("config", ctx);
+
+  assert.ok(notifications.some((entry) => entry.message.includes("enabled: true")));
+  assert.ok(notifications.some((entry) => entry.message.includes("detected peers: pi-todo")));
+  assert.ok(notifications.some((entry) => entry.message.includes("inspected paths: 1")));
+  assert.ok(notifications.some((entry) => entry.message.includes("changed paths: 1")));
+  assert.ok(notifications.some((entry) => entry.message.includes("verification count: 1")));
+  assert.ok(notifications.some((entry) => entry.message.includes("pi-swe config")));
 });
+
 
 const baseStages = ["plan", "diagnose", "implement", "verify", "review", "finalize"] as const;
 
