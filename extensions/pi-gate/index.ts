@@ -10,6 +10,7 @@ import { dirname, join, resolve } from "node:path";
  type Permissions = Partial<Record<Action, string[]>>;
  type Rule = { id: string; pattern: string; action: Action; reason?: string; remember?: Remember; timeoutSeconds?: number; defaultOnTimeout?: Action };
  type Config = {
+  $schema?: string;
   version?: number;
   enabled?: boolean;
   mode?: "strict" | "ask" | "permissive";
@@ -86,13 +87,25 @@ function projectConfigPath(ctx: ExtensionContext): string {
 }
 function persistProjectRule(ctx: ExtensionContext, req: Request, action: Action): void {
   const path = projectConfigPath(ctx);
-  const existing = readJson(path) || { version: 2 };
+  const existing = readJson(path) || {};
   const permissions = existing.permissions || {};
-  const next: Config = {
-    ...existing,
-    version: 2,
-    permissions: { ...permissions, [action]: [...(permissions[action] || []), req.command] },
-  };
+  const next = {
+    $schema: existing.$schema || "https://earendil.works/pi-gate.schema.json",
+    version: existing.version || 2,
+    enabled: existing.enabled ?? true,
+    mode: existing.mode || "ask",
+    defaultAction: existing.defaultAction || "ask",
+    audit: {
+      enabled: existing.audit?.enabled ?? true,
+      path: existing.audit?.path || ".pi/pi-gate-audit.jsonl",
+    },
+    permissions: {
+      allow: permissions.allow || [],
+      ask: permissions.ask || [],
+      deny: permissions.deny || [],
+      [action]: [...(permissions[action] || []), req.command],
+    },
+  } satisfies Config;
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(next, null, 2)}\n`);
   loadConfig(ctx.cwd);
