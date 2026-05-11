@@ -47,7 +47,7 @@ function readJson(path: string): Partial<Config> | undefined {
   if (!existsSync(path)) return undefined;
   return JSON.parse(readFileSync(path, "utf8")) as Partial<Config>;
 }
-function loadConfig(cwd: string): void {
+export function loadConfig(cwd: string): void {
   configPaths = [process.env.PI_GATE_CONFIG, join(process.env.HOME || "", ".pi/agent/pi-gate.json"), join(cwd, ".pi/pi-gate.json")].filter(Boolean) as string[];
   config = defaultConfig();
   for (const p of configPaths) {
@@ -57,13 +57,16 @@ function loadConfig(cwd: string): void {
   }
 }
 function escapeRegex(text: string): string {
-  return text.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
-function patternRegex(pattern: string): RegExp {
+export function patternRegex(pattern: string): RegExp {
   return new RegExp(`^${escapeRegex(pattern.trim()).replace(/\\\*/g, ".*").replace(/\\\?/g, ".")}$`, "i");
 }
 function hit(rule: Rule, req: Request): boolean {
   return patternRegex(rule.pattern).test(normalizeCommand(req.command));
+}
+function firstHit(rules: Rule[], req: Request, action: Action): Rule | undefined {
+  return rules.find((rule) => rule.action === action && hit(rule, req));
 }
 function mergePermissions(...items: Permissions[]): Permissions {
   return {
@@ -111,14 +114,16 @@ function persistRule(ctx: ExtensionContext, path: string, pattern: string, actio
   loadConfig(ctx.cwd);
   ctx.ui.notify(`pi-gate saved ${action} rule to ${path}`, "success");
 }
-function decide(req: Request): Decision {
+export function decide(req: Request): Decision {
   if (!config.enabled) return { action: "allow", ruleId: "disabled", reason: "pi-gate disabled" };
   if (config.mode === "permissive") return { action: "allow", ruleId: "mode", reason: "permissive mode" };
   if (config.mode === "strict") return { action: "deny", ruleId: "mode", reason: "strict mode" };
-  const remembered = sessionMemory.get(req.command);
-  if (remembered) return { action: remembered, ruleId: "remember:session", reason: "remembered decision" };
   const all = [...rulesFromPermissions(config.permissions), ...rulesFromPermissions(BUILTIN_PERMISSIONS, "builtin")];
-  const rule = all.find((r) => hit(r, req));
+  const deny = firstHit(all, req, "deny");
+  if (deny) return { action: deny.action, ruleId: deny.id, reason: deny.reason || deny.id, timeoutSeconds: deny.timeoutSeconds, defaultOnTimeout: deny.defaultOnTimeout };
+  const remembered = sessionMemory.get(normalizeCommand(req.command));
+  if (remembered) return { action: remembered, ruleId: "remember:session", reason: "remembered decision" };
+  const rule = firstHit(all, req, "ask") || firstHit(all, req, "allow");
   if (rule) return { action: rule.action, ruleId: rule.id, reason: rule.reason || rule.id, timeoutSeconds: rule.timeoutSeconds, defaultOnTimeout: rule.defaultOnTimeout };
   return { action: config.defaultAction, ruleId: "default", reason: "default policy" };
 }
@@ -196,7 +201,7 @@ async function prompt(ctx: ExtensionContext, req: Request, d: Decision): Promise
       },
     };
   }, { overlay: true, overlayOptions: { width: "80%", maxHeight: "80%", minWidth: 50, margin: 1 } });
-  if (result.remember === "session") sessionMemory.set(req.command, result.action);
+  if (result.remember === "session") sessionMemory.set(normalizeCommand(req.command), result.action);
   if (result.remember === "project") persistRule(ctx, projectConfigPath(ctx), normalizeCommand(req.command), result.action);
   return result.action;
 }
