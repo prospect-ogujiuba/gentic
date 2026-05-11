@@ -129,6 +129,8 @@ function artifactInput(params: Record<string, unknown>): CreateArtifactInput {
     shortName: String(params.shortName || params.title || "artifact"),
     purpose: String(params.purpose || params.summary || "generated artifact"),
     content: String(params.content || ""),
+    category: params.category as string | undefined,
+    subcategory: params.subcategory as string | undefined,
   };
 }
 
@@ -244,12 +246,14 @@ export default function piTodo(pi: ExtensionAPI): void {
     description:
       "Unified Gentic todo ledger tool with create/update/split/claim/start/block/complete/attach_evidence/record_artifact/create_artifact/verify/reopen/list/get/history/graph actions.",
     promptSnippet:
-      "Use todo first. Non-todo tools are blocked until a todo is claimed or started. Use todo as the unified Gentic todo ledger tool for durable planning and lifecycle actions. Generated notes, reports, plans, logs, TODO files, and artifacts belong under .model-artifacts/ (TODO/planning files under .model-artifacts/todo/) and must be recorded with todo action=record_artifact so each artifact traces to the creating todo.",
+      "Use todo first. Non-todo tools are blocked until a todo is claimed or started. Use todo as the unified Gentic todo ledger tool for durable planning and lifecycle actions. Generated notes, reports, plans, logs, TODO files, and artifacts belong under .model-artifacts/<kind>/<topic>/ and must be recorded with todo action=record_artifact. For TODO/planning artifacts use .model-artifacts/todo/<topic>/, where <topic> is preferably the concrete extension/project such as pi-todo, pi-swe, or gentic; use subfolders for coherent phase sets like pi-swe-phases.",
     parameters: Type.Object({
       action: TodoActionSchema,
       todoId: Type.Optional(Type.String()),
       path: Type.Optional(Type.String()),
       kind: Type.Optional(Type.Union([Type.Literal("reports"), Type.Literal("logs"), Type.Literal("specs"), Type.Literal("plans"), Type.Literal("findings"), Type.Literal("todo")])),
+      category: Type.Optional(Type.String()),
+      subcategory: Type.Optional(Type.String()),
       shortName: Type.Optional(Type.String()),
       purpose: Type.Optional(Type.String()),
       content: Type.Optional(Type.String()),

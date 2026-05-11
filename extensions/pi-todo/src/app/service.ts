@@ -21,7 +21,7 @@ const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
 export type ArtifactKind = "reports" | "logs" | "specs" | "plans" | "findings" | "todo";
-export type CreateArtifactInput = { kind: ArtifactKind; shortName: string; purpose: string; content: string };
+export type CreateArtifactInput = { kind: ArtifactKind; shortName: string; purpose: string; content: string; category?: string; subcategory?: string };
 
 export type CreateTodoInput = {
   title: string;
@@ -46,9 +46,29 @@ function kebabCase(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64) || "artifact";
 }
 
-function artifactPath(kind: ArtifactKind, shortName: string, at: string): string {
+function artifactTopic(todo: Todo, input: Pick<CreateArtifactInput, "category" | "subcategory" | "shortName">): string[] {
+  const candidates = [
+    input.category,
+    todo.scope.component,
+    todo.scope.service,
+    todo.scope.domain,
+    ...todo.tags,
+    todo.title,
+    input.shortName,
+  ].filter(Boolean) as string[];
+  const primary = candidates.map((value) => value.match(/\b(?:pi|gentic)-[a-z0-9][a-z0-9-]*\b/i)?.[0] ?? "").find(Boolean)
+    ?? candidates.map((value) => value.match(/\bgentic\b/i)?.[0] ?? "").find(Boolean)
+    ?? candidates[0]
+    ?? "general";
+  const topic = kebabCase(primary);
+  const subtopic = input.subcategory ? kebabCase(input.subcategory) : undefined;
+  return subtopic && subtopic !== topic ? [topic, subtopic] : [topic];
+}
+
+function artifactPath(kind: ArtifactKind, shortName: string, at: string, todo: Todo, input: Pick<CreateArtifactInput, "category" | "subcategory" | "shortName">): string {
   const stamp = at.slice(0, 16).replace("T", "_").replace(/:/g, "");
-  return `${MODEL_ARTIFACTS_DIR}${kind}/${stamp}-${kebabCase(shortName)}.md`;
+  const topic = artifactTopic(todo, input).join("/");
+  return `${MODEL_ARTIFACTS_DIR}${kind}/${topic}/${stamp}-${kebabCase(shortName)}.md`;
 }
 
 function artifactBody(title: string, purpose: string, created: string, content: string): string {
@@ -191,11 +211,11 @@ export class TodoService {
   }
 
   async createArtifact(todoId: string, input: CreateArtifactInput): Promise<{ todo: Todo; path: string }> {
-    await this.requireExisting(todoId);
+    const existing = await this.get(todoId);
     if (!ARTIFACT_FOLDERS.has(input.kind)) throw new Error("invalid artifact kind");
     if (!input.purpose.trim()) throw new Error("artifact purpose is required");
     const at = now();
-    const path = artifactPath(input.kind, input.shortName, at);
+    const path = artifactPath(input.kind, input.shortName, at, existing, input);
     await mkdir(path.slice(0, path.lastIndexOf("/")), { recursive: true });
     await writeFile(path, artifactBody(input.shortName, input.purpose, at, input.content), "utf8");
     const todo = await this.attachEvidence(todoId, [{ type: "generated_artifact", path, summary: input.purpose.trim(), createdByTodoId: todoId, recordedAt: at }]);
@@ -276,8 +296,9 @@ export class TodoService {
     const folder = parts[1];
     const name = parts.pop()?.toLowerCase() ?? "";
     if (!ARTIFACT_FOLDERS.has(folder)) throw new Error("generated artifacts must use an approved .model-artifacts subfolder");
+    if (folder === "todo" && parts.length < 3) throw new Error(`todo artifacts must be under ${MODEL_TODO_ARTIFACTS_DIR}<topic>/`);
     if (name.includes("todo") && !path.startsWith(MODEL_TODO_ARTIFACTS_DIR)) throw new Error(`todo files must be under ${MODEL_TODO_ARTIFACTS_DIR}`);
-    if (!/^\d{4}-\d{2}-\d{2}_\d{4}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.test(name)) throw new Error("generated artifact filenames must be YYYY-MM-DD_HHMM-short-kebab-name.md");
+    if (!/^\d{4}-\d{2}-\d{2}_\d{4}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.test(name) && !/^\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.test(name)) throw new Error("generated artifact filenames must be YYYY-MM-DD_HHMM-short-kebab-name.md or NN-short-kebab-name.md");
     try {
       const text = await readFile(path, "utf8");
       if (!/^# .+\n\nCreated: .+\nPurpose: .+/m.test(text)) throw new Error("generated artifact markdown must start with heading, Created, and Purpose");

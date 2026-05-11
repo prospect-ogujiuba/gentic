@@ -127,14 +127,17 @@ test("createArtifact writes a headed markdown artifact and records evidence", as
   process.chdir(dir);
   try {
     const service = new TodoService(new MemoryStore());
-    const todo = await service.create({ title: "write plan" });
+    const todo = await service.create({ title: "write pi-swe plan", tags: ["pi-swe"] });
     const result = await service.createArtifact(todo.id, { kind: "plans", shortName: "My Plan!", purpose: "capture plan", content: "- do it" });
-    assert.match(result.path, /^\.model-artifacts\/plans\/\d{4}-\d{2}-\d{2}_\d{4}-my-plan\.md$/);
+    assert.match(result.path, /^\.model-artifacts\/plans\/pi-swe\/\d{4}-\d{2}-\d{2}_\d{4}-my-plan\.md$/);
     const text = await readFile(result.path, "utf8");
     assert.match(text, /^# My Plan!\n\nCreated: .+\nPurpose: capture plan\n\n- do it\n$/);
     assert.equal(result.todo.evidence[0].type, "generated_artifact");
     assert.equal(result.todo.evidence[0].createdByTodoId, todo.id);
     assert.equal(result.todo.evidence[0].path, result.path);
+
+    const phase = await service.createArtifact(todo.id, { kind: "todo", category: "pi-swe", subcategory: "pi-swe-phases", shortName: "Reconnaissance Contract", purpose: "phase plan", content: "- inspect" });
+    assert.match(phase.path, /^\.model-artifacts\/todo\/pi-swe\/pi-swe-phases\/\d{4}-\d{2}-\d{2}_\d{4}-reconnaissance-contract\.md$/);
   } finally {
     process.chdir(previous);
     await rm(dir, { recursive: true, force: true });
