@@ -1,3 +1,4 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { normalizePriority, isTerminalStatus } from "../domain/lifecycle.ts";
 import { ineligibleReasons, missingCapabilities, openDependencyIds, type EligibilityOptions } from "../domain/policy.ts";
 import { reduceTodoState } from "../domain/reducer.ts";
@@ -12,9 +13,15 @@ type LifecycleEventPayload =
   | Omit<Extract<TodoEvent, { type: "todo.cancelled" }>, "id" | "at" | "todoId">
   | Omit<Extract<TodoEvent, { type: "todo.abandoned" }>, "id" | "at" | "todoId">;
 export const defaultTodoPolicy: TodoPolicy = { requireEvidenceForDone: true, maxInProgress: 1 };
+export const MODEL_ARTIFACTS_DIR = ".model-artifacts/";
+export const MODEL_TODO_ARTIFACTS_DIR = ".model-artifacts/todo/";
+const ARTIFACT_FOLDERS = new Set(["reports", "logs", "specs", "plans", "findings", "todo"]);
 
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+export type ArtifactKind = "reports" | "logs" | "specs" | "plans" | "findings" | "todo";
+export type CreateArtifactInput = { kind: ArtifactKind; shortName: string; purpose: string; content: string };
 
 export type CreateTodoInput = {
   title: string;
@@ -34,6 +41,19 @@ export type CreateTodoInput = {
   requiredCapabilities?: string[];
   commandId?: string;
 };
+
+function kebabCase(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64) || "artifact";
+}
+
+function artifactPath(kind: ArtifactKind, shortName: string, at: string): string {
+  const stamp = at.slice(0, 16).replace("T", "_").replace(/:/g, "");
+  return `${MODEL_ARTIFACTS_DIR}${kind}/${stamp}-${kebabCase(shortName)}.md`;
+}
+
+function artifactBody(title: string, purpose: string, created: string, content: string): string {
+  return `# ${title}\n\nCreated: ${created}\nPurpose: ${purpose.trim()}\n\n${content.trim()}\n`;
+}
 
 function createTodoRecord(input: CreateTodoInput, at: string, parent?: Todo): Todo {
   if (!input.title.trim()) throw new Error("title is required");
@@ -153,6 +173,28 @@ export class TodoService {
     return this.get(todoId);
   }
 
+  async attachEvidence(todoId: string, evidence: EvidenceRef[] = []): Promise<Todo> {
+    await this.requireExisting(todoId);
+    if (evidence.length === 0) throw new Error("evidence is required");
+    for (const item of evidence) {
+      if (item.type === "generated_artifact") await this.validateGeneratedArtifact(todoId, item.path, item.createdByTodoId);
+    }
+    await this.append({ id: id("evt"), type: "todo.evidence_attached", at: now(), todoId, evidence });
+    return this.get(todoId);
+  }
+
+  async createArtifact(todoId: string, input: CreateArtifactInput): Promise<{ todo: Todo; path: string }> {
+    await this.requireExisting(todoId);
+    if (!ARTIFACT_FOLDERS.has(input.kind)) throw new Error("invalid artifact kind");
+    if (!input.purpose.trim()) throw new Error("artifact purpose is required");
+    const at = now();
+    const path = artifactPath(input.kind, input.shortName, at);
+    await mkdir(path.slice(0, path.lastIndexOf("/")), { recursive: true });
+    await writeFile(path, artifactBody(input.shortName, input.purpose, at, input.content), "utf8");
+    const todo = await this.attachEvidence(todoId, [{ type: "generated_artifact", path, summary: input.purpose.trim(), createdByTodoId: todoId, recordedAt: at }]);
+    return { todo, path };
+  }
+
   async verify(todoId: string, evidence: EvidenceRef[] = [], summary?: string, capabilities?: string[]): Promise<Todo> {
     const todo = await this.get(todoId);
     const missing = missingCapabilities(todo, capabilities, "verify");
@@ -206,6 +248,22 @@ export class TodoService {
   }
 
   private async requireExisting(todoId: string): Promise<void> { this.requireTodo(await this.state(), todoId); }
+  private async validateGeneratedArtifact(todoId: string, path: string, createdByTodoId: string): Promise<void> {
+    if (createdByTodoId !== todoId) throw new Error("generated artifact createdByTodoId must match todoId");
+    if (path.startsWith("/") || path.includes("..") || !path.startsWith(MODEL_ARTIFACTS_DIR)) throw new Error("generated artifacts must be under .model-artifacts/");
+    const parts = path.split("/");
+    const folder = parts[1];
+    const name = parts.pop()?.toLowerCase() ?? "";
+    if (!ARTIFACT_FOLDERS.has(folder)) throw new Error("generated artifacts must use an approved .model-artifacts subfolder");
+    if (name.includes("todo") && !path.startsWith(MODEL_TODO_ARTIFACTS_DIR)) throw new Error(`todo files must be under ${MODEL_TODO_ARTIFACTS_DIR}`);
+    if (!/^\d{4}-\d{2}-\d{2}_\d{4}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.test(name)) throw new Error("generated artifact filenames must be YYYY-MM-DD_HHMM-short-kebab-name.md");
+    try {
+      const text = await readFile(path, "utf8");
+      if (!/^# .+\n\nCreated: .+\nPurpose: .+/m.test(text)) throw new Error("generated artifact markdown must start with heading, Created, and Purpose");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
   private async append(event: TodoEvent): Promise<void> { await this.store.append(event); }
   private requireTodo(state: TodoState, todoId: string): Todo { const todo = state.todos[todoId]; if (!todo) throw new Error(`todo not found: ${todoId}`); return todo; }
 }

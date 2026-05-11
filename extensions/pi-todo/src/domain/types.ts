@@ -23,6 +23,7 @@ export type EvidenceRef =
   | { type: "test_result"; command: string; exitCode: number; outputSummary?: string }
   | { type: "user_confirmation"; message: string }
   | { type: "manual_note"; note: string }
+  | { type: "generated_artifact"; path: string; summary: string; createdByTodoId: string; recordedAt?: string; detail?: string }
   | { type: "command_output" | "review" | "screenshot" | "log" | "artifact" | "note" | "file_change"; summary: string; detail?: string; files?: string[]; command?: string; output?: string; url?: string; recordedAt?: string; recordedBy?: string };
 
 export type TodoClaim = {

@@ -3,7 +3,7 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { TodoService, type CreateTodoInput } from "./src/app/service.ts";
+import { TodoService, type CreateArtifactInput, type CreateTodoInput } from "./src/app/service.ts";
 import { PiTodoEventStore } from "./src/pi/store.ts";
 import {
   resetTodoSessionNameMemory,
@@ -36,6 +36,9 @@ const actions = [
   "block",
   "unblock",
   "complete",
+  "attach_evidence",
+  "record_artifact",
+  "create_artifact",
   "fail",
   "verify",
   "reopen",
@@ -63,6 +66,7 @@ const EvidenceSchema = Type.Array(
   Type.Object({
     type: Type.String(),
     path: Type.Optional(Type.String()),
+    createdByTodoId: Type.Optional(Type.String()),
     summary: Type.Optional(Type.String()),
     detail: Type.Optional(Type.String()),
     files: Type.Optional(Type.Array(Type.String())),
@@ -119,6 +123,15 @@ function createInput(params: Record<string, unknown>): CreateTodoInput {
     requiredCapabilities: params.requiredCapabilities as string[] | undefined,
   };
 }
+function artifactInput(params: Record<string, unknown>): CreateArtifactInput {
+  return {
+    kind: (params.kind as CreateArtifactInput["kind"] | undefined) ?? "plans",
+    shortName: String(params.shortName || params.title || "artifact"),
+    purpose: String(params.purpose || params.summary || "generated artifact"),
+    content: String(params.content || ""),
+  };
+}
+
 function updatePatch(params: Record<string, unknown>): Partial<Todo> {
   return Object.fromEntries(
     Object.entries({
@@ -191,6 +204,9 @@ async function executeTodoAction(pi: ExtensionAPI, ctx: ExtensionContext, params
     : params.action === "cancel" ? await svc.cancel(todoId, params.reason as string | undefined)
     : params.action === "abandon" ? await svc.abandon(todoId, params.reason as string | undefined)
     : params.action === "complete" ? await svc.complete(todoId, normalizeEvidence(params.evidence), params.summary as string | undefined)
+    : params.action === "attach_evidence" ? await svc.attachEvidence(todoId, normalizeEvidence(params.evidence))
+    : params.action === "record_artifact" ? await svc.attachEvidence(todoId, [{ type: "generated_artifact", path: String(params.path || ""), summary: String(params.summary || "generated artifact"), createdByTodoId: todoId, recordedAt: new Date().toISOString() }])
+    : params.action === "create_artifact" ? (await svc.createArtifact(todoId, artifactInput(params))).todo
     : params.action === "verify" ? await svc.verify(todoId, normalizeEvidence(params.evidence), params.summary as string | undefined, params.requiredCapabilities as string[] | undefined)
     : params.action === "fail" ? await svc.fail(todoId, params.reason as string | undefined, normalizeEvidence(params.evidence))
     : params.action === "reopen" ? await svc.reopen(todoId, params.reason as string | undefined)
@@ -225,12 +241,17 @@ export default function piTodo(pi: ExtensionAPI): void {
     name: "todo",
     label: "Todo",
     description:
-      "Unified Gentic todo ledger tool with create/update/split/claim/start/block/complete/verify/reopen/list/get/history/graph actions.",
+      "Unified Gentic todo ledger tool with create/update/split/claim/start/block/complete/attach_evidence/record_artifact/create_artifact/verify/reopen/list/get/history/graph actions.",
     promptSnippet:
-      "Use todo first. Non-todo tools are blocked until a todo is claimed or started. Use todo as the unified Gentic todo ledger tool for durable planning and lifecycle actions.",
+      "Use todo first. Non-todo tools are blocked until a todo is claimed or started. Use todo as the unified Gentic todo ledger tool for durable planning and lifecycle actions. Generated notes, reports, plans, logs, TODO files, and artifacts belong under .model-artifacts/ (TODO/planning files under .model-artifacts/todo/) and must be recorded with todo action=record_artifact so each artifact traces to the creating todo.",
     parameters: Type.Object({
       action: TodoActionSchema,
       todoId: Type.Optional(Type.String()),
+      path: Type.Optional(Type.String()),
+      kind: Type.Optional(Type.Union([Type.Literal("reports"), Type.Literal("logs"), Type.Literal("specs"), Type.Literal("plans"), Type.Literal("findings"), Type.Literal("todo")])),
+      shortName: Type.Optional(Type.String()),
+      purpose: Type.Optional(Type.String()),
+      content: Type.Optional(Type.String()),
       title: Type.Optional(Type.String()),
       description: Type.Optional(Type.String()),
       priority: Type.Optional(PrioritySchema),
