@@ -19,7 +19,7 @@ export function applyTodoEvent(state: TodoState, event: TodoEvent): TodoState {
   const claims = { ...state.claims };
 
   if (event.type === "todo.created") {
-    todos[event.todo.id] = { children: [], blocks: [], blockers: [], constraints: [], definitionOfDone: [], requiredCapabilities: [], ...event.todo };
+    todos[event.todo.id] = { ...event.todo, children: event.todo.children ?? [], blocks: event.todo.blocks ?? [], blockers: event.todo.blockers ?? [], constraints: event.todo.constraints ?? [], definitionOfDone: event.todo.definitionOfDone ?? [], requiredCapabilities: event.todo.requiredCapabilities ?? [] };
     if (!order.includes(event.todo.id)) order.push(event.todo.id);
     if (event.todo.parentId && todos[event.todo.parentId]) todos[event.todo.parentId] = updateTodo(todos[event.todo.parentId], { children: unique([...todos[event.todo.parentId].children, event.todo.id]) }, event.at);
   } else if (event.type === "todo.split") {

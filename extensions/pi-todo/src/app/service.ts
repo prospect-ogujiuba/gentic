@@ -5,6 +5,12 @@ import { nextTodo } from "./query.ts";
 import { emptyScope, type EvidenceRef, type Todo, type TodoClaim, type TodoEvent, type TodoPolicy, type TodoPriority, type TodoScope, type TodoState, type TodoStatus } from "../domain/types.ts";
 
 export interface TodoEventStore { read(): Promise<TodoEvent[]>; append(event: TodoEvent): Promise<void> }
+type LifecycleEventPayload =
+  | Omit<Extract<TodoEvent, { type: "todo.failed" }>, "id" | "at" | "todoId">
+  | Omit<Extract<TodoEvent, { type: "todo.verified" }>, "id" | "at" | "todoId">
+  | Omit<Extract<TodoEvent, { type: "todo.reopened" }>, "id" | "at" | "todoId">
+  | Omit<Extract<TodoEvent, { type: "todo.cancelled" }>, "id" | "at" | "todoId">
+  | Omit<Extract<TodoEvent, { type: "todo.abandoned" }>, "id" | "at" | "todoId">;
 export const defaultTodoPolicy: TodoPolicy = { requireEvidenceForDone: true, maxInProgress: 1 };
 
 const DEFAULT_ACTOR = "agent.default";
@@ -186,7 +192,7 @@ export class TodoService {
     return { nodes: todos.map((todo) => ({ id: todo.id, title: todo.title, status: todo.status, parentId: todo.parentId })), edges: todos.flatMap((todo) => [...todo.dependsOn.map((dep) => ({ from: todo.id, to: dep, kind: "depends_on" as const })), ...(todo.parentId ? [{ from: todo.parentId, to: todo.id, kind: "parent_child" as const }] : [])]) };
   }
 
-  private async lifecycle(todoId: string, payload: Omit<Extract<TodoEvent, { todoId: string }>, "id" | "at" | "todoId">): Promise<Todo> {
+  private async lifecycle(todoId: string, payload: LifecycleEventPayload): Promise<Todo> {
     await this.requireExisting(todoId);
     await this.append({ id: id("evt"), at: now(), todoId, ...payload } as TodoEvent);
     return this.get(todoId);

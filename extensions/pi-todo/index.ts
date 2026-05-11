@@ -4,6 +4,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { TodoService, type CreateTodoInput } from "./src/app/service.ts";
+import type { EligibilityOptions } from "./src/domain/policy.ts";
 import { PiTodoEventStore } from "./src/pi/store.ts";
 import {
   resetTodoSessionNameMemory,
@@ -134,6 +135,10 @@ function updatePatch(params: Record<string, unknown>): Partial<Todo> {
   ) as Partial<Todo>;
 }
 
+function activeTodo(state: Awaited<ReturnType<TodoService["state"]>>): Todo | undefined {
+  return Object.values(state.todos).find((todo) => todo.status === "in_progress" || todo.status === "claimed");
+}
+
 async function updateWidget(
   pi: ExtensionAPI,
   ctx: ExtensionContext,
@@ -160,7 +165,7 @@ async function executeTodoAction(pi: ExtensionAPI, ctx: ExtensionContext, params
     return { content: [{ type: "text" as const, text: renderTodoDocketLines(state, ansiTodoTheme, { width: 100, limit: 20, includeDone: params.includeDone as boolean | undefined, detail: "summary" }).join("\n") }], details: { state } };
   }
   if (params.action === "next" || params.action === "next_ready") {
-    const todo = await svc.next({ actor: params.actor as string | undefined, actorCapabilities: params.actor_capabilities as string[] | undefined, actorScope: params.actor_scope as Parameters<TodoService["next"]>[0]["actorScope"] });
+    const todo = await svc.next({ actor: params.actor as string | undefined, actorCapabilities: params.actor_capabilities as string[] | undefined, actorScope: params.actor_scope as EligibilityOptions["actorScope"] });
     return { content: [{ type: "text" as const, text: todo ? renderTodo(todo) : "No next todo." }], details: { todo } };
   }
   if (params.action === "graph") {
@@ -206,6 +211,16 @@ export default function piTodo(pi: ExtensionAPI): void {
     await updateWidget(pi, ctx);
   });
   pi.on("turn_end", async (_event, ctx) => updateWidget(pi, ctx));
+  pi.on("tool_call", async (event, ctx) => {
+    if (event.toolName === "todo") return;
+    const state = await service(pi, ctx).state();
+    if (activeTodo(state)) return;
+    await updateWidget(pi, ctx);
+    return {
+      block: true,
+      reason: "pi-todo enforcement: use the todo tool first and claim/start a todo before using other tools.",
+    };
+  });
 
   pi.registerTool({
     name: "todo",
@@ -213,7 +228,7 @@ export default function piTodo(pi: ExtensionAPI): void {
     description:
       "Unified Gentic todo ledger tool with create/update/split/claim/start/block/complete/verify/reopen/list/get/history/graph actions.",
     promptSnippet:
-      "Use todo as the unified Gentic todo ledger tool for durable planning and lifecycle actions.",
+      "Use todo first. Non-todo tools are blocked until a todo is claimed or started. Use todo as the unified Gentic todo ledger tool for durable planning and lifecycle actions.",
     parameters: Type.Object({
       action: TodoActionSchema,
       todoId: Type.Optional(Type.String()),
