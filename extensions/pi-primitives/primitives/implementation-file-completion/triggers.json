@@ -1,0 +1,17 @@
+{
+  "phrases": [
+    "assigned file",
+    "plan file",
+    "phase file",
+    "implementation file",
+    "todo file",
+    "acceptance criteria",
+    "definition of done",
+    "implementation contract",
+    "next phase",
+    "later phase"
+  ],
+  "pathPatterns": [
+    "\\b[\\w./-]*(?:plan|phase|todo|implementation)[\\w./-]*\\.md\\b"
+  ]
+}

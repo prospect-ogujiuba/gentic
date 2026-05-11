@@ -21,8 +21,9 @@ Use primitives for small, reusable Pi runtime building blocks that should apply 
    ```
 
 3. Put supporting files inside the same primitive directory.
-4. Use `ctx.readText("file.md")` to read primitive-local text files, or `ctx.path("file")` when a primitive needs a safe local path.
-5. Primitive names are loaded alphabetically; prefix names with numbers only when order matters.
-6. Run `/reload` in pi.
+4. Keep always-on prompt injection conditional when possible, using primitive-local trigger/config files instead of coupling to another extension.
+5. Use `ctx.readText("file.md")` to read primitive-local text files, or `ctx.path("file")` when a primitive needs a safe local path.
+6. Primitive names are loaded alphabetically; prefix names with numbers only when order matters.
+7. Run `/reload` in pi.
 
 Keep prompt templates and skills focused on their local workflow; use primitives for shared runtime behavior instead of duplicating it.
