@@ -6,7 +6,6 @@ import type { TodoTheme } from "./theme.ts";
 
 function statusLabel(status: TodoStatus): string {
   if (status === "in_progress") return "in progress";
-  if (status === "needs_review") return "needs review";
   return status;
 }
 
@@ -45,7 +44,7 @@ function progressBlock(status: TodoStatus, theme: TodoTheme): string {
 export function renderTodoProgress(state: TodoState, theme: TodoTheme): string {
   const todos = orderedTodos(state, true);
   const counts = summarizeTodos(state);
-  const resolved = counts.byStatus.done + counts.byStatus.completed + counts.byStatus.verified;
+  const resolved = counts.byStatus.completed + counts.byStatus.verified;
   const pct = counts.total > 0 ? Math.round((resolved / counts.total) * 100) : 0;
   const statColor = pct >= 100 ? "syntaxComment" : pct > 0 ? "accent" : "dim";
   const bar = `${theme.fg("dim", "[")}${todos.map((todo) => progressBlock(todo.status, theme)).join("")}${theme.fg("dim", "]")}`;
@@ -106,12 +105,12 @@ export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, option
   const width = options.width ?? 80;
   const counts = summarizeTodos(state);
   const activeCount = counts.byStatus.in_progress + counts.byStatus.claimed;
-  const doneCount = counts.byStatus.done + counts.byStatus.completed + counts.byStatus.verified;
+  const doneCount = counts.byStatus.completed + counts.byStatus.verified;
   const failedCount = counts.byStatus.cancelled + counts.byStatus.failed + counts.byStatus.abandoned;
   const title = theme.bold ? theme.bold("TASKS") : "TASKS";
   const chip = (label: string, count: number, color: string) => count > 0 ? (theme.bg ? theme.bg("selectedBg", theme.fg(color, ` ${label} ${count} `)) : theme.fg(color, `[${label} ${count}]`)) : "";
   const totalSummary = `${theme.fg("accent", `Total ${counts.total}`)}${theme.fg("dim", ` · open ${counts.open}`)}`;
-  const left = [theme.fg("accent", title), totalSummary, chip("Ready", counts.byStatus.pending + counts.byStatus.ready, "text"), chip("Active", activeCount, "syntaxString"), chip("Blocked", counts.byStatus.blocked, "muted"), chip("Done", doneCount, "accent"), chip("Cancelled", failedCount, "error"), theme.fg("dim", "/todo")].filter(Boolean).join(theme.fg("dim", " - "));
+  const left = [theme.fg("accent", title), totalSummary, chip("Ready", counts.byStatus.ready, "text"), chip("Active", activeCount, "syntaxString"), chip("Blocked", counts.byStatus.blocked, "muted"), chip("Done", doneCount, "accent"), chip("Cancelled", failedCount, "error"), theme.fg("dim", "/todo")].filter(Boolean).join(theme.fg("dim", " - "));
   const lines: string[] = [];
   const focus = summaryTitle(state);
   if (focus) lines.push(`\x1b[48;5;108m\x1b[30m * ${focus} \x1b[0m`);

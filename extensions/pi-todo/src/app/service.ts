@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { normalizePriority, isTerminalStatus } from "../domain/lifecycle.ts";
+import { normalizePriority, normalizeStatus, isTerminalStatus } from "../domain/lifecycle.ts";
 import { ineligibleReasons, missingCapabilities, openDependencyIds, type EligibilityOptions } from "../domain/policy.ts";
 import { reduceTodoState } from "../domain/reducer.ts";
 import { nextTodo } from "./query.ts";
@@ -27,7 +27,7 @@ export type CreateTodoInput = {
   title: string;
   description?: string;
   type?: string;
-  status?: TodoStatus;
+  status?: TodoStatus | string;
   priority?: TodoPriority;
   owner?: string | null;
   parentId?: string | null;
@@ -62,7 +62,7 @@ function createTodoRecord(input: CreateTodoInput, at: string, parent?: Todo): To
     title: input.title.trim(),
     description: input.description,
     type: input.type ?? parent?.type ?? "task",
-    status: input.status ?? "ready",
+    status: normalizeStatus(input.status),
     priority: normalizePriority(input.priority ?? parent?.priority),
     owner: input.owner ?? parent?.owner,
     activeClaimId: null,
@@ -127,13 +127,13 @@ export class TodoService {
     return this.get(todoId);
   }
 
-  async claim(todoId: string, capabilities: string[] = [], leaseMs?: number): Promise<Todo> {
-    const state = await this.state();
+  async claim(todoId: string, capabilities: string[] = [], leaseMs?: number, owner?: string | null): Promise<Todo> {
+    const state = await this.expireClaims(await this.state());
     const todo = this.requireTodo(state, todoId);
     const reasons = ineligibleReasons(todo, state, { capabilities });
     if (reasons.length > 0) throw new Error(`todo is not claimable: ${reasons.join(", ")}`);
     const at = now();
-    const claim: TodoClaim = { id: id("claim"), todoId, capabilities, scope: emptyScope(todo.scope), status: "active", claimedAt: at, leaseMs, leaseExpiresAt: leaseMs ? new Date(Date.now() + leaseMs).toISOString() : undefined };
+    const claim: TodoClaim = { id: id("claim"), todoId, capabilities, scope: emptyScope(todo.scope), status: "active", claimedAt: at, leaseMs, leaseExpiresAt: leaseMs ? new Date(Date.now() + leaseMs).toISOString() : undefined, owner };
     await this.append({ id: id("evt"), type: "todo.claimed", at, todoId, claim });
     return this.get(todoId);
   }
@@ -152,16 +152,23 @@ export class TodoService {
     return this.get(todoId);
   }
 
-  async start(todoId: string): Promise<Todo> {
-    const state = await this.state();
-    const todo = this.requireTodo(state, todoId);
+  async start(todoId: string, capabilities: string[] = [], leaseMs?: number, owner?: string | null): Promise<Todo> {
+    let state = await this.expireClaims(await this.state());
+    let todo = this.requireTodo(state, todoId);
     if (todo.status === "blocked") throw new Error("cannot start blocked todo");
     const eligibilityTodo = { ...todo, status: todo.status === "claimed" ? "ready" as TodoStatus : todo.status };
-    const reasons = ineligibleReasons(eligibilityTodo, state);
+    const reasons = ineligibleReasons(eligibilityTodo, state, { capabilities });
     const openDeps = openDependencyIds(todo, state);
     if (openDeps.length > 0) throw new Error(`dependency not done: ${openDeps[0]}`);
     if (reasons.length > 0 && todo.status !== "claimed") throw new Error(`todo is not ready: ${reasons.join(", ")}`);
-    if (this.activeCount(state, todoId) >= this.policy.maxInProgress) throw new Error("max in-progress todos reached");
+    const effectiveOwner = owner ?? todo.owner ?? null;
+    if (this.activeCount(state, todoId, effectiveOwner) >= this.policy.maxInProgress) throw new Error("max in-progress todos reached");
+    if (this.policy.globalMaxInProgress !== undefined && this.globalActiveCount(state, todoId) >= this.policy.globalMaxInProgress) throw new Error("global max in-progress todos reached");
+    if (!todo.activeClaimId) {
+      await this.claim(todoId, capabilities, leaseMs, effectiveOwner);
+      state = await this.state();
+      todo = this.requireTodo(state, todoId);
+    }
     await this.append({ id: id("evt"), type: "todo.started", at: now(), todoId });
     return this.get(todoId);
   }
@@ -220,7 +227,7 @@ export class TodoService {
     return this.get(todoId);
   }
 
-  async next(options: EligibilityOptions = {}): Promise<Todo | undefined> { return nextTodo(await this.state(), options); }
+  async next(options: EligibilityOptions = {}): Promise<Todo | undefined> { return nextTodo(await this.expireClaims(await this.state()), options); }
   async resolveId(todoIdOrTitle: string): Promise<string> {
     const state = await this.state();
     if (state.todos[todoIdOrTitle]) return todoIdOrTitle;
@@ -243,8 +250,22 @@ export class TodoService {
     return this.get(todoId);
   }
 
-  private activeCount(state: TodoState, exceptTodoId: string): number {
+  private activeCount(state: TodoState, exceptTodoId: string, owner?: string | null): number {
+    return Object.values(state.todos).filter((todo) => todo.status === "in_progress" && todo.id !== exceptTodoId && (owner ? todo.owner === owner : true) && !isTerminalStatus(todo.status)).length;
+  }
+
+  private globalActiveCount(state: TodoState, exceptTodoId: string): number {
     return Object.values(state.todos).filter((todo) => todo.status === "in_progress" && todo.id !== exceptTodoId && !isTerminalStatus(todo.status)).length;
+  }
+
+  private async expireClaims(state: TodoState): Promise<TodoState> {
+    const at = now();
+    for (const claim of Object.values(state.claims)) {
+      if (claim.status === "active" && claim.leaseExpiresAt && claim.leaseExpiresAt <= at) {
+        await this.append({ id: id("evt"), type: "todo.claim_expired", at, todoId: claim.todoId, claimId: claim.id, reason: "lease_expired" });
+      }
+    }
+    return this.state();
   }
 
   private async requireExisting(todoId: string): Promise<void> { this.requireTodo(await this.state(), todoId); }

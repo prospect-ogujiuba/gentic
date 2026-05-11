@@ -159,7 +159,7 @@ async function updateWidget(
   syncTodoSessionName(pi, ctx, state);
   ctx.ui.setStatus(
     STATUS_KEY,
-    `todo open ${counts.open} · active ${counts.byStatus.in_progress} · done ${counts.byStatus.done + counts.byStatus.completed + counts.byStatus.verified}`,
+    `todo open ${counts.open} · active ${counts.byStatus.in_progress} · done ${counts.byStatus.completed + counts.byStatus.verified}`,
   );
   ctx.ui.setWidget(STATUS_KEY, createTodoDocketComponent(state));
 }
@@ -195,10 +195,11 @@ async function executeTodoAction(pi: ExtensionAPI, ctx: ExtensionContext, params
     return { content: [{ type: "text" as const, text: history.map((event) => `${event.at} ${event.type}`).join("\n") }], details: { history } };
   }
 
-  const todo = params.action === "claim" ? await svc.claim(todoId, params.requiredCapabilities as string[] | undefined, params.leaseMs as number | undefined)
+  const owner = (params.owner as string | undefined) ?? ctx.sessionId ?? ctx.cwd ?? null;
+  const todo = params.action === "claim" ? await svc.claim(todoId, params.requiredCapabilities as string[] | undefined, params.leaseMs as number | undefined, owner)
     : params.action === "renew" ? await svc.renew(todoId, params.leaseMs as number | undefined)
     : params.action === "release" ? await svc.release(todoId, params.reason as string | undefined)
-    : params.action === "start" ? await svc.start(todoId)
+    : params.action === "start" ? await svc.start(todoId, params.requiredCapabilities as string[] | undefined, params.leaseMs as number | undefined, owner)
     : params.action === "block" ? await svc.block(todoId, (params.reason as string | undefined) || "")
     : params.action === "unblock" ? await svc.unblock(todoId)
     : params.action === "cancel" ? await svc.cancel(todoId, params.reason as string | undefined)
@@ -261,6 +262,7 @@ export default function piTodo(pi: ExtensionAPI): void {
       tags: Type.Optional(Type.Array(Type.String())),
       reason: Type.Optional(Type.String()),
       requiredCapabilities: Type.Optional(Type.Array(Type.String())),
+      owner: Type.Optional(Type.String()),
       scope: Type.Optional(ScopeSchema),
       dependencyTodoId: Type.Optional(Type.String()),
       leaseMs: Type.Optional(Type.Number()),

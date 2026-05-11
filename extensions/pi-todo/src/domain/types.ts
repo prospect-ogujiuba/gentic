@@ -1,4 +1,6 @@
-export type TodoStatus = "proposed" | "ready" | "claimed" | "in_progress" | "blocked" | "completed" | "verified" | "failed" | "abandoned" | "pending" | "done" | "cancelled" | "needs_review";
+export type TodoStatus = "ready" | "claimed" | "in_progress" | "blocked" | "completed" | "verified" | "failed" | "abandoned" | "cancelled";
+export type CompatTodoStatus = "proposed" | "pending" | "done" | "needs_review";
+export type TodoStatusInput = TodoStatus | CompatTodoStatus;
 export type TodoPriority = "low" | "normal" | "medium" | "high" | "critical" | "urgent";
 export type ClaimStatus = "active" | "released";
 
@@ -36,6 +38,7 @@ export type TodoClaim = {
   lastHeartbeatAt?: string;
   leaseMs?: number;
   leaseExpiresAt?: string;
+  owner?: string | null;
   releasedAt?: string;
   releaseReason?: string;
 };
@@ -82,6 +85,7 @@ export type TodoEvent =
   | { id: string; type: "todo.claimed"; at: string; commandId?: string; todoId: string; claim: TodoClaim }
   | { id: string; type: "todo.lease_renewed"; at: string; commandId?: string; todoId: string; claimId: string; leaseExpiresAt?: string }
   | { id: string; type: "todo.released"; at: string; commandId?: string; todoId: string; claimId?: string; reason?: string }
+  | { id: string; type: "todo.claim_expired"; at: string; commandId?: string; todoId: string; claimId: string; reason?: string }
   | { id: string; type: "todo.started"; at: string; commandId?: string; todoId: string }
   | { id: string; type: "todo.blocked"; at: string; commandId?: string; todoId: string; reason: string }
   | { id: string; type: "todo.unblocked"; at: string; commandId?: string; todoId: string }
@@ -94,7 +98,7 @@ export type TodoEvent =
   | { id: string; type: "todo.abandoned"; at: string; commandId?: string; todoId: string; reason?: string }
   | { id: string; type: "todo.note_added"; at: string; commandId?: string; todoId: string; note: string };
 
-export type TodoPolicy = { requireEvidenceForDone: boolean; maxInProgress: number };
+export type TodoPolicy = { requireEvidenceForDone: boolean; maxInProgress: number; globalMaxInProgress?: number };
 
 export function emptyScope(input: Partial<TodoScope> = {}): TodoScope {
   return { paths: input.paths ?? [], files: input.files ?? [], tools: input.tools ?? [], commands: input.commands ?? [], policyTags: input.policyTags ?? [], repo: input.repo, branch: input.branch, worktree: input.worktree, component: input.component, service: input.service, domain: input.domain };

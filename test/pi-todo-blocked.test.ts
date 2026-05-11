@@ -9,12 +9,12 @@ class MemoryStore implements TodoEventStore {
   async append(event: TodoEvent) { this.events.push(event); }
 }
 
-test("blocked todos can be unblocked back to pending", async () => {
+test("blocked todos can be unblocked back to ready", async () => {
   const service = new TodoService(new MemoryStore());
   const todo = await service.create({ title: "external review" });
   await service.block(todo.id, "waiting");
   const unblocked = await service.unblock(todo.id);
-  assert.equal(unblocked.status, "pending");
+  assert.equal(unblocked.status, "ready");
   assert.equal(unblocked.blockedReason, undefined);
 });
 

@@ -70,6 +70,57 @@ test("generated artifacts must live under model artifacts and trace to their tod
   assert.equal(updated.evidence[0].createdByTodoId, todo.id);
 });
 
+test("compat statuses normalize to canonical lifecycle", async () => {
+  const service = new TodoService(new MemoryStore());
+  const pending = await service.create({ title: "legacy pending", status: "pending" });
+  const done = await service.create({ title: "legacy done", status: "done" });
+  assert.equal(pending.status, "ready");
+  assert.equal(done.status, "completed");
+});
+
+test("completed tasks can be verified or reopened but are not scheduled", async () => {
+  const service = new TodoService(new MemoryStore());
+  const todo = await service.create({ title: "review me" });
+  await service.complete(todo.id, [{ type: "manual_note", note: "done" }]);
+  assert.equal(await service.next(), undefined);
+  const reopened = await service.reopen(todo.id, "needs fixes");
+  assert.equal(reopened.status, "ready");
+  await service.complete(todo.id, [{ type: "manual_note", note: "fixed" }]);
+  const verified = await service.verify(todo.id);
+  assert.equal(verified.status, "verified");
+});
+
+test("start implicitly claims and enforces capabilities", async () => {
+  const service = new TodoService(new MemoryStore());
+  const todo = await service.create({ title: "guarded", requiredCapabilities: ["fs"] });
+  await assert.rejects(() => service.start(todo.id), /missing_capabilities:fs/);
+  const started = await service.start(todo.id, ["fs"], undefined, "agent-a");
+  assert.equal(started.status, "in_progress");
+  assert.equal(started.owner, "agent-a");
+  assert.ok(started.activeClaimId);
+});
+
+test("max in-progress is scoped per owner", async () => {
+  const service = new TodoService(new MemoryStore());
+  const first = await service.create({ title: "first" });
+  const second = await service.create({ title: "second" });
+  const third = await service.create({ title: "third" });
+  await service.start(first.id, [], undefined, "agent-a");
+  await assert.rejects(() => service.start(second.id, [], undefined, "agent-a"), /max in-progress/);
+  const started = await service.start(third.id, [], undefined, "agent-b");
+  assert.equal(started.status, "in_progress");
+});
+
+test("expired claims do not block new work and emit claim_expired", async () => {
+  const store = new MemoryStore();
+  const service = new TodoService(store);
+  const todo = await service.create({ title: "leased" });
+  await service.claim(todo.id, [], -1, "agent-a");
+  const started = await service.start(todo.id, [], undefined, "agent-b");
+  assert.equal(started.status, "in_progress");
+  assert.ok(store.events.some((event) => event.type === "todo.claim_expired"));
+});
+
 test("createArtifact writes a headed markdown artifact and records evidence", async () => {
   const previous = process.cwd();
   const dir = await mkdtemp(join(tmpdir(), "pi-todo-artifact-"));
