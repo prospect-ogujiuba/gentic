@@ -23,6 +23,7 @@ const actions = [
   "create",
   "update",
   "split",
+  "split_check",
   "reprioritize",
   "link_dependency",
   "list",
@@ -134,6 +135,19 @@ function artifactInput(params: Record<string, unknown>): CreateArtifactInput {
   };
 }
 
+function splitCheckText(todo: Todo, result: Awaited<ReturnType<TodoService["splitCheck"]>>): string {
+  const lines = [
+    `task: ${todo.id}`,
+    `assessment: ${result.assessment}`,
+    `confidence: ${result.confidence}`,
+    "reasons:",
+    ...result.reasons.map((reason) => `  - ${reason}`),
+    `recommended child count: ${result.recommendedChildCount}`,
+  ];
+  if (result.suggestedChildren.length > 0) lines.push("suggested children:", ...result.suggestedChildren.map((child, index) => `  ${index + 1}. ${child.title}`));
+  return lines.join("\n");
+}
+
 function updatePatch(params: Record<string, unknown>): Partial<Todo> {
   return Object.fromEntries(
     Object.entries({
@@ -196,12 +210,33 @@ async function executeTodoAction(pi: ExtensionAPI, ctx: ExtensionContext, params
     const history = await svc.history(todoId);
     return { content: [{ type: "text" as const, text: history.map((event) => `${event.at} ${event.type}`).join("\n") }], details: { history } };
   }
+  if (params.action === "split_check") {
+    const todo = await svc.get(todoId);
+    const splitCheck = await svc.splitCheck(todoId);
+    await updateWidget(pi, ctx);
+    return { content: [{ type: "text" as const, text: splitCheckText(todo, splitCheck) }], details: { splitCheck } };
+  }
 
   const owner = (params.owner as string | undefined) ?? ctx.sessionId ?? ctx.cwd ?? null;
+  if (params.action === "split") {
+    const parent = await svc.get(todoId);
+    const existingChildren = params.children as CreateTodoInput[] | undefined;
+    const splitCheck = await svc.splitCheck(todoId);
+    const requestedCount = Math.max(1, Math.min(Number(params.count || splitCheck.recommendedChildCount || 3), 6));
+    const children = existingChildren?.length ? existingChildren : params.auto ? splitCheck.suggestedChildren.slice(0, requestedCount).map((child) => ({ title: child.title, acceptanceCriteria: child.acceptanceCriteria })) : [];
+    if (children.length === 0) throw new Error("split children are required unless auto is true");
+    const reason = (params.reason as string | undefined) || `split assessment ${splitCheck.assessment}: ${splitCheck.reasons.join(", ")}`;
+    if (params.auto && params.apply === false) {
+      return { content: [{ type: "text" as const, text: splitCheckText(parent, { ...splitCheck, suggestedChildren: children }) }], details: { splitCheck, children } };
+    }
+    const created = await svc.split(todoId, children, reason);
+    await updateWidget(pi, ctx);
+    return { content: [{ type: "text" as const, text: `split ${todoId} into ${created.length} children\n${created.map(renderTodo).join("\n")}` }], details: { parent, children: created, splitCheck } };
+  }
   const todo = params.action === "claim" ? await svc.claim(todoId, params.requiredCapabilities as string[] | undefined, params.leaseMs as number | undefined, owner)
     : params.action === "renew" ? await svc.renew(todoId, params.leaseMs as number | undefined)
     : params.action === "release" ? await svc.release(todoId, params.reason as string | undefined)
-    : params.action === "start" ? await svc.start(todoId, params.requiredCapabilities as string[] | undefined, params.leaseMs as number | undefined, owner)
+    : params.action === "start" ? await svc.start(todoId, params.requiredCapabilities as string[] | undefined, params.leaseMs as number | undefined, owner, { splitOverrideReason: params.reason as string | undefined })
     : params.action === "block" ? await svc.block(todoId, (params.reason as string | undefined) || "")
     : params.action === "unblock" ? await svc.unblock(todoId)
     : params.action === "cancel" ? await svc.cancel(todoId, params.reason as string | undefined)
@@ -244,7 +279,7 @@ export default function piTodo(pi: ExtensionAPI): void {
     name: "todo",
     label: "Todo",
     description:
-      "Unified Gentic todo ledger tool with create/update/split/claim/start/block/complete/attach_evidence/record_artifact/create_artifact/verify/reopen/list/get/history/graph actions.",
+      "Unified Gentic todo ledger tool with create/update/split/split_check/claim/start/block/complete/attach_evidence/record_artifact/create_artifact/verify/reopen/list/get/history/graph actions.",
     promptSnippet:
       "Use todo first. Non-todo tools are blocked until a todo is claimed or started. Use todo as the unified Gentic todo ledger tool for durable planning and lifecycle actions. Generated notes, reports, plans, logs, TODO files, and artifacts belong under .model-artifacts/<kind>/<topic>/ and must be recorded with todo action=record_artifact. For TODO/planning artifacts use .model-artifacts/todo/<topic>/, where <topic> is preferably the concrete extension/project such as pi-todo, pi-swe, or gentic; use subfolders for coherent phase sets like pi-swe-phases.",
     parameters: Type.Object({
@@ -275,9 +310,13 @@ export default function piTodo(pi: ExtensionAPI): void {
           Type.Object({
             title: Type.String(),
             description: Type.Optional(Type.String()),
+            acceptanceCriteria: Type.Optional(Type.Array(Type.String())),
           }),
         ),
       ),
+      auto: Type.Optional(Type.Boolean()),
+      apply: Type.Optional(Type.Boolean()),
+      count: Type.Optional(Type.Number()),
       evidence: Type.Optional(EvidenceSchema),
       summary: Type.Optional(Type.String()),
       includeDone: Type.Optional(Type.Boolean()),
@@ -291,7 +330,7 @@ export default function piTodo(pi: ExtensionAPI): void {
     description:
       "Open the Gentic todo dashboard. Observability: /todo list, /todo next, /todo graph <id>, /todo history <id>, /todo get <id>.",
     getArgumentCompletions: (prefix) =>
-      ["open", "list", "next", "graph", "history", "get"]
+      ["open", "list", "next", "graph", "history", "get", "split-check"]
         .filter((value) => value.startsWith(prefix))
         .map((value) => ({ value, label: value })),
     handler: async (args, ctx) => {
@@ -302,11 +341,12 @@ export default function piTodo(pi: ExtensionAPI): void {
         await updateWidget(pi, ctx);
         return;
       }
-      if (!["list", "next", "graph", "history", "get"].includes(subcommand)) {
-        ctx.ui.notify("Unknown /todo command. Use /todo, /todo list, /todo next, /todo graph <id>, /todo history <id>, or /todo get <id>.", "error");
+      if (!["list", "next", "graph", "history", "get", "split-check"].includes(subcommand)) {
+        ctx.ui.notify("Unknown /todo command. Use /todo, /todo list, /todo next, /todo graph <id>, /todo history <id>, /todo get <id>, or /todo split-check <id>.", "error");
         return;
       }
-      const result = await executeTodoAction(pi, ctx, { action: subcommand === "next" ? "next_ready" : subcommand, todoId: id });
+      const action = subcommand === "next" ? "next_ready" : subcommand === "split-check" ? "split_check" : subcommand;
+      const result = await executeTodoAction(pi, ctx, { action, todoId: id });
       ctx.ui.notify(result.content.map((item) => item.text).join("\n"), "info");
     },
   });

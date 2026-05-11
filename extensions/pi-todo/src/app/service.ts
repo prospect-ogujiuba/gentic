@@ -2,8 +2,9 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { normalizePriority, normalizeStatus, isTerminalStatus } from "../domain/lifecycle.ts";
 import { ineligibleReasons, missingCapabilities, openDependencyIds, type EligibilityOptions } from "../domain/policy.ts";
 import { reduceTodoState } from "../domain/reducer.ts";
+import { assessSplitPolicy, defaultSplitPolicy, shouldBlockForSplit } from "../domain/splitting.ts";
 import { nextTodo } from "./query.ts";
-import { emptyScope, type EvidenceRef, type Todo, type TodoClaim, type TodoEvent, type TodoPolicy, type TodoPriority, type TodoScope, type TodoState, type TodoStatus } from "../domain/types.ts";
+import { emptyScope, type EvidenceRef, type SplitCheckResult, type Todo, type TodoClaim, type TodoEvent, type TodoPolicy, type TodoPriority, type TodoScope, type TodoState, type TodoStatus } from "../domain/types.ts";
 
 export interface TodoEventStore { read(): Promise<TodoEvent[]>; append(event: TodoEvent): Promise<void> }
 type LifecycleEventPayload =
@@ -12,7 +13,7 @@ type LifecycleEventPayload =
   | Omit<Extract<TodoEvent, { type: "todo.reopened" }>, "id" | "at" | "todoId">
   | Omit<Extract<TodoEvent, { type: "todo.cancelled" }>, "id" | "at" | "todoId">
   | Omit<Extract<TodoEvent, { type: "todo.abandoned" }>, "id" | "at" | "todoId">;
-export const defaultTodoPolicy: TodoPolicy = { requireEvidenceForDone: true, maxInProgress: 1 };
+export const defaultTodoPolicy: TodoPolicy = { requireEvidenceForDone: true, maxInProgress: 1, splitting: defaultSplitPolicy };
 export const MODEL_ARTIFACTS_DIR = ".model-artifacts/";
 export const MODEL_TODO_ARTIFACTS_DIR = ".model-artifacts/todo/";
 const ARTIFACT_FOLDERS = new Set(["reports", "logs", "specs", "plans", "findings", "todo"]);
@@ -22,6 +23,7 @@ const id = (prefix: string) => `${prefix}_${Date.now().toString(36)}_${Math.rand
 
 export type ArtifactKind = "reports" | "logs" | "specs" | "plans" | "findings" | "todo";
 export type CreateArtifactInput = { kind: ArtifactKind; shortName: string; purpose: string; content: string; category?: string; subcategory?: string };
+export type StartTodoOptions = { splitOverrideReason?: string };
 
 export type CreateTodoInput = {
   title: string;
@@ -113,7 +115,7 @@ export class TodoService {
 
   constructor(store: TodoEventStore, policy: TodoPolicy = defaultTodoPolicy) {
     this.store = store;
-    this.policy = policy;
+    this.policy = { ...defaultTodoPolicy, ...policy, splitting: { ...defaultSplitPolicy, ...(policy.splitting ?? {}) } };
   }
 
   async state(): Promise<TodoState> { return reduceTodoState(await this.store.read()); }
@@ -138,6 +140,25 @@ export class TodoService {
     const created = children.map((child) => createTodoRecord(child, at, parent));
     await this.append({ id: id("evt"), type: "todo.split", at, todoId, children: created, reason });
     return created;
+  }
+
+  async splitCheck(todoId: string): Promise<SplitCheckResult> {
+    const todo = await this.get(todoId);
+    const result = assessSplitPolicy(todo, this.policy.splitting);
+    await this.append({
+      id: id("evt"),
+      type: "todo.updated",
+      at: now(),
+      todoId,
+      patch: {
+        splitAssessment: result.assessment,
+        splitAssessmentConfidence: result.confidence,
+        splitAssessmentReasons: result.reasons,
+        splitPolicySatisfied: result.splitPolicySatisfied,
+        splitCheckedAt: now(),
+      },
+    });
+    return result;
   }
 
   async linkDependency(todoId: string, dependencyTodoId: string): Promise<Todo> {
@@ -172,10 +193,20 @@ export class TodoService {
     return this.get(todoId);
   }
 
-  async start(todoId: string, capabilities: string[] = [], leaseMs?: number, owner?: string | null): Promise<Todo> {
+  async start(todoId: string, capabilities: string[] = [], leaseMs?: number, owner?: string | null, options: StartTodoOptions = {}): Promise<Todo> {
     let state = await this.expireClaims(await this.state());
     let todo = this.requireTodo(state, todoId);
     if (todo.status === "blocked") throw new Error("cannot start blocked todo");
+    const splitResult = await this.splitCheck(todoId);
+    if (shouldBlockForSplit(splitResult, this.policy.splitting, options.splitOverrideReason)) {
+      const nextAction = splitResult.assessment === "too_vague" ? "clarify expected outcome and acceptance criteria" : splitResult.assessment === "epic" ? "split into child tasks or mark as parent-only" : "split into child tasks";
+      throw new Error(`blocked: task requires splitting; assessment:${splitResult.assessment}; reason:${splitResult.reasons.join(", ")}; next_action:${nextAction}`);
+    }
+    if (options.splitOverrideReason?.trim() && !splitResult.splitPolicySatisfied) {
+      await this.append({ id: id("evt"), type: "todo.updated", at: now(), todoId, patch: { splitOverrideReason: options.splitOverrideReason.trim(), splitPolicySatisfied: true } });
+    }
+    state = await this.state();
+    todo = this.requireTodo(state, todoId);
     const eligibilityTodo = { ...todo, status: todo.status === "claimed" ? "ready" as TodoStatus : todo.status };
     const reasons = ineligibleReasons(eligibilityTodo, state, { capabilities });
     const openDeps = openDependencyIds(todo, state);

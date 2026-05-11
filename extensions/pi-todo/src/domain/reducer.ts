@@ -28,7 +28,7 @@ export function applyTodoEvent(state: TodoState, event: TodoEvent): TodoState {
       todos[child.id] = { ...child, status: normalizeStatus(child.status) };
       if (!order.includes(child.id)) order.push(child.id);
     }
-    if (parent) todos[event.todoId] = updateTodo(parent, { children: unique([...parent.children, ...event.children.map((child) => child.id)]), notes: [...parent.notes, `split: ${event.reason}`] }, event.at);
+    if (parent) todos[event.todoId] = updateTodo(parent, { children: unique([...parent.children, ...event.children.map((child) => child.id)]), notes: [...parent.notes, `split: ${event.reason}`], splitAssessment: "epic", splitAssessmentConfidence: "high", splitAssessmentReasons: [event.reason], splitPolicySatisfied: false, splitCheckedAt: event.at, workDirectlyAllowed: false }, event.at);
   } else {
     const todo = todos[event.todoId];
     if (!todo) return { todos, order, claims, events: [...state.events, event], lastEventId: event.id };

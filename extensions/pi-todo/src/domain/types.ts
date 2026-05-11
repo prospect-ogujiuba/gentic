@@ -3,6 +3,31 @@ export type CompatTodoStatus = "proposed" | "pending" | "done" | "needs_review";
 export type TodoStatusInput = TodoStatus | CompatTodoStatus;
 export type TodoPriority = "low" | "normal" | "medium" | "high" | "critical" | "urgent";
 export type ClaimStatus = "active" | "released";
+export type SplitAssessment = "atomic" | "split_required" | "too_vague" | "epic";
+export type SplitConfidence = "low" | "medium" | "high";
+export type SplitPolicyMode = "advisory" | "required" | "strict" | "autonomous";
+
+export type SplitPolicy = {
+  mode: SplitPolicyMode;
+  idealChildMin: number;
+  idealChildMax: number;
+  warnChildCount: number;
+  maxChildCount: number;
+  maxAcceptanceCriteria: number;
+  maxTouchedAreas: number;
+  maxEstimatedMinutes: number;
+  requireChildrenForEpics: boolean;
+  allowOverride: boolean;
+};
+
+export type SplitCheckResult = {
+  assessment: SplitAssessment;
+  confidence: SplitConfidence;
+  reasons: string[];
+  recommendedChildCount: number;
+  splitPolicySatisfied: boolean;
+  suggestedChildren: { title: string; acceptanceCriteria?: string[] }[];
+};
 
 export type TodoScope = {
   repo?: string;
@@ -69,6 +94,13 @@ export type Todo = {
   completedAt?: string;
   blockedReason?: string;
   blockers: string[];
+  splitAssessment?: SplitAssessment;
+  splitAssessmentConfidence?: SplitConfidence;
+  splitAssessmentReasons?: string[];
+  splitPolicySatisfied?: boolean;
+  splitCheckedAt?: string;
+  splitOverrideReason?: string;
+  workDirectlyAllowed?: boolean;
   tags: string[];
   evidence: EvidenceRef[];
   notes: string[];
@@ -98,7 +130,7 @@ export type TodoEvent =
   | { id: string; type: "todo.abandoned"; at: string; commandId?: string; todoId: string; reason?: string }
   | { id: string; type: "todo.note_added"; at: string; commandId?: string; todoId: string; note: string };
 
-export type TodoPolicy = { requireEvidenceForDone: boolean; maxInProgress: number; globalMaxInProgress?: number };
+export type TodoPolicy = { requireEvidenceForDone: boolean; maxInProgress: number; globalMaxInProgress?: number; splitting?: SplitPolicy };
 
 export function emptyScope(input: Partial<TodoScope> = {}): TodoScope {
   return { paths: input.paths ?? [], files: input.files ?? [], tools: input.tools ?? [], commands: input.commands ?? [], policyTags: input.policyTags ?? [], repo: input.repo, branch: input.branch, worktree: input.worktree, component: input.component, service: input.service, domain: input.domain };
