@@ -1,0 +1,31 @@
+{
+  "version": 2,
+  "enabled": true,
+  "mode": "ask",
+  "defaultAction": "ask",
+  "audit": {
+    "enabled": true,
+    "path": ".pi/pi-gate-audit.jsonl"
+  },
+  "permissions": {
+    "allow": [
+      "code *",
+      "find *",
+      "git add *",
+      "git ls*",
+      "mkdir *",
+      "mv *",
+      "pwd *",
+      "test *",
+      "git commit *",
+      "if *"
+    ],
+    "ask": [],
+    "deny": [
+      "rm -rf /",
+      "rm -rf /*",
+      "rm -fr /",
+      "rm -fr /*"
+    ]
+  }
+}
