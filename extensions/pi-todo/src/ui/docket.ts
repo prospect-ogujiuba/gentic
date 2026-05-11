@@ -126,8 +126,8 @@ export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, option
     const deps = dependencyBadge(todo, state, theme);
     const close = readyToClose(todo, state) ? theme.fg("accent", "close") : undefined;
     const priority = prioritySignal(todo.priority, theme);
-    const compactMeta = [close, deps, todo.claimedBy ? theme.fg("dim", `@${todo.claimedBy}`) : undefined, priority].filter(Boolean);
-    const summaryMeta = [close && theme.fg("accent", "Ready to close"), statusLabel(todo.status), todo.priority, deps, todo.claimedBy ? `@${todo.claimedBy}` : undefined, `v${todo.revision}`, todo.updatedAt.slice(5, 16).replace("T", " ")].filter(Boolean);
+    const compactMeta = [close, deps, priority].filter(Boolean);
+    const summaryMeta = [close && theme.fg("accent", "Ready to close"), statusLabel(todo.status), todo.priority, deps, `v${todo.revision}`, todo.updatedAt.slice(5, 16).replace("T", " ")].filter(Boolean);
     const metaParts = options.detail === "summary" ? summaryMeta : compactMeta;
     const meta = metaParts.length > 0 ? theme.fg("dim", metaParts.join(options.detail === "summary" ? " | " : " ")) : "";
     const line = meta ? leftRight(width, `${rowPrefix(todo, state)}${icon} ${titleText}`, meta) : `${rowPrefix(todo, state)}${icon} ${titleText}`;

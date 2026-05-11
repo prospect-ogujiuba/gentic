@@ -4,7 +4,6 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { TodoService, type CreateTodoInput } from "./src/app/service.ts";
-import type { EligibilityOptions } from "./src/domain/policy.ts";
 import { PiTodoEventStore } from "./src/pi/store.ts";
 import {
   resetTodoSessionNameMemory,
@@ -96,7 +95,7 @@ function service(pi: ExtensionAPI, ctx: ExtensionContext): TodoService {
   return new TodoService(new PiTodoEventStore(pi, ctx));
 }
 function renderTodo(todo: Todo): string {
-  return `[${todo.status}] ${todo.id} ${todo.title}`;
+  return `${todo.id} ${todo.title} - [${todo.status}]`;
 }
 function normalizeEvidence(raw: unknown): EvidenceRef[] {
   return Array.isArray(raw) ? raw.map((item) => item as EvidenceRef) : [];
@@ -118,7 +117,6 @@ function createInput(params: Record<string, unknown>): CreateTodoInput {
     tags: params.tags as string[] | undefined,
     scope: params.scope as CreateTodoInput["scope"],
     requiredCapabilities: params.requiredCapabilities as string[] | undefined,
-    actor: params.actor as string | undefined,
   };
 }
 function updatePatch(params: Record<string, unknown>): Partial<Todo> {
@@ -165,15 +163,16 @@ async function executeTodoAction(pi: ExtensionAPI, ctx: ExtensionContext, params
     return { content: [{ type: "text" as const, text: renderTodoDocketLines(state, ansiTodoTheme, { width: 100, limit: 20, includeDone: params.includeDone as boolean | undefined, detail: "summary" }).join("\n") }], details: { state } };
   }
   if (params.action === "next" || params.action === "next_ready") {
-    const todo = await svc.next({ actor: params.actor as string | undefined, actorCapabilities: params.actor_capabilities as string[] | undefined, actorScope: params.actor_scope as EligibilityOptions["actorScope"] });
+    const todo = await svc.next();
     return { content: [{ type: "text" as const, text: todo ? renderTodo(todo) : "No next todo." }], details: { todo } };
   }
   if (params.action === "graph") {
     const graph = await svc.graph(params.todoId as string | undefined);
     return { content: [{ type: "text" as const, text: JSON.stringify(graph) }], details: { graph } };
   }
-  const todoId = params.todoId as string | undefined;
-  if (!todoId) throw new Error("todoId is required for this action");
+  const todoIdParam = params.todoId as string | undefined;
+  if (!todoIdParam) throw new Error("todoId is required for this action");
+  const todoId = await svc.resolveId(todoIdParam);
   if (params.action === "get") {
     const todo = await svc.get(todoId);
     return { content: [{ type: "text" as const, text: renderTodo(todo) }], details: { todo } };
@@ -183,16 +182,16 @@ async function executeTodoAction(pi: ExtensionAPI, ctx: ExtensionContext, params
     return { content: [{ type: "text" as const, text: history.map((event) => `${event.at} ${event.type}`).join("\n") }], details: { history } };
   }
 
-  const todo = params.action === "claim" ? await svc.claim(todoId, params.actor as string | undefined, params.actor_capabilities as string[] | undefined, params.actor_scope as Parameters<TodoService["claim"]>[3], params.leaseMs as number | undefined)
+  const todo = params.action === "claim" ? await svc.claim(todoId, params.requiredCapabilities as string[] | undefined, params.leaseMs as number | undefined)
     : params.action === "renew" ? await svc.renew(todoId, params.leaseMs as number | undefined)
     : params.action === "release" ? await svc.release(todoId, params.reason as string | undefined)
-    : params.action === "start" ? await svc.start(todoId, params.actor as string | undefined)
+    : params.action === "start" ? await svc.start(todoId)
     : params.action === "block" ? await svc.block(todoId, (params.reason as string | undefined) || "")
     : params.action === "unblock" ? await svc.unblock(todoId)
     : params.action === "cancel" ? await svc.cancel(todoId, params.reason as string | undefined)
     : params.action === "abandon" ? await svc.abandon(todoId, params.reason as string | undefined)
     : params.action === "complete" ? await svc.complete(todoId, normalizeEvidence(params.evidence), params.summary as string | undefined)
-    : params.action === "verify" ? await svc.verify(todoId, normalizeEvidence(params.evidence), params.summary as string | undefined, params.actor_capabilities as string[] | undefined)
+    : params.action === "verify" ? await svc.verify(todoId, normalizeEvidence(params.evidence), params.summary as string | undefined, params.requiredCapabilities as string[] | undefined)
     : params.action === "fail" ? await svc.fail(todoId, params.reason as string | undefined, normalizeEvidence(params.evidence))
     : params.action === "reopen" ? await svc.reopen(todoId, params.reason as string | undefined)
     : params.action === "link_dependency" ? await svc.linkDependency(todoId, (params.dependencyTodoId as string | undefined) || "")
@@ -240,9 +239,6 @@ export default function piTodo(pi: ExtensionAPI): void {
       dependsOn: Type.Optional(Type.Array(Type.String())),
       tags: Type.Optional(Type.Array(Type.String())),
       reason: Type.Optional(Type.String()),
-      actor: Type.Optional(Type.String()),
-      actor_capabilities: Type.Optional(Type.Array(Type.String())),
-      actor_scope: Type.Optional(ScopeSchema),
       requiredCapabilities: Type.Optional(Type.Array(Type.String())),
       scope: Type.Optional(ScopeSchema),
       dependencyTodoId: Type.Optional(Type.String()),

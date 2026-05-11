@@ -15,12 +15,12 @@ export function summarizeTodos(state: TodoState): TodoCounts {
   return { total: Object.keys(state.todos).length, open: Object.keys(state.todos).length - terminal, terminal, byStatus };
 }
 
-export function activeTodo(state: TodoState, actor?: string): Todo | undefined {
-  return orderedTodos(state).find((todo) => todo.status === "in_progress" && (!actor || todo.claimedBy === actor));
+export function activeTodo(state: TodoState): Todo | undefined {
+  return orderedTodos(state).find((todo) => todo.status === "in_progress");
 }
 
 export function nextTodo(state: TodoState, options: EligibilityOptions = {}): Todo | undefined {
-  return activeTodo(state, options.actor) || orderedTodos(state, false).find((todo) => ineligibleReasons(todo, state, options).length === 0);
+  return activeTodo(state) || orderedTodos(state, false).find((todo) => ineligibleReasons(todo, state, options).length === 0);
 }
 
 export function todoSessionTitle(state: TodoState): string | undefined {

@@ -13,7 +13,6 @@ type LifecycleEventPayload =
   | Omit<Extract<TodoEvent, { type: "todo.abandoned" }>, "id" | "at" | "todoId">;
 export const defaultTodoPolicy: TodoPolicy = { requireEvidenceForDone: true, maxInProgress: 1 };
 
-const DEFAULT_ACTOR = "agent.default";
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -33,7 +32,6 @@ export type CreateTodoInput = {
   inputs?: { goal?: string; context?: string; environment?: string; constraints?: string[] };
   constraints?: string[];
   requiredCapabilities?: string[];
-  actor?: string;
   commandId?: string;
 };
 
@@ -47,7 +45,6 @@ function createTodoRecord(input: CreateTodoInput, at: string, parent?: Todo): To
     status: input.status ?? "ready",
     priority: normalizePriority(input.priority ?? parent?.priority),
     owner: input.owner ?? parent?.owner,
-    claimedBy: null,
     activeClaimId: null,
     leaseExpiresAt: null,
     parentId: input.parentId ?? parent?.id ?? null,
@@ -67,8 +64,6 @@ function createTodoRecord(input: CreateTodoInput, at: string, parent?: Todo): To
     evidence: [],
     notes: [],
     revision: 0,
-    createdBy: input.actor,
-    updatedBy: input.actor,
   };
 }
 
@@ -112,13 +107,13 @@ export class TodoService {
     return this.get(todoId);
   }
 
-  async claim(todoId: string, actor = DEFAULT_ACTOR, actorCapabilities: string[] = [], actorScope?: Partial<TodoScope>, leaseMs?: number): Promise<Todo> {
+  async claim(todoId: string, capabilities: string[] = [], leaseMs?: number): Promise<Todo> {
     const state = await this.state();
     const todo = this.requireTodo(state, todoId);
-    const reasons = ineligibleReasons(todo, state, { actor, actorCapabilities, actorScope });
+    const reasons = ineligibleReasons(todo, state, { capabilities });
     if (reasons.length > 0) throw new Error(`todo is not claimable: ${reasons.join(", ")}`);
     const at = now();
-    const claim: TodoClaim = { id: id("claim"), todoId, actor, capabilities: actorCapabilities, scope: emptyScope(actorScope ?? todo.scope), status: "active", claimedAt: at, leaseMs, leaseExpiresAt: leaseMs ? new Date(Date.now() + leaseMs).toISOString() : undefined };
+    const claim: TodoClaim = { id: id("claim"), todoId, capabilities, scope: emptyScope(todo.scope), status: "active", claimedAt: at, leaseMs, leaseExpiresAt: leaseMs ? new Date(Date.now() + leaseMs).toISOString() : undefined };
     await this.append({ id: id("evt"), type: "todo.claimed", at, todoId, claim });
     return this.get(todoId);
   }
@@ -137,17 +132,17 @@ export class TodoService {
     return this.get(todoId);
   }
 
-  async start(todoId: string, actor?: string): Promise<Todo> {
+  async start(todoId: string): Promise<Todo> {
     const state = await this.state();
     const todo = this.requireTodo(state, todoId);
     if (todo.status === "blocked") throw new Error("cannot start blocked todo");
     const eligibilityTodo = { ...todo, status: todo.status === "claimed" ? "ready" as TodoStatus : todo.status };
-    const reasons = ineligibleReasons(eligibilityTodo, state, { actor });
+    const reasons = ineligibleReasons(eligibilityTodo, state);
     const openDeps = openDependencyIds(todo, state);
     if (openDeps.length > 0) throw new Error(`dependency not done: ${openDeps[0]}`);
     if (reasons.length > 0 && todo.status !== "claimed") throw new Error(`todo is not ready: ${reasons.join(", ")}`);
     if (this.activeCount(state, todoId) >= this.policy.maxInProgress) throw new Error("max in-progress todos reached");
-    await this.append({ id: id("evt"), type: "todo.started", at: now(), todoId, actor });
+    await this.append({ id: id("evt"), type: "todo.started", at: now(), todoId });
     return this.get(todoId);
   }
 
@@ -158,10 +153,10 @@ export class TodoService {
     return this.get(todoId);
   }
 
-  async verify(todoId: string, evidence: EvidenceRef[] = [], summary?: string, actorCapabilities?: string[]): Promise<Todo> {
+  async verify(todoId: string, evidence: EvidenceRef[] = [], summary?: string, capabilities?: string[]): Promise<Todo> {
     const todo = await this.get(todoId);
-    const missing = missingCapabilities(todo, actorCapabilities, "verify");
-    if (missing.length > 0) throw new Error(`verify requires actor_capabilities=${missing.join(",")}`);
+    const missing = missingCapabilities(todo, capabilities, "verify");
+    if (missing.length > 0) throw new Error(`verify requires capabilities=${missing.join(",")}`);
     return this.lifecycle(todoId, { type: "todo.verified", evidence, summary });
   }
   async fail(todoId: string, reason?: string, evidence: EvidenceRef[] = []): Promise<Todo> { return this.lifecycle(todoId, { type: "todo.failed", reason, evidence }); }
@@ -184,6 +179,14 @@ export class TodoService {
   }
 
   async next(options: EligibilityOptions = {}): Promise<Todo | undefined> { return nextTodo(await this.state(), options); }
+  async resolveId(todoIdOrTitle: string): Promise<string> {
+    const state = await this.state();
+    if (state.todos[todoIdOrTitle]) return todoIdOrTitle;
+    const matches = Object.values(state.todos).filter((todo) => todo.title === todoIdOrTitle);
+    if (matches.length === 1) return matches[0].id;
+    if (matches.length > 1) throw new Error(`todo title is ambiguous: ${todoIdOrTitle}`);
+    throw new Error(`todo not found: ${todoIdOrTitle}`);
+  }
   async get(todoId: string): Promise<Todo> { return this.requireTodo(await this.state(), todoId); }
   async history(todoId: string): Promise<TodoEvent[]> { await this.requireExisting(todoId); return (await this.store.read()).filter((event) => "todoId" in event ? event.todoId === todoId : event.type === "todo.created" && event.todo.id === todoId); }
 

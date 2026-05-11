@@ -38,9 +38,9 @@ export function applyTodoEvent(state: TodoState, event: TodoEvent): TodoState {
       const dep = todos[event.dependencyTodoId];
       if (dep) todos[event.dependencyTodoId] = updateTodo(dep, { blocks: unique([...dep.blocks, event.todoId]) }, event.at);
     }
-    if (event.type === "todo.claimed") { claims[event.claim.id] = event.claim; todos[event.todoId] = updateTodo(todo, { status: "claimed", claimedBy: event.claim.actor, activeClaimId: event.claim.id, leaseExpiresAt: event.claim.leaseExpiresAt }, event.at); }
+    if (event.type === "todo.claimed") { claims[event.claim.id] = event.claim; todos[event.todoId] = updateTodo(todo, { status: "claimed", activeClaimId: event.claim.id, leaseExpiresAt: event.claim.leaseExpiresAt }, event.at); }
     if (event.type === "todo.lease_renewed") { const claim = claims[event.claimId]; if (claim) claims[event.claimId] = { ...claim, lastHeartbeatAt: event.at, leaseExpiresAt: event.leaseExpiresAt }; todos[event.todoId] = updateTodo(todo, { leaseExpiresAt: event.leaseExpiresAt }, event.at); }
-    if (event.type === "todo.released") { const claimId = event.claimId || todo.activeClaimId; if (claimId && claims[claimId]) claims[claimId] = releaseClaim(claims[claimId], event.at, event.reason); todos[event.todoId] = updateTodo(todo, { status: "ready", claimedBy: null, activeClaimId: null, leaseExpiresAt: null }, event.at); }
+    if (event.type === "todo.released") { const claimId = event.claimId || todo.activeClaimId; if (claimId && claims[claimId]) claims[claimId] = releaseClaim(claims[claimId], event.at, event.reason); todos[event.todoId] = updateTodo(todo, { status: "ready", activeClaimId: null, leaseExpiresAt: null }, event.at); }
     if (event.type === "todo.started") todos[event.todoId] = updateTodo(todo, { status: "in_progress", startedAt: event.at, blockedReason: undefined }, event.at);
     if (event.type === "todo.blocked") todos[event.todoId] = updateTodo(todo, { status: "blocked", blockedReason: event.reason, blockers: unique([...todo.blockers, event.reason]) }, event.at);
     if (event.type === "todo.unblocked") todos[event.todoId] = updateTodo(todo, { status: "pending", blockedReason: undefined, blockers: [] }, event.at);

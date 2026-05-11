@@ -1,8 +1,8 @@
 import { isReadyStatus, isTerminalStatus } from "./lifecycle.ts";
-import type { Todo, TodoScope, TodoState } from "./types.ts";
+import type { Todo, TodoState } from "./types.ts";
 
 export type PolicyPhase = "claim" | "complete" | "verify";
-export type EligibilityOptions = { actor?: string; actorCapabilities?: string[]; actorScope?: Partial<TodoScope> };
+export type EligibilityOptions = { capabilities?: string[] };
 
 function phaseCapabilities(todo: Todo, phase: PolicyPhase): string[] {
   const prefix = `${phase}.requires:`;
@@ -14,19 +14,11 @@ export function requiredCapabilitiesFor(todo: Todo, phase: PolicyPhase): string[
   return phase === "verify" ? phaseRequired : [...(todo.requiredCapabilities ?? []), ...phaseRequired];
 }
 
-export function missingCapabilities(todo: Todo, actorCapabilities: readonly string[] | undefined, phase: PolicyPhase): string[] {
+export function missingCapabilities(todo: Todo, capabilities: readonly string[] | undefined, phase: PolicyPhase): string[] {
   const required = requiredCapabilitiesFor(todo, phase);
   if (required.length === 0) return [];
-  const actorSet = new Set(actorCapabilities ?? []);
-  return required.filter((capability) => !actorSet.has(capability));
-}
-
-export function scopeAllows(todoScope: TodoScope | undefined, actorScope?: Partial<TodoScope>): boolean {
-  if (!todoScope || !actorScope) return true;
-  for (const key of ["repo", "branch", "worktree", "component", "service", "domain"] as const) {
-    if (todoScope[key] && actorScope[key] && todoScope[key] !== actorScope[key]) return false;
-  }
-  return true;
+  const capabilitySet = new Set(capabilities ?? []);
+  return required.filter((capability) => !capabilitySet.has(capability));
 }
 
 export function openDependencyIds(todo: Todo, state: TodoState): string[] {
@@ -46,9 +38,7 @@ export function ineligibleReasons(todo: Todo, state: TodoState, options: Eligibi
   if (!isReadyStatus(todo.status) && !readyToClose(todo, state)) reasons.push(`status:${todo.status}`);
   if (openDependencyIds(todo, state).length > 0) reasons.push("open_dependencies");
   if ((todo.children ?? []).length > 0 && !readyToClose(todo, state)) reasons.push("open_children");
-  if (todo.claimedBy && todo.claimedBy !== options.actor) reasons.push("claimed_by_other");
-  if (!scopeAllows(todo.scope, options.actorScope)) reasons.push("scope_mismatch");
-  const missing = missingCapabilities(todo, options.actorCapabilities, "claim");
+  const missing = missingCapabilities(todo, options.capabilities, "claim");
   if (missing.length > 0) reasons.push(`missing_capabilities:${missing.join(",")}`);
   return reasons;
 }

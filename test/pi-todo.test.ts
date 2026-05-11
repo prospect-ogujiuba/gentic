@@ -32,3 +32,17 @@ test("dependency must be done before start", async () => {
   const started = await service.start(child.id);
   assert.equal(started.status, "in_progress");
 });
+
+test("created todo id resolves immediately and title fallback is unique", async () => {
+  const service = new TodoService(new MemoryStore());
+  const todo = await service.create({ title: "Remove coordination metadata" });
+  assert.equal(await service.resolveId(todo.id), todo.id);
+  assert.equal(await service.resolveId(todo.title), todo.id);
+});
+
+test("ambiguous title fallback is rejected", async () => {
+  const service = new TodoService(new MemoryStore());
+  await service.create({ title: "duplicate" });
+  await service.create({ title: "duplicate" });
+  await assert.rejects(() => service.resolveId("duplicate"), /ambiguous/);
+});

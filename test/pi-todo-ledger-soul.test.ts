@@ -25,13 +25,11 @@ test("split creates executable children and makes parent ready to close only aft
 test("claim respects required capabilities and release returns task to ready", async () => {
   const service = new TodoService(new MemoryStore());
   const todo = await service.create({ title: "edit files", requiredCapabilities: ["code_write"] });
-  await assert.rejects(() => service.claim(todo.id, "agent.reader", ["repo-inspection"]), /missing_capabilities:code_write/);
-  const claimed = await service.claim(todo.id, "agent.coder", ["code_write"]);
+  await assert.rejects(() => service.claim(todo.id, ["repo-inspection"]), /missing_capabilities:code_write/);
+  const claimed = await service.claim(todo.id, ["code_write"]);
   assert.equal(claimed.status, "claimed");
-  assert.equal(claimed.claimedBy, "agent.coder");
   const released = await service.release(todo.id, "handoff");
   assert.equal(released.status, "ready");
-  assert.equal(released.claimedBy, null);
 });
 
 test("verify policy tags, fail, reopen, history and graph are durable ledger actions", async () => {
@@ -42,7 +40,7 @@ test("verify policy tags, fail, reopen, history and graph are durable ledger act
   await service.fail(todo.id, "needs another pass");
   await service.reopen(todo.id, "fixed plan");
   await service.complete(todo.id, [{ type: "manual_note", note: "implemented" }]);
-  await assert.rejects(() => service.verify(todo.id, [{ type: "review", summary: "reviewed" }]), /verify requires actor_capabilities=reviewer/);
+  await assert.rejects(() => service.verify(todo.id, [{ type: "review", summary: "reviewed" }]), /verify requires capabilities=reviewer/);
   const verified = await service.verify(todo.id, [{ type: "review", summary: "reviewed" }], undefined, ["reviewer"]);
   assert.equal(verified.status, "verified");
   assert.deepEqual((await service.history(todo.id)).map((event) => event.type).filter((type) => type !== "todo.created"), ["todo.dependency_linked", "todo.failed", "todo.reopened", "todo.completed", "todo.verified"]);

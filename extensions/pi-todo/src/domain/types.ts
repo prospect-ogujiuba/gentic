@@ -28,7 +28,6 @@ export type EvidenceRef =
 export type TodoClaim = {
   id: string;
   todoId: string;
-  actor: string;
   capabilities: string[];
   scope: TodoScope;
   status: ClaimStatus;
@@ -48,7 +47,6 @@ export type Todo = {
   status: TodoStatus;
   priority: TodoPriority;
   owner?: string | null;
-  claimedBy?: string | null;
   activeClaimId?: string | null;
   leaseExpiresAt?: string | null;
   parentId?: string | null;
@@ -71,8 +69,6 @@ export type Todo = {
   evidence: EvidenceRef[];
   notes: string[];
   revision: number;
-  createdBy?: string;
-  updatedBy?: string;
 };
 
 export type TodoState = { todos: Record<string, Todo>; order: string[]; claims: Record<string, TodoClaim>; events: TodoEvent[]; lastEventId?: string };
@@ -85,7 +81,7 @@ export type TodoEvent =
   | { id: string; type: "todo.claimed"; at: string; commandId?: string; todoId: string; claim: TodoClaim }
   | { id: string; type: "todo.lease_renewed"; at: string; commandId?: string; todoId: string; claimId: string; leaseExpiresAt?: string }
   | { id: string; type: "todo.released"; at: string; commandId?: string; todoId: string; claimId?: string; reason?: string }
-  | { id: string; type: "todo.started"; at: string; commandId?: string; todoId: string; actor?: string }
+  | { id: string; type: "todo.started"; at: string; commandId?: string; todoId: string }
   | { id: string; type: "todo.blocked"; at: string; commandId?: string; todoId: string; reason: string }
   | { id: string; type: "todo.unblocked"; at: string; commandId?: string; todoId: string }
   | { id: string; type: "todo.evidence_attached"; at: string; commandId?: string; todoId: string; evidence: EvidenceRef[] }
