@@ -28,3 +28,32 @@ test("pi-swe skeleton loads without registering behavior", () => {
   assert.equal(piSwe(pi as never, ctx as never), undefined);
   assert.deepEqual(calls, []);
 });
+
+const baseStages = ["plan", "diagnose", "implement", "verify", "review", "finalize"] as const;
+
+test("all base pi-swe prompt templates are discoverable", () => {
+  const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  assert.ok(packageJson.pi?.prompts?.includes("./extensions/**/prompts/**/*.md"));
+
+  for (const stage of baseStages) {
+    const promptPath = join(root, `extensions/pi-swe/prompts/swe-${stage}.md`);
+    assert.equal(existsSync(promptPath), true, `missing prompt for ${stage}`);
+    const content = readFileSync(promptPath, "utf8");
+    assert.match(content, /^---\n[\s\S]*description:/);
+    assert.doesNotMatch(content, /\/sop\b|programming_sop|sop-/);
+  }
+});
+
+test("all base pi-swe skills are discoverable", () => {
+  const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  assert.ok(packageJson.pi?.skills?.includes("./extensions/**/skills"));
+
+  for (const stage of baseStages) {
+    const skillPath = join(root, `extensions/pi-swe/skills/swe-${stage}/SKILL.md`);
+    assert.equal(existsSync(skillPath), true, `missing skill for ${stage}`);
+    const content = readFileSync(skillPath, "utf8");
+    assert.match(content, new RegExp(`name: swe-${stage}`));
+    assert.match(content, /description:/);
+    assert.doesNotMatch(content, /\/sop\b|programming_sop|sop-/);
+  }
+});
