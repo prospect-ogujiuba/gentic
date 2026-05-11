@@ -3,9 +3,6 @@ import { Type } from "typebox";
 
 type ExecResult = { stdout?: string; stderr?: string; code?: number; killed?: boolean };
 
-const COMMIT_REQUEST_RE = /^\s*commit\s+(your|the|da|dirty)?\s*work(tree)?\s*(and\s+push)?\s*$/i;
-const PUSH_REQUEST_RE = /^\s*(can you\s+)?push\s+(the\s+)?work\s*$/i;
-
 async function git(pi: ExtensionAPI, args: string[], ctx: ExtensionContext, signal?: AbortSignal): Promise<ExecResult> {
   return pi.exec("git", args, { cwd: ctx.cwd, signal, timeout: 10_000 }) as Promise<ExecResult>;
 }
@@ -72,11 +69,4 @@ export default function piGit(pi: ExtensionAPI): void {
     },
   });
 
-  pi.on("input", (event) => {
-    if (COMMIT_REQUEST_RE.test(event.text)) {
-      const push = /push/i.test(event.text);
-      return { action: "transform", text: `/git-commit${push ? " and push" : ""}` };
-    }
-    if (PUSH_REQUEST_RE.test(event.text)) return { action: "transform", text: "/git-push" };
-  });
 }
