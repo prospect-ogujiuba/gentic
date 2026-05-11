@@ -179,3 +179,36 @@ test("pi-swe TDD resources do not add legacy namespace or model-callable TDD too
   assert.doesNotMatch(content, /(^|[\s`])\/tdd-rgr\b/m);
   assert.doesNotMatch(content, /registerTool\([^)]*(?:tdd|swe-tdd)/i);
 });
+
+test("pi-swe end-to-end docs cover scenarios, migration, and omitted legacy surfaces", () => {
+  const readme = readFileSync(join(root, "extensions/pi-swe/README.md"), "utf8");
+  const scenariosPath = join(root, "extensions/pi-swe/docs/e2e-scenarios.md");
+  assert.equal(existsSync(scenariosPath), true);
+  const scenarios = readFileSync(scenariosPath, "utf8");
+  const docs = `${readme}\n${scenarios}`;
+
+  for (const prompt of ["/swe-plan", "/swe-diagnose", "/swe-implement", "/swe-verify", "/swe-review", "/swe-finalize", "/swe-tdd", "/swe-dsa"]) {
+    assert.match(readme, new RegExp(prompt.replace("/", "\\/")));
+  }
+
+  for (const required of [
+    "plan → implement → verify → finalize",
+    "diagnose bug → TDD fix → verify → review",
+    "DSA assessment → implementation → validation",
+    "no `pi-todo` installed",
+    "`pi-todo` installed with active task/evidence",
+    "standalone",
+    "optional peer",
+    "Programming SOP",
+    "TDD RGR",
+    "DSA Advisor",
+    "Intentionally omitted legacy surfaces",
+    "Complete-version checklist",
+  ]) {
+    assert.match(docs, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+  }
+
+  assert.match(readme, /\/sop|\/programming-sop|programming_sop/);
+  assert.match(readme, /\/tdd-rgr|tdd_rgr/);
+  assert.match(readme, /\/dsa-advisor|dsa_advisor/);
+});
