@@ -6,6 +6,7 @@ const root = resolve(new URL("..", import.meta.url).pathname);
 const extensionsRoot = join(root, "extensions");
 const allowedModes = new Set(["simple", "layered"]);
 const allowedLayers = new Set(["domain", "app", "pi", "ui", "config", "resources", "docs"]);
+const indexLineWarningThreshold = 200;
 const resourceScanners = {
   commands: (dir) => countFiles(dir, (name) => extname(name) === ".ts" && name !== "index.ts"),
   skills: (dir) => countFiles(dir, (name) => name === "SKILL.md"),
@@ -49,6 +50,18 @@ function collectSourceText(dir) {
   return text;
 }
 
+function collectFiles(dir, prefix = "") {
+  if (!existsSync(dir)) return [];
+  const files = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) files.push(...collectFiles(path, relativePath));
+    else if (entry.isFile()) files.push(relativePath);
+  }
+  return files;
+}
+
 function srcLayers(dir) {
   const src = join(dir, "src");
   if (!existsSync(src)) return "none";
@@ -76,7 +89,7 @@ function parseAnatomyDeclaration(dir) {
     const value = JSON.parse(readFileSync(path, "utf8"));
     const warnings = [];
     const failures = [];
-    if (!allowedModes.has(value.mode)) failures.push(`unknown mode ${JSON.stringify(value.mode)}`);
+    if (!allowedModes.has(value.mode)) failures.push(`invalid declaration mode ${JSON.stringify(value.mode)}`);
     if (!Array.isArray(value.layers)) failures.push("layers is not an array");
     else {
       for (const layer of value.layers) {
@@ -113,6 +126,68 @@ function classifyMode(extensionText, resources) {
   return "undeclared";
 }
 
+function isInsideExtension(dir, relativePath) {
+  const extensionDir = resolve(dir);
+  const resolvedPath = resolve(dir, relativePath);
+  return resolvedPath.startsWith(`${extensionDir}/`);
+}
+
+function resourcePlacementFailures(dir) {
+  const failures = [];
+  for (const relativePath of collectFiles(dir)) {
+    const parts = relativePath.split("/");
+    const fileName = parts.at(-1) ?? "";
+    const extension = extname(fileName);
+    const nestedResourceDir = (name) => parts.includes(name) && parts[0] !== name;
+
+    if (fileName === "SKILL.md" && parts[0] !== "skills") {
+      failures.push(`skill resource outside skills/<name>/SKILL.md at ${relativePath}`);
+    }
+    if (nestedResourceDir("commands") && extension === ".ts") {
+      failures.push(`command resource outside commands/**/*.ts at ${relativePath}`);
+    }
+    if (nestedResourceDir("prompts") && extension === ".md" && fileName !== "README.md") {
+      failures.push(`prompt resource outside prompts/**/*.md at ${relativePath}`);
+    }
+    if (nestedResourceDir("themes") && extension === ".json") {
+      failures.push(`theme resource outside themes/**/*.json at ${relativePath}`);
+    }
+    if (nestedResourceDir("primitives") && fileName === "index.ts") {
+      failures.push(`primitive resource outside primitives/**/index.ts at ${relativePath}`);
+    }
+  }
+  return failures;
+}
+
+function blockingFailures(row, dir) {
+  const failures = [...(row.declaration.failures ?? [])];
+
+  if (row.readme !== "yes") failures.push("missing README.md");
+  if (!row.declaration.present) failures.push("missing extension.anatomy.json");
+
+  if (row.declaration.present && row.declaration.mode === "layered") {
+    const publicEntry = row.declaration.publicEntry;
+    if (typeof publicEntry !== "string" || !publicEntry) {
+      failures.push("layered extension missing publicEntry in extension.anatomy.json");
+    } else if (!isInsideExtension(dir, publicEntry)) {
+      failures.push(`layered extension publicEntry escapes extension directory: ${publicEntry}`);
+    } else if (!existsSync(join(dir, publicEntry))) {
+      failures.push(`layered extension publicEntry does not exist: ${publicEntry}`);
+    }
+  }
+
+  failures.push(...resourcePlacementFailures(dir));
+  return [...new Set(failures)];
+}
+
+function warningOnlyFindings(row) {
+  const warnings = [...(row.declaration.warnings ?? [])];
+  if (row.indexLines > indexLineWarningThreshold) {
+    warnings.push(`index.ts has ${row.indexLines} lines; consider moving implementation details behind the public entrypoint`);
+  }
+  return warnings;
+}
+
 function extensionRows() {
   if (!existsSync(extensionsRoot)) return [];
   return readdirSync(extensionsRoot, { withFileTypes: true })
@@ -124,7 +199,7 @@ function extensionRows() {
       const allText = `${indexText}\n${collectSourceText(join(dir, "src"))}`;
       const resources = discoveredResources(dir);
       const declaration = parseAnatomyDeclaration(dir);
-      return {
+      const row = {
         name: entry.name,
         readme: existsSync(join(dir, "README.md")) ? "yes" : "no",
         declaration,
@@ -133,14 +208,21 @@ function extensionRows() {
         src: srcLayers(dir),
         resources,
       };
+      return {
+        ...row,
+        failures: blockingFailures(row, dir),
+        warnings: warningOnlyFindings(row),
+      };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 try {
   const rows = extensionRows();
-  console.log(`check-extension-anatomy: gradual-enforcement (${rows.length} extensions)`);
-  console.log("check-extension-anatomy: rules=gaps-report-only; declared-file validation failures exit non-zero");
+  console.log(`check-extension-anatomy: ci-enforcement (${rows.length} extensions)`);
+  console.log(
+    "check-extension-anatomy: blocking=missing-readme,missing-declaration,invalid-declaration,resource-placement,layered-entrypoint; warning-only=index-line-count,transitional-layer-mismatch,domain-purity",
+  );
   const failures = [];
   for (const row of rows) {
     const declaration = row.declaration;
@@ -150,16 +232,16 @@ try {
     console.log(
       `${row.name.padEnd(13)} readme=${row.readme.padEnd(3)} decl=${(declaration.present ? "yes" : "no").padEnd(3)} mode=${String(row.mode).padEnd(8)} layers=${declaredLayers.padEnd(24)} resources=${declaredResources.padEnd(10)} index=${String(row.indexLines).padStart(3)} src=${row.src} found=${row.resources}${state}`,
     );
-    for (const warning of declaration.warnings ?? []) {
+    for (const warning of row.warnings ?? []) {
       console.log(`  warning ${row.name}: ${warning}`);
     }
-    for (const failure of declaration.failures ?? []) {
+    for (const failure of row.failures ?? []) {
       failures.push(`${row.name}: ${failure}`);
       console.log(`  failure ${row.name}: ${failure}`);
     }
   }
   if (failures.length) {
-    console.log(`check-extension-anatomy: failed declared-file validation (${failures.length})`);
+    console.log(`check-extension-anatomy: failed blocking anatomy rules (${failures.length})`);
     process.exitCode = 1;
   }
 } catch (error) {

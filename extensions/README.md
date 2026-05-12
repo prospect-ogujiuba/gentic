@@ -29,6 +29,18 @@ Use Pi runtime APIs for current state whenever possible, for example `pi.getAllT
 
 Choose the smallest shape that honestly describes the extension. Do not add empty layers to look architectural.
 
+### CI enforcement
+
+`npm run check` runs the anatomy checker as a blocking CI gate for objective, low-risk violations:
+
+- missing extension `README.md`
+- missing `extension.anatomy.json`
+- invalid declaration mode or layer values
+- extension-owned resources placed outside supported directories (`commands/`, `skills/`, `prompts/`, `themes/`, or `primitives/`)
+- layered extensions with a missing, escaping, or nonexistent declared `publicEntry`
+
+Subjective or transitional rules stay warning-only until their false-positive rate is understood. That includes `index.ts` line-count pressure, transitional layer mismatches, and domain-purity import checks.
+
 ### Simple extension
 
 Use a simple shape when the extension is mostly a registration hub or a thin adapter around one resource type.
