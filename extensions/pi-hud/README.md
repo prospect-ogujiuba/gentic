@@ -14,3 +14,9 @@ It copies the Visiplane component design: multi-line responsive footer, context 
 - `/pi-hud reset`
 
 Each HUD component can be independently enabled or disabled while retaining the Visiplane layout style.
+
+## Module map
+
+- `index.ts` is the thin Pi extension entrypoint.
+- `adapter.ts` owns `/pi-hud` command parsing, harness event mapping, and HUD refresh side effects so the entrypoint does not become a parsing/mapping dumping ground.
+- `state.ts`, `snapshot.ts`, `components/`, and `surfaces/` retain HUD state, data collection, rendering, footer, and modal responsibilities.
