@@ -1,0 +1,122 @@
+import { Type } from "typebox";
+
+const actions = [
+  "create",
+  "update",
+  "split",
+  "split_check",
+  "reprioritize",
+  "link_dependency",
+  "list",
+  "get",
+  "next",
+  "next_ready",
+  "claim",
+  "renew",
+  "release",
+  "start",
+  "block",
+  "unblock",
+  "complete",
+  "attach_evidence",
+  "record_artifact",
+  "create_artifact",
+  "fail",
+  "verify",
+  "reopen",
+  "cancel",
+  "abandon",
+  "history",
+  "graph",
+] as const;
+
+const TodoActionSchema = Type.Union(
+  actions.map((action) => Type.Literal(action)) as [
+    ReturnType<typeof Type.Literal>,
+    ReturnType<typeof Type.Literal>,
+    ...ReturnType<typeof Type.Literal>[],
+  ],
+);
+
+const PrioritySchema = Type.Union([
+  Type.Literal("low"),
+  Type.Literal("normal"),
+  Type.Literal("medium"),
+  Type.Literal("high"),
+  Type.Literal("critical"),
+  Type.Literal("urgent"),
+]);
+
+const EvidenceSchema = Type.Array(
+  Type.Object({
+    type: Type.String(),
+    path: Type.Optional(Type.String()),
+    createdByTodoId: Type.Optional(Type.String()),
+    summary: Type.Optional(Type.String()),
+    detail: Type.Optional(Type.String()),
+    files: Type.Optional(Type.Array(Type.String())),
+    command: Type.Optional(Type.String()),
+    exitCode: Type.Optional(Type.Number()),
+    output: Type.Optional(Type.String()),
+    outputSummary: Type.Optional(Type.String()),
+    url: Type.Optional(Type.String()),
+    message: Type.Optional(Type.String()),
+    note: Type.Optional(Type.String()),
+    recordedAt: Type.Optional(Type.String()),
+    recordedBy: Type.Optional(Type.String()),
+  }),
+);
+
+const ScopeSchema = Type.Object({
+  repo: Type.Optional(Type.String()),
+  branch: Type.Optional(Type.String()),
+  worktree: Type.Optional(Type.String()),
+  paths: Type.Optional(Type.Array(Type.String())),
+  files: Type.Optional(Type.Array(Type.String())),
+  component: Type.Optional(Type.String()),
+  service: Type.Optional(Type.String()),
+  domain: Type.Optional(Type.String()),
+  tools: Type.Optional(Type.Array(Type.String())),
+  commands: Type.Optional(Type.Array(Type.String())),
+  policyTags: Type.Optional(Type.Array(Type.String())),
+});
+
+export const todoToolParameters = Type.Object({
+  action: TodoActionSchema,
+  todoId: Type.Optional(Type.String()),
+  path: Type.Optional(Type.String()),
+  kind: Type.Optional(Type.Union([Type.Literal("reports"), Type.Literal("logs"), Type.Literal("specs"), Type.Literal("plans"), Type.Literal("findings"), Type.Literal("todo")])),
+  category: Type.Optional(Type.String()),
+  subcategory: Type.Optional(Type.String()),
+  shortName: Type.Optional(Type.String()),
+  purpose: Type.Optional(Type.String()),
+  content: Type.Optional(Type.String()),
+  title: Type.Optional(Type.String()),
+  description: Type.Optional(Type.String()),
+  priority: Type.Optional(PrioritySchema),
+  acceptanceCriteria: Type.Optional(Type.Array(Type.String())),
+  definitionOfDone: Type.Optional(Type.Array(Type.String())),
+  dependsOn: Type.Optional(Type.Array(Type.String())),
+  tags: Type.Optional(Type.Array(Type.String())),
+  reason: Type.Optional(Type.String()),
+  requiredCapabilities: Type.Optional(Type.Array(Type.String())),
+  owner: Type.Optional(Type.String()),
+  scope: Type.Optional(ScopeSchema),
+  dependencyTodoId: Type.Optional(Type.String()),
+  leaseMs: Type.Optional(Type.Number()),
+  children: Type.Optional(
+    Type.Array(
+      Type.Object({
+        title: Type.String(),
+        description: Type.Optional(Type.String()),
+        acceptanceCriteria: Type.Optional(Type.Array(Type.String())),
+      }),
+    ),
+  ),
+  auto: Type.Optional(Type.Boolean()),
+  apply: Type.Optional(Type.Boolean()),
+  count: Type.Optional(Type.Number()),
+  evidence: Type.Optional(EvidenceSchema),
+  summary: Type.Optional(Type.String()),
+  includeDone: Type.Optional(Type.Boolean()),
+});
