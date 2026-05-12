@@ -1,0 +1,12 @@
+{
+  "mode": "layered",
+  "state": "layered-lite",
+  "publicEntry": "index.ts",
+  "layers": ["app", "pi"],
+  "resources": [],
+  "tests": ["npm test -- test/gentic-demo.test.ts"],
+  "notes": [
+    "Layered-lite catalog: index.ts delegates to src/pi/register.ts.",
+    "Catalog formatting and lookups live in src/app/catalog.ts; template files under templates/ remain owned resources for scaffold workflows, not runtime-discovered Pi resources."
+  ]
+}
