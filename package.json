@@ -18,8 +18,9 @@
     "@earendil-works/pi-coding-agent": "*"
   },
   "scripts": {
-    "check": "npm run check:pi-api",
+    "check": "npm run check:pi-api && (npm run check:anatomy || true)",
     "check:pi-api": "node scripts/check-pi-extension-api.mjs",
+    "check:anatomy": "node scripts/check-extension-anatomy.mjs",
     "test": "node --experimental-strip-types --test test/**/*.test.ts",
     "test:todo": "node --experimental-strip-types --test test/pi-todo*.test.ts",
     "test:swe": "node --experimental-strip-types --test test/pi-swe*.test.ts",
