@@ -91,12 +91,14 @@ Example: load all Gentic extensions, include only review skills and planning/rev
 ## Repository shape
 
 ```txt
-src/         # Shared Gentic source, including Pi contract constants
-extensions/   # Pi extensions plus extension-owned skills/prompts/themes
-skills/       # Package-level Pi skills
-prompts/      # Package-level Pi prompt templates
-themes/       # Package-level Pi themes
-scripts/      # maintenance checks against installed Pi
+src/              # Shared Gentic source, including Pi contract constants
+extensions/       # Pi extensions plus extension-owned skills/prompts/themes
+skills/           # Package-level Pi skills
+prompts/          # Package-level Pi prompt templates
+themes/           # Package-level Pi themes
+scripts/          # maintenance checks against installed Pi
+docs/             # Repository conventions, including model artifacts
+.model-artifacts/ # Generated reports, plans, findings, logs, specs, and todo artifacts
 ```
 
 For first-class resources, discovery is constrained to avoid accidental docs-as-resources: skill and prompt `README.md` files are excluded by the package manifest.
