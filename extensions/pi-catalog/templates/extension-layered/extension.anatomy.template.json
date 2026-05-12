@@ -1,0 +1,10 @@
+{
+  "mode": "layered",
+  "publicEntry": "index.ts",
+  "layers": ["app", "domain", "pi", "ui"],
+  "resources": [],
+  "tests": ["{{verificationCommand}}"],
+  "notes": [
+    "Layered extension: index.ts delegates Pi-facing registration while app/domain/pi/ui keep behavior separated."
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "phrases": [
+    "{{triggerPhrase}}"
+  ],
+  "pathPatterns": [
+    "{{pathPattern}}"
+  ]
+}

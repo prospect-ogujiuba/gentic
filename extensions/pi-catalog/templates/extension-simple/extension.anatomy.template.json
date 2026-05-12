@@ -1,0 +1,10 @@
+{
+  "mode": "simple",
+  "publicEntry": "index.ts",
+  "layers": ["pi"],
+  "resources": [],
+  "tests": ["{{verificationCommand}}"],
+  "notes": [
+    "Simple extension: index.ts owns Pi-facing registration without empty layer folders."
+  ]
+}
