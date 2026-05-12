@@ -8,6 +8,6 @@
 - **Commands/tools it registers:** `gentic_status` model-callable tool; `/gentic` command with `status`, `commands`, `find <term>`, `run <command>`, and `reload`.
 - **Pi events it listens to:** `session_start` records cwd/resource reason and sets the `gentic orchestrator` status; `resources_discover` updates resource-discovery status.
 - **State/config files it reads/writes:** reads the top-level `package.json` for package name, version, and Pi resource declarations; keeps last-session status in memory; writes no suite-owned state files.
-- **Internal module map:** `index.ts` contains package summary helpers, command-owner grouping, status text, the `gentic_status` tool, and the `/gentic` command router.
+- **Internal module map:** `index.ts` registers Pi events/tools/commands; `src/package-summary.ts` reads/formats package resource summaries; `src/command-catalog.ts` groups, finds, and formats extension command catalog entries.
 - **Tests to run:** `npm test -- test/gentic-demo.test.ts` or the full `npm test` suite.
 - **Known boundaries/non-goals:** this extension is an orchestrator/index surface only; feature ownership stays with extensions such as `pi-gate`, `pi-todo`, `pi-swe`, `pi-catalog`, and others.

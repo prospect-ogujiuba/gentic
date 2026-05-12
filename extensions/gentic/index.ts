@@ -1,57 +1,23 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 
-type PackageJson = { name?: string; version?: string; pi?: Record<string, string[]> };
-type CommandInfo = ReturnType<ExtensionAPI["getCommands"]>[number];
+import { commandOwners, extensionCommands, findCommands, formatCommands } from "./src/command-catalog.ts";
+import { packageSummary } from "./src/package-summary.ts";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const STATUS_KEY = "gentic";
 
 let lastSession = { startedAt: 0, cwd: "", resources: "unknown" };
 
-function packageJson(): PackageJson {
-  const path = join(ROOT, "package.json");
-  if (!existsSync(path)) return {};
-  return JSON.parse(readFileSync(path, "utf8")) as PackageJson;
-}
-
-function packageSummary(): string {
-  const pkg = packageJson();
-  const resources = Object.entries(pkg.pi || {})
-    .map(([key, values]) => `${key}: ${values.length}`)
-    .join(" • ");
-  return `${pkg.name || "gentic"}@${pkg.version || "unknown"}\n${resources || "no pi resources declared"}`;
-}
-
-function extensionCommands(pi: ExtensionAPI): CommandInfo[] {
-  return pi.getCommands().filter((command) => command.source === "extension");
-}
-
-function commandGroups(commands: CommandInfo[]): Map<string, CommandInfo[]> {
-  const groups = new Map<string, CommandInfo[]>();
-  for (const command of commands) {
-    const owner = command.sourceInfo?.path?.split("/extensions/")[1]?.split("/")[0]?.replace(/\.ts$/, "") || "extension";
-    groups.set(owner, [...(groups.get(owner) || []), command]);
-  }
-  return groups;
-}
-
-function commandsText(commands: CommandInfo[]): string {
-  const groups = commandGroups(commands);
-  if (groups.size === 0) return "No extension commands registered.";
-  return [...groups]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([owner, items]) => [`${owner}:`, ...items.map((command) => `  /${command.name} - ${command.description || "no description"}`)].join("\n"))
-    .join("\n\n");
+function extensionCommandCatalog(pi: ExtensionAPI) {
+  return extensionCommands(pi.getCommands());
 }
 
 function statusText(pi: ExtensionAPI): string {
-  const commands = extensionCommands(pi);
-  const owners = [...commandGroups(commands).keys()].sort();
+  const commands = extensionCommandCatalog(pi);
+  const owners = commandOwners(commands);
   return [
-    packageSummary(),
+    packageSummary(ROOT),
     "",
     `cwd: ${lastSession.cwd || "unknown"}`,
     `resources: ${lastSession.resources}`,
@@ -81,7 +47,7 @@ export default function gentic(pi: ExtensionAPI): void {
     async execute() {
       return {
         content: [{ type: "text", text: statusText(pi) }],
-        details: { commandCount: extensionCommands(pi).length, session: lastSession },
+        details: { commandCount: extensionCommandCatalog(pi).length, session: lastSession },
       };
     },
   });
@@ -101,16 +67,14 @@ export default function gentic(pi: ExtensionAPI): void {
       }
 
       if (subcommand === "commands") {
-        ctx.ui.notify(commandsText(extensionCommands(pi)), "info");
+        ctx.ui.notify(formatCommands(extensionCommandCatalog(pi)), "info");
         return;
       }
 
       if (subcommand === "find") {
         const term = rest.join(" ").toLowerCase();
-        const matches = extensionCommands(pi).filter((command) =>
-          [command.name, command.description || "", command.sourceInfo?.path || ""].join(" ").toLowerCase().includes(term),
-        );
-        ctx.ui.notify(matches.length ? commandsText(matches) : `No extension command matched: ${term || "<empty>"}`, matches.length ? "info" : "warning");
+        const matches = findCommands(extensionCommandCatalog(pi), term);
+        ctx.ui.notify(matches.length ? formatCommands(matches) : `No extension command matched: ${term || "<empty>"}`, matches.length ? "info" : "warning");
         return;
       }
 
