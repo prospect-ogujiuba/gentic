@@ -11,6 +11,7 @@ const resourceScanners = {
   skills: (dir) => countFiles(dir, (name) => name === "SKILL.md"),
   prompts: (dir) => countFiles(dir, (name) => extname(name) === ".md"),
   themes: (dir) => countFiles(dir, (name) => extname(name) === ".json"),
+  primitives: (dir) => countFiles(dir, (name) => name === "index.ts"),
 };
 
 function safeRead(path) {
@@ -70,15 +71,16 @@ function discoveredResources(dir) {
 
 function parseAnatomyDeclaration(dir) {
   const path = join(dir, "extension.anatomy.json");
-  if (!existsSync(path)) return { present: false, warnings: [] };
+  if (!existsSync(path)) return { present: false, warnings: [], failures: [] };
   try {
     const value = JSON.parse(readFileSync(path, "utf8"));
     const warnings = [];
-    if (!allowedModes.has(value.mode)) warnings.push(`unknown mode ${JSON.stringify(value.mode)}`);
-    if (!Array.isArray(value.layers)) warnings.push("layers is not an array");
+    const failures = [];
+    if (!allowedModes.has(value.mode)) failures.push(`unknown mode ${JSON.stringify(value.mode)}`);
+    if (!Array.isArray(value.layers)) failures.push("layers is not an array");
     else {
       for (const layer of value.layers) {
-        if (!allowedLayers.has(layer)) warnings.push(`unknown layer ${JSON.stringify(layer)}`);
+        if (!allowedLayers.has(layer)) failures.push(`unknown layer ${JSON.stringify(layer)}`);
       }
     }
     return {
@@ -90,6 +92,7 @@ function parseAnatomyDeclaration(dir) {
       state: typeof value.state === "string" ? value.state : "",
       tests: Array.isArray(value.tests) ? value.tests : [],
       warnings,
+      failures,
     };
   } catch (error) {
     return {
@@ -97,7 +100,8 @@ function parseAnatomyDeclaration(dir) {
       layers: [],
       resources: [],
       tests: [],
-      warnings: [`invalid extension.anatomy.json: ${error instanceof Error ? error.message : String(error)}`],
+      warnings: [],
+      failures: [`invalid extension.anatomy.json: ${error instanceof Error ? error.message : String(error)}`],
     };
   }
 }
@@ -135,8 +139,9 @@ function extensionRows() {
 
 try {
   const rows = extensionRows();
-  console.log(`check-extension-anatomy: report-only (${rows.length} extensions)`);
-  console.log("check-extension-anatomy: rules=report-only; gaps are warnings, never failures");
+  console.log(`check-extension-anatomy: gradual-enforcement (${rows.length} extensions)`);
+  console.log("check-extension-anatomy: rules=gaps-report-only; declared-file validation failures exit non-zero");
+  const failures = [];
   for (const row of rows) {
     const declaration = row.declaration;
     const declaredLayers = declaration.layers?.length ? declaration.layers.join(",") : "-";
@@ -148,7 +153,16 @@ try {
     for (const warning of declaration.warnings ?? []) {
       console.log(`  warning ${row.name}: ${warning}`);
     }
+    for (const failure of declaration.failures ?? []) {
+      failures.push(`${row.name}: ${failure}`);
+      console.log(`  failure ${row.name}: ${failure}`);
+    }
+  }
+  if (failures.length) {
+    console.log(`check-extension-anatomy: failed declared-file validation (${failures.length})`);
+    process.exitCode = 1;
   }
 } catch (error) {
-  console.log(`check-extension-anatomy: report-only warning: ${error instanceof Error ? error.message : String(error)}`);
+  console.log(`check-extension-anatomy: failure: ${error instanceof Error ? error.message : String(error)}`);
+  process.exitCode = 1;
 }
