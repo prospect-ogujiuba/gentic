@@ -20,6 +20,8 @@ export type PiSweRuntime = {
   warnings: SwePolicyResult[];
 };
 
+export const SWE_ADVISORY_WIDGET_KEY = "pi-swe-advisories";
+
 export function createRuntime(ctx?: ExtensionContext): PiSweRuntime {
   const loaded = loadEffectiveSweConfig({ cwd: ctx?.cwd });
   return {
@@ -44,12 +46,14 @@ export function loadSessionRuntime(runtime: PiSweRuntime, pi: ExtensionAPI, ctx:
   runtime.state = { ...createSweState({ turnStartedAt: new Date().toISOString() }) };
   refreshPeerContext(runtime);
   runtime.warnings = [];
+  renderAdvisoryWidget(ctx, runtime.warnings);
 }
 
-export function resetTurnRuntime(runtime: PiSweRuntime): void {
+export function resetTurnRuntime(runtime: PiSweRuntime, ctx?: ExtensionContext): void {
   runtime.state = { ...resetTurnState(runtime.state, new Date().toISOString()) };
   refreshPeerContext(runtime);
   runtime.warnings = [];
+  renderAdvisoryWidget(ctx, runtime.warnings);
 }
 
 export function applyFacts(runtime: PiSweRuntime, facts: readonly PiSweFact[]): void {
@@ -63,7 +67,7 @@ export function applyFacts(runtime: PiSweRuntime, facts: readonly PiSweFact[]): 
 export function emitWarnings(ctx: ExtensionContext, runtime: PiSweRuntime, facts: readonly PiSweFact[]): void {
   const result = evaluateSwePolicy({ config: runtime.config, state: policyState(runtime), facts });
   runtime.warnings = dedupeWarnings([...runtime.warnings, ...result.warnings]);
-  for (const warning of result.warnings) ctx.ui.notify(`[pi-swe:${warning.code}] ${warning.message} ${warning.nextAction}`, "warning");
+  renderAdvisoryWidget(ctx, runtime.warnings);
 }
 
 export function refreshPeerContext(runtime: PiSweRuntime): void {
@@ -96,6 +100,24 @@ function todoPlanMarker(todo: SweExternalTodo): string {
 
 export function describeConfigSource(paths: { global: string; project: string }): string {
   return `${paths.project} (project), ${paths.global} (global), defaults`;
+}
+
+export function formatAdvisoryChips(ctx: ExtensionContext, warnings: readonly SwePolicyResult[]): string[] | undefined {
+  if (warnings.length === 0) return undefined;
+
+  const label = chip(ctx, ctx.ui.theme.fg("muted", "pi-swe"));
+  const chips = warnings.map((warning) => chip(ctx, ctx.ui.theme.fg("warning", warning.code)));
+  const hint = ctx.ui.theme.fg("dim", warnings.length === 1 ? warnings[0].nextAction : `${warnings.length} advisories`);
+  return [[label, ...chips, hint].join(" ")];
+}
+
+function renderAdvisoryWidget(ctx: ExtensionContext | undefined, warnings: readonly SwePolicyResult[]): void {
+  if (!ctx || typeof ctx.ui.setWidget !== "function") return;
+  ctx.ui.setWidget(SWE_ADVISORY_WIDGET_KEY, formatAdvisoryChips(ctx, warnings), { placement: "belowEditor" });
+}
+
+function chip(ctx: ExtensionContext, text: string): string {
+  return ctx.ui.theme.bg("customMessageBg", ` ${text} `);
 }
 
 function dedupeWarnings(warnings: SwePolicyResult[]): SwePolicyResult[] {

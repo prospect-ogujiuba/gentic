@@ -8,8 +8,8 @@ export function registerSweEvents(pi: ExtensionAPI, runtime: PiSweRuntime): void
     loadSessionRuntime(runtime, pi, ctx);
   });
 
-  pi.on("turn_start", () => {
-    resetTurnRuntime(runtime);
+  pi.on("turn_start", (_event, ctx) => {
+    resetTurnRuntime(runtime, ctx);
   });
 
   pi.on("tool_call", (event, ctx) => {
