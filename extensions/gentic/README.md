@@ -2,12 +2,22 @@
 
 `gentic` is the suite-orchestrator extension for the Gentic Pi package. It reports package/resource status and routes users to extension-owned commands, but it does not own the feature behavior implemented by sibling extensions.
 
+## Anatomy
+
+- **Mode:** `layered`
+- **State:** `layered-lite`
+- **Public entry:** `index.ts`
+- **Layers:** `app`, `pi`
+- **Machine declaration:** `extension.anatomy.json`
+- **Reference role:** suite-orchestrator layered-lite example; `index.ts` stays a thin adapter.
+- **Mismatch notes:** none known; app helpers are shallow modules and Pi registration lives in `src/pi/register.ts`.
+
 ## Orientation block
 
 - **What it does:** summarizes top-level package resources, tracks the current session/resource discovery status, lists extension command owners, finds commands, and forwards `/gentic run ...` to the requested extension command.
 - **Commands/tools it registers:** `gentic_status` model-callable tool; `/gentic` command with `status`, `commands`, `find <term>`, `run <command>`, and `reload`.
 - **Pi events it listens to:** `session_start` records cwd/resource reason and sets the `gentic orchestrator` status; `resources_discover` updates resource-discovery status.
 - **State/config files it reads/writes:** reads the top-level `package.json` for package name, version, and Pi resource declarations; keeps last-session status in memory; writes no suite-owned state files.
-- **Internal module map:** `index.ts` registers Pi events/tools/commands; `src/package-summary.ts` reads/formats package resource summaries; `src/command-catalog.ts` groups, finds, and formats extension command catalog entries.
+- **Internal module map:** `index.ts` remains the extension entrypoint; `src/pi/register.ts` registers Pi events/tools/commands; `src/package-summary.ts` reads/formats package resource summaries; `src/command-catalog.ts` groups, finds, and formats extension command catalog entries.
 - **Tests to run:** `npm test -- test/gentic-demo.test.ts` or the full `npm test` suite.
 - **Known boundaries/non-goals:** this extension is an orchestrator/index surface only; feature ownership stays with extensions such as `pi-gate`, `pi-todo`, `pi-swe`, `pi-catalog`, and others.

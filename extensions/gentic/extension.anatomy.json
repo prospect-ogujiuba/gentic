@@ -1,0 +1,12 @@
+{
+  "mode": "layered",
+  "state": "layered-lite",
+  "publicEntry": "index.ts",
+  "layers": ["app", "pi"],
+  "resources": [],
+  "tests": ["npm test -- test/gentic-demo.test.ts"],
+  "notes": [
+    "Layered-lite orchestrator: index.ts delegates to src/pi/register.ts.",
+    "App helpers remain shallow: src/package-summary.ts reads/formats package resource summaries and src/command-catalog.ts groups/formats extension command catalog entries."
+  ]
+}
