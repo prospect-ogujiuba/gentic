@@ -2,8 +2,8 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { globalConfigPath, loadConfig, projectConfigPathForCwd, readConfigJson, SCHEMA_URL, type Config } from "./config.ts";
-import { normalizeCommand, type Action } from "./policy.ts";
+import { globalConfigPath, loadConfig, projectConfigPathForCwd, readConfigJson, SCHEMA_URL, type Config } from "../config/index.ts";
+import { normalizeCommand, type Action } from "../domain/policy.ts";
 
 const sessionMemory = new Map<string, Action>();
 

@@ -1,9 +1,9 @@
 import { DynamicBorder, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Container, Key, matchesKey, Spacer, Text, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
-import type { Action, Decision, PermissionChoice, Request } from "../policy.ts";
-import { normalizeCommand } from "../policy.ts";
-import { persistGlobalRule, persistProjectRule, rememberSessionDecision } from "../remember.ts";
+import type { Action, Decision, PermissionChoice, Request } from "../domain/policy.ts";
+import { normalizeCommand } from "../domain/policy.ts";
+import { persistGlobalRule, persistProjectRule, rememberSessionDecision } from "../app/remember.ts";
 
 const MIN_PROMPT_LINES = 12;
 const PROMPT_SCREEN_RATIO = 0.78;

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { mergePermissions, type Action, type Permissions } from "./policy.ts";
+import { mergePermissions, type Action, type Permissions } from "../domain/policy.ts";
 
 export type Config = {
   $schema?: string;
@@ -15,7 +15,7 @@ export type Config = {
 
 export type LoadedConfig = Required<Omit<Config, "$schema">> & Pick<Config, "$schema">;
 
-export const SCHEMA_URL = new URL("../pi-gate.schema.json", import.meta.url).href;
+export const SCHEMA_URL = new URL("../../pi-gate.schema.json", import.meta.url).href;
 
 let config: LoadedConfig = defaultConfig();
 let configPaths: string[] = [];

@@ -1,9 +1,9 @@
 import { isToolCallEventType, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { appendAudit } from "../audit.ts";
-import { getConfig, getConfigPaths, loadConfig, type Config } from "../config.ts";
-import { BUILTIN_PERMISSIONS, decideWithConfig, rulesFromPermissions, type Request } from "../policy.ts";
-import { getSessionDecision } from "../remember.ts";
+import { appendAudit } from "../app/audit.ts";
+import { getConfig, getConfigPaths, loadConfig, type Config } from "../config/index.ts";
+import { BUILTIN_PERMISSIONS, decideWithConfig, rulesFromPermissions, type Request } from "../domain/policy.ts";
+import { getSessionDecision } from "../app/remember.ts";
 import { promptPermission } from "../ui/prompt.ts";
 
 const EXT = "pi-gate";
