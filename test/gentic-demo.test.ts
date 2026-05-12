@@ -190,7 +190,7 @@ test("demo activates every Gentic extension and exercises shared runtime paths",
   await harness.activate("pi-swe", piSwe as never);
   await harness.activate("pi-todo", piTodo as never);
 
-  for (const command of ["gentic", "catalog", "surfaces", "surface", "events", "clear", "gate", "pi-git", "pi-hud", "swe", "todo"]) {
+  for (const command of ["gentic", "catalog", "surfaces", "surface", "events", "clear", "scaffold", "gate", "pi-git", "pi-hud", "swe", "todo"]) {
     assert.equal(harness.commands.has(command), true, `missing /${command}`);
   }
 
