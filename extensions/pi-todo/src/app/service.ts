@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { normalizePriority, normalizeStatus, isTerminalStatus } from "../domain/lifecycle.ts";
 import { ineligibleReasons, missingCapabilities, openDependencyIds, type EligibilityOptions } from "../domain/policy.ts";
 import { reduceTodoState } from "../domain/reducer.ts";
-import { assessSplitPolicy, defaultSplitPolicy, shouldBlockForSplit } from "../domain/splitting.ts";
+import { assessSplitPolicy, defaultSplitPolicy, shouldBlockForSplit, splitTitleSimilarityProblems } from "../domain/splitting.ts";
 import { nextTodo } from "./query.ts";
 import { emptyScope, type EvidenceRef, type SplitCheckResult, type Todo, type TodoClaim, type TodoEvent, type TodoPolicy, type TodoPriority, type TodoScope, type TodoState, type TodoStatus } from "../domain/types.ts";
 
@@ -136,6 +136,8 @@ export class TodoService {
   async split(todoId: string, children: CreateTodoInput[], reason: string): Promise<Todo[]> {
     if (!reason.trim()) throw new Error("split reason is required");
     const parent = await this.get(todoId);
+    const problems = splitTitleSimilarityProblems(parent.title, children.map((child) => child.title));
+    if (problems.length > 0) throw new Error(`split child titles must be distinct; ${problems.join("; ")}; make each child title/scope more specific`);
     const at = now();
     const created = children.map((child) => createTodoRecord(child, at, parent));
     await this.append({ id: id("evt"), type: "todo.split", at, todoId, children: created, reason });

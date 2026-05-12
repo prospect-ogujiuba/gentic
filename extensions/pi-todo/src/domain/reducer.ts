@@ -12,6 +12,9 @@ function updateTodo(todo: Todo, patch: Partial<Todo>, at: string): Todo {
 function releaseClaim(claim: TodoClaim, at: string, reason?: string): TodoClaim {
   return { ...claim, status: "released", releasedAt: at, releaseReason: reason };
 }
+function releaseActiveClaim(claims: Record<string, TodoClaim>, todo: Todo, at: string, reason: string): void {
+  if (todo.activeClaimId && claims[todo.activeClaimId]) claims[todo.activeClaimId] = releaseClaim(claims[todo.activeClaimId], at, reason);
+}
 
 export function applyTodoEvent(state: TodoState, event: TodoEvent): TodoState {
   const todos = { ...state.todos };
@@ -40,18 +43,18 @@ export function applyTodoEvent(state: TodoState, event: TodoEvent): TodoState {
     }
     if (event.type === "todo.claimed") { claims[event.claim.id] = event.claim; todos[event.todoId] = updateTodo(todo, { status: "claimed", activeClaimId: event.claim.id, leaseExpiresAt: event.claim.leaseExpiresAt, owner: event.claim.owner ?? todo.owner }, event.at); }
     if (event.type === "todo.lease_renewed") { const claim = claims[event.claimId]; if (claim) claims[event.claimId] = { ...claim, lastHeartbeatAt: event.at, leaseExpiresAt: event.leaseExpiresAt }; todos[event.todoId] = updateTodo(todo, { leaseExpiresAt: event.leaseExpiresAt }, event.at); }
-    if (event.type === "todo.released") { const claimId = event.claimId || todo.activeClaimId; if (claimId && claims[claimId]) claims[claimId] = releaseClaim(claims[claimId], event.at, event.reason); todos[event.todoId] = updateTodo(todo, { status: "ready", activeClaimId: null, leaseExpiresAt: null }, event.at); }
-    if (event.type === "todo.claim_expired") { if (claims[event.claimId]) claims[event.claimId] = releaseClaim(claims[event.claimId], event.at, event.reason ?? "lease_expired"); if (todo.activeClaimId === event.claimId) todos[event.todoId] = updateTodo(todo, { status: "ready", activeClaimId: null, leaseExpiresAt: null }, event.at); }
+    if (event.type === "todo.released") { const claimId = event.claimId || todo.activeClaimId; if (claimId && claims[claimId]) claims[claimId] = releaseClaim(claims[claimId], event.at, event.reason); if (!isTerminalStatus(todo.status)) todos[event.todoId] = updateTodo(todo, { status: "ready", activeClaimId: null, leaseExpiresAt: null }, event.at); }
+    if (event.type === "todo.claim_expired") { if (claims[event.claimId]) claims[event.claimId] = releaseClaim(claims[event.claimId], event.at, event.reason ?? "lease_expired"); if (todo.activeClaimId === event.claimId && !isTerminalStatus(todo.status)) todos[event.todoId] = updateTodo(todo, { status: "ready", activeClaimId: null, leaseExpiresAt: null }, event.at); }
     if (event.type === "todo.started") todos[event.todoId] = updateTodo(todo, { status: "in_progress", startedAt: event.at, blockedReason: undefined }, event.at);
     if (event.type === "todo.blocked") todos[event.todoId] = updateTodo(todo, { status: "blocked", blockedReason: event.reason, blockers: unique([...todo.blockers, event.reason]) }, event.at);
     if (event.type === "todo.unblocked") todos[event.todoId] = updateTodo(todo, { status: "ready", blockedReason: undefined, blockers: [] }, event.at);
     if (event.type === "todo.evidence_attached") todos[event.todoId] = updateTodo(todo, { evidence: [...todo.evidence, ...event.evidence] }, event.at);
-    if (event.type === "todo.completed") todos[event.todoId] = updateTodo(todo, { status: "completed", completedAt: event.at, evidence: [...todo.evidence, ...event.evidence], notes: event.summary ? [...todo.notes, event.summary] : todo.notes }, event.at);
-    if (event.type === "todo.failed") todos[event.todoId] = updateTodo(todo, { status: "failed", completedAt: event.at, evidence: [...todo.evidence, ...(event.evidence ?? [])], notes: event.reason ? [...todo.notes, event.reason] : todo.notes }, event.at);
-    if (event.type === "todo.verified") todos[event.todoId] = updateTodo(todo, { status: "verified", evidence: [...todo.evidence, ...(event.evidence ?? [])], notes: event.summary ? [...todo.notes, event.summary] : todo.notes }, event.at);
+    if (event.type === "todo.completed") { releaseActiveClaim(claims, todo, event.at, "completed"); todos[event.todoId] = updateTodo(todo, { status: "completed", completedAt: event.at, activeClaimId: null, leaseExpiresAt: null, evidence: [...todo.evidence, ...event.evidence], notes: event.summary ? [...todo.notes, event.summary] : todo.notes }, event.at); }
+    if (event.type === "todo.failed") { releaseActiveClaim(claims, todo, event.at, "failed"); todos[event.todoId] = updateTodo(todo, { status: "failed", completedAt: event.at, activeClaimId: null, leaseExpiresAt: null, evidence: [...todo.evidence, ...(event.evidence ?? [])], notes: event.reason ? [...todo.notes, event.reason] : todo.notes }, event.at); }
+    if (event.type === "todo.verified") { releaseActiveClaim(claims, todo, event.at, "verified"); todos[event.todoId] = updateTodo(todo, { status: "verified", activeClaimId: null, leaseExpiresAt: null, evidence: [...todo.evidence, ...(event.evidence ?? [])], notes: event.summary ? [...todo.notes, event.summary] : todo.notes }, event.at); }
     if (event.type === "todo.reopened") todos[event.todoId] = updateTodo(todo, { status: normalizeStatus(event.targetStatus ?? "ready"), completedAt: undefined, notes: event.reason ? [...todo.notes, `reopened: ${event.reason}`] : todo.notes }, event.at);
-    if (event.type === "todo.cancelled") todos[event.todoId] = updateTodo(todo, { status: "cancelled", notes: event.reason ? [...todo.notes, event.reason] : todo.notes }, event.at);
-    if (event.type === "todo.abandoned") todos[event.todoId] = updateTodo(todo, { status: "abandoned", notes: event.reason ? [...todo.notes, event.reason] : todo.notes }, event.at);
+    if (event.type === "todo.cancelled") { releaseActiveClaim(claims, todo, event.at, "cancelled"); todos[event.todoId] = updateTodo(todo, { status: "cancelled", activeClaimId: null, leaseExpiresAt: null, notes: event.reason ? [...todo.notes, event.reason] : todo.notes }, event.at); }
+    if (event.type === "todo.abandoned") { releaseActiveClaim(claims, todo, event.at, "abandoned"); todos[event.todoId] = updateTodo(todo, { status: "abandoned", activeClaimId: null, leaseExpiresAt: null, notes: event.reason ? [...todo.notes, event.reason] : todo.notes }, event.at); }
     if (event.type === "todo.note_added") todos[event.todoId] = updateTodo(todo, { notes: [...todo.notes, event.note] }, event.at);
   }
   return { todos, order, claims, events: [...state.events, event], lastEventId: event.id };

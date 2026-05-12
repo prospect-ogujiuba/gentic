@@ -20,9 +20,46 @@ const DISCOVERY = /\b(investigate|discover|research|design|plan|decide|explore)\
 const IMPLEMENTATION = /\b(implement|build|add|change|wire|persist|validate|enforce)\b/i;
 const VALIDATION = /\b(test|verify|validate|check|lint|compile|review)\b/i;
 const AREA_WORDS = /\b(cli|ui|api|service|domain|model|schema|persistence|store|renderer|tests?|docs?|frontend|backend|lifecycle|validation|policy|command)\b/gi;
+const TITLE_STOP_WORDS = new Set(["a", "an", "and", "as", "for", "in", "into", "of", "on", "the", "to", "with", "add", "build", "change", "define", "enforce", "expose", "fix", "implement", "improve", "make", "migrate", "refactor", "redesign", "rewrite", "ship", "task", "tasks", "todo", "todos", "work", "changes", "support"]);
 
 function unique(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))];
+}
+
+function titleToken(value: string): string {
+  const token = value.toLowerCase();
+  if (token === "splitting") return "split";
+  if (token.endsWith("ies") && token.length > 4) return `${token.slice(0, -3)}y`;
+  if (token.endsWith("s") && token.length > 4) return token.slice(0, -1);
+  return token;
+}
+
+export function normalizedSplitTitleTokens(title: string): string[] {
+  return unique(title.toLowerCase().replace(/pi-todo/g, "pitodo").split(/[^a-z0-9]+/).map(titleToken).filter((token) => token.length > 1 && !TITLE_STOP_WORDS.has(token)));
+}
+
+export function splitTitlesAreTooSimilar(left: string, right: string): boolean {
+  const leftTokens = normalizedSplitTitleTokens(left);
+  const rightTokens = normalizedSplitTitleTokens(right);
+  if (left.trim().toLowerCase() === right.trim().toLowerCase()) return true;
+  if (leftTokens.length === 0 || rightTokens.length === 0) return false;
+  const leftSet = new Set(leftTokens);
+  const rightSet = new Set(rightTokens);
+  const overlap = leftTokens.filter((token) => rightSet.has(token)).length;
+  const smaller = Math.min(leftSet.size, rightSet.size);
+  const larger = Math.max(leftSet.size, rightSet.size);
+  return overlap >= 2 && (overlap / smaller >= 0.8 || overlap / larger >= 0.7);
+}
+
+export function splitTitleSimilarityProblems(parentTitle: string, childTitles: string[]): string[] {
+  const problems: string[] = [];
+  childTitles.forEach((title, index) => {
+    if (splitTitlesAreTooSimilar(parentTitle, title)) problems.push(`child title is too similar to parent: ${title}`);
+    for (let prior = 0; prior < index; prior += 1) {
+      if (splitTitlesAreTooSimilar(childTitles[prior], title)) problems.push(`child titles are too similar: ${childTitles[prior]} / ${title}`);
+    }
+  });
+  return problems;
 }
 
 function textFor(todo: Todo): string {
@@ -37,20 +74,15 @@ function touchedAreas(todo: Todo, text: string): string[] {
   return unique([...fromText, ...fromScope]);
 }
 
-function objectName(title: string): string {
-  return title.replace(/^\s*(implement|refactor|redesign|migrate|integrate|overhaul|rewrite|build|ship|add|update|fix|improve)\s+/i, "").trim() || title.trim() || "task";
-}
-
 function childSuggestions(todo: Todo, count: number): { title: string; acceptanceCriteria?: string[] }[] {
-  const object = objectName(todo.title);
   const candidates = [
-    { title: `Define ${object} split contract`, acceptanceCriteria: ["The child has clear acceptance criteria and validation path"] },
-    { title: `Add ${object} task metadata support`, acceptanceCriteria: ["The task model can represent the required metadata"] },
-    { title: `Implement ${object} lifecycle behavior`, acceptanceCriteria: ["The lifecycle enforces the child task's done condition"] },
-    { title: `Expose ${object} command behavior`, acceptanceCriteria: ["Users can invoke and inspect the behavior through the todo tool"] },
-    { title: `Verify ${object} cases`, acceptanceCriteria: ["Atomic, split-required, too-vague, and epic paths are covered"] },
-    { title: `Document ${object} rollout notes`, acceptanceCriteria: ["Reviewers can understand the split rationale and next action"] },
-  ];
+    { title: "Define split contract", acceptanceCriteria: ["The child has clear acceptance criteria and validation path"] },
+    { title: "Add data model fields", acceptanceCriteria: ["The task model can represent the required metadata"] },
+    { title: "Enforce lifecycle guard", acceptanceCriteria: ["The lifecycle enforces the child task's done condition"] },
+    { title: "Expose command path", acceptanceCriteria: ["Users can invoke and inspect the behavior through the todo tool"] },
+    { title: "Verify regression cases", acceptanceCriteria: ["Atomic, split-required, too-vague, and epic paths are covered"] },
+    { title: "Document rollout notes", acceptanceCriteria: ["Reviewers can understand the split rationale and next action"] },
+  ].filter((candidate) => !splitTitlesAreTooSimilar(todo.title, candidate.title));
   return candidates.slice(0, Math.max(1, Math.min(count, candidates.length)));
 }
 
