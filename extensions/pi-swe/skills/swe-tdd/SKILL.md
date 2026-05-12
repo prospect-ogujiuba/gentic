@@ -22,6 +22,26 @@ Compact references:
 5. **Refactor** — only after green, improve names, duplication, seams, or structure while preserving behavior and keeping tests green.
 6. **Verification** — run the focused test, nearby tests for touched code, and broader checks when integration risk justifies them.
 
+## Optional TDD cycle artifact
+
+For multi-cycle work, flaky/debug-heavy behavior, or changes where Red/Green/Refactor evidence must survive handoff, write a short artifact under:
+
+`.model-artifacts/tdd/<topic>/YYYY-MM-DD_HHMM-tdd-cycle.md`
+
+Use one artifact entry per observable behavior. Keep it as a behavior ledger, not broad design notes. Each behavior entry should include:
+
+- Behavior: the exact observable behavior under test.
+- Test level: unit, integration, end-to-end, or characterization.
+- Red evidence: failing test name, command, and failure summary before production changes.
+- Green evidence: production change summary and passing focused command.
+- Refactor evidence: refactor performed after green, or “none”, plus passing command.
+- Verification: focused and risk-scaled nearby/broader checks.
+- Follow-up: only unresolved behavior-specific risks or next-cycle handoff.
+
+Do not create a TDD artifact for trivial one-step work where the chat/todo handoff is enough.
+Do not use the artifact as a generic plan, architecture note, or parking lot for unrelated design ideas.
+When a todo is active, record the TDD cycle artifact in the todo ledger.
+
 ## Report format
 
 Return these headings separately:
@@ -33,10 +53,18 @@ Return these headings separately:
 - Refactor
 - Verification
 
+When a TDD cycle artifact is created, also report:
+
+- Artifact
+
+Report artifact paths only; do not print generated artifacts in full.
+
 ## Success criteria
 
 - One behavior is proven before production changes.
+- Multi-cycle artifacts separate Red, Green, and Refactor evidence per behavior.
 - Red, Green, Refactor, and Verification are distinct steps.
 - Refactoring happens only after a green test.
 - Verification scope matches risk.
+- Optional artifacts remain behavior ledgers, not broad design notes.
 - No model-callable TDD tool or legacy command namespace is introduced.

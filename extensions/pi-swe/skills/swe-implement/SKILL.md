@@ -38,7 +38,8 @@ Keep the note short and include at least:
 - Follow-up slice: what should go back to `/swe-plan`, a phase file update, or a new todo.
 - Affected paths: files, commands, or areas touched or expected to change.
 
-When a todo is active, also record the drift note or follow-up decision in the todo ledger when it materially changes handoff state.
+When a todo is active, also record the created artifact, drift note, or follow-up decision in the todo ledger when it materially changes handoff state.
+After writing an artifact, keep chat output concise and path-oriented: artifact path, decision taken, follow-up slice, and affected paths.
 
 ## Handoff language
 

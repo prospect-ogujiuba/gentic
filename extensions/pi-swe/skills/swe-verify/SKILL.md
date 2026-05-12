@@ -24,7 +24,7 @@ When an artifact is warranted, write it under:
 
 `.model-artifacts/verification/<topic>/YYYY-MM-DD_HHMM-verification.md`
 
-Use a topic that matches the feature, extension, or slice being verified. Reference the artifact path in review/finalize handoff notes so later flows can inspect the durable evidence instead of relying on chat history.
+Use a topic that matches the feature, extension, or slice being verified. Reference the artifact path in review/finalize handoff notes so later flows can inspect the durable evidence instead of relying on chat history. When a todo is active, record the verification artifact in the todo ledger.
 
 Include these sections or equivalent fields:
 
