@@ -1,0 +1,10 @@
+{
+  "mode": "simple",
+  "publicEntry": "index.ts",
+  "layers": ["pi", "resources"],
+  "resources": ["primitives"],
+  "tests": ["npm run test:primitives"],
+  "notes": [
+    "Simple primitive hub: index.ts is the lightweight runtime host that loads primitive directories from primitives/ without adding src layer folders."
+  ]
+}

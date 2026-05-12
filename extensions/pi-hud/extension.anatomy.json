@@ -1,0 +1,12 @@
+{
+  "mode": "layered",
+  "state": "transitional",
+  "publicEntry": "index.ts",
+  "layers": ["pi", "app", "ui"],
+  "resources": [],
+  "tests": ["npm run check"],
+  "notes": [
+    "Transitional layered state: index.ts is already a thin adapter that delegates to adapter.ts.",
+    "Layer roles are truthful but not yet folderized: adapter.ts wires Pi commands/events, state.ts/snapshot.ts/git.ts hold app/data responsibilities, and components/ plus surfaces/ hold UI rendering."
+  ]
+}

@@ -4,6 +4,16 @@ Visiplane-style HUD for Gentic, implemented as a clean Pi extension.
 
 It copies the Visiplane component design: multi-line responsive footer, context bar, model/thinking display, git/worktree status, tool badges/summary, recent harness events, work timer, and a framed overlay modal.
 
+## Anatomy
+
+- **Mode:** `layered`
+- **State:** `transitional`
+- **Public entry:** `index.ts`
+- **Layers:** `pi`, `app`, `ui`
+- **Machine declaration:** `extension.anatomy.json`
+- **Reference role:** targeted behavior-preserving declaration; `index.ts` is already a thin adapter.
+- **Mismatch notes:** layer roles are not yet folderized. `adapter.ts` wires Pi commands/events, `state.ts`/`snapshot.ts`/`git.ts` hold app/data responsibilities, and `components/` plus `surfaces/` hold UI rendering.
+
 ## Commands
 
 - `/pi-hud` / `/pi-hud open` / `/pi-hud modal` — open the HUD modal

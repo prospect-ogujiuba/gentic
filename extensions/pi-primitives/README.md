@@ -6,6 +6,16 @@ Primitives are self-contained runtime modules under `primitives/`. Each primitiv
 
 Use primitives for small, reusable Pi runtime building blocks that should apply across prompts and skills but do not need dedicated top-level extensions.
 
+## Anatomy
+
+- **Mode:** `simple`
+- **Public entry:** `index.ts`
+- **Layers:** `pi`, `resources`
+- **Resources:** `primitives/`
+- **Machine declaration:** `extension.anatomy.json`
+- **Reference role:** simple hub example; no `src/*` layer folders are needed while primitive loading stays shallow.
+- **Mismatch notes:** none; `index.ts` hosts the lightweight runtime loader and primitive resources live in `primitives/`.
+
 ## Add a primitive
 
 1. Create `primitives/<name>/index.ts`.
