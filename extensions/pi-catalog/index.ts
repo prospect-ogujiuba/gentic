@@ -2,8 +2,10 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 import {
+  PI_CONTRACT_SCHEMA_VERSION_DETAIL_KEY,
   PI_EXTENSION_EVENT_GROUPS,
   PI_EXTENSION_EVENTS,
+  PI_PACKAGE_MANIFEST_KEY,
   PI_PACKAGE_SURFACES,
   SCHEMA_VERSION,
   type PiPackageSurfaceDefinition,
@@ -21,6 +23,7 @@ function surfaceText(surface: PiPackageSurfaceDefinition): string {
     "",
     `Runtime directory: ${surface.directory ?? "package manifest"}`,
     `Pi discovery: ${surface.discovery}`,
+    ...(surface.manifestKey ? [`Manifest field: package.json#${PI_PACKAGE_MANIFEST_KEY}.${surface.manifestKey}`] : []),
     "",
     "This is a first-class Gentic surface because Pi discovers it directly from package metadata.",
   ].join("\n");
@@ -69,7 +72,7 @@ export default function piCatalog(pi: ExtensionAPI): void {
             text: surfacesListText(),
           },
         ],
-        details: { schemaVersion: SCHEMA_VERSION, count: PI_PACKAGE_SURFACES.length },
+        details: { [PI_CONTRACT_SCHEMA_VERSION_DETAIL_KEY]: SCHEMA_VERSION, count: PI_PACKAGE_SURFACES.length },
       };
     },
   });
@@ -88,7 +91,7 @@ export default function piCatalog(pi: ExtensionAPI): void {
             text: eventsListText(),
           },
         ],
-        details: { schemaVersion: SCHEMA_VERSION, count: PI_EXTENSION_EVENTS.length },
+        details: { [PI_CONTRACT_SCHEMA_VERSION_DETAIL_KEY]: SCHEMA_VERSION, count: PI_EXTENSION_EVENTS.length },
       };
     },
   });
@@ -103,7 +106,7 @@ export default function piCatalog(pi: ExtensionAPI): void {
       async execute() {
         return {
           content: [{ type: "text", text: surfaceText(surface) }],
-          details: { schemaVersion: SCHEMA_VERSION, surface },
+          details: { [PI_CONTRACT_SCHEMA_VERSION_DETAIL_KEY]: SCHEMA_VERSION, surface },
         };
       },
     });
