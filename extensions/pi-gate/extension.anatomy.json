@@ -1,0 +1,12 @@
+{
+  "mode": "layered",
+  "state": "transitional",
+  "publicEntry": "index.ts",
+  "layers": ["config", "domain", "app", "pi", "ui"],
+  "resources": ["schemas"],
+  "tests": ["npm run test:gate"],
+  "notes": [
+    "Layered-lite transitional state: index.ts delegates to src/pi/register.ts and re-exports test seams.",
+    "Current domain/app/config modules are descriptive roles, not all folder names yet: src/policy.ts, src/remember.ts, src/audit.ts, and src/config.ts remain at src root until a later refactor phase."
+  ]
+}

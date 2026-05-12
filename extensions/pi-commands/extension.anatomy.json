@@ -1,0 +1,10 @@
+{
+  "mode": "simple",
+  "publicEntry": "index.ts",
+  "layers": ["pi", "resources"],
+  "resources": ["commands"],
+  "tests": ["npm run check"],
+  "notes": [
+    "Simple command hub: index.ts registers command modules from commands/ without adding src layer folders."
+  ]
+}

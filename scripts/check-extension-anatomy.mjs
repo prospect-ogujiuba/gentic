@@ -4,7 +4,10 @@ import { extname, join, resolve } from "node:path";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
 const extensionsRoot = join(root, "extensions");
+const allowedModes = new Set(["simple", "layered"]);
+const allowedLayers = new Set(["domain", "app", "pi", "ui", "config", "resources", "docs"]);
 const resourceScanners = {
+  commands: (dir) => countFiles(dir, (name) => extname(name) === ".ts" && name !== "index.ts"),
   skills: (dir) => countFiles(dir, (name) => name === "SKILL.md"),
   prompts: (dir) => countFiles(dir, (name) => extname(name) === ".md"),
   themes: (dir) => countFiles(dir, (name) => extname(name) === ".json"),
@@ -65,15 +68,45 @@ function discoveredResources(dir) {
   return resources.join(",");
 }
 
-function hasDeclaration(indexText) {
-  return /export\s+default\s+(async\s+)?function\s+\w+\s*\(\s*\w+\s*:\s*ExtensionAPI/.test(indexText);
+function parseAnatomyDeclaration(dir) {
+  const path = join(dir, "extension.anatomy.json");
+  if (!existsSync(path)) return { present: false, warnings: [] };
+  try {
+    const value = JSON.parse(readFileSync(path, "utf8"));
+    const warnings = [];
+    if (!allowedModes.has(value.mode)) warnings.push(`unknown mode ${JSON.stringify(value.mode)}`);
+    if (!Array.isArray(value.layers)) warnings.push("layers is not an array");
+    else {
+      for (const layer of value.layers) {
+        if (!allowedLayers.has(layer)) warnings.push(`unknown layer ${JSON.stringify(layer)}`);
+      }
+    }
+    return {
+      present: true,
+      mode: value.mode,
+      publicEntry: value.publicEntry,
+      layers: Array.isArray(value.layers) ? value.layers : [],
+      resources: Array.isArray(value.resources) ? value.resources : [],
+      state: typeof value.state === "string" ? value.state : "",
+      tests: Array.isArray(value.tests) ? value.tests : [],
+      warnings,
+    };
+  } catch (error) {
+    return {
+      present: true,
+      layers: [],
+      resources: [],
+      tests: [],
+      warnings: [`invalid extension.anatomy.json: ${error instanceof Error ? error.message : String(error)}`],
+    };
+  }
 }
 
 function classifyMode(extensionText, resources) {
   if (/\bpi\.(registerTool|registerCommand|on|registerWidget|sendUserMessage)\b|\bctx\.ui\.setStatus\b/.test(extensionText)) return "runtime";
   if (/\bregisterPi[A-Z]\w*\s*\(/.test(extensionText)) return "runtime-delegated";
-  if (/\bskills:\d+\b|\bprompts:\d+\b|\bthemes:\d+\b/.test(resources)) return "resource-hub";
-  return "declared";
+  if (/\bcommands:\d+\b|\bskills:\d+\b|\bprompts:\d+\b|\bthemes:\d+\b/.test(resources)) return "resource-hub";
+  return "undeclared";
 }
 
 function extensionRows() {
@@ -86,11 +119,12 @@ function extensionRows() {
       const indexText = safeRead(indexPath);
       const allText = `${indexText}\n${collectSourceText(join(dir, "src"))}`;
       const resources = discoveredResources(dir);
+      const declaration = parseAnatomyDeclaration(dir);
       return {
         name: entry.name,
         readme: existsSync(join(dir, "README.md")) ? "yes" : "no",
-        declaration: hasDeclaration(indexText) ? "yes" : "no",
-        mode: classifyMode(allText, resources),
+        declaration,
+        mode: declaration.mode ?? classifyMode(allText, resources),
         indexLines: countLines(indexText),
         src: srcLayers(dir),
         resources,
@@ -104,9 +138,16 @@ try {
   console.log(`check-extension-anatomy: report-only (${rows.length} extensions)`);
   console.log("check-extension-anatomy: rules=report-only; gaps are warnings, never failures");
   for (const row of rows) {
+    const declaration = row.declaration;
+    const declaredLayers = declaration.layers?.length ? declaration.layers.join(",") : "-";
+    const declaredResources = declaration.resources?.length ? declaration.resources.join(",") : "-";
+    const state = declaration.state ? ` state=${declaration.state}` : "";
     console.log(
-      `${row.name.padEnd(13)} readme=${row.readme.padEnd(3)} decl=${row.declaration.padEnd(3)} mode=${row.mode.padEnd(17)} index=${String(row.indexLines).padStart(3)} src=${row.src} resources=${row.resources}`,
+      `${row.name.padEnd(13)} readme=${row.readme.padEnd(3)} decl=${(declaration.present ? "yes" : "no").padEnd(3)} mode=${String(row.mode).padEnd(8)} layers=${declaredLayers.padEnd(24)} resources=${declaredResources.padEnd(10)} index=${String(row.indexLines).padStart(3)} src=${row.src} found=${row.resources}${state}`,
     );
+    for (const warning of declaration.warnings ?? []) {
+      console.log(`  warning ${row.name}: ${warning}`);
+    }
   }
 } catch (error) {
   console.log(`check-extension-anatomy: report-only warning: ${error instanceof Error ? error.message : String(error)}`);

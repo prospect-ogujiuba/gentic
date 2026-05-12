@@ -2,6 +2,15 @@
 
 `pi-todo` is the Gentic todo-ledger extension. It provides a durable event-sourced task workflow, a TUI dashboard/widget, and enforcement that asks agents to claim or start a todo before using other tools.
 
+## Anatomy
+
+- **Mode:** `layered`
+- **Public entry:** `index.ts`
+- **Layers:** `src/app`, `src/domain`, `src/pi`, `src/ui`
+- **Machine declaration:** `extension.anatomy.json`
+- **Reference role:** canonical layered example for stateful/runtime-heavy Gentic extensions.
+- **Mismatch notes:** none; current folders match the declared layered shape.
+
 ## Orientation block
 
 - **What it does:** manages todo creation, lifecycle transitions, splitting policy, dependency/claim readiness, evidence, generated artifacts, dashboard rendering, and todo-first enforcement.

@@ -2,6 +2,16 @@
 
 `pi-gate` is a Pi extension that gates bash execution with allow/ask/deny command-pattern rules. It protects both agent-initiated bash tool calls and user-triggered bash commands, records audit events when enabled, and can persist remembered decisions to project or global config.
 
+## Anatomy
+
+- **Mode:** `layered`
+- **State:** `transitional`
+- **Public entry:** `index.ts`
+- **Layers:** `config`, `domain`, `app`, `pi`, `ui`
+- **Machine declaration:** `extension.anatomy.json`
+- **Reference role:** layered-lite/current transitional example.
+- **Mismatch notes:** `src/pi/` and `src/ui/` are already folder layers; `config`, policy/domain, remember/app, and audit/app roles still live as `src/*.ts` modules until a later refactor phase.
+
 ## Orientation block
 
 - **What it does:** evaluates normalized shell command text against configured and built-in permission patterns, optionally prompts through the TUI, then allows or blocks execution.
