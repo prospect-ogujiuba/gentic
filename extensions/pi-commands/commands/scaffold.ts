@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { relative } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -7,11 +7,13 @@ import type { PiCommandModule } from "../types.ts";
 
 type ScaffoldKind = "extension" | "command" | "skill" | "prompt" | "primitive";
 type ScaffoldVariant = "simple" | "layered" | "directory";
+type ScaffoldMode = "dry-run" | "apply";
 
 type TemplateSpec = {
   template: string;
   target: string;
   description: string;
+  operation?: "create" | "update-command-index";
 };
 
 export type ScaffoldPreviewFile = TemplateSpec & {
@@ -22,25 +24,32 @@ export type ScaffoldPreviewFile = TemplateSpec & {
 export type ScaffoldPreview = {
   kind: ScaffoldKind;
   name: string;
+  mode: ScaffoldMode;
   variant?: ScaffoldVariant;
   files: ScaffoldPreviewFile[];
 };
 
+export type ScaffoldApplyResult = ScaffoldPreview & {
+  createdPaths: string[];
+  updatedPaths: string[];
+};
+
 type ParseResult =
-  | { ok: true; kind: ScaffoldKind; name: string; variant?: ScaffoldVariant }
+  | { ok: true; kind: ScaffoldKind; name: string; mode: ScaffoldMode; variant?: ScaffoldVariant }
   | { ok: false; message: string };
 
+const projectRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const templateRoot = fileURLToPath(new URL("../../pi-catalog/templates/", import.meta.url));
 const validKinds = ["extension", "command", "skill", "prompt", "primitive"] as const;
 const usage = [
   "Usage:",
-  "  /scaffold extension <name> --simple --dry-run",
-  "  /scaffold extension <name> --layered --dry-run",
-  "  /scaffold command <name> --dry-run",
-  "  /scaffold skill <name> --simple --dry-run",
-  "  /scaffold skill <name> --directory --dry-run",
-  "  /scaffold prompt <name> --dry-run",
-  "  /scaffold primitive <name> --dry-run",
+  "  /scaffold extension <name> --simple [--dry-run|--apply]",
+  "  /scaffold extension <name> --layered [--dry-run|--apply]",
+  "  /scaffold command <name> [--dry-run|--apply]",
+  "  /scaffold skill <name> --simple [--dry-run|--apply]",
+  "  /scaffold skill <name> --directory [--dry-run|--apply]",
+  "  /scaffold prompt <name> [--dry-run|--apply]",
+  "  /scaffold primitive <name> [--dry-run|--apply]",
 ].join("\n");
 
 function toCamelName(name: string): string {
@@ -78,23 +87,22 @@ function parseScaffoldArgs(args: string): ParseResult {
   const tokens = args.trim().split(/\s+/).filter(Boolean);
   const [kindToken, name, ...flags] = tokens;
 
-  if (!kindToken) return { ok: false, message: `${usage}\n\nAdd --dry-run; write mode is not available yet.` };
+  if (!kindToken) return { ok: false, message: `${usage}\n\nAdd --apply to write files; without --apply scaffolds stay in safe preview mode.` };
   if (!validKinds.includes(kindToken as ScaffoldKind)) {
     return { ok: false, message: `Unknown scaffold kind: ${kindToken}.\n\n${usage}` };
   }
 
   const nameError = validateName(name);
   if (nameError) return { ok: false, message: `${nameError}\n\n${usage}` };
-  if (!flags.includes("--dry-run")) {
-    return { ok: false, message: "Only dry-run scaffolds are supported in this phase. Add --dry-run; no files will be written." };
-  }
-
+  const modeFlags = flags.filter((flag) => ["--dry-run", "--apply"].includes(flag));
   const variantFlags = flags.filter((flag) => ["--simple", "--layered", "--directory"].includes(flag));
-  const unknownFlags = flags.filter((flag) => !["--dry-run", "--simple", "--layered", "--directory"].includes(flag));
+  const unknownFlags = flags.filter((flag) => !["--dry-run", "--apply", "--simple", "--layered", "--directory"].includes(flag));
   if (unknownFlags.length > 0) return { ok: false, message: `Unknown scaffold flag(s): ${unknownFlags.join(", ")}.\n\n${usage}` };
+  if (modeFlags.length > 1) return { ok: false, message: "Choose one scaffold mode: --dry-run or --apply." };
   if (variantFlags.length > 1) return { ok: false, message: `Choose one scaffold variant: ${variantFlags.join(", ")}.` };
 
   const kind = kindToken as ScaffoldKind;
+  const mode: ScaffoldMode = modeFlags[0] === "--apply" ? "apply" : "dry-run";
   const variant = variantFlags[0]?.slice(2) as ScaffoldVariant | undefined;
 
   if (kind === "extension" && !["simple", "layered"].includes(variant ?? "")) {
@@ -107,7 +115,7 @@ function parseScaffoldArgs(args: string): ParseResult {
     return { ok: false, message: `${kind} scaffolds do not support --${variant}.` };
   }
 
-  return { ok: true, kind, name, variant };
+  return { ok: true, kind, name, mode, variant };
 }
 
 function specsFor(kind: ScaffoldKind, name: string, variant?: ScaffoldVariant): TemplateSpec[] {
@@ -122,7 +130,12 @@ function specsFor(kind: ScaffoldKind, name: string, variant?: ScaffoldVariant): 
   if (kind === "command") {
     return [
       { template: "command/command.template.ts", target: `extensions/pi-commands/commands/${name}.ts`, description: "slash command module" },
-      { template: "command/README.md", target: "extensions/pi-commands/commands/index.ts", description: "registry update: import and add command module" },
+      {
+        template: "command/README.md",
+        target: "extensions/pi-commands/commands/index.ts",
+        description: "registry update: import and add command module",
+        operation: "update-command-index",
+      },
     ];
   }
   if (kind === "skill") {
@@ -189,7 +202,7 @@ function summarizeRenderedContent(renderedContent: string): string {
   return firstMeaningfulLine?.slice(0, 96) || "rendered template";
 }
 
-export function createScaffoldPreview(kind: ScaffoldKind, name: string, variant?: ScaffoldVariant): ScaffoldPreview {
+export function createScaffoldPreview(kind: ScaffoldKind, name: string, variant?: ScaffoldVariant, mode: ScaffoldMode = "dry-run"): ScaffoldPreview {
   const files = specsFor(kind, name, variant).map((spec) => {
     assertSafeTarget(spec.target);
     const templatePath = `${templateRoot}${spec.template}`;
@@ -203,7 +216,86 @@ export function createScaffoldPreview(kind: ScaffoldKind, name: string, variant?
     };
   });
 
-  return { kind, name, variant, files };
+  return { kind, name, mode, variant, files };
+}
+
+function absoluteTarget(target: string): string {
+  assertSafeTarget(target);
+  return join(projectRoot, target);
+}
+
+function commandExportName(name: string): string {
+  return `${toCamelName(name)}Command`;
+}
+
+function renderCommandIndexUpdate(name: string): { target: string; content: string } {
+  const target = "extensions/pi-commands/commands/index.ts";
+  const path = absoluteTarget(target);
+  if (!existsSync(path)) {
+    throw new Error(`Cannot update command barrel automatically: ${target} does not exist. Manually export ${commandExportName(name)}.`);
+  }
+
+  const original = readFileSync(path, "utf8");
+  const exportName = commandExportName(name);
+  const importLine = `import { ${exportName} } from "./${name}.ts";`;
+  if (original.includes(importLine) || new RegExp(`\\b${exportName}\\b`).test(original)) {
+    throw new Error(`Command barrel already references ${exportName}; refusing to duplicate ${target}.`);
+  }
+
+  const importMatches = [...original.matchAll(/^import \{ \w+Command \} from "\.\/[^\"]+\.ts";$/gm)].map((match) => match[0]);
+  if (importMatches.length === 0) {
+    throw new Error(`Cannot update command barrel automatically: no command import block found in ${target}. Manually add ${importLine}.`);
+  }
+  const sortedImports = [...importMatches, importLine].sort((a, b) => a.localeCompare(b)).join("\n");
+  let content = original.replace(importMatches.join("\n"), sortedImports);
+
+  const arrayMatch = content.match(/export const commands: PiCommandModule\[] = \[([^\]]*)\];/s);
+  if (!arrayMatch) {
+    throw new Error(`Cannot update command barrel automatically: commands array not found in ${target}. Manually add ${exportName}.`);
+  }
+  const commandNames = arrayMatch[1]
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const sortedCommandNames = [...commandNames, exportName].sort((a, b) => a.localeCompare(b));
+  content = content.replace(arrayMatch[0], `export const commands: PiCommandModule[] = [${sortedCommandNames.join(", ")}];`);
+  return { target, content };
+}
+
+function preflightApply(preview: ScaffoldPreview): Map<string, string> {
+  const updates = new Map<string, string>();
+  for (const file of preview.files) {
+    if (file.operation === "update-command-index") {
+      const update = renderCommandIndexUpdate(preview.name);
+      updates.set(update.target, update.content);
+      continue;
+    }
+    if (existsSync(absoluteTarget(file.target))) {
+      throw new Error(`Refusing to overwrite existing scaffold target: ${file.target}`);
+    }
+  }
+  return updates;
+}
+
+export function applyScaffold(kind: ScaffoldKind, name: string, variant?: ScaffoldVariant): ScaffoldApplyResult {
+  const preview = createScaffoldPreview(kind, name, variant, "apply");
+  const updates = preflightApply(preview);
+  const createdPaths: string[] = [];
+  const updatedPaths: string[] = [];
+
+  for (const file of preview.files) {
+    if (file.operation === "update-command-index") continue;
+    const target = absoluteTarget(file.target);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, file.renderedContent, { flag: "wx" });
+    createdPaths.push(file.target);
+  }
+  for (const [target, content] of updates) {
+    writeFileSync(absoluteTarget(target), content);
+    updatedPaths.push(target);
+  }
+
+  return { ...preview, createdPaths, updatedPaths };
 }
 
 export function formatScaffoldPreview(preview: ScaffoldPreview): string {
@@ -215,13 +307,21 @@ export function formatScaffoldPreview(preview: ScaffoldPreview): string {
   ].join("\n");
 }
 
+export function formatScaffoldApplyResult(result: ScaffoldApplyResult): string {
+  const heading = [result.kind, result.name, result.variant].filter(Boolean).join(" ");
+  const lines = [`Applied scaffold: ${heading}`];
+  if (result.createdPaths.length) lines.push(...result.createdPaths.map((path) => `- created ${path}`));
+  if (result.updatedPaths.length) lines.push(...result.updatedPaths.map((path) => `- updated ${path}`));
+  return lines.join("\n");
+}
+
 export const scaffoldCommand: PiCommandModule = {
   name: "scaffold",
   register(pi: ExtensionAPI): void {
     pi.registerCommand("scaffold", {
-      description: "Preview Gentic package resource scaffolds without writing files",
+      description: "Preview or apply Gentic package resource scaffolds",
       getArgumentCompletions: (prefix) =>
-        ["extension", "command", "skill", "prompt", "primitive", "--simple", "--layered", "--directory", "--dry-run"]
+        ["extension", "command", "skill", "prompt", "primitive", "--simple", "--layered", "--directory", "--dry-run", "--apply"]
           .filter((value) => value.startsWith(prefix))
           .map((value) => ({ value, label: value })),
       handler: async (args, ctx) => {
@@ -231,8 +331,18 @@ export const scaffoldCommand: PiCommandModule = {
           return;
         }
 
-        const preview = createScaffoldPreview(parsed.kind, parsed.name, parsed.variant);
-        ctx.ui.notify(formatScaffoldPreview(preview), "info");
+        try {
+          if (parsed.mode === "apply") {
+            const result = applyScaffold(parsed.kind, parsed.name, parsed.variant);
+            ctx.ui.notify(formatScaffoldApplyResult(result), "info");
+            return;
+          }
+
+          const preview = createScaffoldPreview(parsed.kind, parsed.name, parsed.variant);
+          ctx.ui.notify(formatScaffoldPreview(preview), "info");
+        } catch (error) {
+          ctx.ui.notify(error instanceof Error ? error.message : String(error), "warning");
+        }
       },
     });
   },

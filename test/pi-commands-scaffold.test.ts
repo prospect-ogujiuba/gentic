@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import test from "node:test";
 
-import { createScaffoldPreview, formatScaffoldPreview, scaffoldCommand } from "../extensions/pi-commands/commands/scaffold.ts";
+import {
+  applyScaffold,
+  createScaffoldPreview,
+  formatScaffoldApplyResult,
+  formatScaffoldPreview,
+  scaffoldCommand,
+} from "../extensions/pi-commands/commands/scaffold.ts";
 
 const root = new URL("..", import.meta.url).pathname;
 
@@ -74,7 +80,7 @@ test("scaffold preview supports command skill prompt and primitive target paths"
   );
 });
 
-test("/scaffold command rejects unsafe names and missing dry-run clearly", async () => {
+test("/scaffold command rejects unsafe names and defaults to safe dry-run", async () => {
   const command = registerScaffoldCommand();
 
   const invalid = createNotifyContext();
@@ -82,10 +88,12 @@ test("/scaffold command rejects unsafe names and missing dry-run clearly", async
   assert.equal(invalid.notifications[0]?.type, "warning");
   assert.match(invalid.notifications[0]?.message ?? "", /Invalid name/);
 
-  const missingDryRun = createNotifyContext();
-  await command.handler("prompt demo-prompt", missingDryRun.ctx);
-  assert.equal(missingDryRun.notifications[0]?.type, "warning");
-  assert.match(missingDryRun.notifications[0]?.message ?? "", /Only dry-run scaffolds are supported/);
+  const defaultPreview = createNotifyContext();
+  await command.handler("prompt phase-eight-handler-prompt", defaultPreview.ctx);
+  assert.equal(defaultPreview.notifications[0]?.type, "info");
+  assert.match(defaultPreview.notifications[0]?.message ?? "", /Dry-run scaffold: prompt phase-eight-handler-prompt/);
+  assert.match(defaultPreview.notifications[0]?.message ?? "", /No files written\./);
+  assert.equal(existsSync(`${root}/extensions/pi-prompts/prompts/phase-eight-handler-prompt.md`), false);
 });
 
 test("/scaffold command emits concise dry-run output", async () => {
@@ -99,4 +107,52 @@ test("/scaffold command emits concise dry-run output", async () => {
   assert.match(notifications[0]?.message ?? "", /Dry-run scaffold: skill demo-skill simple/);
   assert.match(notifications[0]?.message ?? "", /No files written\./);
   assert.match(notifications[0]?.message ?? "", /extensions\/pi-skills\/skills\/demo-skill\/SKILL\.md/);
+});
+
+test("scaffold apply writes extension files and refuses overwrites", () => {
+  const targetDir = `${root}/extensions/phase-eight-test-extension`;
+  rmSync(targetDir, { recursive: true, force: true });
+
+  try {
+    const result = applyScaffold("extension", "phase-eight-test-extension", "simple");
+    const text = formatScaffoldApplyResult(result);
+
+    assert.deepEqual(result.createdPaths, [
+      "extensions/phase-eight-test-extension/README.md",
+      "extensions/phase-eight-test-extension/index.ts",
+      "extensions/phase-eight-test-extension/extension.anatomy.json",
+    ]);
+    assert.match(text, /Applied scaffold: extension phase-eight-test-extension simple/);
+    assert.match(text, /- created extensions\/phase-eight-test-extension\/extension\.anatomy\.json/);
+    assert.equal(existsSync(`${targetDir}/extension.anatomy.json`), true);
+    assert.throws(() => applyScaffold("extension", "phase-eight-test-extension", "simple"), /Refusing to overwrite/);
+  } finally {
+    rmSync(targetDir, { recursive: true, force: true });
+  }
+});
+
+test("scaffold apply creates command files and updates command barrel deterministically", () => {
+  const commandName = "phase-eight-test-command";
+  const commandPath = `${root}/extensions/pi-commands/commands/${commandName}.ts`;
+  const indexPath = `${root}/extensions/pi-commands/commands/index.ts`;
+  const originalIndex = readFileSync(indexPath, "utf8");
+  rmSync(commandPath, { force: true });
+
+  try {
+    const result = applyScaffold("command", commandName);
+    const text = formatScaffoldApplyResult(result);
+    const updatedIndex = readFileSync(indexPath, "utf8");
+
+    assert.deepEqual(result.createdPaths, [`extensions/pi-commands/commands/${commandName}.ts`]);
+    assert.deepEqual(result.updatedPaths, ["extensions/pi-commands/commands/index.ts"]);
+    assert.match(text, /- created extensions\/pi-commands\/commands\/phase-eight-test-command\.ts/);
+    assert.match(text, /- updated extensions\/pi-commands\/commands\/index\.ts/);
+    assert.equal(existsSync(commandPath), true);
+    assert.match(updatedIndex, /import \{ phaseEightTestCommandCommand \} from "\.\/phase-eight-test-command\.ts";/);
+    assert.match(updatedIndex, /phaseEightTestCommandCommand/);
+    assert.throws(() => applyScaffold("command", commandName), /Refusing to overwrite/);
+  } finally {
+    rmSync(commandPath, { force: true });
+    writeFileSync(indexPath, originalIndex);
+  }
 });
