@@ -20,7 +20,11 @@
   "scripts": {
     "check": "npm run check:pi-api",
     "check:pi-api": "node scripts/check-pi-extension-api.mjs",
-    "test": "node --experimental-strip-types --test test/**/*.test.ts"
+    "test": "node --experimental-strip-types --test test/**/*.test.ts",
+    "test:todo": "node --experimental-strip-types --test test/pi-todo*.test.ts",
+    "test:swe": "node --experimental-strip-types --test test/pi-swe*.test.ts",
+    "test:gate": "node --experimental-strip-types --test test/pi-gate.test.ts",
+    "test:primitives": "node --experimental-strip-types --test test/pi-primitives.test.ts"
   },
   "pi": {
     "extensions": [
