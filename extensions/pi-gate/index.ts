@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 
 type Action = "allow" | "deny" | "ask";
 type Source = "agent" | "user";
-type Remember = false | "session" | "project";
+type Remember = false | "session" | "project" | "global";
 type PermissionChoice = { k: string; label: string; action: Action; remember: Remember };
 type Permissions = Partial<Record<Action, string[]>>;
 type Rule = { id: string; pattern: string; action: Action; reason?: string; timeoutSeconds?: number; defaultOnTimeout?: Action };
@@ -41,14 +41,23 @@ const sessionMemory = new Map<string, Action>();
 let stats = { allowed: 0, denied: 0, asked: 0 };
 
 function defaultConfig(): LoadedConfig {
-  return { version: 2, enabled: true, mode: "ask", defaultAction: "ask", audit: { enabled: true, path: ".pi/pi-gate-audit.jsonl" }, permissions: {} };
+  return { version: 2, enabled: true, mode: "ask", defaultAction: "ask", audit: { enabled: true, path: ".pi/pi-gate/pi-gate-audit.jsonl" }, permissions: {} };
 }
 function readJson(path: string): Partial<Config> | undefined {
   if (!existsSync(path)) return undefined;
   return JSON.parse(readFileSync(path, "utf8")) as Partial<Config>;
 }
+function globalConfigPath(): string {
+  return join(process.env.HOME || "", ".pi/pi-gate/pi-gate.json");
+}
+function projectConfigPath(ctx: ExtensionContext): string {
+  return join(ctx.cwd, ".pi/pi-gate/pi-gate.json");
+}
+function projectConfigPathForCwd(cwd: string): string {
+  return join(cwd, ".pi/pi-gate/pi-gate.json");
+}
 export function loadConfig(cwd: string): void {
-  configPaths = [process.env.PI_GATE_CONFIG, join(process.env.HOME || "", ".pi/agent/pi-gate.json"), join(cwd, ".pi/pi-gate.json")].filter(Boolean) as string[];
+  configPaths = [process.env.PI_GATE_CONFIG, globalConfigPath(), projectConfigPathForCwd(cwd)].filter(Boolean) as string[];
   config = defaultConfig();
   for (const p of configPaths) {
     const raw = readJson(p);
@@ -82,9 +91,6 @@ function rulesFromPermissions(permissions: Permissions, prefix = "config"): Rule
   }
   return rules;
 }
-function projectConfigPath(ctx: ExtensionContext): string {
-  return join(ctx.cwd, ".pi/pi-gate.json");
-}
 function normalizeCommand(command: string): string {
   return command.trim().replace(/\s+/g, " ");
 }
@@ -100,7 +106,7 @@ function persistRule(ctx: ExtensionContext, path: string, pattern: string, actio
     defaultAction: existing.defaultAction || "ask",
     audit: {
       enabled: existing.audit?.enabled ?? true,
-      path: existing.audit?.path || ".pi/pi-gate-audit.jsonl",
+      path: existing.audit?.path || ".pi/pi-gate/pi-gate-audit.jsonl",
     },
     permissions: {
       allow: permissions.allow || [],
@@ -148,6 +154,7 @@ async function prompt(ctx: ExtensionContext, req: Request, d: Decision): Promise
     const opts: PermissionChoice[] = [
       { k: "y", label: "yes, run once", action: "allow", remember: false },
       { k: "s", label: "yes, remember this session", action: "allow", remember: "session" },
+      { k: "g", label: "yes, remember globally", action: "allow", remember: "global" },
       { k: "p", label: "yes, remember for this project", action: "allow", remember: "project" },
       { k: "n", label: "no, block it", action: "deny", remember: false },
     ];
@@ -195,13 +202,14 @@ async function prompt(ctx: ExtensionContext, req: Request, d: Decision): Promise
           return `${marker} ${theme.fg("muted", o.k)}  ${label}`;
         }).join("\n"), 2, 0));
         c.addChild(new Spacer(1));
-        c.addChild(new Text(theme.fg("dim", "y/n/s/p or ↑/↓ then enter • esc blocks"), 1, 0));
+        c.addChild(new Text(theme.fg("dim", "y/n/s/g/p or ↑/↓ then enter • esc blocks"), 1, 0));
         c.addChild(new DynamicBorder((s: string) => theme.fg("warning", s)));
         return c.render(width).slice(0, maxPromptLines).map((l) => truncateToWidth(l, width));
       },
     };
   }, { overlay: true, overlayOptions: { width: "80%", maxHeight: "80%", minWidth: 50, margin: 1 } });
   if (result.remember === "session") sessionMemory.set(normalizeCommand(req.command), result.action);
+  if (result.remember === "global") persistRule(ctx, globalConfigPath(), normalizeCommand(req.command), result.action);
   if (result.remember === "project") persistRule(ctx, projectConfigPath(ctx), normalizeCommand(req.command), result.action);
   return result.action;
 }

@@ -16,8 +16,8 @@ test("pi-gate wildcard patterns treat * and ? as globs", () => {
 
 test("pi-gate applies configured allow ask and deny permissions before default", () => {
   const cwd = mkdtempSync(join(tmpdir(), "pi-gate-"));
-  mkdirSync(join(cwd, ".pi"));
-  writeFileSync(join(cwd, ".pi/pi-gate.json"), JSON.stringify({
+  mkdirSync(join(cwd, ".pi/pi-gate"), { recursive: true });
+  writeFileSync(join(cwd, ".pi/pi-gate/pi-gate.json"), JSON.stringify({
     version: 2,
     enabled: true,
     mode: "ask",
@@ -41,8 +41,8 @@ test("pi-gate applies configured allow ask and deny permissions before default",
 
 test("pi-gate deny permissions override ask and allow matches", () => {
   const cwd = mkdtempSync(join(tmpdir(), "pi-gate-"));
-  mkdirSync(join(cwd, ".pi"));
-  writeFileSync(join(cwd, ".pi/pi-gate.json"), JSON.stringify({
+  mkdirSync(join(cwd, ".pi/pi-gate"), { recursive: true });
+  writeFileSync(join(cwd, ".pi/pi-gate/pi-gate.json"), JSON.stringify({
     version: 2,
     enabled: true,
     mode: "ask",
@@ -60,4 +60,38 @@ test("pi-gate deny permissions override ask and allow matches", () => {
   const decision = decide({ source: "agent", command: "chmod -R 777 --help", cwd });
   assert.equal(decision.action, "deny");
   assert.match(decision.ruleId, /^config:deny:/);
+});
+
+test("pi-gate loads global extension config and project config with project-specific permissions", () => {
+  const originalHome = process.env.HOME;
+  const originalOverride = process.env.PI_GATE_CONFIG;
+  const home = mkdtempSync(join(tmpdir(), "pi-gate-home-"));
+  const cwd = mkdtempSync(join(tmpdir(), "pi-gate-project-"));
+  delete process.env.PI_GATE_CONFIG;
+  process.env.HOME = home;
+
+  try {
+    mkdirSync(join(home, ".pi/pi-gate"), { recursive: true });
+    mkdirSync(join(cwd, ".pi/pi-gate"), { recursive: true });
+    writeFileSync(join(home, ".pi/pi-gate/pi-gate.json"), JSON.stringify({
+      version: 2,
+      enabled: true,
+      mode: "ask",
+      defaultAction: "ask",
+      audit: { enabled: false },
+      permissions: { allow: ["echo global*"] }
+    }));
+    writeFileSync(join(cwd, ".pi/pi-gate/pi-gate.json"), JSON.stringify({
+      version: 2,
+      permissions: { deny: ["echo global secret*"] }
+    }));
+
+    loadConfig(cwd);
+
+    assert.equal(decide({ source: "agent", command: "echo global ok", cwd }).action, "allow");
+    assert.equal(decide({ source: "agent", command: "echo global secret token", cwd }).action, "deny");
+  } finally {
+    if (originalHome === undefined) delete process.env.HOME; else process.env.HOME = originalHome;
+    if (originalOverride === undefined) delete process.env.PI_GATE_CONFIG; else process.env.PI_GATE_CONFIG = originalOverride;
+  }
 });

@@ -15,7 +15,7 @@
       "additionalProperties": false,
       "properties": {
         "enabled": { "type": "boolean", "default": true },
-        "path": { "type": "string", "default": ".pi/pi-gate-audit.jsonl" }
+        "path": { "type": "string", "default": ".pi/pi-gate/pi-gate-audit.jsonl" }
       }
     },
     "permissions": {
