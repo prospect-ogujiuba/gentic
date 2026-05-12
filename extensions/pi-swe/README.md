@@ -4,6 +4,16 @@
 
 The extension may read optional peer capabilities such as `pi-todo` when they are present, but peers are not required. It must not import peer internals or legacy workflow internals.
 
+## Orientation block
+
+- **What it does:** observes planning/inspection/change/verification signals, maintains per-turn SWE state, issues advisory workflow warnings, exposes SWE status/config, and provides staged SWE prompts/skills.
+- **Commands/tools it registers:** `/swe status` and `/swe config`; no model-callable tool is registered by `pi-swe`. Prompt templates such as `/swe-plan`, `/swe-implement`, and `/swe-verify` are package resources discovered from `prompts/`.
+- **Pi events it listens to:** `session_start` loads config and resets runtime state; `turn_start` resets turn state; `tool_call` classifies inspection/code-change/todo-completion facts; `tool_result` classifies verification facts.
+- **State/config files it reads/writes:** reads project `.pi/pi-swe.json`, global `~/.pi/agent/pi-swe.json`, defaults, and `pi-swe.schema.json`; keeps runtime state, warnings, peer context, and verification evidence in memory; writes no state file.
+- **Internal module map:** `index.ts` wires events and `/swe`; `src/config.ts` loads config; `src/classify.ts` extracts workflow facts; `src/state.ts` tracks active plan, inspected/changed paths, and verification; `src/policy.ts` evaluates advisory warnings; `src/capabilities.ts` reads optional peer capability surfaces; `src/evidence.ts`, `src/tdd.ts`, and `src/dsa.ts` hold focused helpers; `prompts/`, `skills/`, and `references/` provide stage guidance.
+- **Tests to run:** `npm test -- test/pi-swe.test.ts test/pi-swe-capabilities.test.ts test/pi-swe-classify.test.ts test/pi-swe-config.test.ts test/pi-swe-helpers.test.ts test/pi-swe-policy.test.ts test/pi-swe-state.test.ts` or the full `npm test` suite.
+- **Known boundaries/non-goals:** guidance is advisory unless config disables/enables checks; it does not import peer internals, replace explicit read-before-edit discipline, or reintroduce legacy `/sop`, `/tdd-rgr`, or `/dsa-advisor` surfaces.
+
 ## Commands
 
 `pi-swe` owns the `/swe` runtime command namespace:
