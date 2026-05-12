@@ -4,6 +4,17 @@
 
 The extension may read optional peer capabilities such as `pi-todo` when they are present, but peers are not required. It must not import peer internals or legacy workflow internals.
 
+## Anatomy
+
+- **Mode:** `layered`
+- **State:** `transitional`
+- **Public entry:** `index.ts`
+- **Layers:** `config`, `domain`, `app`, `pi`, `resources`
+- **Resources:** `skills/`, `prompts/`, `pi-swe.schema.json`
+- **Machine declaration:** `extension.anatomy.json`
+- **Reference role:** targeted behavior-preserving declaration; `index.ts` is already a thin adapter.
+- **Mismatch notes:** layer roles are not yet folderized. `config.ts` handles config, `classify.ts`/`policy.ts`/`state.ts` hold domain and app logic, `commands.ts`/`events.ts` wire Pi runtime behavior, and skills/prompts/schema files are package resources.
+
 ## Orientation block
 
 - **What it does:** observes planning/inspection/change/verification signals, maintains per-turn SWE state, issues advisory workflow warnings, exposes SWE status/config, and provides staged SWE prompts/skills.
