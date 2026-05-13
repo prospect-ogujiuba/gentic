@@ -1,0 +1,46 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { renderUsageSummary } from "../extensions/pi-hud/components/context.ts";
+import { recordMessageUsage, resetSessionUsage, state } from "../extensions/pi-hud/state.ts";
+import type { Theme } from "../extensions/pi-hud/types.ts";
+
+const plainTheme: Theme = {
+  fg(_color: unknown, text: string) {
+    return text;
+  },
+};
+
+test("pi-hud usage summary records assistant token and cost usage", () => {
+  resetSessionUsage();
+
+  recordMessageUsage({
+    role: "assistant",
+    provider: "anthropic",
+    model: "claude",
+    timestamp: 1,
+    usage: {
+      input: 1234,
+      output: 56,
+      totalTokens: 1290,
+      cost: { input: 0.01, output: 0.0023, cacheRead: 0, cacheWrite: 0, total: 0.0123 },
+    },
+  });
+
+  assert.equal(renderUsageSummary({ worktreeId: ".", usage: state.usage, activeTools: [], toolCounts: {}, recentEvents: [] }, plainTheme), "IN 1.2k  OUT 56  $0.0123");
+});
+
+test("pi-hud usage summary deduplicates repeated message events", () => {
+  resetSessionUsage();
+  const message = {
+    role: "assistant",
+    provider: "openai",
+    model: "gpt",
+    timestamp: 2,
+    usage: { input: 10, output: 20, totalTokens: 30, cost: { total: 0.5 } },
+  };
+
+  recordMessageUsage(message);
+  recordMessageUsage(message);
+
+  assert.deepEqual(state.usage, { input: 10, output: 20, cost: 0.5, totalTokens: 30 });
+});

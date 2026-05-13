@@ -9,15 +9,17 @@ function numberOrUndefined(value: number | null | undefined): number | undefined
 export function createSnapshot(ctx: SnapshotContext): HudSnapshot {
   const usage = ctx.getContextUsage?.();
   const tokens = numberOrUndefined(usage?.tokens);
+  const usageSnapshot = usage || state.usage ? {
+    ...state.usage,
+    totalTokens: tokens ?? state.usage?.totalTokens,
+    contextTokens: tokens,
+    contextWindow: usage?.contextWindow,
+    contextPct: numberOrUndefined(usage?.percent),
+  } : undefined;
   return {
     modelId: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
     worktreeId: ctx.cwd,
-    usage: usage ? {
-      totalTokens: tokens,
-      contextTokens: tokens,
-      contextWindow: usage.contextWindow,
-      contextPct: numberOrUndefined(usage.percent),
-    } : undefined,
+    usage: usageSnapshot,
     git: getGitStatus(ctx.cwd),
     activeTools: state.activeTools,
     toolCounts: state.toolCounts,

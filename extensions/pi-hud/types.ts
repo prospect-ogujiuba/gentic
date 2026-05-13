@@ -64,6 +64,8 @@ export interface HudState {
   successCalls: number;
   errorCalls: number;
   warningCalls: number;
+  usage?: UsageSnapshot;
+  usageMessageKeys: Set<string>;
   thinkingLevel?: string;
   modal?: HudModalHandle;
   workTimer: {

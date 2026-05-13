@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createSnapshot } from "./snapshot.ts";
-import { COMPONENT_IDS, isComponentId, isPlacement, resetConfig, resetWorkTimer, startWorkTimer, state, stopWorkTimer } from "./state.ts";
+import { COMPONENT_IDS, isComponentId, isPlacement, recordMessageUsage, recordMessagesUsage, resetConfig, resetSessionUsage, resetWorkTimer, startWorkTimer, state, stopWorkTimer } from "./state.ts";
 import { createHudComponent } from "./surfaces/footer.ts";
 import { openModal } from "./surfaces/modal.ts";
 
@@ -53,11 +53,11 @@ async function handleHudCommand(args: string, ctx: HudCommandContext): Promise<v
 }
 
 export function registerHudEventHandlers(pi: ExtensionAPI): void {
-  pi.on("session_start", (event, ctx) => { state.agent = "idle"; resetWorkTimer(); recordEvent(ctx, event.type); });
+  pi.on("session_start", (event, ctx) => { state.agent = "idle"; resetWorkTimer(); resetSessionUsage(); recordEvent(ctx, event.type); });
   pi.on("model_select", (event, ctx) => recordEvent(ctx, event.type));
   pi.on("thinking_level_select", (event, ctx) => { state.thinkingLevel = event.level; recordEvent(ctx, event.type); });
   pi.on("agent_start", (event, ctx) => { state.agent = "thinking"; startWorkTimer(); recordEvent(ctx, event.type); });
-  pi.on("agent_end", (event, ctx) => { state.agent = "idle"; state.activeTools = []; stopWorkTimer(); recordEvent(ctx, event.type); });
+  pi.on("agent_end", (event, ctx) => { state.agent = "idle"; state.activeTools = []; recordMessagesUsage(event.messages); stopWorkTimer(); recordEvent(ctx, event.type); });
   pi.on("turn_start", (event, ctx) => { state.turn = event.turnIndex; state.agent = "thinking"; recordEvent(ctx, event.type); });
   pi.on("tool_execution_start", (event, ctx) => {
     state.activeTools.push({ id: event.toolCallId, toolName: event.toolName, args: event.args as Record<string, unknown> });
@@ -75,7 +75,7 @@ export function registerHudEventHandlers(pi: ExtensionAPI): void {
     if (!event.isError && JSON.stringify(event.content).toLowerCase().includes("warning")) state.warningCalls += 1;
     recordEvent(ctx, event.type);
   });
-  pi.on("message_end", (event, ctx) => recordEvent(ctx, event.type));
+  pi.on("message_end", (event, ctx) => { recordMessageUsage(event.message); recordEvent(ctx, event.type); });
   pi.on("session_shutdown", (_event, ctx) => { stopWorkTimer(); ctx.ui.setFooter(undefined); ctx.ui.setWidget("pi-hud", undefined); });
 }
 
