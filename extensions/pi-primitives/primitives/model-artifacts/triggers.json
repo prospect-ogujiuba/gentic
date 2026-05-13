@@ -1,0 +1,19 @@
+{
+  "phrases": [
+    "model artifacts",
+    "model-artifacts",
+    ".model-artifacts",
+    "generated artifact",
+    "artifact path",
+    "write a report",
+    "write a plan",
+    "analysis artifact",
+    "coordination artifact",
+    "todo artifact",
+    "review evidence"
+  ],
+  "pathPatterns": [
+    "\\.model-artifacts/",
+    "\\b(?:reports|plans|findings|logs|specs|todo)/[\\w./-]*\\.md\\b"
+  ]
+}

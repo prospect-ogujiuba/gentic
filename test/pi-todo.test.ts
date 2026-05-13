@@ -63,9 +63,13 @@ test("generated artifacts must live under model artifacts and trace to their tod
   );
   await assert.rejects(
     () => service.attachEvidence(todo.id, [{ type: "generated_artifact", path: ".model-artifacts/reports/report.md", summary: "report", createdByTodoId: todo.id }]),
-    /filenames must be/,
+    /topic directory|filename must be/,
   );
-  const updated = await service.attachEvidence(todo.id, [{ type: "generated_artifact", path: ".model-artifacts/reports/2026-05-11_1200-report.md", summary: "report", createdByTodoId: todo.id }]);
+  await assert.rejects(
+    () => service.attachEvidence(todo.id, [{ type: "generated_artifact", path: ".model-artifacts/reports/2026-05-11_1200-report.md", summary: "report", createdByTodoId: todo.id }]),
+    /topic directory/,
+  );
+  const updated = await service.attachEvidence(todo.id, [{ type: "generated_artifact", path: ".model-artifacts/reports/gentic/2026-05-11_1200-report.md", summary: "report", createdByTodoId: todo.id }]);
   assert.equal(updated.evidence[0].type, "generated_artifact");
   assert.equal(updated.evidence[0].createdByTodoId, todo.id);
 });

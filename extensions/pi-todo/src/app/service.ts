@@ -329,9 +329,10 @@ export class TodoService {
     const folder = parts[1];
     const name = parts.pop()?.toLowerCase() ?? "";
     if (!ARTIFACT_FOLDERS.has(folder)) throw new Error("generated artifacts must use an approved .model-artifacts subfolder");
+    if (parts.length < 3) throw new Error("generated artifact paths must include a topic directory");
     if (folder === "todo" && parts.length < 3) throw new Error(`todo artifacts must be under ${MODEL_TODO_ARTIFACTS_DIR}<topic>/`);
     if (name.includes("todo") && !path.startsWith(MODEL_TODO_ARTIFACTS_DIR)) throw new Error(`todo files must be under ${MODEL_TODO_ARTIFACTS_DIR}`);
-    if (!/^\d{4}-\d{2}-\d{2}_\d{4}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.test(name) && !/^\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.test(name)) throw new Error("generated artifact filenames must be YYYY-MM-DD_HHMM-short-kebab-name.md or NN-short-kebab-name.md");
+    if (!/^\d{4}-\d{2}-\d{2}_\d{4}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.test(name)) throw new Error("generated artifact filenames must be YYYY-MM-DD_HHMM-short-kebab-name.md");
     try {
       const text = await readFile(path, "utf8");
       if (!/^# .+\n\nCreated: .+\nPurpose: .+/m.test(text)) throw new Error("generated artifact markdown must start with heading, Created, and Purpose");
