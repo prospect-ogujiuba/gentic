@@ -1,7 +1,7 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { renderWorktime, renderWorktimeDetails } from "../components/worktime.ts";
-import { renderContextBar, renderUsageSummary } from "../components/context.ts";
+import { renderContextBar, renderPiContextLedgerDetails, renderUsageSummary } from "../components/context.ts";
 import { renderGitStatus } from "../components/git.ts";
 import { renderModel, renderThinkingLevel } from "../components/model.ts";
 import { renderToolBadges, renderToolSummary } from "../components/tools.ts";
@@ -49,6 +49,7 @@ function modalBody(s: HudSnapshot, theme: Theme, width: number): string[] {
   lines.push(...sectionTitle(theme, "tools", bodyWidth));
   if (badges) lines.push(badges);
   if (summary) lines.push(summary);
+  lines.push(...sectionTitle(theme, "context ledger", bodyWidth), ...renderPiContextLedgerDetails(s, theme));
   if (state.components.worktime) lines.push(...sectionTitle(theme, "work time", bodyWidth), ...renderWorktimeDetails(s, theme));
   lines.push(...sectionTitle(theme, "session", bodyWidth), `turn ${state.turn} · ${s.worktreeId}`);
   return lines;

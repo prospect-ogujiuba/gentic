@@ -1,4 +1,5 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { PiContextHudSnapshot } from "../pi-context/src/app/index.ts";
 
 export type HudComponentId = "model" | "context" | "git" | "session" | "tools" | "events" | "worktime";
 export type AgentState = "idle" | "thinking" | "reading" | "editing" | "writing" | "executing" | "testing";
@@ -41,6 +42,7 @@ export interface HudSnapshot {
   modelId?: string;
   worktreeId: string;
   usage?: UsageSnapshot;
+  piContext?: PiContextHudSnapshot;
   git?: GitStatus;
   activeTools: ActiveTool[];
   toolCounts: Record<string, number>;

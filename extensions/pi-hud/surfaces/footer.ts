@@ -1,6 +1,6 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { renderWorktime } from "../components/worktime.ts";
-import { renderContextBar, renderUsageSummary } from "../components/context.ts";
+import { renderContextBar, renderPiContextLedgerSummary, renderUsageSummary } from "../components/context.ts";
 import { renderHarnessEvents } from "../components/events.ts";
 import { renderGitStatus } from "../components/git.ts";
 import { renderModel, renderThinkingLevel } from "../components/model.ts";
@@ -39,8 +39,10 @@ function fitToolLine(width: number, badges: string, summary: string): string {
 export function renderFooterLines(s: HudSnapshot, theme: Theme, width: number): string[] {
   const modelThinking = [state.components.model ? renderModel(s, theme) : "", state.components.model ? renderThinkingLevel(s, theme) : ""].filter(Boolean).join(theme.fg("dim", " "));
   const context = state.components.context ? renderContextBar(s, theme) : "";
+  const ledger = state.components.context ? renderPiContextLedgerSummary(s, theme) : "";
   const lineOne = fitResponsive(width, [
-    [modelThinking, context].filter(Boolean).join(theme.fg("dim", "  ")),
+    [modelThinking, context, ledger].filter(Boolean).join(theme.fg("dim", "  ")),
+    [modelThinking, compactContextBar(context), ledger].filter(Boolean).join(theme.fg("dim", "  ")),
     [modelThinking, compactContextBar(context)].filter(Boolean).join(theme.fg("dim", "  ")),
     modelThinking,
   ], [state.components.context ? renderUsageSummary(s, theme) : ""]);

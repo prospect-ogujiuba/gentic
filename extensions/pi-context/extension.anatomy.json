@@ -1,0 +1,14 @@
+{
+  "mode": "layered",
+  "publicEntry": "index.ts",
+  "layers": ["app", "domain", "pi"],
+  "resources": [],
+  "state": "in-memory per-session ledger with static source inventory, runtime event accounting, and report artifacts",
+  "tests": ["node --experimental-strip-types --test test/pi-context*.test.ts"],
+  "notes": [
+    "Phase 04 static inventory slice: before_agent_start records redacted hashes/counts for system prompt options, context files, tools, and loaded package skills without broad command-time scans.",
+    "Phase 05 runtime ledger slice: input/message/tool/compaction handlers record bounded redacted size metadata and file/artifact interactions during normal work.",
+    "Phase 06 report command slice: /pi-context renders the maintained ledger snapshot and writes markdown/JSON report artifacts without scanning full session history.",
+    "Phase 07 UI integration slice: app-level HUD adapter exposes bounded redacted totals/contributors for pi-hud without coupling domain logic to HUD rendering."
+  ]
+}
