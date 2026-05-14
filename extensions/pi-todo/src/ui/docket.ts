@@ -89,9 +89,13 @@ function rowPrefix(todo: Todo, state: TodoState): string {
   return indent;
 }
 
-function renderSummaryLines(width: number, left: string, progress: string): string[] {
-  if (visibleWidth(left) + 1 + visibleWidth(progress) <= width) return [leftRight(width, left, progress)];
-  return [truncateToWidth(left, width, ""), truncateToWidth(progress, width, "")];
+const PROGRESS_RIGHT_ALIGN_MIN_WIDTH = 72;
+
+function renderSummaryLines(width: number, heading: string, progress: string): string[] {
+  const line = `${heading} ${progress}`;
+  if (width >= PROGRESS_RIGHT_ALIGN_MIN_WIDTH && visibleWidth(heading) + 1 + visibleWidth(progress) <= width) return [leftRight(width, heading, progress)];
+  if (visibleWidth(line) <= width) return [line];
+  return [truncateToWidth(heading, width, ""), truncateToWidth(progress, width, "")];
 }
 
 export type TodoDocketRenderOptions = { width?: number; limit?: number; includeDone?: boolean; detail?: "compact" | "summary"; showCompletedFocus?: boolean };
@@ -119,13 +123,24 @@ export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, option
   const doneCount = counts.byStatus.completed + counts.byStatus.verified;
   const failedCount = counts.byStatus.cancelled + counts.byStatus.failed + counts.byStatus.abandoned;
   const title = theme.bold ? theme.bold("TASKS") : "TASKS";
-  const chip = (label: string, count: number, color: string) => count > 0 ? (theme.bg ? theme.bg("selectedBg", theme.fg(color, ` ${label} ${count} `)) : theme.fg(color, `[${label} ${count}]`)) : "";
-  const totalSummary = `${theme.fg("accent", `Total ${counts.total}`)}${theme.fg("dim", ` · open ${counts.open}`)}`;
-  const left = [theme.fg("accent", title), totalSummary, chip("Ready", counts.byStatus.ready, "text"), chip("Active", activeCount, "syntaxString"), chip("Blocked", counts.byStatus.blocked, "muted"), chip("Done", doneCount, "accent"), chip("Cancelled", failedCount, "error"), theme.fg("dim", "/todo")].filter(Boolean).join(theme.fg("dim", " - "));
+  const taskSummary = `${theme.fg("accent", title)}${theme.fg("dim", " - ")}${theme.fg("accent", `Total ${counts.total}`)}${theme.fg("dim", " · /todo")}`;
+  const statusStat = (label: string, count: number, color: string) => {
+    if (count === 0) return undefined;
+    return theme.bg
+      ? theme.bg("selectedBg", theme.fg(color, ` ${label} ${count} `))
+      : theme.fg(color, `[${label} ${count}]`);
+  };
+  const statusSummary = [
+    statusStat("Open", counts.open, "dim"),
+    statusStat("Active", activeCount, "syntaxString"),
+    statusStat("Done", doneCount, "accent"),
+    statusStat("Cancelled", failedCount, "error"),
+  ].filter(Boolean).join(theme.fg("dim", " - "));
   const lines: string[] = [];
   const focus = summaryTitle(state, options);
-  if (focus) lines.push(`\x1b[48;5;108m\x1b[30m * ${focus} \x1b[0m`);
-  lines.push(...renderSummaryLines(width, left, renderTodoProgress(state, theme)));
+  if (focus) lines.push(`\x1b[48;5;108m\x1b[30m ${focus} \x1b[0m`);
+  lines.push(...renderSummaryLines(width, taskSummary, renderTodoProgress(state, theme)));
+  lines.push(truncateToWidth(statusSummary, width, ""));
 
   const rows = orderedDocketTodos(state, options.includeDone ?? false).slice(0, options.limit ?? 8);
   const prefix = commonColonPrefix(rows);

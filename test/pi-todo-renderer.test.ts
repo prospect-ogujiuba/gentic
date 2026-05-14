@@ -114,7 +114,7 @@ test("todo summary docket keeps detailed row metadata for observability commands
   assert.match(output, /completed \| high \| v2 \| 05-11/);
 });
 
-test("todo docket labels total and open counts accurately when all closed", () => {
+test("todo docket keeps redesigned layout with colored status stats", () => {
   const at = "2026-05-11T00:00:00.000Z";
   const base = { description: undefined, priority: "normal" as const, createdAt: at, updatedAt: at, dependsOn: [], tags: [], acceptanceCriteria: [], evidence: [], notes: [], revision: 0 };
   const state = reduceTodoState([
@@ -122,10 +122,14 @@ test("todo docket labels total and open counts accurately when all closed", () =
     { id: "e2", type: "todo.created", at, todo: { ...base, id: "todo_2", title: "Cancelled task", status: "cancelled" } },
   ] satisfies TodoEvent[]);
   const output = renderTodoDocketLines(state, plainTodoTheme, { width: 100 }).join("\n");
+  const narrowOutput = renderTodoDocketLines(state, plainTodoTheme, { width: 60 }).join("\n");
 
-  assert.match(output, /Total 2 · open 0/);
-  assert.doesNotMatch(output, /Open 0 total/);
-  assert.match(output, /\[■!\] 1\/2 50% S\/F 1\/1/);
+  assert.match(output, /TASKS - Total 2 · \/todo\s{2,}\[■!\] 1\/2 50% S\/F 1\/1/);
+  assert.match(narrowOutput, /TASKS - Total 2 · \/todo \[■!\] 1\/2 50% S\/F 1\/1/);
+  assert.doesNotMatch(output, /Open 0/);
+  assert.match(output, /Done 1/);
+  assert.match(output, /Cancelled 1/);
+  assert.doesNotMatch(output, /Total 2 · open 0/);
 });
 
 test("todo docket keeps latest closed work in focus chip when all tasks are closed", () => {
@@ -137,7 +141,8 @@ test("todo docket keeps latest closed work in focus chip when all tasks are clos
   ] satisfies TodoEvent[]);
 
   const output = renderTodoDocketLines(state, plainTodoTheme, { width: 100 }).join("\n");
-  assert.match(output, /\* Latest done/);
+  assert.match(output, /Latest done/);
+  assert.doesNotMatch(output, /\* Latest done/);
 });
 
 test("todo docket can hide closed-work focus chip for legacy all-closed behavior", () => {
@@ -148,7 +153,7 @@ test("todo docket can hide closed-work focus chip for legacy all-closed behavior
   ] satisfies TodoEvent[]);
 
   const output = renderTodoDocketLines(state, plainTodoTheme, { width: 100, showCompletedFocus: false }).join("\n");
-  assert.doesNotMatch(output, /\* Done task/);
+  assert.doesNotMatch(output, /Done task/);
 });
 
 test("todo docket keeps progress visible when summary is too wide", () => {
@@ -165,6 +170,21 @@ test("todo docket keeps progress visible when summary is too wide", () => {
 
   assert.match(lines[1] ?? "", /TASKS/);
   assert.match(lines[2] ?? "", /\[■■■■■■■■▶!\] 8\/10 80% S\/F 8\/0/);
+  assert.match(lines[3] ?? "", /Open 2/);
+  assert.doesNotMatch(lines.join("\n"), /Cancelled 0/);
+});
+
+test("todo docket omits zero-count status stats", () => {
+  const at = "2026-05-11T00:00:00.000Z";
+  const base = { description: undefined, priority: "normal" as const, createdAt: at, updatedAt: at, dependsOn: [], tags: [], acceptanceCriteria: [], evidence: [], notes: [], revision: 0 };
+  const state = reduceTodoState([
+    { id: "e1", type: "todo.created", at, todo: { ...base, id: "todo_1", title: "Ready task", status: "ready" } },
+  ] satisfies TodoEvent[]);
+
+  const output = renderTodoDocketLines(state, ansiTodoTheme, { width: 100 }).join("\n");
+  assert.match(output, /Open 1/);
+  assert.match(output, /\x1b\[48;2;32;45;37m.* Open 1 /);
+  assert.doesNotMatch(output, /Active 0|Done 0|Cancelled 0/);
 });
 
 test("todo docket emits legacy ANSI colors", () => {
@@ -173,10 +193,13 @@ test("todo docket emits legacy ANSI colors", () => {
   const state = reduceTodoState([
     { id: "e1", type: "todo.created", at, todo: { ...base, id: "todo_1", title: "Active task", status: "in_progress" } },
     { id: "e2", type: "todo.created", at, todo: { ...base, id: "todo_2", title: "Done task", status: "done" } },
+    { id: "e3", type: "todo.created", at, todo: { ...base, id: "todo_3", title: "Cancelled task", status: "cancelled" } },
   ] satisfies TodoEvent[]);
 
   const output = renderTodoDocketLines(state, ansiTodoTheme, { width: 100 }).join("\n");
-  assert.match(output, /\x1b\[48;5;108m\x1b\[30m \* Active task /);
+  assert.match(output, /\x1b\[48;5;108m\x1b\[30m Active task /);
   assert.match(output, /\x1b\[38;2;189;180;124m▶\x1b\[0m/);
   assert.match(output, /\x1b\[38;2;111;125;115m■\x1b\[0m/);
+  assert.match(output, /\x1b\[48;2;32;45;37m\x1b\[38;2;201;133;120m Cancelled 1 /);
+  assert.doesNotMatch(output, /\x1b\[38;2;143;191;154m Cancelled/);
 });
