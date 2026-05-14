@@ -34,8 +34,12 @@ pi-todo reads `~/.pi/agent/pi-todo.json` and project `.pi/pi-todo.json`, with pr
     "defaultAction": "requireTodo",
     "rules": [
       { "pattern": "read", "action": "allow" },
-      { "pattern": "ctx_*", "action": "allow" },
-      { "pattern": "context_mode_ctx_*", "action": "allow" },
+      { "pattern": "ctx_search", "action": "allow" },
+      { "pattern": "ctx_stats", "action": "allow" },
+      { "pattern": "ctx_doctor", "action": "allow" },
+      { "pattern": "context_mode_ctx_search", "action": "allow" },
+      { "pattern": "context_mode_ctx_stats", "action": "allow" },
+      { "pattern": "context_mode_ctx_doctor", "action": "allow" },
       { "pattern": "web_search", "action": "allow" },
       { "pattern": "code_search", "action": "allow" },
       { "pattern": "fetch_content", "action": "allow" },
@@ -50,7 +54,7 @@ pi-todo reads `~/.pi/agent/pi-todo.json` and project `.pi/pi-todo.json`, with pr
 
 Set `docket.showCompletedFocus` to `false` to hide the last completed task chip once all tasks are closed. The default is `true`, so the docket keeps showing the latest completed work for handoff visibility.
 
-`enforcement.defaultAction` is `requireTodo` by default, preserving strict behavior for mutating and unknown tools. The `todo` tool is always allowed so agents can start work. Add exact or wildcard `enforcement.rules` to allow low-risk inspection tools before a todo is active: built-in tools such as `read`, Gentic-native context tools such as `ctx_*` or `context_mode_ctx_*`, and third-party/search tools such as `web_search` or `code_search`. Keep mutating tools (`edit`, `write`, `bash`, deploy tools, or broad third-party patterns) at `requireTodo`; explicit `requireTodo` rules always take precedence over `allow` rules, even when the `allow` rule is more specific.
+`enforcement.defaultAction` is `requireTodo` by default, preserving strict behavior for mutating, executable, and unknown tools. The `todo` tool is always allowed so agents can start work. Add exact `enforcement.rules` to allow low-risk inspection tools before a todo is active: built-in tools such as `read`, safe context lookup/status tools such as `ctx_search`, `ctx_stats`, `ctx_doctor` and their `context_mode_ctx_*` equivalents, and third-party/search tools such as `web_search` or `code_search`. Keep mutating tools (`edit`, `write`), command/code execution tools (`bash`, `ctx_execute`, `ctx_execute_file`, `context_mode_ctx_execute`, `context_mode_ctx_execute_file`, deploy tools), and broad third-party patterns at `requireTodo`; explicit `requireTodo` rules always take precedence over `allow` rules, even when the `allow` rule is more specific.
 
 ### Enforcement migration modes
 
@@ -66,8 +70,12 @@ Recommended relaxed allowlist:
     "defaultAction": "requireTodo",
     "rules": [
       { "pattern": "read", "action": "allow" },
-      { "pattern": "ctx_*", "action": "allow" },
-      { "pattern": "context_mode_ctx_*", "action": "allow" },
+      { "pattern": "ctx_search", "action": "allow" },
+      { "pattern": "ctx_stats", "action": "allow" },
+      { "pattern": "ctx_doctor", "action": "allow" },
+      { "pattern": "context_mode_ctx_search", "action": "allow" },
+      { "pattern": "context_mode_ctx_stats", "action": "allow" },
+      { "pattern": "context_mode_ctx_doctor", "action": "allow" },
       { "pattern": "web_search", "action": "allow" },
       { "pattern": "code_search", "action": "allow" },
       { "pattern": "fetch_content", "action": "allow" },

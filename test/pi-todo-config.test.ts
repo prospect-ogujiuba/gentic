@@ -54,7 +54,7 @@ test("pi-todo effective config accepts project enforcement allow rules", () => {
       enforcement: {
         rules: [
           { pattern: "read", action: "allow" },
-          { pattern: "ctx_*", action: "allow" },
+          { pattern: "ctx_search", action: "allow" },
           { pattern: "edit", action: "requireTodo" },
         ],
       },
@@ -67,7 +67,7 @@ test("pi-todo effective config accepts project enforcement allow rules", () => {
     defaultAction: "requireTodo",
     rules: [
       { pattern: "read", action: "allow" },
-      { pattern: "ctx_*", action: "allow" },
+      { pattern: "ctx_search", action: "allow" },
       { pattern: "edit", action: "requireTodo" },
     ],
   });

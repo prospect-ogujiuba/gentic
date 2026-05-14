@@ -7,7 +7,8 @@ const policy: ToolPolicyConfig = {
   defaultAction: "requireTodo",
   rules: [
     { pattern: "read", action: "allow" },
-    { pattern: "ctx_*", action: "allow" },
+    { pattern: "ctx_search", action: "allow" },
+    { pattern: "context_mode_ctx_search", action: "allow" },
     { pattern: "ctx_purge", action: "requireTodo" },
   ],
 };
@@ -22,7 +23,15 @@ test("tool policy supports wildcard tool-name matches", () => {
   assert.equal(matchesToolName("ctx_*", "ctx_execute"), true);
   assert.equal(matchesToolName("context_mode_ctx_*", "context_mode_ctx_search"), true);
   assert.equal(matchesToolName("ctx_*", "context_mode_ctx_search"), false);
-  assert.deepEqual(decideToolPolicy("ctx_execute", policy), { action: "allow", reason: "rule", pattern: "ctx_*" });
+});
+
+test("tool policy can allow safe context lookup while requiring executable context tools", () => {
+  assert.deepEqual(decideToolPolicy("ctx_search", policy), { action: "allow", reason: "rule", pattern: "ctx_search" });
+  assert.deepEqual(decideToolPolicy("context_mode_ctx_search", policy), { action: "allow", reason: "rule", pattern: "context_mode_ctx_search" });
+  assert.deepEqual(decideToolPolicy("ctx_execute", policy), { action: "requireTodo", reason: "default" });
+  assert.deepEqual(decideToolPolicy("ctx_execute_file", policy), { action: "requireTodo", reason: "default" });
+  assert.deepEqual(decideToolPolicy("context_mode_ctx_execute", policy), { action: "requireTodo", reason: "default" });
+  assert.deepEqual(decideToolPolicy("context_mode_ctx_execute_file", policy), { action: "requireTodo", reason: "default" });
 });
 
 test("tool policy always allows the todo tool", () => {
