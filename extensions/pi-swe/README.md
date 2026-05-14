@@ -54,6 +54,47 @@ Use these prompt templates for SWE work:
 
 Matching skills live under `extensions/pi-swe/skills/swe-*/SKILL.md`. Compact references live under `extensions/pi-swe/references/`.
 
+## Structured lifecycle
+
+Use `pi-swe` as a phase-gated lifecycle. Each stage should leave enough durable evidence for the next stage to continue without relying on chat memory.
+
+1. **Diagnose when behavior is broken or unclear** — `/swe-diagnose`
+   - Reproduce the symptom, minimize the failing scope, inspect relevant code/config/logs, list hypotheses with falsifiers, instrument only when needed, and name the smallest credible fix slice.
+   - Durable output when non-trivial: `.model-artifacts/findings/<topic>/...` or a diagnosis artifact referenced by the active todo.
+
+2. **Plan before non-trivial changes** — `/swe-plan`
+   - Define outcome, constraints, non-goals, phase order, acceptance criteria, and verification targets.
+   - Durable output: editable phase files under `.model-artifacts/todo/<topic>/phases/`; each phase is an implementation contract.
+
+3. **Use TDD when the next behavior should be proven first** — `/swe-tdd`
+   - Add one failing test for the next observable behavior, make the smallest production change, then refactor only after green.
+   - TDD can replace or precede `/swe-implement` for a narrow behavior slice; it does not expand phase scope.
+
+4. **Implement one assigned slice** — `/swe-implement`
+   - Read the assigned phase/todo/plan file first, restate intended behavior and verification target, edit only the required paths, and stop at a verifiable boundary.
+   - Scope drift must be made visible through a note, phase update, or return to planning.
+
+5. **Verify before claiming completion** — `/swe-verify`
+   - Run focused tests/checks first, then broader checks as risk requires. Record command/manual evidence and known gaps.
+   - Durable output for non-trivial verification: `.model-artifacts/verification/<topic>/...`.
+
+6. **Review after implementation or before handoff** — `/swe-review`
+   - Compare the diff to the intended slice, check correctness/hardening/cleanup/security/performance/UX risks, and decide: approve, request changes, or return to plan.
+   - Durable output for substantial reviews: `.model-artifacts/review/<topic>/...`.
+
+7. **Finalize the handoff** — `/swe-finalize`
+   - Summarize what changed, why, key paths, verification evidence, review decision, residual risks, and next action such as commit/PR/release or return-to-plan.
+   - Durable output for larger handoffs: `.model-artifacts/finalize/<topic>/...`.
+
+Optional `/swe-dsa` fits before planning or implementation whenever representation, access patterns, complexity, memory, ordering, persistence, or migration risk materially affect the slice. Its decision and validation plan should feed the phase file or implementation contract.
+
+Lifecycle gates:
+
+- Do not implement while diagnosing or planning.
+- Do not broaden an implementation beyond the assigned phase file without recording scope drift.
+- Do not finalize without verification evidence or an explicit verification gap.
+- Prefer durable artifacts for multi-step work so plan → implement → verify → review → finalize remains traceable.
+
 ## Command examples
 
 Plan and implement a scoped change:
