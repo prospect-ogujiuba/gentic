@@ -18,7 +18,7 @@ The extension may read optional peer capabilities such as `pi-todo` when they ar
 ## Orientation block
 
 - **What it does:** observes planning/inspection/change/verification signals, maintains per-turn SWE state, issues advisory workflow warnings, exposes SWE status/config, and provides staged SWE prompts/skills.
-- **Commands/tools it registers:** `/swe status` and `/swe config`; no model-callable tool is registered by `pi-swe`. Prompt templates such as `/swe-plan`, `/swe-implement`, and `/swe-verify` are package resources discovered from `prompts/`.
+- **Commands/tools it registers:** `/swe status`, `/swe config`, and guidance-only `/swe orchestrate`; no model-callable tool is registered by `pi-swe`. Prompt templates such as `/swe-plan`, `/swe-implement`, `/swe-verify`, and `/swe-orchestrate` are package resources discovered from `prompts/`.
 - **Pi events it listens to:** `session_start` loads config and resets runtime state; `turn_start` resets turn state; `tool_call` classifies inspection/code-change/todo-completion facts; `tool_result` classifies verification facts.
 - **State/config files it reads/writes:** reads project `.pi/pi-swe.json`, global `~/.pi/agent/pi-swe.json`, defaults, and `pi-swe.schema.json`; keeps runtime state, warnings, peer context, and verification evidence in memory; writes no state file.
 - **Internal module map:** `index.ts` wires events and `/swe`; `src/config.ts` loads config; `src/classify.ts` extracts workflow facts; `src/state.ts` tracks active plan, inspected/changed paths, and verification; `src/policy.ts` evaluates advisory warnings; `src/capabilities.ts` reads optional peer capability surfaces; `src/evidence.ts`, `src/tdd.ts`, and `src/dsa.ts` hold focused helpers; `prompts/`, `skills/`, and `references/` provide stage guidance.
@@ -32,10 +32,12 @@ The extension may read optional peer capabilities such as `pi-todo` when they ar
 ```text
 /swe status
 /swe config
+/swe orchestrate [status|start|resume|handoff]
 ```
 
 - `/swe status` reports enablement, mode, config source, detected optional peers, active plan, todo scope/evidence when available, inspected/changed path counts, verification count, and current warnings.
 - `/swe config` reports the effective project/global/default configuration and config diagnostics.
+- `/swe orchestrate` is guidance-only: it reports artifact readiness, recommends the next lifecycle step, routes missing verification/review/finalize gates, and emits deterministic exception handoffs without running hidden multi-step work.
 
 ## Stage prompts and skills
 
@@ -50,6 +52,7 @@ Use these prompt templates for SWE work:
 /swe-finalize   Summarize behavior, changed files, verification, and follow-up guidance.
 /swe-tdd        Red/Green/Refactor for the next observable behavior.
 /swe-dsa        Data-structure and algorithm assessment with validation plan.
+/swe-orchestrate Sequence lifecycle stages from artifacts and handoff gates.
 ```
 
 Matching skills live under `extensions/pi-swe/skills/swe-*/SKILL.md`. Compact references live under `extensions/pi-swe/references/`.
@@ -82,7 +85,11 @@ Use `pi-swe` as a phase-gated lifecycle. Each stage should leave enough durable 
    - Compare the diff to the intended slice, check correctness/hardening/cleanup/security/performance/UX risks, and decide: approve, request changes, or return to plan.
    - Durable output for substantial reviews: `.model-artifacts/review/<topic>/...`.
 
-7. **Finalize the handoff** — `/swe-finalize`
+7. **Orchestrate across artifacts when resuming or handing off** — `/swe-orchestrate` and `/swe orchestrate`
+   - Inspect work orders, todo context when available, and model artifacts; choose the next lifecycle stage; route back to verification/review when gates are missing; or emit an exception handoff.
+   - The orchestrator composes existing stage skills and does not replace their instructions or execute hidden work.
+
+8. **Finalize the handoff** — `/swe-finalize`
    - Summarize what changed, why, key paths, verification evidence, review decision, residual risks, and next action such as commit/PR/release or return-to-plan.
    - Durable output for larger handoffs: `.model-artifacts/finalize/<topic>/...`.
 
@@ -129,8 +136,14 @@ Manual end-to-end scripts live in [`docs/e2e-scenarios.md`](docs/e2e-scenarios.m
 3. DSA assessment → implementation → validation.
 4. no `pi-todo` installed.
 5. `pi-todo` installed with active task/evidence.
+6. Feature orchestration path.
+7. Bug orchestration path.
+8. DSA orchestration path.
+9. Exception orchestration path.
+10. Resume orchestration path.
+11. Finalize gate orchestration path.
 
-These scenarios are executable by a new contributor from a fresh Pi session and are the complete-version smoke checklist for Phase 12.
+These scenarios are executable by a new contributor from a fresh Pi session and are the complete-version smoke checklist for Phase 12 plus the orchestration validation path.
 
 ## Optional peer behavior
 

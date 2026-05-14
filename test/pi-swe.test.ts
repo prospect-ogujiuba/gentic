@@ -17,7 +17,7 @@ test("package discovery sees pi-swe extension", () => {
 
 test("pi-swe registers runtime event wiring and /swe command", async () => {
   const handlers = new Map<string, Function>();
-  const commands = new Map<string, { handler: Function }>();
+  const commands = new Map<string, { handler: Function; getArgumentCompletions?: Function }>();
   const notifications: Array<{ message: string; type?: string }> = [];
   const todoProvider = {
     getActiveTodo: () => ({ id: "todo-1", title: "Implement adapter", acceptanceCriteria: ["peer context"], definitionOfDone: ["tests pass"] }),
@@ -65,6 +65,76 @@ test("pi-swe registers runtime event wiring and /swe command", async () => {
   assert.ok(notifications.some((entry) => entry.message.includes("pi-swe config")));
 });
 
+test("/swe orchestrate is guidance-only and preserves existing command behavior", async () => {
+  const commands = new Map<string, { handler: Function; getArgumentCompletions?: Function }>();
+  const notifications: Array<{ message: string; type?: string }> = [];
+  const pi = {
+    capabilities: new Map(),
+    on() {},
+    registerCommand(name: string, command: { handler: Function; getArgumentCompletions?: Function }) {
+      commands.set(name, command);
+    },
+    getCommands() {
+      return [];
+    },
+    getAllTools() {
+      return [];
+    },
+  };
+  const ctx = { cwd: root, sessionId: "test", hasUI: true, ui: { notify: (message: string, type?: string) => notifications.push({ message, type }) } };
+
+  piSwe(pi as never, ctx as never);
+  const swe = commands.get("swe");
+  assert.ok(swe);
+  assert.deepEqual(swe.getArgumentCompletions?.(""), [
+    { value: "status", label: "status" },
+    { value: "config", label: "config" },
+    { value: "orchestrate", label: "orchestrate" },
+  ]);
+
+  await swe.handler("orchestrate", ctx);
+  await swe.handler("status", ctx);
+  await swe.handler("config", ctx);
+
+  assert.ok(notifications.some((entry) => entry.message.includes("Usage: /swe orchestrate [status|start|resume|handoff]")));
+  assert.ok(notifications.some((entry) => entry.message.includes("guidance-only")));
+  assert.ok(notifications.some((entry) => entry.message.includes("pi-swe status")));
+  assert.ok(notifications.some((entry) => entry.message.includes("pi-swe config")));
+});
+
+test("/swe orchestrate subcommands provide deterministic guidance-only handoffs", async () => {
+  const commands = new Map<string, { handler: Function; getArgumentCompletions?: Function }>();
+  const notifications: Array<{ message: string; type?: string }> = [];
+  const pi = {
+    capabilities: new Map(),
+    on() {},
+    registerCommand(name: string, command: { handler: Function; getArgumentCompletions?: Function }) {
+      commands.set(name, command);
+    },
+    getCommands() {
+      return [];
+    },
+    getAllTools() {
+      return [];
+    },
+  };
+  const ctx = { cwd: root, sessionId: "test", hasUI: true, ui: { notify: (message: string, type?: string) => notifications.push({ message, type }) } };
+
+  piSwe(pi as never, ctx as never);
+  const swe = commands.get("swe");
+  assert.ok(swe);
+
+  await swe.handler("orchestrate status", ctx);
+  await swe.handler("orchestrate start", ctx);
+  await swe.handler("orchestrate resume", ctx);
+  await swe.handler("orchestrate handoff", ctx);
+
+  assert.ok(notifications.some((entry) => entry.message.includes("artifact readiness")));
+  assert.ok(notifications.some((entry) => entry.message.includes("next recommended lifecycle step")));
+  assert.ok(notifications.some((entry) => entry.message.includes("resume from model artifacts")));
+  assert.ok(notifications.some((entry) => entry.message.includes("exception handoff")));
+  assert.ok(notifications.every((entry) => entry.type === "info"));
+});
 
 const baseStages = ["plan", "diagnose", "implement", "verify", "review", "finalize"] as const;
 const dsaReferenceFiles = ["decision-rubric", "algorithm-playbook", "data-structures-catalog"] as const;
@@ -134,6 +204,22 @@ test("swe-dsa resources are discoverable and resource-only", () => {
   assert.doesNotMatch(`${prompt}\n${skill}\n${extensionEntrypoint}`, /\/dsa-advisor\b|dsa_advisor|dsa-assessment|registerTool\([^)]*dsa/i);
 });
 
+test("swe-orchestrate prompt and skill compose existing lifecycle resources", () => {
+  const promptPath = join(root, "extensions/pi-swe/prompts/swe-orchestrate.md");
+  const skillPath = join(root, "extensions/pi-swe/skills/swe-orchestrate/SKILL.md");
+  assert.equal(existsSync(promptPath), true, "missing swe-orchestrate prompt");
+  assert.equal(existsSync(skillPath), true, "missing swe-orchestrate skill");
+
+  const prompt = readFileSync(promptPath, "utf8");
+  const skill = readFileSync(skillPath, "utf8");
+  assert.match(prompt, /^---\n[\s\S]*description:/);
+  assert.match(skill, /name: swe-orchestrate/);
+  for (const required of ["inspect work order", "choose the next lifecycle stage", "swe-finalize", "verification evidence", "exception handoff"]) {
+    assert.match(`${prompt}\n${skill}`, new RegExp(required, "i"));
+  }
+  assert.doesNotMatch(`${prompt}\n${skill}`, /from ["'].*pi-(todo|git|messenger)|registerTool|\/swe-auto|swe-auto/i);
+});
+
 test("swe-tdd prompt, skill, and compact references are discoverable", () => {
   const promptPath = join(root, "extensions/pi-swe/prompts/swe-tdd.md");
   assert.equal(existsSync(promptPath), true);
@@ -187,7 +273,7 @@ test("pi-swe end-to-end docs cover scenarios, migration, and omitted legacy surf
   const scenarios = readFileSync(scenariosPath, "utf8");
   const docs = `${readme}\n${scenarios}`;
 
-  for (const prompt of ["/swe-plan", "/swe-diagnose", "/swe-implement", "/swe-verify", "/swe-review", "/swe-finalize", "/swe-tdd", "/swe-dsa"]) {
+  for (const prompt of ["/swe-plan", "/swe-diagnose", "/swe-implement", "/swe-verify", "/swe-review", "/swe-finalize", "/swe-tdd", "/swe-dsa", "/swe orchestrate"]) {
     assert.match(readme, new RegExp(prompt.replace("/", "\\/")));
   }
 
@@ -204,6 +290,12 @@ test("pi-swe end-to-end docs cover scenarios, migration, and omitted legacy surf
     "DSA Advisor",
     "Intentionally omitted legacy surfaces",
     "Complete-version checklist",
+    "Feature orchestration path",
+    "Bug orchestration path",
+    "DSA orchestration path",
+    "Exception orchestration path",
+    "Resume orchestration path",
+    "Finalize gate orchestration path",
   ]) {
     assert.match(docs, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
   }

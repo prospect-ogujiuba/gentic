@@ -135,12 +135,100 @@ Goal: prove optional peer context enriches, but does not replace, SWE discipline
 
 Expected result: `/swe status` reports `detected peers` including `pi-todo`, an `active plan` sourced from todo, summarized `todo scope`, and `todo evidence count`; `pi-swe` still requires read-before-edit, narrow scope, and verification evidence.
 
+## Scenario 6: Feature orchestration path
+
+Goal: prove `/swe orchestrate` composes the existing feature lifecycle without hidden execution.
+
+1. Create or select a work-order artifact under `.model-artifacts/specs/<topic>/...`.
+2. Run:
+
+   ```text
+   /swe orchestrate start
+   ```
+
+3. Follow the recommended sequence: work order → plan → implement → verify → review → finalize → complete.
+
+Expected result: orchestration recommends existing `swe-*` stages and required artifacts; it does not create a new extension, `/swe-auto` namespace, or model-callable tool.
+
+## Scenario 7: Bug orchestration path
+
+Goal: prove bug work routes through diagnosis and TDD when failure behavior is present.
+
+1. Start from a work order or failing behavior summary.
+2. Run:
+
+   ```text
+   /swe orchestrate start
+   ```
+
+3. Follow the recommended sequence: work order with failure → diagnose → tdd → verify → review → finalize → complete.
+
+Expected result: missing reproduction routes to `/swe-diagnose`; the next behavior can route to `/swe-tdd`; verification remains required before finalization.
+
+## Scenario 8: DSA orchestration path
+
+Goal: prove representation-risk work routes through DSA assessment before implementation.
+
+1. Use a plan or work order that names representation, access-pattern, complexity, memory, ordering, persistence, or migration risk.
+2. Run:
+
+   ```text
+   /swe orchestrate start
+   ```
+
+3. Follow the recommended sequence: plan indicates representation risk → dsa-assess → implement → verify → review → finalize.
+
+Expected result: orchestration routes to `/swe-dsa` and records the DSA decision as a finding or plan input before implementation.
+
+## Scenario 9: Exception orchestration path
+
+Goal: prove blocked cases produce deterministic human handoff instead of an unstructured partial stop.
+
+1. Trigger or simulate a blocked case such as ambiguous intent, unsafe operation, scope drift, missing capability, unreproducible failure, no verifier, repeat failure, conflicting changes, or unknown transition.
+2. Run:
+
+   ```text
+   /swe orchestrate handoff
+   ```
+
+Expected result: the handoff names the blocked case, relevant artifact path, and required human decision; it does not pretend finalization succeeded.
+
+## Scenario 10: Resume orchestration path
+
+Goal: prove an interrupted flow resumes from durable artifacts instead of chat memory.
+
+1. Interrupt after each lifecycle state with stable artifacts present under `.model-artifacts/`.
+2. Start a fresh Pi session and run:
+
+   ```text
+   /swe orchestrate resume
+   ```
+
+Expected result: orchestration reads model artifacts, recommends the next stage from the last durable state, and routes missing evidence back to the required stage.
+
+## Scenario 11: Finalize gate orchestration path
+
+Goal: prove finalization is gated by verification and review evidence.
+
+1. Prepare an implementation artifact without verification evidence.
+2. Run:
+
+   ```text
+   /swe orchestrate resume
+   ```
+
+3. Add verification evidence but omit review for a risky change, then run the command again.
+
+Expected result: missing verification routes to `/swe-verify`; risky unreviewed changes route to `/swe-review`; `/swe-finalize` is recommended only after required gates pass.
+
 ## Complete-version checklist
 
 - [x] Standalone `/swe status` and `/swe config` commands are documented.
 - [x] Canonical stage prompts are documented: `/swe-plan`, `/swe-diagnose`, `/swe-implement`, `/swe-verify`, `/swe-review`, `/swe-finalize`, `/swe-tdd`, `/swe-dsa`.
 - [x] Normal, diagnosis/TDD, and DSA end-to-end scripts are documented.
 - [x] No-`pi-todo` and with-`pi-todo` scenarios are documented.
+- [x] Feature, bug, DSA, exception, resume, and finalize-gate orchestration scenarios are documented.
+- [x] `/swe orchestrate [status|start|resume|handoff]` is documented as guidance-only orchestration inside the existing `/swe` namespace.
 - [x] Legacy Programming SOP, TDD RGR, and DSA Advisor migration paths are documented in `extensions/pi-swe/README.md`.
 - [x] Omitted legacy namespaces and model-callable advisor tools are documented as intentional omissions.
-- [x] Remaining core-completion gaps: none known from Phase 12; further changes should be tracked as enhancements.
+- [x] Remaining core-completion gaps: none known from Phase 12 plus orchestration validation; further changes should be tracked as enhancements.
