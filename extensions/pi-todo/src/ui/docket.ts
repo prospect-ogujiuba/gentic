@@ -1,7 +1,7 @@
 import type { Todo, TodoState, TodoStatus } from "../domain/types.ts";
 import { activeTodo, nextTodo, openDependencyIds, orderedDocketTodos, orderedTodos, readyToClose, summarizeTodos } from "../app/query.ts";
 import { isTerminalStatus } from "../domain/lifecycle.ts";
-import { leftRight, wrap } from "./format.ts";
+import { leftRight, padAnsi, wrap } from "./format.ts";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { TodoTheme } from "./theme.ts";
 
@@ -89,16 +89,26 @@ function rowPrefix(todo: Todo, state: TodoState): string {
   return indent;
 }
 
-const PROGRESS_RIGHT_ALIGN_MIN_WIDTH = 72;
+const DOCKET_PAIR_RIGHT_ALIGN_MIN_WIDTH = 72;
 
-function renderSummaryLines(width: number, heading: string, progress: string): string[] {
-  const line = `${heading} ${progress}`;
-  if (width >= PROGRESS_RIGHT_ALIGN_MIN_WIDTH && visibleWidth(heading) + 1 + visibleWidth(progress) <= width) return [leftRight(width, heading, progress)];
-  if (visibleWidth(line) <= width) return [line];
-  return [truncateToWidth(heading, width, ""), truncateToWidth(progress, width, "")];
+function renderPairedLine(width: number, left: string, right: string): string[] {
+  if (!right) return [truncateToWidth(left, width, "")];
+  if (!left) return [truncateToWidth(right, width, "")];
+  const inline = `${left} ${right}`;
+  if (width < DOCKET_PAIR_RIGHT_ALIGN_MIN_WIDTH && visibleWidth(inline) <= width) return [inline];
+  if (visibleWidth(left) + 1 + visibleWidth(right) <= width) return [leftRight(width, left, right)];
+  return [truncateToWidth(left, width, ""), truncateToWidth(right, width, "")];
 }
 
-export type TodoDocketRenderOptions = { width?: number; limit?: number; includeDone?: boolean; detail?: "compact" | "summary"; showCompletedFocus?: boolean };
+export type TodoDocketRenderOptions = {
+  width?: number;
+  limit?: number;
+  includeDone?: boolean;
+  detail?: "compact" | "summary";
+  showCompletedFocus?: boolean;
+  selectedTodoId?: string;
+  expandedTodoIds?: ReadonlySet<string>;
+};
 
 function latestTerminalTodo(state: TodoState): Todo | undefined {
   return orderedTodos(state, true)
@@ -113,6 +123,57 @@ function summaryTitle(state: TodoState, options: Pick<TodoDocketRenderOptions, "
   const prefix = commonColonPrefix(rows);
   const focus = active || next || rows[0] || (options.showCompletedFocus ?? true ? latestTerminalTodo(state) : undefined);
   return focus ? formatTodoTitleForTui(focus.title, { commonPrefix: prefix, maxWidth: 80 }) : undefined;
+}
+
+function expandedTodoDetailLines(todo: Todo, state: TodoState, theme: TodoTheme, width: number): string[] {
+  const indent = `${"  ".repeat(todoDepth(todo, state) + 1)}  `;
+  const detailIndent = `${indent}${theme.fg("dim", "│ ")}`;
+  const section = (label: string, lines: string[]) => lines.length === 0 ? [] : [
+    ...wrap(width, theme.fg("accent", label), detailIndent),
+    ...lines,
+  ];
+  const field = (label: string, value?: string | number | null) => value === undefined || value === null || value === "" ? [] : wrap(width, `${theme.fg("dim", `${label}:`)} ${String(value)}`, detailIndent);
+  const bullets = (values: string[]) => values.flatMap((value) => wrap(width, `${theme.fg("dim", "•")} ${value}`, detailIndent));
+  const overviewGrid = () => {
+    const contentWidth = Math.max(20, width - visibleWidth(detailIndent));
+    const gap = "  ";
+    const columnWidth = Math.floor((contentWidth - visibleWidth(gap)) / 2);
+    const cell = (label: string, value: string) => padAnsi(`${theme.fg("dim", `${label}:`)} ${truncateToWidth(value, Math.max(4, columnWidth - label.length - 2), "…")}`, columnWidth);
+    if (columnWidth < 18) return [
+      ...field("id", todo.id),
+      ...field("status", `${statusLabel(todo.status)} v${todo.revision}`),
+      ...field("priority", todo.priority),
+      ...field("updated", todo.updatedAt.slice(0, 16).replace("T", " ")),
+    ];
+    return [
+      `${detailIndent}${cell("id", todo.id)}${gap}${cell("status", `${statusLabel(todo.status)} v${todo.revision}`)}`,
+      `${detailIndent}${cell("priority", todo.priority)}${gap}${cell("updated", todo.updatedAt.slice(0, 16).replace("T", " "))}`,
+    ];
+  };
+  const openDeps = openDependencyIds(todo, state);
+  const dependencySummary = openDeps.length > 0 ? `waits ${openDeps.join(", ")}` : todo.dependsOn.length > 0 ? `satisfied ${todo.dependsOn.length}` : undefined;
+  const scopeValues = [
+    todo.scope.component && `component: ${todo.scope.component}`,
+    todo.scope.service && `service: ${todo.scope.service}`,
+    todo.scope.domain && `domain: ${todo.scope.domain}`,
+    todo.scope.paths.length > 0 && `paths: ${todo.scope.paths.join(", ")}`,
+    todo.scope.files.length > 0 && `files: ${todo.scope.files.join(", ")}`,
+  ].filter((value): value is string => Boolean(value));
+  return [
+    ...section("Overview", overviewGrid()),
+    ...section("Summary", [
+      ...field("description", todo.description),
+    ]),
+    ...section("Dependencies", [
+      ...field("state", dependencySummary),
+      ...field("blocks", todo.blocks.length > 0 ? todo.blocks.join(", ") : undefined),
+    ]),
+    ...section("Scope", bullets(scopeValues)),
+    ...section("Acceptance", bullets(todo.acceptanceCriteria)),
+    ...section("Definition of done", bullets(todo.definitionOfDone)),
+    ...section("Notes", bullets(todo.notes.slice(-3))),
+    ...section("Evidence", todo.evidence.length > 0 ? bullets(todo.evidence.slice(-3).map((evidence) => "summary" in evidence ? evidence.summary : evidence.type)) : []),
+  ];
 }
 
 export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, options: TodoDocketRenderOptions = {}): string[] {
@@ -135,18 +196,20 @@ export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, option
     statusStat("Active", activeCount, "syntaxString"),
     statusStat("Done", doneCount, "accent"),
     statusStat("Cancelled", failedCount, "error"),
-  ].filter(Boolean).join(theme.fg("dim", " - "));
+  ].filter(Boolean).join(theme.fg("dim", " | "));
   const lines: string[] = [];
   const focus = summaryTitle(state, options);
-  if (focus) lines.push(`\x1b[48;5;108m\x1b[30m ${focus} \x1b[0m`);
-  lines.push(...renderSummaryLines(width, taskSummary, renderTodoProgress(state, theme)));
-  lines.push(truncateToWidth(statusSummary, width, ""));
+  const focusSummary = focus ? `\x1b[48;5;108m\x1b[30m ${focus} \x1b[0m` : "";
+  lines.push(...renderPairedLine(width, taskSummary, statusSummary));
+  lines.push(...renderPairedLine(width, focusSummary, renderTodoProgress(state, theme)));
 
   const rows = orderedDocketTodos(state, options.includeDone ?? false).slice(0, options.limit ?? 8);
   const prefix = commonColonPrefix(rows);
-  for (const [index, todo] of rows.entries()) {
+  for (const todo of rows) {
     const icon = theme.fg(statusColor(todo.status), statusChip(todo.status));
-    const title = formatTodoTitleForTui(todo.title, { commonPrefix: prefix, maxWidth: Math.max(24, width - 28) });
+    const selected = options.selectedTodoId === todo.id;
+    const selectionPrefix = options.selectedTodoId ? theme.fg(selected ? "accent" : "dim", selected ? "› " : "  ") : "";
+    const title = formatTodoTitleForTui(todo.title, { commonPrefix: prefix, maxWidth: Math.max(24, width - visibleWidth(selectionPrefix) - 10) });
     const titleText = theme.fg(todo.status === "cancelled" ? "muted" : "text", title);
     const deps = dependencyBadge(todo, state, theme);
     const close = readyToClose(todo, state) ? theme.fg("accent", "close") : undefined;
@@ -155,8 +218,9 @@ export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, option
     const summaryMeta = [close && theme.fg("accent", "Ready to close"), statusLabel(todo.status), todo.priority, deps, `v${todo.revision}`, todo.updatedAt.slice(5, 16).replace("T", " ")].filter(Boolean);
     const metaParts = options.detail === "summary" ? summaryMeta : compactMeta;
     const meta = metaParts.length > 0 ? theme.fg("dim", metaParts.join(options.detail === "summary" ? " | " : " ")) : "";
-    const line = meta ? leftRight(width, `${rowPrefix(todo, state)}${icon} ${titleText}`, meta) : `${rowPrefix(todo, state)}${icon} ${titleText}`;
+    const line = `${selectionPrefix}${rowPrefix(todo, state)}${icon} ${titleText}${meta ? ` ${meta}` : ""}`;
     lines.push(...wrap(width, line));
+    if (options.expandedTodoIds?.has(todo.id)) lines.push(...expandedTodoDetailLines(todo, state, theme, width));
   }
   return lines;
 }

@@ -112,6 +112,7 @@ test("todo summary docket keeps detailed row metadata for observability commands
   const output = renderTodoDocketLines(state, plainTodoTheme, { width: 100, includeDone: true, detail: "summary" }).join("\n");
 
   assert.match(output, /completed \| high \| v2 \| 05-11/);
+  assert.match(output, /\[✓\] Summarize me completed \| high/);
 });
 
 test("todo docket keeps redesigned layout with colored status stats", () => {
@@ -124,8 +125,10 @@ test("todo docket keeps redesigned layout with colored status stats", () => {
   const output = renderTodoDocketLines(state, plainTodoTheme, { width: 100 }).join("\n");
   const narrowOutput = renderTodoDocketLines(state, plainTodoTheme, { width: 60 }).join("\n");
 
-  assert.match(output, /TASKS - Total 2 · \/todo\s{2,}\[■!\] 1\/2 50% S\/F 1\/1/);
-  assert.match(narrowOutput, /TASKS - Total 2 · \/todo \[■!\] 1\/2 50% S\/F 1\/1/);
+  assert.match(output, /TASKS - Total 2 · \/todo\s+Done 1\s+\|\s+Cancelled 1/);
+  assert.match(output, /\[■!\] 1\/2 50% S\/F 1\/1/);
+  assert.match(narrowOutput, /TASKS - Total 2 · \/todo\s+Done 1\s+\|\s+Cancelled 1/);
+  assert.match(narrowOutput, /\[■!\] 1\/2 50% S\/F 1\/1/);
   assert.doesNotMatch(output, /Open 0/);
   assert.match(output, /Done 1/);
   assert.match(output, /Cancelled 1/);
@@ -168,9 +171,11 @@ test("todo docket keeps progress visible when summary is too wide", () => {
   const state = reduceTodoState(events);
   const lines = renderTodoDocketLines(state, plainTodoTheme, { width: 48 });
 
-  assert.match(lines[1] ?? "", /TASKS/);
+  assert.match(lines[0] ?? "", /TASKS/);
+  assert.match(lines[1] ?? "", /Open 2/);
+  assert.match(lines[1] ?? "", /Active 1/);
+  assert.match(lines[1] ?? "", /Done 8/);
   assert.match(lines[2] ?? "", /\[■■■■■■■■▶!\] 8\/10 80% S\/F 8\/0/);
-  assert.match(lines[3] ?? "", /Open 2/);
   assert.doesNotMatch(lines.join("\n"), /Cancelled 0/);
 });
 
