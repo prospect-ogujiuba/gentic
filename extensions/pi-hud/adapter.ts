@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { createSnapshot } from "./snapshot.ts";
+import { createSnapshot, withLiveUsage } from "./snapshot.ts";
 import { COMPONENT_IDS, isComponentId, isPlacement, recordMessageUsage, recordMessagesUsage, resetConfig, resetSessionUsage, resetWorkTimer, startWorkTimer, state, stopWorkTimer } from "./state.ts";
 import { createHudComponent } from "./surfaces/footer.ts";
 import { openModal } from "./surfaces/modal.ts";
@@ -16,9 +16,10 @@ function applyHud(ctx: HudUiContext): void {
   if (!state.enabled) return;
 
   const snapshot = createSnapshot(ctx);
-  state.modal?.update(snapshot);
-  if (state.placement === "footer" || state.placement === "both") ctx.ui.setFooter(createHudComponent(snapshot));
-  if (state.placement === "widget" || state.placement === "both") ctx.ui.setWidget("pi-hud", createHudComponent(snapshot));
+  const liveSnapshot = () => withLiveUsage(snapshot, ctx);
+  state.modal?.update(liveSnapshot());
+  if (state.placement === "footer" || state.placement === "both") ctx.ui.setFooter(createHudComponent(liveSnapshot));
+  if (state.placement === "widget" || state.placement === "both") ctx.ui.setWidget("pi-hud", createHudComponent(liveSnapshot));
 }
 
 function recordEvent(ctx: HudUiContext, name: string): void {

@@ -9,6 +9,12 @@ import { state } from "../state.ts";
 import type { HudSnapshot, Theme } from "../types.ts";
 import { cleanTruncate, fitLeftRight, fitResponsive, stripAnsi } from "../lib/format.ts";
 
+type HudSnapshotSource = HudSnapshot | (() => HudSnapshot);
+
+function resolveSnapshot(source: HudSnapshotSource): HudSnapshot {
+  return typeof source === "function" ? source() : source;
+}
+
 function compactContextBar(line: string): string {
   const match = stripAnsi(line).match(/([\d.]+[kM]?\/[\d.]+[kM]?)\s+([\d.]+%|--)/);
   return match ? `${match[1]} ${match[2]}` : line;
@@ -55,16 +61,16 @@ export function renderFooterLines(s: HudSnapshot, theme: Theme, width: number): 
   return [lineOne, lineTwo, lineThree, eventLine].filter(Boolean);
 }
 
-export function createHudComponent(s: HudSnapshot) {
+export function createHudComponent(source: HudSnapshotSource) {
   return (tui: { requestRender?: () => void }, theme: Theme) => {
-    const timer = state.components.worktime ? setInterval(() => tui.requestRender?.(), 1000) : undefined;
+    const timer = state.components.worktime || state.components.context ? setInterval(() => tui.requestRender?.(), 1000) : undefined;
     return {
       dispose() {
         if (timer) clearInterval(timer);
       },
       invalidate() {},
       render(width: number): string[] {
-        return renderFooterLines(s, theme, width);
+        return renderFooterLines(resolveSnapshot(source), theme, width);
       },
     };
   };

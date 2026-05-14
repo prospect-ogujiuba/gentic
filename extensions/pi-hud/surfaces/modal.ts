@@ -6,7 +6,7 @@ import { renderGitStatus } from "../components/git.ts";
 import { renderModel, renderThinkingLevel } from "../components/model.ts";
 import { renderToolBadges, renderToolSummary } from "../components/tools.ts";
 import { fitLeftRight } from "../lib/format.ts";
-import { createSnapshot } from "../snapshot.ts";
+import { createSnapshot, withLiveUsage } from "../snapshot.ts";
 import { state } from "../state.ts";
 import type { HudSnapshot, Theme } from "../types.ts";
 
@@ -66,6 +66,7 @@ class PiHudModalComponent {
   private requestRender: () => void;
   private closeModal: () => void;
   private getRows: () => number;
+  private refreshSnapshot?: (snapshot: HudSnapshot) => HudSnapshot;
 
   constructor(
     theme: Theme,
@@ -73,13 +74,21 @@ class PiHudModalComponent {
     requestRender: () => void,
     closeModal: () => void,
     getRows: () => number,
+    refreshSnapshot?: (snapshot: HudSnapshot) => HudSnapshot,
   ) {
     this.theme = theme;
     this.snapshot = snapshot;
     this.requestRender = requestRender;
     this.closeModal = closeModal;
     this.getRows = getRows;
-    this.timer = setInterval(() => this.requestRender(), 1000);
+    this.refreshSnapshot = refreshSnapshot;
+    this.timer = setInterval(() => {
+      if (this.refreshSnapshot) this.update(this.refreshSnapshot(this.snapshot));
+      else {
+        this.invalidate();
+        this.requestRender();
+      }
+    }, 1000);
   }
 
   update(snapshot: HudSnapshot): void {
@@ -125,7 +134,8 @@ export async function openModal(ctx: ExtensionCommandContext): Promise<void> {
   let component: PiHudModalComponent | undefined;
   try {
     await ctx.ui.custom<void>((tui, theme, _kb, done) => {
-      component = new PiHudModalComponent(theme, createSnapshot(ctx), () => tui.requestRender(), () => done(), () => tui.terminal.rows);
+      const snapshot = createSnapshot(ctx);
+      component = new PiHudModalComponent(theme, withLiveUsage(snapshot, ctx), () => tui.requestRender(), () => done(), () => tui.terminal.rows, (current) => withLiveUsage(current, ctx));
       state.modal = component;
       return component;
     }, {
