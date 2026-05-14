@@ -120,26 +120,28 @@ test("organized create returns clarification without persistence for vague input
   assert.equal(store.events.length, 0);
 });
 
-test("tool create reports atomic organized intake", async () => {
+test("tool create defaults to one explicit todo for observability", async () => {
   const { pi, ctx, entries } = actionHarness();
 
   const result = await executeTodoAction(pi as never, ctx as never, {
     action: "create",
-    title: "Add split-check command",
-    acceptanceCriteria: ["todo split_check returns an assessment"],
-    scope: { files: ["extensions/pi-todo/index.ts"] },
+    title: "Implement mandatory task splitting in pi-todo",
+    description: "Touches lifecycle, command behavior, persistence, validation, and tests.",
+    acceptanceCriteria: ["Add metadata", "Add split-check", "Block start", "Record override"],
+    scope: { paths: ["extensions/pi-todo/src/domain", "extensions/pi-todo/src/app", "extensions/pi-todo/index.ts"] },
   });
 
-  assert.match(result.content[0].text, /Created atomic todo/);
-  assert.equal(result.details.assessment.organization, "todo");
-  assert.equal(entries.length, 1);
+  assert.match(result.content[0].text, /Created/);
+  assert.equal(result.details.todo.title, "Implement mandatory task splitting in pi-todo");
+  assert.equal(result.details.assessment, undefined);
+  assert.deepEqual(entries.map((entry) => entry.data.type), ["todo.created"]);
 });
 
-test("tool create reports compound request organized into parent and children", async () => {
+test("tool organized create reports compound request organized into parent and children", async () => {
   const { pi, ctx, entries } = actionHarness();
 
   const result = await executeTodoAction(pi as never, ctx as never, {
-    action: "create",
+    action: "create_organized",
     title: "Implement mandatory task splitting in pi-todo",
     description: "Touches lifecycle, command behavior, persistence, validation, and tests.",
     acceptanceCriteria: ["Add metadata", "Add split-check", "Block start", "Record override"],
@@ -154,20 +156,20 @@ test("tool create reports compound request organized into parent and children", 
   assert.deepEqual(entries.map((entry) => entry.data.type), ["todo.created", "todo.split"]);
 });
 
-test("tool create reports clarification for vague intake without persistence", async () => {
+test("tool organized create reports clarification for vague intake without persistence", async () => {
   const { pi, ctx, entries } = actionHarness();
 
-  const result = await executeTodoAction(pi as never, ctx as never, { action: "create", title: "Improve todo" });
+  const result = await executeTodoAction(pi as never, ctx as never, { action: "create_organized", title: "Improve todo" });
 
   assert.match(result.content[0].text, /intake needs clarification/);
   assert.equal(result.details.assessment.organization, "clarify");
   assert.equal(entries.length, 0);
 });
 
-test("tool create labels explicit vague fallback separately from atomic intake", async () => {
+test("tool organized create labels explicit vague fallback separately from atomic intake", async () => {
   const { pi, ctx, entries } = actionHarness();
 
-  const result = await executeTodoAction(pi as never, ctx as never, { action: "create", title: "Improve todo", allowVagueTodo: true });
+  const result = await executeTodoAction(pi as never, ctx as never, { action: "create_organized", title: "Improve todo", allowVagueTodo: true });
 
   assert.match(result.content[0].text, /Created vague todo via explicit fallback/);
   assert.doesNotMatch(result.content[0].text, /atomic/);
@@ -180,7 +182,6 @@ test("tool split and split_check still handle already-created tasks", async () =
   const { pi, ctx } = actionHarness();
   const created = await executeTodoAction(pi as never, ctx as never, {
     action: "create",
-    autoOrganize: false,
     title: "Implement existing split path",
     description: "Touches lifecycle and validation.",
   });
