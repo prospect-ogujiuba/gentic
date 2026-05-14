@@ -200,21 +200,33 @@ export async function reconcileTodoDocket(pi: ExtensionAPI, ctx: ExtensionContex
   await updateTodoWidget(pi, ctx);
 }
 
-export async function checkTodoDocketAtAgentEnd(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
+async function requestDocketCleanupTurn(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  deliverAs: "steer" | "followUp",
+): Promise<void> {
   const svc = service(pi, ctx);
   await svc.reconcileSplitScaffolds();
   await updateTodoWidget(pi, ctx);
   const state = await svc.state();
   const reminder = docketCleanupMessage(state);
   if (!reminder) return;
-  const key = `${ctx.sessionId ?? ctx.cwd ?? "session"}:${reminder.key}`;
+  const key = `${ctx.sessionId ?? ctx.cwd ?? "session"}:${deliverAs}:${reminder.key}`;
   if (promptedDocketCleanupKeys.has(key)) return;
   promptedDocketCleanupKeys.add(key);
   ctx.ui.notify("pi-todo docket has unresolved active/scaffold entries; requesting cleanup turn", "warning");
   pi.sendMessage(
     { customType: "gentic.todo.clean-docket", content: reminder.content, display: false },
-    { triggerTurn: true, deliverAs: "followUp" },
+    { triggerTurn: true, deliverAs },
   );
+}
+
+export async function checkTodoDocketBeforeFinalMessage(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
+  await requestDocketCleanupTurn(pi, ctx, "steer");
+}
+
+export async function checkTodoDocketAtAgentEnd(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
+  await requestDocketCleanupTurn(pi, ctx, "followUp");
 }
 
 export async function updateTodoWidget(

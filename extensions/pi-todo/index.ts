@@ -6,6 +6,7 @@ import {
   getTodoCommandCompletions,
   reconcileTodoDocket,
   checkTodoDocketAtAgentEnd,
+  checkTodoDocketBeforeFinalMessage,
   todoState,
   updateTodoWidget,
 } from "./src/pi/actions.ts";
@@ -19,7 +20,7 @@ export default function piTodo(pi: ExtensionAPI): void {
     if (event.reason !== "reload") resetTodoSessionNameMemory();
     await updateTodoWidget(pi, ctx);
   });
-  pi.on("turn_end", async (_event, ctx) => reconcileTodoDocket(pi, ctx));
+  pi.on("turn_end", async (_event, ctx) => checkTodoDocketBeforeFinalMessage(pi, ctx));
   pi.on("agent_end", async (_event, ctx) => checkTodoDocketAtAgentEnd(pi, ctx));
   pi.on("tool_call", async (event, ctx) => {
     if (event.toolName === "todo") return;
