@@ -100,10 +100,13 @@ export function createPiContextReportSnapshot(state: PiContextSessionState | und
     });
   }
 
+  const usage = latestUsageSnapshot(state);
   return createContextSnapshot({
     entries: state.ledgerEntries,
     capturedAt: options.capturedAt ?? state.lastUpdatedAt,
-    contextWindowTokens: latestContextWindow(state),
+    contextWindowTokens: usage?.contextWindow ?? latestContextWindow(state),
+    currentTokens: usage?.tokens,
+    currentTokenConfidence: usage?.tokenConfidence,
     compaction: latestCompactionStats(state.ledgerEntries),
     warnings: state.warnings,
   });
@@ -113,8 +116,9 @@ export function renderPiContextSummary(snapshot: ContextSnapshot, request: Parti
   const groups = filteredGroups(snapshot.groups, request.groups ?? []);
   const lines = [
     "pi-context",
-    `Total: ${formatTokens(snapshot.totals.tokenCount, snapshot.totals.tokenConfidence)} (${formatBytes(snapshot.totals.byteCount)})`,
+    snapshot.currentUsage ? `Context: ${formatUsage(snapshot.currentUsage)}` : `Total: ${formatTokens(snapshot.totals.tokenCount, snapshot.totals.tokenConfidence)} (${formatBytes(snapshot.totals.byteCount)})`,
     `Remaining: ${formatRemaining(snapshot)}`,
+    `Ledger inventory: ${formatTokens(snapshot.totals.tokenCount, snapshot.totals.tokenConfidence)} (${formatBytes(snapshot.totals.byteCount)})`,
     `Compaction: ${formatCompaction(snapshot.compaction)}`,
   ];
 
@@ -166,10 +170,11 @@ export function renderPiContextMarkdown(snapshot: ContextSnapshot, groups: Conte
     "",
     "## Summary",
     "",
-    `- Total: ${formatTokens(snapshot.totals.tokenCount, snapshot.totals.tokenConfidence)} (${formatBytes(snapshot.totals.byteCount)})`,
+    snapshot.currentUsage ? `- Current context: ${formatUsage(snapshot.currentUsage)}` : `- Total: ${formatTokens(snapshot.totals.tokenCount, snapshot.totals.tokenConfidence)} (${formatBytes(snapshot.totals.byteCount)})`,
     `- Remaining: ${formatRemaining(snapshot)}`,
+    `- Ledger inventory: ${formatTokens(snapshot.totals.tokenCount, snapshot.totals.tokenConfidence)} (${formatBytes(snapshot.totals.byteCount)})`,
     `- Compaction: ${formatCompaction(snapshot.compaction)}`,
-    `- Token detail: exact ${formatMaybeNumber(snapshot.totals.exactTokenCount)}, estimated ${formatMaybeNumber(snapshot.totals.estimatedTokenCount)}, unknown entries ${snapshot.totals.unknownTokenEntries}`,
+    `- Ledger token detail: exact ${formatMaybeNumber(snapshot.totals.exactTokenCount)}, estimated ${formatMaybeNumber(snapshot.totals.estimatedTokenCount)}, unknown entries ${snapshot.totals.unknownTokenEntries}`, 
   ];
 
   if (snapshot.warnings.length) {
@@ -204,6 +209,14 @@ function filteredGroups(allGroups: ContextGroup[], groups: ContextSourceKind[]):
   if (groups.length === 0) return allGroups;
   const selected = new Set(groups);
   return allGroups.filter((group) => selected.has(group.kind));
+}
+
+function latestUsageSnapshot(state: PiContextSessionState) {
+  for (let index = state.usageSnapshots.length - 1; index >= 0; index -= 1) {
+    const snapshot = state.usageSnapshots[index];
+    if (snapshot && (typeof snapshot.tokens === "number" || typeof snapshot.contextWindow === "number")) return snapshot;
+  }
+  return undefined;
 }
 
 function latestContextWindow(state: PiContextSessionState): number | undefined {
@@ -243,6 +256,12 @@ function formatEntryMarkdown(entry: ContextLedgerEntry): string {
   if (metadata.status) details.push(`  - status: ${metadata.status}`);
   if (metadata.warning) details.push(`  - warning: ${metadata.warning}`);
   return [`- ${entry.label}`, ...details].join("\n");
+}
+
+function formatUsage(usage: ContextSnapshot["currentUsage"]): string {
+  if (!usage?.usedTokens) return usage?.usedTokens === 0 ? `0 of ${formatMaybeNumber(usage.totalTokens)} tokens ${usage.tokenConfidence}` : "unknown (unknown)";
+  if (usage.totalTokens === undefined) return `${formatMaybeNumber(usage.usedTokens)} tokens ${usage.tokenConfidence}`;
+  return `${formatMaybeNumber(usage.usedTokens)} of ${formatMaybeNumber(usage.totalTokens)} tokens ${usage.tokenConfidence}`;
 }
 
 function formatRemaining(snapshot: ContextSnapshot): string {

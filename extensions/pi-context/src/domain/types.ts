@@ -126,6 +126,7 @@ export type ContextSnapshot = {
   capturedAt: string;
   totals: ContextTotals;
   remaining: ContextWindow;
+  currentUsage?: ContextWindow;
   contextWindowTokens?: number;
   compaction?: CompactionStats;
   groups: ContextGroup[];

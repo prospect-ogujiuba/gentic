@@ -243,7 +243,7 @@ function readUsageSnapshot(ctx: ExtensionContext): Omit<PiContextUsageSnapshot, 
     tokens: typeof usage.tokens === "number" ? usage.tokens : undefined,
     contextWindow: typeof usage.contextWindow === "number" ? usage.contextWindow : undefined,
     percent: typeof usage.percent === "number" ? usage.percent : undefined,
-    tokenConfidence: typeof usage.tokens === "number" ? "estimated" : "unknown",
+    tokenConfidence: typeof usage.tokens === "number" ? "exact" : "unknown",
   };
 }
 

@@ -43,9 +43,33 @@ test("report summary keeps grouped order and estimate labels", () => {
 
   const text = renderPiContextSummary(snapshot);
   assert.match(text, /Total: 18 tokens estimated/);
-  assert.match(text, /Warnings:\n- token totals include deterministic estimates/);
+  assert.match(text, /Warnings:[\s\S]*ledger token totals include deterministic estimates/);
   assert.ok(text.indexOf("- System:") < text.indexOf("- Extensions:"));
   assert.ok(text.indexOf("- Extensions:") < text.indexOf("- Tools:"));
+});
+
+test("report uses exact current usage for context and remaining", () => {
+  const snapshot = createPiContextReportSnapshot(
+    {
+      active: true,
+      generation: 1,
+      startedAt: at(0),
+      lastUpdatedAt: at(2),
+      metadata: { contextWindow: 1000 },
+      ledgerEntries: [normalizeLedgerEntry({ id: "tool", kind: "tool", label: "tool output", byteCount: 400, seenAt: at(1) })],
+      usageSnapshots: [{ capturedAt: at(2), event: "context", tokens: 123, contextWindow: 1000, percent: 12.3, tokenConfidence: "exact" }],
+      lifecycleEvents: [],
+      beforeFirstProviderRequest: false,
+      warnings: [],
+    },
+    { capturedAt: at(3) },
+  );
+
+  const text = renderPiContextSummary(snapshot);
+  assert.match(text, /Context: 123 of 1,000 tokens exact/);
+  assert.match(text, /Remaining: 877 of 1,000 tokens exact/);
+  assert.match(text, /Ledger inventory: 100 tokens estimated/);
+  assert.match(renderPiContextMarkdown(snapshot), /Current context: 123 of 1,000 tokens exact/);
 });
 
 test("report filters only requested groups", () => {

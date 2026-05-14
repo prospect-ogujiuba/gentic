@@ -177,23 +177,38 @@ export function createContextSnapshot(input: {
   entries: ContextLedgerEntry[];
   capturedAt?: string;
   contextWindowTokens?: number;
+  currentTokens?: number;
+  currentTokenConfidence?: TokenConfidence;
   compaction?: CompactionStats;
   warnings?: string[];
 }): ContextSnapshot {
   const entries = stableSortEntries(input.entries);
   const totals = calculateTotals(entries);
   const warnings = [...(input.warnings ?? [])];
-  if (totals.estimatedTokenCount > 0) warnings.push("token totals include deterministic estimates");
-  if (totals.unknownTokenEntries > 0) warnings.push("some entries have unknown token counts");
+  const currentUsage = calculateCurrentUsage(input.contextWindowTokens, input.currentTokens, input.currentTokenConfidence);
+  if (totals.estimatedTokenCount > 0) warnings.push("ledger token totals include deterministic estimates");
+  if (totals.unknownTokenEntries > 0) warnings.push("some ledger entries have unknown token counts");
   if (input.contextWindowTokens === undefined) warnings.push("context window is unknown");
+  if (input.currentTokens === undefined) warnings.push("current context token count is unknown");
   return {
     capturedAt: input.capturedAt ?? new Date(0).toISOString(),
     totals,
-    remaining: calculateRemainingContext(input.contextWindowTokens, totals),
+    remaining: currentUsage ?? calculateRemainingContext(input.contextWindowTokens, totals),
+    currentUsage,
     contextWindowTokens: input.contextWindowTokens,
     compaction: input.compaction,
     groups: groupLedgerEntries(entries),
     warnings: uniqueStrings(warnings),
+  };
+}
+
+function calculateCurrentUsage(contextWindowTokens: number | undefined, currentTokens: number | undefined, confidence: TokenConfidence = "exact"): ContextWindow | undefined {
+  if (currentTokens === undefined) return undefined;
+  return {
+    totalTokens: contextWindowTokens,
+    usedTokens: currentTokens,
+    remainingTokens: contextWindowTokens === undefined ? undefined : Math.max(0, contextWindowTokens - currentTokens),
+    tokenConfidence: confidence,
   };
 }
 
