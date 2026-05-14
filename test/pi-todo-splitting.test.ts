@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { SPLIT_SCAFFOLD_TAG, TodoService, type TodoEventStore } from "../extensions/pi-todo/src/app/service.ts";
 import { orderedTodos, readyToClose } from "../extensions/pi-todo/src/app/query.ts";
-import { executeTodoAction } from "../extensions/pi-todo/src/pi/actions.ts";
+import { checkTodoDocketAtAgentEnd, executeTodoAction } from "../extensions/pi-todo/src/pi/actions.ts";
+import { todoToolParameters } from "../extensions/pi-todo/src/pi/schema.ts";
 import { assessTodoIntake, splitTitlesAreTooSimilar } from "../extensions/pi-todo/src/domain/splitting.ts";
 import type { TodoEvent } from "../extensions/pi-todo/src/domain/types.ts";
 
@@ -14,9 +15,12 @@ class MemoryStore implements TodoEventStore {
 
 function actionHarness() {
   const entries: Array<{ type: "custom"; customType: string; data: TodoEvent }> = [];
+  const messages: Array<{ message: { customType: string; content: string; display?: boolean }; options?: { triggerTurn?: boolean; deliverAs?: string } }> = [];
+  const notifications: Array<{ message: string; type?: string }> = [];
   let sessionName = "";
   const pi = {
     appendEntry(customType: string, data: TodoEvent) { entries.push({ type: "custom", customType, data }); },
+    sendMessage(message: { customType: string; content: string; display?: boolean }, options?: { triggerTurn?: boolean; deliverAs?: string }) { messages.push({ message, options }); },
     getSessionName() { return sessionName; },
     setSessionName(value: string) { sessionName = value; },
   };
@@ -25,9 +29,9 @@ function actionHarness() {
     cwd: "/tmp/gentic",
     hasUI: true,
     sessionManager: { getEntries: () => entries },
-    ui: { setStatus() {}, setWidget() {}, setTitle() {} },
+    ui: { setStatus() {}, setWidget() {}, setTitle() {}, notify(message: string, type?: string) { notifications.push({ message, type }); } },
   };
-  return { pi, ctx, entries };
+  return { pi, ctx, entries, messages, notifications };
 }
 
 test("intake assessment represents atomic input as one workable todo", () => {
@@ -245,6 +249,16 @@ test("tool split previews generated children but only persists explicit children
   assert.match(split.content[0].text, /split .* into 1 children/);
 });
 
+test("tool split child schema preserves scaffold metadata", () => {
+  const children = (todoToolParameters as { properties: Record<string, { items?: { properties?: Record<string, unknown> } }> }).properties.children;
+  const childProperties = children.items?.properties ?? {};
+
+  assert.ok(childProperties.tags);
+  assert.ok(childProperties.scope);
+  assert.ok(childProperties.definitionOfDone);
+  assert.ok(childProperties.requiredCapabilities);
+});
+
 test("split-check classifies atomic tasks and records metadata", async () => {
   const service = new TodoService(new MemoryStore());
   const todo = await service.create({
@@ -351,6 +365,44 @@ test("completion closes tagged split scaffolding without artifact todos", async 
   assert.equal(state.todos[discovery.id].evidence.some((item) => item.type === "generated_artifact"), false);
 });
 
+test("reconcile closes stale tagged split scaffolding left by missed completion cleanup", async () => {
+  const store = new MemoryStore();
+  const service = new TodoService(store);
+  const parent = await service.create({ title: "Plan compact docket cleanup", description: "Small planning split." });
+  const [implementation, discovery] = await service.split(parent.id, [
+    { title: "Write cleanup plan" },
+    { title: "Inspect stale split tasks", tags: [SPLIT_SCAFFOLD_TAG] },
+  ], "split-enforcement scaffold");
+
+  await store.append({ id: "evt_completed_without_cleanup", type: "todo.completed", at: new Date().toISOString(), todoId: implementation.id, evidence: [{ type: "manual_note", note: "plan written" }], summary: "done" });
+  await service.reconcileSplitScaffolds();
+  const state = await service.state();
+
+  assert.equal(state.todos[implementation.id].status, "completed");
+  assert.equal(state.todos[discovery.id].status, "cancelled");
+  assert.equal(state.todos[parent.id].status, "completed");
+  assert.equal(orderedTodos(state, false).some((todo) => todo.parentId === parent.id || todo.id === parent.id), false);
+});
+
+test("reconcile closes ready-to-close split parent when all children were already terminal", async () => {
+  const store = new MemoryStore();
+  const service = new TodoService(store);
+  const parent = await service.create({ title: "Plan docket parent close", description: "Small planning split." });
+  const [implementation] = await service.split(parent.id, [
+    { title: "Write terminal child" },
+  ], "split-enforcement scaffold");
+
+  await store.append({ id: "evt_child_already_completed", type: "todo.completed", at: new Date().toISOString(), todoId: implementation.id, evidence: [{ type: "manual_note", note: "child done" }], summary: "done" });
+  let state = await service.state();
+  assert.equal(readyToClose(state.todos[parent.id], state), true);
+
+  await service.reconcileSplitScaffolds();
+  state = await service.state();
+
+  assert.equal(state.todos[parent.id].status, "completed");
+  assert.equal(orderedTodos(state, false).some((todo) => todo.id === parent.id), false);
+});
+
 test("split accepts distinct children and terminal children stay out of the open docket", async () => {
   const store = new MemoryStore();
   const service = new TodoService(store);
@@ -370,4 +422,51 @@ test("split accepts distinct children and terminal children stay out of the open
   assert.equal(readyToClose(state.todos[parent.id], state), true);
   assert.equal(openTitles.includes(child.title), false);
   assert.equal(openTitles.includes(unrelated.title), true);
+});
+
+test("agent-end docket check requests cleanup for unresolved split scaffolds", async () => {
+  const { pi, ctx, messages, notifications } = actionHarness();
+  const created = await executeTodoAction(pi as never, ctx as never, {
+    action: "create",
+    title: "Implement existing split path",
+    description: "Touches lifecycle and validation.",
+  });
+  const todoId = created.details.todo.id;
+  const preview = await executeTodoAction(pi as never, ctx as never, { action: "split", todoId, auto: true });
+  await executeTodoAction(pi as never, ctx as never, {
+    action: "split",
+    todoId,
+    children: preview.details.children,
+    reason: "persist generated scaffold for cleanup check",
+  });
+
+  await checkTodoDocketAtAgentEnd(pi as never, ctx as never);
+
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].message.customType, "gentic.todo.clean-docket");
+  assert.equal(messages[0].options?.triggerTurn, true);
+  assert.match(messages[0].message.content, /unresolved todo ledger entries/);
+  assert.match(messages[0].message.content, /pi-todo:split-scaffold|open entries/);
+  assert.equal(notifications[0].type, "warning");
+});
+
+test("agent-end docket check requests cleanup for legacy untagged split descendants", async () => {
+  const { pi, ctx, messages } = actionHarness();
+  const created = await executeTodoAction(pi as never, ctx as never, {
+    action: "create",
+    title: "Implement legacy split path",
+    description: "Touches lifecycle and validation.",
+  });
+  const todoId = created.details.todo.id;
+  await executeTodoAction(pi as never, ctx as never, {
+    action: "split",
+    todoId,
+    children: [{ title: "Resolve untagged legacy child" }],
+    reason: "legacy split before scaffold tags were preserved",
+  });
+
+  await checkTodoDocketAtAgentEnd(pi as never, ctx as never);
+
+  assert.equal(messages.length, 1);
+  assert.match(messages[0].message.content, /Resolve untagged legacy child/);
 });

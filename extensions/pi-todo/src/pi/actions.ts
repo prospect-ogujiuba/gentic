@@ -3,7 +3,8 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { SPLIT_SCAFFOLD_TAG, TodoService, TodoWorkflowError, type CreateArtifactInput, type CreateTodoInput, type TodoRepairHint } from "../app/service.ts";
-import { summarizeTodos } from "../app/query.ts";
+import { readyToClose, summarizeTodos } from "../app/query.ts";
+import { isTerminalStatus } from "../domain/lifecycle.ts";
 import { loadEffectiveTodoConfig } from "../config.ts";
 import type { EvidenceRef, Todo } from "../domain/types.ts";
 import {
@@ -17,6 +18,7 @@ import { PiTodoEventStore } from "./store.ts";
 
 const STATUS_KEY = "todo";
 const TODO_COMMANDS = ["open", "list", "next", "graph", "history", "get", "split-check"];
+const promptedDocketCleanupKeys = new Set<string>();
 
 function service(pi: ExtensionAPI, ctx: ExtensionContext): TodoService {
   return new TodoService(new PiTodoEventStore(pi, ctx));
@@ -148,8 +150,71 @@ export function activeTodo(state: Awaited<ReturnType<TodoService["state"]>>): To
   return Object.values(state.todos).find((todo) => todo.status === "in_progress" || todo.status === "claimed");
 }
 
+function isSplitContainer(todo: Todo): boolean {
+  return todo.children.length > 0 && (todo.workDirectlyAllowed === false || todo.splitAssessment === "epic");
+}
+
+function hasSplitContainerAncestor(todo: Todo, state: Awaited<ReturnType<TodoService["state"]>>): boolean {
+  const seen = new Set<string>();
+  let parentId = todo.parentId;
+  while (parentId && !seen.has(parentId)) {
+    seen.add(parentId);
+    const parent = state.todos[parentId];
+    if (!parent) return false;
+    if (isSplitContainer(parent)) return true;
+    parentId = parent.parentId;
+  }
+  return false;
+}
+
+function unresolvedSplitDocketItems(state: Awaited<ReturnType<TodoService["state"]>>): Todo[] {
+  return Object.values(state.todos).filter((todo) => !isTerminalStatus(todo.status) && (
+    todo.tags.includes(SPLIT_SCAFFOLD_TAG)
+    || (isSplitContainer(todo) && readyToClose(todo, state))
+    || hasSplitContainerAncestor(todo, state)
+  ));
+}
+
+function docketCleanupMessage(state: Awaited<ReturnType<TodoService["state"]>>): { key: string; content: string } | undefined {
+  const active = activeTodo(state);
+  const splitItems = unresolvedSplitDocketItems(state);
+  if (!active && splitItems.length === 0) return undefined;
+  const items = active ? [active, ...splitItems.filter((todo) => todo.id !== active.id)] : splitItems;
+  const key = items.map((todo) => `${todo.id}:${todo.status}:${todo.revision}`).sort().join("|");
+  const lines = [
+    "pi-todo docket check: unresolved todo ledger entries remain after the agent turn.",
+    "Before presenting final completion, use the todo tool to finish completed work, cancel/abandon stale split scaffolds, or explain why a task is intentionally still open.",
+    "open entries:",
+    ...items.slice(0, 6).map((todo) => `- ${todo.id} [${todo.status}] ${todo.title}`),
+  ];
+  if (items.length > 6) lines.push(`- ... ${items.length - 6} more`);
+  return { key, content: lines.join("\n") };
+}
+
 export async function todoState(pi: ExtensionAPI, ctx: ExtensionContext) {
   return service(pi, ctx).state();
+}
+
+export async function reconcileTodoDocket(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
+  await service(pi, ctx).reconcileSplitScaffolds();
+  await updateTodoWidget(pi, ctx);
+}
+
+export async function checkTodoDocketAtAgentEnd(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
+  const svc = service(pi, ctx);
+  await svc.reconcileSplitScaffolds();
+  await updateTodoWidget(pi, ctx);
+  const state = await svc.state();
+  const reminder = docketCleanupMessage(state);
+  if (!reminder) return;
+  const key = `${ctx.sessionId ?? ctx.cwd ?? "session"}:${reminder.key}`;
+  if (promptedDocketCleanupKeys.has(key)) return;
+  promptedDocketCleanupKeys.add(key);
+  ctx.ui.notify("pi-todo docket has unresolved active/scaffold entries; requesting cleanup turn", "warning");
+  pi.sendMessage(
+    { customType: "gentic.todo.clean-docket", content: reminder.content, display: false },
+    { triggerTurn: true, deliverAs: "followUp" },
+  );
 }
 
 export async function updateTodoWidget(

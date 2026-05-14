@@ -85,6 +85,18 @@ const ScopeSchema = Type.Object({
   policyTags: Type.Optional(Type.Array(Type.String())),
 });
 
+const ChildTodoInputSchema = Type.Object({
+  title: Type.String(),
+  description: Type.Optional(Type.String()),
+  priority: Type.Optional(PrioritySchema),
+  acceptanceCriteria: Type.Optional(Type.Array(Type.String())),
+  definitionOfDone: Type.Optional(Type.Array(Type.String())),
+  dependsOn: Type.Optional(Type.Array(Type.String())),
+  tags: Type.Optional(Type.Array(Type.String())),
+  requiredCapabilities: Type.Optional(Type.Array(Type.String())),
+  scope: Type.Optional(ScopeSchema),
+});
+
 export const todoToolParameters = Type.Object({
   action: TodoActionSchema,
   todoId: Type.Optional(Type.String()),
@@ -108,15 +120,7 @@ export const todoToolParameters = Type.Object({
   scope: Type.Optional(ScopeSchema),
   dependencyTodoId: Type.Optional(Type.String()),
   leaseMs: Type.Optional(Type.Number()),
-  children: Type.Optional(
-    Type.Array(
-      Type.Object({
-        title: Type.String(),
-        description: Type.Optional(Type.String()),
-        acceptanceCriteria: Type.Optional(Type.Array(Type.String())),
-      }),
-    ),
-  ),
+  children: Type.Optional(Type.Array(ChildTodoInputSchema)),
   auto: Type.Optional(Type.Boolean()),
   autoOrganize: Type.Optional(Type.Boolean()),
   allowVagueTodo: Type.Optional(Type.Boolean()),

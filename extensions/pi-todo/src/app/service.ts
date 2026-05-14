@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { normalizePriority, normalizeStatus, isTerminalStatus } from "../domain/lifecycle.ts";
+import { normalizePriority, normalizeStatus, isSuccessStatus, isTerminalStatus } from "../domain/lifecycle.ts";
 import { ineligibleReasons, missingCapabilities, openDependencyIds, type EligibilityOptions } from "../domain/policy.ts";
 import { reduceTodoState } from "../domain/reducer.ts";
 import { assessSplitPolicy, assessTodoIntake, defaultSplitPolicy, shouldBlockForSplit, splitTitleSimilarityProblems } from "../domain/splitting.ts";
@@ -325,6 +325,20 @@ export class TodoService {
     return this.get(todoId);
   }
 
+  async reconcileSplitScaffolds(): Promise<TodoState> {
+    let state = await this.state();
+    let changed = false;
+    for (const todo of Object.values(state.todos)) {
+      if (!todo.children.length) continue;
+      const parentChanged = await this.reconcileSplitParent(todo.id, state, undefined, { closeReadyParent: true });
+      if (parentChanged) {
+        changed = true;
+        state = await this.state();
+      }
+    }
+    return changed ? this.state() : state;
+  }
+
   async attachEvidence(todoId: string, evidence: EvidenceRef[] = []): Promise<Todo> {
     await this.requireExisting(todoId);
     if (evidence.length === 0) throw new Error("evidence is required");
@@ -400,26 +414,32 @@ export class TodoService {
   }
 
   private async closeStaleSplitScaffold(completedTodoId: string): Promise<void> {
-    let state = await this.state();
+    const state = await this.state();
     const completed = state.todos[completedTodoId];
     if (!completed?.parentId) return;
-    const parent = state.todos[completed.parentId];
-    if (!parent || isTerminalStatus(parent.status) || (parent.workDirectlyAllowed !== false && parent.splitAssessment !== "epic")) return;
+    await this.reconcileSplitParent(completed.parentId, state, completedTodoId);
+  }
 
-    let closedScaffold = false;
-    for (const childId of parent.children) {
-      const child = state.todos[childId];
-      if (!child || child.id === completedTodoId || isTerminalStatus(child.status) || child.status === "in_progress" || child.activeClaimId || !this.isSplitScaffold(child)) continue;
+  private async reconcileSplitParent(parentId: string, state: TodoState, completedTodoId?: string, options: { closeReadyParent?: boolean } = {}): Promise<boolean> {
+    const parent = state.todos[parentId];
+    if (!parent || isTerminalStatus(parent.status) || (parent.workDirectlyAllowed !== false && parent.splitAssessment !== "epic")) return false;
+    const children = parent.children.map((childId) => state.todos[childId]).filter((child): child is Todo => Boolean(child));
+    if (!children.some((child) => isSuccessStatus(child.status))) return false;
+
+    let changed = false;
+    for (const child of children) {
+      if (child.id === completedTodoId || isTerminalStatus(child.status) || child.status === "in_progress" || child.activeClaimId || !this.isSplitScaffold(child)) continue;
       await this.append({ id: id("evt"), type: "todo.cancelled", at: now(), todoId: child.id, reason: "stale split scaffold closed after sibling completion" });
-      closedScaffold = true;
+      changed = true;
     }
-    if (!closedScaffold) return;
 
-    state = await this.state();
-    const currentParent = state.todos[parent.id];
-    if (currentParent && !isTerminalStatus(currentParent.status) && currentParent.children.length > 0 && currentParent.children.every((childId) => state.todos[childId] && isTerminalStatus(state.todos[childId].status))) {
+    const currentState = changed ? await this.state() : state;
+    const currentParent = currentState.todos[parent.id];
+    if ((changed || options.closeReadyParent) && currentParent && !isTerminalStatus(currentParent.status) && currentParent.children.length > 0 && currentParent.children.every((childId) => currentState.todos[childId] && isTerminalStatus(currentState.todos[childId].status))) {
       await this.append({ id: id("evt"), type: "todo.completed", at: now(), todoId: currentParent.id, evidence: [{ type: "manual_note", note: "split container completed after child work and stale scaffolding closed" }], summary: "split container completed" });
+      changed = true;
     }
+    return changed;
   }
 
   private activeCount(state: TodoState, exceptTodoId: string, owner?: string | null): number {
