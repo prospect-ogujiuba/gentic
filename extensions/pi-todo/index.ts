@@ -9,6 +9,8 @@ import {
   todoState,
   updateTodoWidget,
 } from "./src/pi/actions.ts";
+import { loadEffectiveTodoConfig } from "./src/config.ts";
+import { decideToolPolicy } from "./src/domain/policy.ts";
 import { resetTodoSessionNameMemory } from "./src/pi/session-name.ts";
 import { todoToolParameters } from "./src/pi/schema.ts";
 
@@ -23,10 +25,20 @@ export default function piTodo(pi: ExtensionAPI): void {
     if (event.toolName === "todo") return;
     const state = await todoState(pi, ctx);
     if (activeTodo(state)) return;
+
+    const { config, diagnostics } = loadEffectiveTodoConfig({ cwd: ctx.cwd });
+    const decision = decideToolPolicy(event.toolName, config.enforcement);
+    if (decision.action === "allow") return;
+
+    const policySource = decision.reason === "rule" && decision.pattern ? `requireTodo rule '${decision.pattern}'` : "default requireTodo policy";
+    const diagnosticNote = diagnostics.length > 0
+      ? ` Config diagnostics: ${diagnostics.map((diagnostic) => `${diagnostic.path}: ${diagnostic.message}`).join("; ")}.`
+      : "";
+
     await updateTodoWidget(pi, ctx);
     return {
       block: true,
-      reason: 'pi-todo enforcement: no active todo. Call todo({ "action": "begin" }) then retry the blocked tool.',
+      reason: `pi-todo enforcement: ${policySource}; no active todo. Call todo({ "action": "begin" }) then retry the blocked tool.${diagnosticNote}`,
     };
   });
 

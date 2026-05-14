@@ -15,6 +15,7 @@ test("pi-todo effective config keeps completed docket focus by default", () => {
 
   assert.deepEqual(result.config, DEFAULT_PI_TODO_CONFIG);
   assert.equal(result.config.docket.showCompletedFocus, true);
+  assert.deepEqual(result.config.enforcement, { defaultAction: "requireTodo", rules: [] });
   assert.deepEqual(result.diagnostics, []);
 });
 
@@ -43,6 +44,56 @@ test("pi-todo effective config lets project override global docket focus", () =>
   assert.equal(result.config.docket.showCompletedFocus, true);
 });
 
+test("pi-todo effective config accepts project enforcement allow rules", () => {
+  const cwd = tempDir();
+  const homeDir = tempDir();
+  mkdirSync(join(cwd, ".pi"), { recursive: true });
+  writeFileSync(
+    join(cwd, ".pi", "pi-todo.json"),
+    JSON.stringify({
+      enforcement: {
+        rules: [
+          { pattern: "read", action: "allow" },
+          { pattern: "ctx_*", action: "allow" },
+          { pattern: "edit", action: "requireTodo" },
+        ],
+      },
+    }),
+  );
+
+  const result = loadEffectiveTodoConfig({ cwd, homeDir });
+
+  assert.deepEqual(result.config.enforcement, {
+    defaultAction: "requireTodo",
+    rules: [
+      { pattern: "read", action: "allow" },
+      { pattern: "ctx_*", action: "allow" },
+      { pattern: "edit", action: "requireTodo" },
+    ],
+  });
+  assert.deepEqual(result.diagnostics, []);
+});
+
+test("pi-todo effective config merges global and project enforcement predictably", () => {
+  const cwd = tempDir();
+  const homeDir = tempDir();
+  mkdirSync(join(homeDir, ".pi", "agent"), { recursive: true });
+  mkdirSync(join(cwd, ".pi"), { recursive: true });
+  writeFileSync(
+    join(homeDir, ".pi", "agent", "pi-todo.json"),
+    JSON.stringify({ enforcement: { defaultAction: "allow", rules: [{ pattern: "edit", action: "requireTodo" }] } }),
+  );
+  writeFileSync(join(cwd, ".pi", "pi-todo.json"), JSON.stringify({ enforcement: { defaultAction: "requireTodo" } }));
+
+  const result = loadEffectiveTodoConfig({ cwd, homeDir });
+
+  assert.deepEqual(result.config.enforcement, {
+    defaultAction: "requireTodo",
+    rules: [{ pattern: "edit", action: "requireTodo" }],
+  });
+  assert.deepEqual(result.diagnostics, []);
+});
+
 test("pi-todo effective config falls back safely for invalid docket config", () => {
   const cwd = tempDir();
   const homeDir = tempDir();
@@ -54,4 +105,55 @@ test("pi-todo effective config falls back safely for invalid docket config", () 
   assert.equal(result.config.docket.showCompletedFocus, true);
   assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("invalid 'docket.showCompletedFocus'")));
   assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("unknown pi-todo config field 'extra'")));
+});
+
+test("pi-todo effective config falls back safely for invalid enforcement config", () => {
+  const cwd = tempDir();
+  const homeDir = tempDir();
+  mkdirSync(join(cwd, ".pi"), { recursive: true });
+  writeFileSync(
+    join(cwd, ".pi", "pi-todo.json"),
+    JSON.stringify({
+      enforcement: {
+        defaultAction: "prompt",
+        rules: [
+          { pattern: "read", action: "allow" },
+          { pattern: "edit", action: "prompt" },
+          { pattern: "", action: "allow" },
+          "ctx_*",
+        ],
+        extra: true,
+      },
+    }),
+  );
+
+  const result = loadEffectiveTodoConfig({ cwd, homeDir });
+
+  assert.deepEqual(result.config.enforcement, { defaultAction: "requireTodo", rules: [{ pattern: "read", action: "allow" }] });
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("invalid 'enforcement.defaultAction'")));
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("unknown enforcement field 'extra'")));
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("invalid 'enforcement.rules[1].action'")));
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("invalid 'enforcement.rules[2].pattern'")));
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("invalid 'enforcement.rules[3]'")));
+});
+
+test("pi-todo effective config forces invalid relaxed enforcement closed", () => {
+  const cwd = tempDir();
+  const homeDir = tempDir();
+  mkdirSync(join(cwd, ".pi"), { recursive: true });
+  writeFileSync(
+    join(cwd, ".pi", "pi-todo.json"),
+    JSON.stringify({
+      enforcement: {
+        defaultAction: "allow",
+        rules: [{ pattern: "edit", action: "require" }],
+      },
+    }),
+  );
+
+  const result = loadEffectiveTodoConfig({ cwd, homeDir });
+
+  assert.deepEqual(result.config.enforcement, { defaultAction: "requireTodo", rules: [] });
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("invalid 'enforcement.rules[0].action'")));
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("defaultAction forced to 'requireTodo'")));
 });

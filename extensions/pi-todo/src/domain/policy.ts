@@ -3,6 +3,55 @@ import type { Todo, TodoState } from "./types.ts";
 
 export type PolicyPhase = "claim" | "complete" | "verify";
 export type EligibilityOptions = { capabilities?: string[] };
+export type ToolPolicyAction = "allow" | "requireTodo";
+export type ToolPolicyRule = { pattern: string; action: ToolPolicyAction };
+export type ToolPolicyConfig = { defaultAction: ToolPolicyAction; rules?: readonly ToolPolicyRule[] };
+export type ToolPolicyDecision = {
+  action: ToolPolicyAction;
+  reason: "todo_tool" | "rule" | "default";
+  pattern?: string;
+};
+
+export function matchesToolName(pattern: string, toolName: string): boolean {
+  if (!pattern || !toolName) return false;
+  if (!pattern.includes("*")) return pattern === toolName;
+  const regex = new RegExp(`^${pattern.split("*").map(escapeRegex).join(".*")}$`);
+  return regex.test(toolName);
+}
+
+export function decideToolPolicy(toolName: string, config: ToolPolicyConfig): ToolPolicyDecision {
+  if (toolName === "todo") return { action: "allow", reason: "todo_tool", pattern: "todo" };
+
+  const matchingRules = (config.rules ?? [])
+    .map((rule, index) => ({ rule, index, specificity: toolPatternSpecificity(rule.pattern) }))
+    .filter(({ rule }) => matchesToolName(rule.pattern, toolName));
+
+  matchingRules.sort((left, right) => {
+    const actionPrecedence = toolActionPrecedence(right.rule.action) - toolActionPrecedence(left.rule.action);
+    if (actionPrecedence !== 0) return actionPrecedence;
+    const exactPrecedence = Number(!right.rule.pattern.includes("*")) - Number(!left.rule.pattern.includes("*"));
+    if (exactPrecedence !== 0) return exactPrecedence;
+    const specificityPrecedence = right.specificity - left.specificity;
+    if (specificityPrecedence !== 0) return specificityPrecedence;
+    return left.index - right.index;
+  });
+
+  const match = matchingRules[0]?.rule;
+  if (match) return { action: match.action, reason: "rule", pattern: match.pattern };
+  return { action: config.defaultAction, reason: "default" };
+}
+
+function toolActionPrecedence(action: ToolPolicyAction): number {
+  return action === "requireTodo" ? 2 : 1;
+}
+
+function toolPatternSpecificity(pattern: string): number {
+  return pattern.replaceAll("*", "").length;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
+}
 
 function phaseCapabilities(todo: Todo, phase: PolicyPhase): string[] {
   const prefix = `${phase}.requires:`;
