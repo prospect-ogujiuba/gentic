@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { TodoService, type TodoEventStore } from "../extensions/pi-todo/src/app/service.ts";
+import { TodoService, TodoWorkflowError, type TodoEventStore } from "../extensions/pi-todo/src/app/service.ts";
 import type { TodoEvent } from "../extensions/pi-todo/src/domain/types.ts";
 
 class MemoryStore implements TodoEventStore {
@@ -15,7 +15,36 @@ class MemoryStore implements TodoEventStore {
 test("todo completion requires evidence", async () => {
   const service = new TodoService(new MemoryStore());
   const todo = await service.create({ title: "implement reducer" });
-  await assert.rejects(() => service.complete(todo.id, []), /evidence is required/);
+  await assert.rejects(() => service.complete(todo.id, []), /EVIDENCE_REQUIRED|evidence is required/);
+});
+
+test("completion can use previously attached evidence", async () => {
+  const service = new TodoService(new MemoryStore());
+  const todo = await service.create({ title: "implement reducer" });
+  await service.attachEvidence(todo.id, [{ type: "manual_note", note: "verified" }]);
+  const completed = await service.complete(todo.id, [], "done");
+  assert.equal(completed.status, "completed");
+  assert.equal(completed.evidence.length, 1);
+});
+
+test("begin starts next ready todo and is idempotent while active", async () => {
+  const service = new TodoService(new MemoryStore());
+  const todo = await service.create({ title: "small task" });
+  const started = await service.begin([], undefined, "agent-a");
+  assert.equal(started.id, todo.id);
+  assert.equal(started.status, "in_progress");
+  const again = await service.begin([], undefined, "agent-a");
+  assert.equal(again.id, todo.id);
+});
+
+test("finish completes active todo using existing evidence", async () => {
+  const service = new TodoService(new MemoryStore());
+  const todo = await service.create({ title: "small task" });
+  await service.start(todo.id, [], undefined, "agent-a");
+  await service.attachEvidence(todo.id, [{ type: "manual_note", note: "verified" }]);
+  const finished = await service.finish(undefined, [], "done", "agent-a");
+  assert.equal(finished.id, todo.id);
+  assert.equal(finished.status, "completed");
 });
 
 test("max one in-progress todo is enforced", async () => {
@@ -23,7 +52,12 @@ test("max one in-progress todo is enforced", async () => {
   const first = await service.create({ title: "first" });
   const second = await service.create({ title: "second" });
   await service.start(first.id);
-  await assert.rejects(() => service.start(second.id), /max in-progress/);
+  await assert.rejects(() => service.start(second.id), (error) => {
+    assert.ok(error instanceof TodoWorkflowError);
+    assert.equal(error.code, "MAX_IN_PROGRESS");
+    assert.deepEqual(error.repair, { action: "get", params: { todoId: first.id } });
+    return true;
+  });
 });
 
 test("dependency must be done before start", async () => {

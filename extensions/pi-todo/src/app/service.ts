@@ -24,6 +24,25 @@ const id = (prefix: string) => `${prefix}_${Date.now().toString(36)}_${Math.rand
 export type ArtifactKind = "reports" | "logs" | "specs" | "plans" | "findings" | "todo";
 export type CreateArtifactInput = { kind: ArtifactKind; shortName: string; purpose: string; content: string; category?: string; subcategory?: string };
 export type StartTodoOptions = { splitOverrideReason?: string };
+export type TodoRepairHint = { action: string; params: Record<string, unknown> };
+
+export class TodoWorkflowError extends Error {
+  readonly code: string;
+  readonly repair?: TodoRepairHint;
+  readonly details?: Record<string, unknown>;
+
+  constructor(code: string, message: string, repair?: TodoRepairHint, details?: Record<string, unknown>) {
+    super(repair ? `${message}; repair: todo(${JSON.stringify({ action: repair.action, ...repair.params })})` : message);
+    this.name = "TodoWorkflowError";
+    this.code = code;
+    this.repair = repair;
+    this.details = details;
+  }
+}
+
+function workflowError(code: string, message: string, repair?: TodoRepairHint, details?: Record<string, unknown>): TodoWorkflowError {
+  return new TodoWorkflowError(code, message, repair, details);
+}
 
 export type CreateTodoInput = {
   title: string;
@@ -195,14 +214,44 @@ export class TodoService {
     return this.get(todoId);
   }
 
+  async active(owner?: string | null): Promise<Todo | undefined> {
+    return this.findActiveTodo(await this.expireClaims(await this.state()), owner);
+  }
+
+  async begin(capabilities: string[] = [], leaseMs?: number, owner?: string | null, options: StartTodoOptions = {}): Promise<Todo> {
+    const state = await this.expireClaims(await this.state());
+    const active = this.findActiveTodo(state, owner);
+    if (active) return active;
+    const todo = nextTodo(state, { capabilities });
+    if (!todo) throw workflowError("NO_READY_TODO", "no ready todo is available", { action: "list", params: {} });
+    return this.start(todo.id, capabilities, leaseMs, owner, options);
+  }
+
+  async finish(todoId?: string, evidence: EvidenceRef[] = [], summary?: string, owner?: string | null): Promise<Todo> {
+    const target = todoId ? await this.get(todoId) : await this.active(owner);
+    if (!target) throw workflowError("NO_ACTIVE_TODO", "no active todo to finish", { action: "begin", params: {} });
+    return this.complete(target.id, evidence, summary);
+  }
+
+  async noteArtifact(todoId: string | undefined, input: CreateArtifactInput, owner?: string | null): Promise<{ todo: Todo; path: string }> {
+    const target = todoId ? await this.get(todoId) : await this.active(owner);
+    if (!target) throw workflowError("NO_ACTIVE_TODO", "no active todo for artifact", { action: "begin", params: {} });
+    return this.createArtifact(target.id, input);
+  }
+
   async start(todoId: string, capabilities: string[] = [], leaseMs?: number, owner?: string | null, options: StartTodoOptions = {}): Promise<Todo> {
     let state = await this.expireClaims(await this.state());
     let todo = this.requireTodo(state, todoId);
-    if (todo.status === "blocked") throw new Error("cannot start blocked todo");
+    if (todo.status === "blocked") throw workflowError("TODO_BLOCKED", "cannot start blocked todo", { action: "get", params: { todoId } });
     const splitResult = await this.splitCheck(todoId);
     if (shouldBlockForSplit(splitResult, this.policy.splitting, options.splitOverrideReason)) {
       const nextAction = splitResult.assessment === "too_vague" ? "clarify expected outcome and acceptance criteria" : splitResult.assessment === "epic" ? "split into child tasks or mark as parent-only" : "split into child tasks";
-      throw new Error(`blocked: task requires splitting; assessment:${splitResult.assessment}; reason:${splitResult.reasons.join(", ")}; next_action:${nextAction}`);
+      throw workflowError(
+        "SPLIT_REQUIRED",
+        `blocked: task requires splitting; assessment:${splitResult.assessment}; reason:${splitResult.reasons.join(", ")}; next_action:${nextAction}`,
+        { action: "split", params: { todoId, auto: true, apply: false } },
+        { splitCheck: splitResult },
+      );
     }
     if (options.splitOverrideReason?.trim() && !splitResult.splitPolicySatisfied) {
       await this.append({ id: id("evt"), type: "todo.updated", at: now(), todoId, patch: { splitOverrideReason: options.splitOverrideReason.trim(), splitPolicySatisfied: true } });
@@ -212,11 +261,13 @@ export class TodoService {
     const eligibilityTodo = { ...todo, status: todo.status === "claimed" ? "ready" as TodoStatus : todo.status };
     const reasons = ineligibleReasons(eligibilityTodo, state, { capabilities });
     const openDeps = openDependencyIds(todo, state);
-    if (openDeps.length > 0) throw new Error(`dependency not done: ${openDeps[0]}`);
-    if (reasons.length > 0 && todo.status !== "claimed") throw new Error(`todo is not ready: ${reasons.join(", ")}`);
+    if (openDeps.length > 0) throw workflowError("DEPENDENCY_OPEN", `dependency not done: ${openDeps[0]}`, { action: "get", params: { todoId: openDeps[0] } });
+    if (reasons.length > 0 && todo.status !== "claimed") throw workflowError("TODO_NOT_READY", `todo is not ready: ${reasons.join(", ")}`, { action: "next_ready", params: {} }, { reasons });
     const effectiveOwner = owner ?? todo.owner ?? null;
-    if (this.activeCount(state, todoId, effectiveOwner) >= this.policy.maxInProgress) throw new Error("max in-progress todos reached");
-    if (this.policy.globalMaxInProgress !== undefined && this.globalActiveCount(state, todoId) >= this.policy.globalMaxInProgress) throw new Error("global max in-progress todos reached");
+    const ownerActive = this.findActiveTodo(state, effectiveOwner, todoId);
+    if (this.activeCount(state, todoId, effectiveOwner) >= this.policy.maxInProgress) throw workflowError("MAX_IN_PROGRESS", "max in-progress todos reached", ownerActive ? { action: "get", params: { todoId: ownerActive.id } } : { action: "list", params: {} });
+    const globalActive = this.findActiveTodo(state, undefined, todoId);
+    if (this.policy.globalMaxInProgress !== undefined && this.globalActiveCount(state, todoId) >= this.policy.globalMaxInProgress) throw workflowError("GLOBAL_MAX_IN_PROGRESS", "global max in-progress todos reached", globalActive ? { action: "get", params: { todoId: globalActive.id } } : { action: "list", params: {} });
     if (!todo.activeClaimId) {
       await this.claim(todoId, capabilities, leaseMs, effectiveOwner);
       state = await this.state();
@@ -227,8 +278,14 @@ export class TodoService {
   }
 
   async complete(todoId: string, evidence: EvidenceRef[] = [], summary?: string): Promise<Todo> {
-    if (this.policy.requireEvidenceForDone && evidence.length === 0) throw new Error("evidence is required to complete a todo");
-    await this.requireExisting(todoId);
+    const todo = await this.get(todoId);
+    if (this.policy.requireEvidenceForDone && todo.evidence.length + evidence.length === 0) {
+      throw workflowError(
+        "EVIDENCE_REQUIRED",
+        "evidence is required to complete a todo",
+        { action: "attach_evidence", params: { todoId, evidence: [{ type: "manual_note", note: "describe verification or completed work" }] } },
+      );
+    }
     await this.append({ id: id("evt"), type: "todo.completed", at: now(), todoId, evidence, summary });
     return this.get(todoId);
   }
@@ -323,22 +380,26 @@ export class TodoService {
 
   private async requireExisting(todoId: string): Promise<void> { this.requireTodo(await this.state(), todoId); }
   private async validateGeneratedArtifact(todoId: string, path: string, createdByTodoId: string): Promise<void> {
-    if (createdByTodoId !== todoId) throw new Error("generated artifact createdByTodoId must match todoId");
-    if (path.startsWith("/") || path.includes("..") || !path.startsWith(MODEL_ARTIFACTS_DIR)) throw new Error("generated artifacts must be under .model-artifacts/");
+    const repair = { action: "create_artifact", params: { todoId, kind: "todo", shortName: "artifact", purpose: "generated artifact", content: "" } };
+    if (createdByTodoId !== todoId) throw workflowError("ARTIFACT_TODO_MISMATCH", "generated artifact createdByTodoId must match todoId", repair);
+    if (path.startsWith("/") || path.includes("..") || !path.startsWith(MODEL_ARTIFACTS_DIR)) throw workflowError("ARTIFACT_PATH_INVALID", "generated artifacts must be under .model-artifacts/", repair);
     const parts = path.split("/");
     const folder = parts[1];
     const name = parts.pop()?.toLowerCase() ?? "";
-    if (!ARTIFACT_FOLDERS.has(folder)) throw new Error("generated artifacts must use an approved .model-artifacts subfolder");
-    if (parts.length < 3) throw new Error("generated artifact paths must include a topic directory");
-    if (folder === "todo" && parts.length < 3) throw new Error(`todo artifacts must be under ${MODEL_TODO_ARTIFACTS_DIR}<topic>/`);
-    if (name.includes("todo") && !path.startsWith(MODEL_TODO_ARTIFACTS_DIR)) throw new Error(`todo files must be under ${MODEL_TODO_ARTIFACTS_DIR}`);
-    if (!/^\d{4}-\d{2}-\d{2}_\d{4}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.test(name)) throw new Error("generated artifact filenames must be YYYY-MM-DD_HHMM-short-kebab-name.md");
+    if (!ARTIFACT_FOLDERS.has(folder)) throw workflowError("ARTIFACT_PATH_INVALID", "generated artifacts must use an approved .model-artifacts subfolder", repair);
+    if (parts.length < 3) throw workflowError("ARTIFACT_PATH_INVALID", "generated artifact paths must include a topic directory", repair);
+    if (folder === "todo" && parts.length < 3) throw workflowError("ARTIFACT_PATH_INVALID", `todo artifacts must be under ${MODEL_TODO_ARTIFACTS_DIR}<topic>/`, repair);
+    if (name.includes("todo") && !path.startsWith(MODEL_TODO_ARTIFACTS_DIR)) throw workflowError("ARTIFACT_PATH_INVALID", `todo files must be under ${MODEL_TODO_ARTIFACTS_DIR}`, repair);
+    if (!/^\d{4}-\d{2}-\d{2}_\d{4}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.test(name)) throw workflowError("ARTIFACT_PATH_INVALID", "generated artifact filenames must be YYYY-MM-DD_HHMM-short-kebab-name.md", repair);
     try {
       const text = await readFile(path, "utf8");
-      if (!/^# .+\n\nCreated: .+\nPurpose: .+/m.test(text)) throw new Error("generated artifact markdown must start with heading, Created, and Purpose");
+      if (!/^# .+\n\nCreated: .+\nPurpose: .+/m.test(text)) throw workflowError("ARTIFACT_FORMAT_INVALID", "generated artifact markdown must start with heading, Created, and Purpose", repair);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
+  }
+  private findActiveTodo(state: TodoState, owner?: string | null, exceptTodoId?: string): Todo | undefined {
+    return Object.values(state.todos).find((todo) => todo.id !== exceptTodoId && (todo.status === "in_progress" || todo.status === "claimed") && (owner ? todo.owner === owner : true));
   }
   private async append(event: TodoEvent): Promise<void> { await this.store.append(event); }
   private requireTodo(state: TodoState, todoId: string): Todo { const todo = state.todos[todoId]; if (!todo) throw new Error(`todo not found: ${todoId}`); return todo; }

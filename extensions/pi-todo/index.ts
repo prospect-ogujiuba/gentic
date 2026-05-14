@@ -23,7 +23,7 @@ export default function piTodo(pi: ExtensionAPI): void {
     await updateTodoWidget(pi, ctx);
     return {
       block: true,
-      reason: "pi-todo enforcement: use the todo tool first and claim/start a todo before using other tools.",
+      reason: 'pi-todo enforcement: no active todo. Call todo({ "action": "begin" }) then retry the blocked tool.',
     };
   });
 
@@ -31,9 +31,9 @@ export default function piTodo(pi: ExtensionAPI): void {
     name: "todo",
     label: "Todo",
     description:
-      "Unified Gentic todo ledger tool with create/update/split/split_check/claim/start/block/complete/attach_evidence/record_artifact/create_artifact/verify/reopen/list/get/history/graph actions.",
+      "Unified Gentic todo ledger tool with create/update/split/split_check/begin/claim/start/block/complete/finish/attach_evidence/create_artifact/note_artifact/record_artifact/verify/reopen/list/get/history/graph actions.",
     promptSnippet:
-      "Use todo first. Non-todo tools are blocked until a todo is claimed or started. Use todo as the unified Gentic todo ledger tool for durable planning and lifecycle actions. Generated notes, reports, plans, logs, TODO files, and artifacts belong under .model-artifacts/<kind>/<topic>/ and must be recorded with todo action=record_artifact. For TODO/planning artifacts use .model-artifacts/todo/<topic>/, where <topic> is preferably the concrete extension/project such as pi-todo, pi-swe, or gentic; use subfolders for coherent phase sets like pi-swe-phases.",
+      "Use todo first. If no active todo, call todo action=begin; it deterministically returns active work or starts the next ready todo. Prefer finish over complete when ending active work. Prefer create_artifact/note_artifact for generated notes, reports, plans, logs, TODO files, and artifacts so pi-todo creates a valid .model-artifacts/<kind>/<topic>/ path and records evidence automatically. Use record_artifact only for files that already exist. For TODO/planning artifacts use kind=todo with category such as pi-todo, pi-swe, or gentic and subcategory for phase sets like pi-swe-phases.",
     parameters: todoToolParameters,
     async execute(_id, params, _signal, _onUpdate, ctx) {
       return executeTodoAction(pi, ctx, params);

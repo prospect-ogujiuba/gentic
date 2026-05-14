@@ -2,7 +2,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { TodoService, type CreateArtifactInput, type CreateTodoInput } from "../app/service.ts";
+import { TodoService, TodoWorkflowError, type CreateArtifactInput, type CreateTodoInput, type TodoRepairHint } from "../app/service.ts";
 import { summarizeTodos } from "../app/query.ts";
 import type { EvidenceRef, Todo } from "../domain/types.ts";
 import {
@@ -29,10 +29,32 @@ function normalizeEvidence(raw: unknown): EvidenceRef[] {
   return Array.isArray(raw) ? raw.map((item) => item as EvidenceRef) : [];
 }
 
-function mutationResult(action: string, todo: Todo) {
+function nextActions(todo: Todo): TodoRepairHint[] {
+  if (todo.status === "ready") return [{ action: "start", params: { todoId: todo.id } }, { action: "begin", params: {} }];
+  if (todo.status === "claimed" || todo.status === "in_progress") {
+    const actions: TodoRepairHint[] = [
+      { action: "create_artifact", params: { todoId: todo.id, kind: "todo", shortName: "work-note", purpose: "record durable work evidence", content: "" } },
+      { action: "attach_evidence", params: { todoId: todo.id, evidence: [{ type: "manual_note", note: "describe verification or completed work" }] } },
+    ];
+    if (todo.evidence.length > 0) actions.push({ action: "finish", params: { todoId: todo.id } });
+    return actions;
+  }
+  if (todo.status === "completed") return [{ action: "verify", params: { todoId: todo.id } }];
+  return [];
+}
+
+function mutationResult(action: string, todo: Todo, extraDetails: Record<string, unknown> = {}) {
   return {
     content: [{ type: "text" as const, text: `${action} ${renderTodo(todo)}` }],
-    details: { todo },
+    details: { todo, nextActions: nextActions(todo), ...extraDetails },
+  };
+}
+
+function workflowErrorResult(error: TodoWorkflowError) {
+  const repair = error.repair ? { action: error.repair.action, ...error.repair.params } : undefined;
+  return {
+    content: [{ type: "text" as const, text: repair ? `${error.message}\nnext_call: todo(${JSON.stringify(repair)})` : error.message }],
+    details: { error: { code: error.code, message: error.message, repair, details: error.details } },
   };
 }
 
@@ -111,6 +133,15 @@ export async function updateTodoWidget(
 }
 
 export async function executeTodoAction(pi: ExtensionAPI, ctx: ExtensionContext, params: Record<string, unknown>) {
+  try {
+    return await executeTodoActionUnsafe(pi, ctx, params);
+  } catch (error) {
+    if (error instanceof TodoWorkflowError) return workflowErrorResult(error);
+    throw error;
+  }
+}
+
+async function executeTodoActionUnsafe(pi: ExtensionAPI, ctx: ExtensionContext, params: Record<string, unknown>) {
   const svc = service(pi, ctx);
   if (params.action === "create") {
     const todo = await svc.create(createInput(params));
@@ -123,7 +154,25 @@ export async function executeTodoAction(pi: ExtensionAPI, ctx: ExtensionContext,
   }
   if (params.action === "next" || params.action === "next_ready") {
     const todo = await svc.next();
-    return { content: [{ type: "text" as const, text: todo ? renderTodo(todo) : "No next todo." }], details: { todo } };
+    return { content: [{ type: "text" as const, text: todo ? renderTodo(todo) : "No next todo." }], details: { todo, nextActions: todo ? nextActions(todo) : [{ action: "create", params: { title: "describe next task" } }] } };
+  }
+  const owner = (params.owner as string | undefined) ?? ctx.sessionId ?? ctx.cwd ?? null;
+  if (params.action === "begin") {
+    const todo = await svc.begin(params.requiredCapabilities as string[] | undefined, params.leaseMs as number | undefined, owner, { splitOverrideReason: params.reason as string | undefined });
+    await updateTodoWidget(pi, ctx);
+    return mutationResult("begin", todo);
+  }
+  if (params.action === "finish") {
+    const todoId = params.todoId ? await svc.resolveId(params.todoId as string) : undefined;
+    const todo = await svc.finish(todoId, normalizeEvidence(params.evidence), params.summary as string | undefined, owner);
+    await updateTodoWidget(pi, ctx);
+    return mutationResult("finish", todo);
+  }
+  if (params.action === "note_artifact") {
+    const todoId = params.todoId ? await svc.resolveId(params.todoId as string) : undefined;
+    const result = await svc.noteArtifact(todoId, artifactInput(params), owner);
+    await updateTodoWidget(pi, ctx);
+    return mutationResult("note_artifact", result.todo, { artifactPath: result.path });
   }
   if (params.action === "graph") {
     const graph = await svc.graph(params.todoId as string | undefined);
@@ -147,7 +196,6 @@ export async function executeTodoAction(pi: ExtensionAPI, ctx: ExtensionContext,
     return { content: [{ type: "text" as const, text: splitCheckText(todo, splitCheck) }], details: { splitCheck } };
   }
 
-  const owner = (params.owner as string | undefined) ?? ctx.sessionId ?? ctx.cwd ?? null;
   if (params.action === "split") {
     const parent = await svc.get(todoId);
     const existingChildren = params.children as CreateTodoInput[] | undefined;
@@ -163,6 +211,11 @@ export async function executeTodoAction(pi: ExtensionAPI, ctx: ExtensionContext,
     await updateTodoWidget(pi, ctx);
     return { content: [{ type: "text" as const, text: `split ${todoId} into ${created.length} children\n${created.map(renderTodo).join("\n")}` }], details: { parent, children: created, splitCheck } };
   }
+  if (params.action === "create_artifact") {
+    const result = await svc.createArtifact(todoId, artifactInput(params));
+    await updateTodoWidget(pi, ctx);
+    return mutationResult("create_artifact", result.todo, { artifactPath: result.path });
+  }
   const todo = params.action === "claim" ? await svc.claim(todoId, params.requiredCapabilities as string[] | undefined, params.leaseMs as number | undefined, owner)
     : params.action === "renew" ? await svc.renew(todoId, params.leaseMs as number | undefined)
     : params.action === "release" ? await svc.release(todoId, params.reason as string | undefined)
@@ -174,7 +227,6 @@ export async function executeTodoAction(pi: ExtensionAPI, ctx: ExtensionContext,
     : params.action === "complete" ? await svc.complete(todoId, normalizeEvidence(params.evidence), params.summary as string | undefined)
     : params.action === "attach_evidence" ? await svc.attachEvidence(todoId, normalizeEvidence(params.evidence))
     : params.action === "record_artifact" ? await svc.attachEvidence(todoId, [{ type: "generated_artifact", path: String(params.path || ""), summary: String(params.summary || "generated artifact"), createdByTodoId: todoId, recordedAt: new Date().toISOString() }])
-    : params.action === "create_artifact" ? (await svc.createArtifact(todoId, artifactInput(params))).todo
     : params.action === "verify" ? await svc.verify(todoId, normalizeEvidence(params.evidence), params.summary as string | undefined, params.requiredCapabilities as string[] | undefined)
     : params.action === "fail" ? await svc.fail(todoId, params.reason as string | undefined, normalizeEvidence(params.evidence))
     : params.action === "reopen" ? await svc.reopen(todoId, params.reason as string | undefined)
