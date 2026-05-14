@@ -1,9 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { reduceTodoState } from "../extensions/pi-todo/src/domain/reducer.ts";
+import { emptyTodoState, reduceTodoState } from "../extensions/pi-todo/src/domain/reducer.ts";
 import { formatTodoTitleForTui, renderTodoDocketLines, renderTodoProgress } from "../extensions/pi-todo/src/ui/docket.ts";
 import { ansiTodoTheme, plainTodoTheme } from "../extensions/pi-todo/src/ui/theme.ts";
 import type { TodoEvent } from "../extensions/pi-todo/src/domain/types.ts";
+
+test("todo docket stays hidden when there are no tasks", () => {
+  const state = emptyTodoState();
+  const lines = renderTodoDocketLines(state, plainTodoTheme, { width: 100 });
+
+  assert.equal(renderTodoProgress(state, plainTodoTheme), "");
+  assert.deepEqual(lines, []);
+  assert.doesNotMatch(lines.join("\n"), /No tasks recorded yet|TASKS|0\/0/);
+});
 
 test("todo docket keeps legacy progress bar vocabulary", () => {
   const at = "2026-05-11T00:00:00.000Z";

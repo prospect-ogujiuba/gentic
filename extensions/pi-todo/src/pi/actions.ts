@@ -151,6 +151,11 @@ export async function updateTodoWidget(
   const config = loadEffectiveTodoConfig({ cwd: ctx.cwd }).config;
   const counts = summarizeTodos(state);
   syncTodoSessionName(pi, ctx, state);
+  if (counts.total === 0) {
+    ctx.ui.setStatus(STATUS_KEY, undefined);
+    ctx.ui.setWidget(STATUS_KEY, undefined);
+    return;
+  }
   ctx.ui.setStatus(
     STATUS_KEY,
     `todo open ${counts.open} · active ${counts.byStatus.in_progress} · done ${counts.byStatus.completed + counts.byStatus.verified}`,

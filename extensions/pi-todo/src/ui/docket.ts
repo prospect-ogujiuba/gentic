@@ -45,6 +45,7 @@ function progressBlock(status: TodoStatus, theme: TodoTheme): string {
 export function renderTodoProgress(state: TodoState, theme: TodoTheme): string {
   const todos = orderedTodos(state, true);
   const counts = summarizeTodos(state);
+  if (counts.total === 0) return "";
   const resolved = counts.byStatus.completed + counts.byStatus.verified;
   const pct = counts.total > 0 ? Math.round((resolved / counts.total) * 100) : 0;
   const statColor = pct >= 100 ? "syntaxComment" : pct > 0 ? "accent" : "dim";
@@ -113,6 +114,7 @@ function summaryTitle(state: TodoState, options: Pick<TodoDocketRenderOptions, "
 export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, options: TodoDocketRenderOptions = {}): string[] {
   const width = options.width ?? 80;
   const counts = summarizeTodos(state);
+  if (counts.total === 0) return [];
   const activeCount = counts.byStatus.in_progress + counts.byStatus.claimed;
   const doneCount = counts.byStatus.completed + counts.byStatus.verified;
   const failedCount = counts.byStatus.cancelled + counts.byStatus.failed + counts.byStatus.abandoned;
@@ -141,7 +143,6 @@ export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, option
     const line = meta ? leftRight(width, `${rowPrefix(todo, state)}${icon} ${titleText}`, meta) : `${rowPrefix(todo, state)}${icon} ${titleText}`;
     lines.push(...wrap(width, line));
   }
-  if (counts.open === 0 && counts.total === 0) lines.push(theme.fg("dim", "No tasks recorded yet."));
   return lines;
 }
 
