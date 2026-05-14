@@ -69,10 +69,12 @@ export function collectRuntimeMessage(
   const measured = measureMessage(message);
   const role = readStringProperty(message, "role") ?? "message";
   const isFinal = eventType === "message_end";
-  const tokenCount = readAssistantUsageTokens(message);
-  const tokenConfidence: TokenConfidence = tokenCount === undefined ? "estimated" : "exact";
+  const usageTotalTokens = role === "assistant" ? readAssistantUsageTokens(message) : undefined;
+  const usageWarning = usageTotalTokens === undefined ? undefined : "message usage.totalTokens is cumulative context usage and is excluded from entry tokens";
+  const warning = [measured.warning, usageWarning].filter(Boolean).join("; ") || undefined;
+  const tokenConfidence: TokenConfidence = measured.warning ? "unknown" : "estimated";
   return {
-    warnings: [],
+    warnings: usageWarning ? [usageWarning] : [],
     entries: [
       normalizeLedgerEntry({
         id: `runtime:message:${messageIdentity(message)}`,
@@ -80,7 +82,6 @@ export function collectRuntimeMessage(
         label: `${role} message`,
         origin: `message.${role}`,
         byteCount: measured.byteCount,
-        tokenCount,
         tokenConfidence,
         seenAt: at,
         turnId: context.turnId,
@@ -93,7 +94,7 @@ export function collectRuntimeMessage(
           sizeEstimate: measured.byteCount,
           pathCount: 0,
           status: "present",
-          warning: measured.warning,
+          warning,
         },
         redaction: { redacted: true, reason: "runtime message content is not stored", originalByteCount: measured.byteCount },
       }),

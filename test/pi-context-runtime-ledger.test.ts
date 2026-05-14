@@ -45,8 +45,11 @@ test("runtime message updates are de-duplicated and final message data wins", ()
   const assistantEntries = getSessionState()?.ledgerEntries.filter((entry) => entry.kind === "session" && entry.label === "assistant message") ?? [];
   assert.equal(assistantEntries.length, 1);
   assert.equal(assistantEntries[0]?.byteCount, "hello world".length);
-  assert.equal(assistantEntries[0]?.tokenCount, 5);
+  assert.equal(assistantEntries[0]?.tokenCount, 3);
+  assert.equal(assistantEntries[0]?.tokenConfidence, "estimated");
   assert.equal(assistantEntries[0]?.sourceMetadata?.eventType, "message_end");
+  assert.match(assistantEntries[0]?.sourceMetadata?.warning ?? "", /usage\.totalTokens is cumulative/);
+  assert.deepEqual(getSessionState()?.warnings, ["message usage.totalTokens is cumulative context usage and is excluded from entry tokens"]);
   assert.deepEqual(assistantEntries[0]?.turnIds, ["turn-1"]);
 });
 
