@@ -156,15 +156,8 @@ export class TodoService {
     }
     if (assessment.organization === "clarify") return { assessment, children: [] };
 
-    const childInputs = options.children?.length ? options.children : assessment.suggestedChildren.map((child) => ({
-      title: child.title,
-      description: child.description,
-      acceptanceCriteria: child.acceptanceCriteria,
-      definitionOfDone: child.definitionOfDone,
-      scope: child.scope,
-      tags: child.tags,
-    }));
-    if (childInputs.length === 0) throw workflowError("INTAKE_CHILDREN_REQUIRED", "organized intake requires child suggestions or caller-provided children");
+    const childInputs = options.children?.length ? options.children : [];
+    if (childInputs.length === 0) return { assessment, children: [] };
     const problems = splitTitleSimilarityProblems(input.title, childInputs.map((child) => child.title));
     if (problems.length > 0) throw new Error(`organized intake child titles must be distinct; ${problems.join("; ")}; make each child title/scope more specific`);
 

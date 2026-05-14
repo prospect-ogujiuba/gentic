@@ -68,6 +68,15 @@ function organizedCreateResult(result: Awaited<ReturnType<TodoService["createOrg
       details: { ...result, nextActions: result.children.length > 0 ? [{ action: "start", params: { todoId: result.children[0].id } }, { action: "begin", params: {} }] : [] },
     };
   }
+  if (result.assessment.organization === "container") {
+    const suggested = result.assessment.suggestedChildren.map((child, index) => `  ${index + 1}. ${child.title}`).join("\n");
+    const lines = [`intake needs explicit child tasks before creating docket entries: ${result.assessment.reasons.join(", ")}`];
+    if (suggested) lines.push("non-durable suggestions:", suggested);
+    return {
+      content: [{ type: "text" as const, text: lines.join("\n") }],
+      details: { ...result, nextActions: [{ action: "create_organized", params: { title: result.assessment.parent?.title ?? "specific parent task", children: [{ title: "specific verifiable child" }] } }] },
+    };
+  }
   const questions = result.assessment.clarificationQuestions.map((question) => `  - ${question}`).join("\n");
   return {
     content: [{ type: "text" as const, text: `intake needs clarification: ${result.assessment.reasons.join(", ")}\nquestions:\n${questions}` }],
@@ -240,8 +249,11 @@ async function executeTodoActionUnsafe(pi: ExtensionAPI, ctx: ExtensionContext, 
     const children = existingChildren?.length ? existingChildren : params.auto ? splitCheck.suggestedChildren.slice(0, requestedCount).map((child) => ({ title: child.title, acceptanceCriteria: child.acceptanceCriteria })) : [];
     if (children.length === 0) throw new Error("split children are required unless auto is true");
     const reason = (params.reason as string | undefined) || `split assessment ${splitCheck.assessment}: ${splitCheck.reasons.join(", ")}`;
-    if (params.auto && params.apply === false) {
-      return { content: [{ type: "text" as const, text: splitCheckText(parent, { ...splitCheck, suggestedChildren: children }) }], details: { splitCheck, children } };
+    if (params.auto && !existingChildren?.length) {
+      return {
+        content: [{ type: "text" as const, text: `auto split is preview-only; provide explicit children to persist\n${splitCheckText(parent, { ...splitCheck, suggestedChildren: children })}` }],
+        details: { splitCheck, children, nextActions: [{ action: "split", params: { todoId, children, reason } }] },
+      };
     }
     const created = await svc.split(todoId, children, reason);
     await updateTodoWidget(pi, ctx);

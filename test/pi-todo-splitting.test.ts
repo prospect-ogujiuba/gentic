@@ -87,7 +87,7 @@ test("organized create keeps atomic input as one todo", async () => {
   assert.equal(Object.keys(state.todos).length, 1);
 });
 
-test("organized create persists compound input as parent and children", async () => {
+test("organized create does not persist generated compound children without explicit child inputs", async () => {
   const store = new MemoryStore();
   const service = new TodoService(store);
 
@@ -99,9 +99,28 @@ test("organized create persists compound input as parent and children", async ()
   });
 
   assert.equal(result.assessment.organization, "container");
+  assert.equal(result.parent, undefined);
+  assert.equal(result.children.length, 0);
+  assert.equal(store.events.length, 0);
+});
+
+test("organized create persists compound input only with explicit children", async () => {
+  const store = new MemoryStore();
+  const service = new TodoService(store);
+
+  const result = await service.createOrganized({
+    title: "Implement mandatory task splitting in pi-todo",
+    description: "Touches lifecycle, command behavior, persistence, validation, and tests.",
+    acceptanceCriteria: ["Add metadata", "Add split-check", "Block start", "Record override"],
+    scope: { paths: ["extensions/pi-todo/src/domain", "extensions/pi-todo/src/app", "extensions/pi-todo/index.ts"] },
+  }, { children: [
+    { title: "Add split metadata", acceptanceCriteria: ["Split metadata is stored"] },
+    { title: "Block unsplit parents", acceptanceCriteria: ["Parents cannot start directly"] },
+  ] });
+
+  assert.equal(result.assessment.organization, "container");
   assert.equal(result.parent?.workDirectlyAllowed, false);
-  assert.ok(result.parent!.children.length > 0);
-  assert.equal(result.children.length, result.parent!.children.length);
+  assert.deepEqual(result.children.map((child) => child.title), ["Add split metadata", "Block unsplit parents"]);
   assert.ok(result.children.every((child) => child.parentId === result.parent!.id && child.acceptanceCriteria.length > 0));
   assert.deepEqual(store.events.map((event) => event.type), ["todo.created", "todo.split"]);
   await assert.rejects(() => service.start(result.parent!.id), /assessment:epic/);
@@ -137,7 +156,7 @@ test("tool create defaults to one explicit todo for observability", async () => 
   assert.deepEqual(entries.map((entry) => entry.data.type), ["todo.created"]);
 });
 
-test("tool organized create reports compound request organized into parent and children", async () => {
+test("tool organized create previews compound suggestions without persistence unless children are explicit", async () => {
   const { pi, ctx, entries } = actionHarness();
 
   const result = await executeTodoAction(pi as never, ctx as never, {
@@ -148,11 +167,33 @@ test("tool organized create reports compound request organized into parent and c
     scope: { paths: ["extensions/pi-todo/src/domain", "extensions/pi-todo/src/app", "extensions/pi-todo/index.ts"] },
   });
 
+  assert.match(result.content[0].text, /needs explicit child tasks/);
+  assert.match(result.content[0].text, /non-durable suggestions/);
+  assert.equal(result.details.assessment.organization, "container");
+  assert.equal(result.details.parent, undefined);
+  assert.equal(result.details.children.length, 0);
+  assert.equal(entries.length, 0);
+});
+
+test("tool organized create persists explicit compound children", async () => {
+  const { pi, ctx, entries } = actionHarness();
+
+  const result = await executeTodoAction(pi as never, ctx as never, {
+    action: "create_organized",
+    title: "Implement mandatory task splitting in pi-todo",
+    description: "Touches lifecycle, command behavior, persistence, validation, and tests.",
+    acceptanceCriteria: ["Add metadata", "Add split-check", "Block start", "Record override"],
+    scope: { paths: ["extensions/pi-todo/src/domain", "extensions/pi-todo/src/app", "extensions/pi-todo/index.ts"] },
+    children: [
+      { title: "Add split metadata", acceptanceCriteria: ["Split metadata is stored"] },
+      { title: "Block unsplit parents", acceptanceCriteria: ["Parents cannot start directly"] },
+    ],
+  });
+
   assert.match(result.content[0].text, /compound request organized/);
-  assert.doesNotMatch(result.content[0].text, /rollback|corrective/i);
   assert.equal(result.details.assessment.organization, "container");
   assert.ok(result.details.parent.workDirectlyAllowed === false);
-  assert.ok(result.details.children.length > 0);
+  assert.deepEqual(result.details.children.map((child: { title: string }) => child.title), ["Add split metadata", "Block unsplit parents"]);
   assert.deepEqual(entries.map((entry) => entry.data.type), ["todo.created", "todo.split"]);
 });
 
@@ -178,8 +219,8 @@ test("tool organized create labels explicit vague fallback separately from atomi
   assert.equal(entries.length, 1);
 });
 
-test("tool split and split_check still handle already-created tasks", async () => {
-  const { pi, ctx } = actionHarness();
+test("tool split previews generated children but only persists explicit children", async () => {
+  const { pi, ctx, entries } = actionHarness();
   const created = await executeTodoAction(pi as never, ctx as never, {
     action: "create",
     title: "Implement existing split path",
@@ -189,6 +230,10 @@ test("tool split and split_check still handle already-created tasks", async () =
 
   const checked = await executeTodoAction(pi as never, ctx as never, { action: "split_check", todoId });
   assert.match(checked.content[0].text, /assessment: split_required/);
+
+  const preview = await executeTodoAction(pi as never, ctx as never, { action: "split", todoId, auto: true });
+  assert.match(preview.content[0].text, /auto split is preview-only/);
+  assert.deepEqual(entries.map((entry) => entry.data.type), ["todo.created", "todo.updated", "todo.updated"]);
 
   const split = await executeTodoAction(pi as never, ctx as never, {
     action: "split",
