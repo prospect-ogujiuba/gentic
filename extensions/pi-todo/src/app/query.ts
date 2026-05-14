@@ -12,11 +12,29 @@ function isActiveDocketTodo(todo: Todo): boolean {
   return todo.status === "in_progress" || todo.status === "claimed";
 }
 
+function hasActiveDocketWork(todo: Todo, state: TodoState, seen = new Set<string>()): boolean {
+  if (seen.has(todo.id)) return false;
+  seen.add(todo.id);
+  if (isActiveDocketTodo(todo)) return true;
+  return todo.children.some((childId) => {
+    const child = state.todos[childId];
+    return child ? hasActiveDocketWork(child, state, seen) : false;
+  });
+}
+
+function orderedDocketChildIds(todo: Todo, state: TodoState): string[] {
+  return todo.children
+    .filter((childId) => Boolean(state.todos[childId]))
+    .map((childId, index) => ({ childId, index, active: hasActiveDocketWork(state.todos[childId], state) }))
+    .sort((left, right) => Number(right.active) - Number(left.active) || left.index - right.index)
+    .map(({ childId }) => childId);
+}
+
 function collectTodoGroupRows(todo: Todo, state: TodoState, seen: Set<string>): Todo[] {
   if (seen.has(todo.id)) return [];
   seen.add(todo.id);
   const rows = [todo];
-  for (const childId of todo.children) {
+  for (const childId of orderedDocketChildIds(todo, state)) {
     const child = state.todos[childId];
     if (child) rows.push(...collectTodoGroupRows(child, state, seen));
   }

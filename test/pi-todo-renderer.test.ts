@@ -30,7 +30,7 @@ test("todo docket keeps legacy progress bar vocabulary", () => {
   assert.match(lines.join("\n"), /\[~\] Active task/);
 });
 
-test("todo docket promotes an active child group before older work within the row limit", () => {
+test("todo docket promotes an active child group and makes active work the top child", () => {
   const at = "2026-05-11T00:00:00.000Z";
   const base = { description: undefined, priority: "normal" as const, createdAt: at, updatedAt: at, dependsOn: [], tags: [], acceptanceCriteria: [], evidence: [], notes: [], revision: 0 };
   const state = reduceTodoState([
@@ -41,11 +41,13 @@ test("todo docket promotes an active child group before older work within the ro
   ] satisfies TodoEvent[]);
 
   const rows = orderedDocketTodos(state, false).map((todo) => todo.id);
-  assert.deepEqual(rows.slice(0, 3), ["todo_parent", "todo_child_1", "todo_child_2"]);
-  const output = renderTodoDocketLines(state, plainTodoTheme, { width: 100, limit: 3 }).join("\n");
+  assert.deepEqual(rows.slice(0, 3), ["todo_parent", "todo_child_2", "todo_child_1"]);
+  assert.deepEqual(state.order, ["todo_old", "todo_parent", "todo_child_1", "todo_child_2"]);
+  assert.deepEqual(state.todos.todo_parent.children, ["todo_child_1", "todo_child_2"]);
+  const output = renderTodoDocketLines(state, plainTodoTheme, { width: 100, limit: 2 }).join("\n");
   assert.match(output, /Second parent/);
-  assert.match(output, /First split child/);
   assert.match(output, /Second split child active/);
+  assert.doesNotMatch(output, /First split child/);
   assert.doesNotMatch(output, /Older parent/);
 });
 
