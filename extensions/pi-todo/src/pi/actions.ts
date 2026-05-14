@@ -4,6 +4,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { TodoService, TodoWorkflowError, type CreateArtifactInput, type CreateTodoInput, type TodoRepairHint } from "../app/service.ts";
 import { summarizeTodos } from "../app/query.ts";
+import { loadEffectiveTodoConfig } from "../config.ts";
 import type { EvidenceRef, Todo } from "../domain/types.ts";
 import {
   createTodoDocketComponent,
@@ -147,13 +148,14 @@ export async function updateTodoWidget(
   ctx: ExtensionContext,
 ): Promise<void> {
   const state = await service(pi, ctx).state();
+  const config = loadEffectiveTodoConfig({ cwd: ctx.cwd }).config;
   const counts = summarizeTodos(state);
   syncTodoSessionName(pi, ctx, state);
   ctx.ui.setStatus(
     STATUS_KEY,
     `todo open ${counts.open} · active ${counts.byStatus.in_progress} · done ${counts.byStatus.completed + counts.byStatus.verified}`,
   );
-  ctx.ui.setWidget(STATUS_KEY, createTodoDocketComponent(state));
+  ctx.ui.setWidget(STATUS_KEY, createTodoDocketComponent(state, { showCompletedFocus: config.docket.showCompletedFocus }));
 }
 
 export async function executeTodoAction(pi: ExtensionAPI, ctx: ExtensionContext, params: Record<string, unknown>) {
@@ -168,7 +170,7 @@ export async function executeTodoAction(pi: ExtensionAPI, ctx: ExtensionContext,
 async function executeTodoActionUnsafe(pi: ExtensionAPI, ctx: ExtensionContext, params: Record<string, unknown>) {
   const svc = service(pi, ctx);
   if (params.action === "create" || params.action === "create_organized") {
-    if (params.action === "create" && params.autoOrganize === false) {
+    if (params.action === "create" && params.autoOrganize !== true) {
       const todo = await svc.create(createInput(params));
       await updateTodoWidget(pi, ctx);
       return mutationResult("Created", todo);

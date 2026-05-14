@@ -1,5 +1,6 @@
 import type { Todo, TodoState, TodoStatus } from "../domain/types.ts";
 import { activeTodo, nextTodo, openDependencyIds, orderedTodos, readyToClose, summarizeTodos } from "../app/query.ts";
+import { isTerminalStatus } from "../domain/lifecycle.ts";
 import { leftRight, wrap } from "./format.ts";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { TodoTheme } from "./theme.ts";
@@ -92,16 +93,24 @@ function renderSummaryLines(width: number, left: string, progress: string): stri
   return [truncateToWidth(left, width, ""), truncateToWidth(progress, width, "")];
 }
 
-function summaryTitle(state: TodoState): string | undefined {
+export type TodoDocketRenderOptions = { width?: number; limit?: number; includeDone?: boolean; detail?: "compact" | "summary"; showCompletedFocus?: boolean };
+
+function latestTerminalTodo(state: TodoState): Todo | undefined {
+  return orderedTodos(state, true)
+    .filter((todo) => isTerminalStatus(todo.status))
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+}
+
+function summaryTitle(state: TodoState, options: Pick<TodoDocketRenderOptions, "showCompletedFocus"> = {}): string | undefined {
   const active = activeTodo(state);
   const next = nextTodo(state);
   const rows = orderedTodos(state, false);
   const prefix = commonColonPrefix(rows);
-  const title = active?.title || next?.title || rows[0]?.title;
-  return title ? formatTodoTitleForTui(title, { commonPrefix: prefix, maxWidth: 80 }) : undefined;
+  const focus = active || next || rows[0] || (options.showCompletedFocus ?? true ? latestTerminalTodo(state) : undefined);
+  return focus ? formatTodoTitleForTui(focus.title, { commonPrefix: prefix, maxWidth: 80 }) : undefined;
 }
 
-export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, options: { width?: number; limit?: number; includeDone?: boolean; detail?: "compact" | "summary" } = {}): string[] {
+export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, options: TodoDocketRenderOptions = {}): string[] {
   const width = options.width ?? 80;
   const counts = summarizeTodos(state);
   const activeCount = counts.byStatus.in_progress + counts.byStatus.claimed;
@@ -112,7 +121,7 @@ export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, option
   const totalSummary = `${theme.fg("accent", `Total ${counts.total}`)}${theme.fg("dim", ` · open ${counts.open}`)}`;
   const left = [theme.fg("accent", title), totalSummary, chip("Ready", counts.byStatus.ready, "text"), chip("Active", activeCount, "syntaxString"), chip("Blocked", counts.byStatus.blocked, "muted"), chip("Done", doneCount, "accent"), chip("Cancelled", failedCount, "error"), theme.fg("dim", "/todo")].filter(Boolean).join(theme.fg("dim", " - "));
   const lines: string[] = [];
-  const focus = summaryTitle(state);
+  const focus = summaryTitle(state, options);
   if (focus) lines.push(`\x1b[48;5;108m\x1b[30m * ${focus} \x1b[0m`);
   lines.push(...renderSummaryLines(width, left, renderTodoProgress(state, theme)));
 
@@ -136,16 +145,16 @@ export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, option
   return lines;
 }
 
-export function createTodoDocketComponent(state: TodoState) {
+export function createTodoDocketComponent(state: TodoState, options: Pick<TodoDocketRenderOptions, "showCompletedFocus"> = {}) {
   return (_tui: { requestRender?: () => void }, theme: TodoTheme) => ({
     dispose() {},
     invalidate() {},
     render(width: number): string[] {
-      return renderTodoDocketLines(state, theme, { width, limit: 5 });
+      return renderTodoDocketLines(state, theme, { width, limit: 5, showCompletedFocus: options.showCompletedFocus });
     },
   });
 }
 
-export function renderTodoWidgetLines(state: TodoState, theme: TodoTheme, width = 92): string[] {
-  return renderTodoDocketLines(state, theme, { width, limit: 5 });
+export function renderTodoWidgetLines(state: TodoState, theme: TodoTheme, width = 92, options: Pick<TodoDocketRenderOptions, "showCompletedFocus"> = {}): string[] {
+  return renderTodoDocketLines(state, theme, { width, limit: 5, showCompletedFocus: options.showCompletedFocus });
 }

@@ -73,6 +73,29 @@ test("todo docket labels total and open counts accurately when all closed", () =
   assert.match(output, /\[■!\] 1\/2 50% S\/F 1\/1/);
 });
 
+test("todo docket keeps latest closed work in focus chip when all tasks are closed", () => {
+  const at = "2026-05-11T00:00:00.000Z";
+  const base = { description: undefined, priority: "normal" as const, createdAt: at, dependsOn: [], tags: [], acceptanceCriteria: [], evidence: [], notes: [], revision: 0 };
+  const state = reduceTodoState([
+    { id: "e1", type: "todo.created", at, todo: { ...base, id: "todo_1", title: "Older done", status: "done", updatedAt: "2026-05-11T01:00:00.000Z" } },
+    { id: "e2", type: "todo.created", at, todo: { ...base, id: "todo_2", title: "Latest done", status: "done", updatedAt: "2026-05-11T02:00:00.000Z" } },
+  ] satisfies TodoEvent[]);
+
+  const output = renderTodoDocketLines(state, plainTodoTheme, { width: 100 }).join("\n");
+  assert.match(output, /\* Latest done/);
+});
+
+test("todo docket can hide closed-work focus chip for legacy all-closed behavior", () => {
+  const at = "2026-05-11T00:00:00.000Z";
+  const base = { description: undefined, priority: "normal" as const, createdAt: at, updatedAt: at, dependsOn: [], tags: [], acceptanceCriteria: [], evidence: [], notes: [], revision: 0 };
+  const state = reduceTodoState([
+    { id: "e1", type: "todo.created", at, todo: { ...base, id: "todo_1", title: "Done task", status: "done" } },
+  ] satisfies TodoEvent[]);
+
+  const output = renderTodoDocketLines(state, plainTodoTheme, { width: 100, showCompletedFocus: false }).join("\n");
+  assert.doesNotMatch(output, /\* Done task/);
+});
+
 test("todo docket keeps progress visible when summary is too wide", () => {
   const at = "2026-05-11T00:00:00.000Z";
   const base = { description: undefined, priority: "normal" as const, createdAt: at, updatedAt: at, dependsOn: [], tags: [], acceptanceCriteria: [], evidence: [], notes: [], revision: 0 };
