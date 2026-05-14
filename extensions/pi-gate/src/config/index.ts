@@ -17,11 +17,18 @@ export type LoadedConfig = Required<Omit<Config, "$schema">> & Pick<Config, "$sc
 
 export const SCHEMA_URL = new URL("../../pi-gate.schema.json", import.meta.url).href;
 
+export const DEFAULT_AUDIT_PATH = ".pi/pi-gate/pi-gate-audit.jsonl";
+export const LEGACY_AUDIT_PATH = ".pi/pi-gate-audit.jsonl";
+
 let config: LoadedConfig = defaultConfig();
 let configPaths: string[] = [];
 
+export function normalizeAuditPath(path: string | undefined): string | undefined {
+  return path === LEGACY_AUDIT_PATH ? DEFAULT_AUDIT_PATH : path;
+}
+
 export function defaultConfig(): LoadedConfig {
-  return { version: 2, enabled: true, mode: "ask", defaultAction: "ask", audit: { enabled: true, path: ".pi/pi-gate/pi-gate-audit.jsonl" }, permissions: {} };
+  return { version: 2, enabled: true, mode: "ask", defaultAction: "ask", audit: { enabled: true, path: DEFAULT_AUDIT_PATH }, permissions: {} };
 }
 
 export function readConfigJson(path: string): Partial<Config> | undefined {
@@ -44,6 +51,7 @@ export function loadConfig(cwd: string): LoadedConfig {
     const raw = readConfigJson(p);
     if (!raw) continue;
     config = { ...config, ...raw, audit: { ...config.audit, ...raw.audit }, permissions: mergePermissions(config.permissions, raw.permissions || {}) };
+    config.audit.path = normalizeAuditPath(config.audit.path) || DEFAULT_AUDIT_PATH;
   }
   return config;
 }

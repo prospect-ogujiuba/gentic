@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { decide, loadConfig, patternRegex, persistRule, promptPermission } from "../extensions/pi-gate/index.ts";
+import { DEFAULT_AUDIT_PATH, decide, getConfig, loadConfig, patternRegex, persistRule, promptPermission } from "../extensions/pi-gate/index.ts";
 
 function writeGateConfig(cwd: string, config: Record<string, unknown>): string {
   const path = join(cwd, ".pi/pi-gate/pi-gate.json");
@@ -133,6 +133,41 @@ test("pi-gate project persistence does not duplicate rules", () => {
 
   const saved = JSON.parse(readFileSync(path, "utf8"));
   assert.deepEqual(saved.permissions.allow, ["echo once*"]);
+});
+
+test("pi-gate migrates legacy root audit path to pi-gate state directory", () => {
+  const originalHome = process.env.HOME;
+  const originalOverride = process.env.PI_GATE_CONFIG;
+  const home = mkdtempSync(join(tmpdir(), "pi-gate-home-"));
+  const cwd = mkdtempSync(join(tmpdir(), "pi-gate-project-"));
+  delete process.env.PI_GATE_CONFIG;
+  process.env.HOME = home;
+
+  try {
+    mkdirSync(join(home, ".pi/pi-gate"), { recursive: true });
+    writeFileSync(join(home, ".pi/pi-gate/pi-gate.json"), JSON.stringify({
+      version: 2,
+      audit: { enabled: true, path: ".pi/pi-gate-audit.jsonl" },
+    }));
+
+    loadConfig(cwd);
+
+    assert.equal(getConfig().audit.path, DEFAULT_AUDIT_PATH);
+  } finally {
+    if (originalHome === undefined) delete process.env.HOME; else process.env.HOME = originalHome;
+    if (originalOverride === undefined) delete process.env.PI_GATE_CONFIG; else process.env.PI_GATE_CONFIG = originalOverride;
+  }
+});
+
+test("pi-gate rewrites remembered rules with canonical audit path", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-gate-"));
+  const path = writeGateConfig(cwd, { version: 2, audit: { enabled: true, path: ".pi/pi-gate-audit.jsonl" }, permissions: { allow: [] } });
+  const ctx = { cwd, ui: { notify() {} } } as any;
+
+  persistRule(ctx, path, "echo canonical*", "allow");
+
+  const saved = JSON.parse(readFileSync(path, "utf8"));
+  assert.equal(saved.audit.path, DEFAULT_AUDIT_PATH);
 });
 
 test("pi-gate no-UI prompt falls back safely", async () => {
