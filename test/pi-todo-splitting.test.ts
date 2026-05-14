@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { TodoService, type TodoEventStore } from "../extensions/pi-todo/src/app/service.ts";
+import { SPLIT_SCAFFOLD_TAG, TodoService, type TodoEventStore } from "../extensions/pi-todo/src/app/service.ts";
 import { orderedTodos, readyToClose } from "../extensions/pi-todo/src/app/query.ts";
 import { executeTodoAction } from "../extensions/pi-todo/src/pi/actions.ts";
 import { assessTodoIntake, splitTitlesAreTooSimilar } from "../extensions/pi-todo/src/domain/splitting.ts";
@@ -233,6 +233,7 @@ test("tool split previews generated children but only persists explicit children
 
   const preview = await executeTodoAction(pi as never, ctx as never, { action: "split", todoId, auto: true });
   assert.match(preview.content[0].text, /auto split is preview-only/);
+  assert.ok(preview.details.children.every((child: { tags?: string[] }) => child.tags?.includes(SPLIT_SCAFFOLD_TAG)));
   assert.deepEqual(entries.map((entry) => entry.data.type), ["todo.created", "todo.updated", "todo.updated"]);
 
   const split = await executeTodoAction(pi as never, ctx as never, {
@@ -327,6 +328,27 @@ test("split rejects parent-like and sibling-like child titles", async () => {
     () => service.split(parent.id, [{ title: "Add lifecycle guard" }, { title: "Add lifecycle guards" }], "parent is too broad"),
     /child titles are too similar.*make each child title\/scope more specific/,
   );
+});
+
+test("completion closes tagged split scaffolding without artifact todos", async () => {
+  const service = new TodoService(new MemoryStore());
+  const parent = await service.create({ title: "Redesign compact docket", description: "Small UI row reshuffle." });
+  const [implementation, discovery, verification] = await service.split(parent.id, [
+    { title: "Reorder summary rows" },
+    { title: "Inspect summary renderer", tags: [SPLIT_SCAFFOLD_TAG] },
+    { title: "Run focused summary checks", tags: [SPLIT_SCAFFOLD_TAG] },
+  ], "split-enforcement scaffold");
+
+  await service.start(implementation.id, [], undefined, "agent-a", { splitOverrideReason: "implementation child is atomic" });
+  await service.complete(implementation.id, [{ type: "manual_note", note: "implemented and tested" }], "done");
+  const state = await service.state();
+
+  assert.equal(state.todos[implementation.id].status, "completed");
+  assert.equal(state.todos[discovery.id].status, "cancelled");
+  assert.equal(state.todos[verification.id].status, "cancelled");
+  assert.equal(state.todos[parent.id].status, "completed");
+  assert.equal(orderedTodos(state, false).some((todo) => todo.parentId === parent.id || todo.id === parent.id), false);
+  assert.equal(state.todos[discovery.id].evidence.some((item) => item.type === "generated_artifact"), false);
 });
 
 test("split accepts distinct children and terminal children stay out of the open docket", async () => {

@@ -16,6 +16,7 @@ type LifecycleEventPayload =
 export const defaultTodoPolicy: TodoPolicy = { requireEvidenceForDone: true, maxInProgress: 1, splitting: defaultSplitPolicy };
 export const MODEL_ARTIFACTS_DIR = ".model-artifacts/";
 export const MODEL_TODO_ARTIFACTS_DIR = ".model-artifacts/todo/";
+export const SPLIT_SCAFFOLD_TAG = "pi-todo:split-scaffold";
 const ARTIFACT_FOLDERS = new Set(["reports", "logs", "specs", "plans", "findings", "todo"]);
 
 const now = () => new Date().toISOString();
@@ -320,6 +321,7 @@ export class TodoService {
       );
     }
     await this.append({ id: id("evt"), type: "todo.completed", at: now(), todoId, evidence, summary });
+    await this.closeStaleSplitScaffold(todoId);
     return this.get(todoId);
   }
 
@@ -391,6 +393,33 @@ export class TodoService {
     await this.requireExisting(todoId);
     await this.append({ id: id("evt"), at: now(), todoId, ...payload } as TodoEvent);
     return this.get(todoId);
+  }
+
+  private isSplitScaffold(todo: Todo): boolean {
+    return todo.tags.includes(SPLIT_SCAFFOLD_TAG);
+  }
+
+  private async closeStaleSplitScaffold(completedTodoId: string): Promise<void> {
+    let state = await this.state();
+    const completed = state.todos[completedTodoId];
+    if (!completed?.parentId) return;
+    const parent = state.todos[completed.parentId];
+    if (!parent || isTerminalStatus(parent.status) || (parent.workDirectlyAllowed !== false && parent.splitAssessment !== "epic")) return;
+
+    let closedScaffold = false;
+    for (const childId of parent.children) {
+      const child = state.todos[childId];
+      if (!child || child.id === completedTodoId || isTerminalStatus(child.status) || child.status === "in_progress" || child.activeClaimId || !this.isSplitScaffold(child)) continue;
+      await this.append({ id: id("evt"), type: "todo.cancelled", at: now(), todoId: child.id, reason: "stale split scaffold closed after sibling completion" });
+      closedScaffold = true;
+    }
+    if (!closedScaffold) return;
+
+    state = await this.state();
+    const currentParent = state.todos[parent.id];
+    if (currentParent && !isTerminalStatus(currentParent.status) && currentParent.children.length > 0 && currentParent.children.every((childId) => state.todos[childId] && isTerminalStatus(state.todos[childId].status))) {
+      await this.append({ id: id("evt"), type: "todo.completed", at: now(), todoId: currentParent.id, evidence: [{ type: "manual_note", note: "split container completed after child work and stale scaffolding closed" }], summary: "split container completed" });
+    }
   }
 
   private activeCount(state: TodoState, exceptTodoId: string, owner?: string | null): number {

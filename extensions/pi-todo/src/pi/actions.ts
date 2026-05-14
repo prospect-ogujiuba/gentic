@@ -2,7 +2,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { TodoService, TodoWorkflowError, type CreateArtifactInput, type CreateTodoInput, type TodoRepairHint } from "../app/service.ts";
+import { SPLIT_SCAFFOLD_TAG, TodoService, TodoWorkflowError, type CreateArtifactInput, type CreateTodoInput, type TodoRepairHint } from "../app/service.ts";
 import { summarizeTodos } from "../app/query.ts";
 import { loadEffectiveTodoConfig } from "../config.ts";
 import type { EvidenceRef, Todo } from "../domain/types.ts";
@@ -246,7 +246,7 @@ async function executeTodoActionUnsafe(pi: ExtensionAPI, ctx: ExtensionContext, 
     const existingChildren = params.children as CreateTodoInput[] | undefined;
     const splitCheck = await svc.splitCheck(todoId);
     const requestedCount = Math.max(1, Math.min(Number(params.count || splitCheck.recommendedChildCount || 3), 6));
-    const children = existingChildren?.length ? existingChildren : params.auto ? splitCheck.suggestedChildren.slice(0, requestedCount).map((child) => ({ title: child.title, acceptanceCriteria: child.acceptanceCriteria })) : [];
+    const children = existingChildren?.length ? existingChildren : params.auto ? splitCheck.suggestedChildren.slice(0, requestedCount).map((child) => ({ title: child.title, acceptanceCriteria: child.acceptanceCriteria, tags: [...(child.tags ?? []), SPLIT_SCAFFOLD_TAG] })) : [];
     if (children.length === 0) throw new Error("split children are required unless auto is true");
     const reason = (params.reason as string | undefined) || `split assessment ${splitCheck.assessment}: ${splitCheck.reasons.join(", ")}`;
     if (params.auto && !existingChildren?.length) {
