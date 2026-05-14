@@ -10,10 +10,10 @@ The extension may read optional peer capabilities such as `pi-todo` when they ar
 - **State:** `transitional`
 - **Public entry:** `index.ts`
 - **Layers:** `config`, `domain`, `app`, `pi`, `resources`
-- **Resources:** `skills/`, `prompts/`, `pi-swe.schema.json`
+- **Resources:** `docs/`, `prompts/`, `skills/`, `references/`, `pi-swe.schema.json`
 - **Machine declaration:** `extension.anatomy.json`
 - **Reference role:** targeted behavior-preserving declaration; `index.ts` is already a thin adapter.
-- **Mismatch notes:** layer roles are not yet folderized. `config.ts` handles config, `classify.ts`/`policy.ts`/`state.ts` hold domain and app logic, `commands.ts`/`events.ts` wire Pi runtime behavior, and skills/prompts/schema files are package resources.
+- **Mismatch notes:** config is folderized under `src/config/`, canonical implementations live under `src/domain/`, `src/app/`, and `src/pi/`, and flat `src/*.ts` compatibility shims remain for existing imports. Top-level docs/prompts/skills/references/schema files remain package resources.
 
 ## Orientation block
 
@@ -21,8 +21,8 @@ The extension may read optional peer capabilities such as `pi-todo` when they ar
 - **Commands/tools it registers:** `/swe status`, `/swe config`, and guidance-only `/swe orchestrate`; no model-callable tool is registered by `pi-swe`. Prompt templates such as `/swe-plan`, `/swe-implement`, `/swe-verify`, and `/swe-orchestrate` are package resources discovered from `prompts/`.
 - **Pi events it listens to:** `session_start` loads config and resets runtime state; `turn_start` resets turn state; `tool_call` classifies inspection/code-change/todo-completion facts; `tool_result` classifies verification facts.
 - **State/config files it reads/writes:** reads project `.pi/pi-swe.json`, global `~/.pi/agent/pi-swe.json`, defaults, and `pi-swe.schema.json`; keeps runtime state, warnings, peer context, and verification evidence in memory; writes no state file.
-- **Internal module map:** `index.ts` wires events and `/swe`; `src/config.ts` loads config; `src/classify.ts` extracts workflow facts; `src/state.ts` tracks active plan, inspected/changed paths, and verification; `src/policy.ts` evaluates advisory warnings; `src/capabilities.ts` reads optional peer capability surfaces; `src/evidence.ts`, `src/tdd.ts`, and `src/dsa.ts` hold focused helpers; `prompts/`, `skills/`, and `references/` provide stage guidance.
-- **Tests to run:** `npm test -- test/pi-swe.test.ts test/pi-swe-capabilities.test.ts test/pi-swe-classify.test.ts test/pi-swe-config.test.ts test/pi-swe-helpers.test.ts test/pi-swe-policy.test.ts test/pi-swe-state.test.ts` or the full `npm test` suite.
+- **Internal module map:** `index.ts` wires events and `/swe`; `src/config/` loads config; `src/domain/classify.ts` extracts workflow facts; `src/domain/state.ts` tracks active plan, inspected/changed paths, and verification; `src/domain/policy.ts` evaluates advisory warnings; `src/capabilities.ts` reads optional peer capability surfaces; `src/domain/evidence.ts`, `src/domain/tdd.ts`, and `src/domain/dsa.ts` hold focused helpers; `docs/`, `prompts/`, `skills/`, and `references/` provide resource guidance.
+- **Tests to run:** `npm run test:swe` for the focused pi-swe suite, `npm run check` for package/anatomy discovery, or the full `npm test` suite when broader regression risk justifies it.
 - **Known boundaries/non-goals:** guidance is advisory unless config disables/enables checks; it does not import peer internals, replace explicit read-before-edit discipline, or reintroduce legacy `/sop`, `/tdd-rgr`, or `/dsa-advisor` surfaces.
 
 ## Commands
@@ -79,11 +79,11 @@ Use `pi-swe` as a phase-gated lifecycle. Each stage should leave enough durable 
 
 5. **Verify before claiming completion** — `/swe-verify`
    - Run focused tests/checks first, then broader checks as risk requires. Record command/manual evidence and known gaps.
-   - Durable output for non-trivial verification: `.model-artifacts/verification/<topic>/...`.
+   - Durable output for non-trivial verification: `.model-artifacts/reports/<topic>/...`.
 
 6. **Review after implementation or before handoff** — `/swe-review`
    - Compare the diff to the intended slice, check correctness/hardening/cleanup/security/performance/UX risks, and decide: approve, request changes, or return to plan.
-   - Durable output for substantial reviews: `.model-artifacts/review/<topic>/...`.
+   - Durable output for substantial reviews: `.model-artifacts/reports/<topic>/...`.
 
 7. **Orchestrate across artifacts when resuming or handing off** — `/swe-orchestrate` and `/swe orchestrate`
    - Inspect work orders, todo context when available, and model artifacts; choose the next lifecycle stage; route back to verification/review when gates are missing; or emit an exception handoff.
@@ -91,7 +91,7 @@ Use `pi-swe` as a phase-gated lifecycle. Each stage should leave enough durable 
 
 8. **Finalize the handoff** — `/swe-finalize`
    - Summarize what changed, why, key paths, verification evidence, review decision, residual risks, and next action such as commit/PR/release or return-to-plan.
-   - Durable output for larger handoffs: `.model-artifacts/finalize/<topic>/...`.
+   - Durable output for larger handoffs: `.model-artifacts/reports/<topic>/...`.
 
 Optional `/swe-dsa` fits before planning or implementation whenever representation, access patterns, complexity, memory, ordering, persistence, or migration risk materially affect the slice. Its decision and validation plan should feed the phase file or implementation contract.
 
@@ -210,4 +210,4 @@ These omissions keep `pi-swe` small, standalone, and focused on SWE workflow dis
 
 ## Complete-version status
 
-Phase 12 complete-version definition of done is documented in [`docs/e2e-scenarios.md`](docs/e2e-scenarios.md#complete-version-checklist). Remaining core-completion gaps: none known; future work should be treated as enhancement scope.
+Phase 12 complete-version definition of done is documented in [`docs/e2e-scenarios.md`](docs/e2e-scenarios.md#complete-version-checklist). Remaining core-completion gaps: none known. Deferred refactor cleanup, including flat compatibility shim retirement, is tracked in `.model-artifacts/reports/pi-swe-standard-extension-refactor/2026-05-14_2044-phase-06-deferred-cleanup.md`; future work should be treated as enhancement scope.

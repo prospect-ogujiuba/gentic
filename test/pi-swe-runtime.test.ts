@@ -3,9 +3,9 @@ import { test } from "node:test";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { DEFAULT_PI_SWE_CONFIG } from "../extensions/pi-swe/src/config.ts";
-import { emitWarnings, formatAdvisoryChips, resetTurnRuntime, SWE_ADVISORY_WIDGET_KEY, type PiSweRuntime } from "../extensions/pi-swe/src/runtime.ts";
-import { createSweState } from "../extensions/pi-swe/src/state.ts";
+import { DEFAULT_PI_SWE_CONFIG } from "../extensions/pi-swe/src/config/index.ts";
+import { emitWarnings, formatAdvisoryChips, resetTurnRuntime, SWE_ADVISORY_WIDGET_KEY, type PiSweRuntime } from "../extensions/pi-swe/src/app/runtime.ts";
+import { createSweState } from "../extensions/pi-swe/src/app/state.ts";
 
 function mockContext() {
   const calls: Array<{ method: string; args: unknown[] }> = [];

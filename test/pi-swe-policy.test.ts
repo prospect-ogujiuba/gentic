@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { EffectivePiSweConfig } from "../extensions/pi-swe/src/config.ts";
-import { DEFAULT_PI_SWE_CONFIG } from "../extensions/pi-swe/src/config.ts";
-import { evaluateSwePolicy } from "../extensions/pi-swe/src/policy.ts";
-import { createSweState, recordChangedPath, recordInspectedPath, recordVerification, setActivePlan } from "../extensions/pi-swe/src/state.ts";
-import { createVerificationEvidence } from "../extensions/pi-swe/src/evidence.ts";
+import type { EffectivePiSweConfig } from "../extensions/pi-swe/src/config/index.ts";
+import { DEFAULT_PI_SWE_CONFIG } from "../extensions/pi-swe/src/config/index.ts";
+import { evaluateSwePolicy } from "../extensions/pi-swe/src/domain/policy.ts";
+import { createSweState, recordChangedPath, recordInspectedPath, recordVerification, setActivePlan } from "../extensions/pi-swe/src/domain/state.ts";
+import { createVerificationEvidence } from "../extensions/pi-swe/src/domain/evidence.ts";
 
 function config(overrides: Partial<EffectivePiSweConfig> = {}): EffectivePiSweConfig {
   return {

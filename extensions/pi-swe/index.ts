@@ -1,8 +1,8 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { registerSweCommands } from "./src/commands.ts";
-import { registerSweEvents } from "./src/events.ts";
-import { createRuntime } from "./src/runtime.ts";
+import { createRuntime } from "./src/app/runtime.ts";
+import { registerSweCommands } from "./src/pi/commands.ts";
+import { registerSweEvents } from "./src/pi/events.ts";
 
 export const PI_SWE_EXTENSION_ID = "pi-swe";
 export const PI_SWE_EXTENSION_NAME = "Pi SWE";

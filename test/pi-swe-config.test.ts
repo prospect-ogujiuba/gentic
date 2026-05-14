@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 
-import { DEFAULT_PI_SWE_CONFIG, loadEffectiveSweConfig } from "../extensions/pi-swe/src/config.ts";
+import { DEFAULT_PI_SWE_CONFIG, loadEffectiveSweConfig } from "../extensions/pi-swe/src/config/index.ts";
 
 function tempDir(): string {
   return mkdtempSync(join(tmpdir(), "pi-swe-config-"));
@@ -89,4 +89,18 @@ test("pi-swe effective config ignores invalid and unknown fields with diagnostic
   assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("invalid 'enabled'")));
   assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("invalid 'mode'")));
   assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("invalid stages.read")));
+});
+
+test("pi-swe config resources remain top-level discoverable", () => {
+  const extensionRoot = join(process.cwd(), "extensions", "pi-swe");
+  const schemaPath = join(extensionRoot, "pi-swe.schema.json");
+  const anatomy = JSON.parse(readFileSync(join(extensionRoot, "extension.anatomy.json"), "utf8"));
+
+  for (const resourceDir of ["docs", "prompts", "skills", "references"]) {
+    assert.equal(existsSync(join(extensionRoot, resourceDir)), true, `${resourceDir}/ should stay top-level`);
+    assert.ok(anatomy.resources.includes(resourceDir), `${resourceDir}/ should be declared as a pi-swe resource`);
+  }
+
+  assert.equal(existsSync(schemaPath), true, "pi-swe.schema.json should stay top-level for compatibility");
+  assert.ok(anatomy.resources.includes("schemas"), "top-level schema files should be declared as resources");
 });

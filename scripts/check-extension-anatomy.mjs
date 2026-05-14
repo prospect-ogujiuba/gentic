@@ -9,8 +9,10 @@ const allowedLayers = new Set(["domain", "app", "pi", "ui", "config", "resources
 const indexLineWarningThreshold = 200;
 const resourceScanners = {
   commands: (dir) => countFiles(dir, (name) => extname(name) === ".ts" && name !== "index.ts"),
+  docs: (dir) => countFiles(dir, (name) => extname(name) === ".md"),
   skills: (dir) => countFiles(dir, (name) => name === "SKILL.md"),
   prompts: (dir) => countFiles(dir, (name) => extname(name) === ".md"),
+  references: (dir) => countFiles(dir, (name) => extname(name) === ".md"),
   themes: (dir) => countFiles(dir, (name) => extname(name) === ".json"),
   primitives: (dir) => countFiles(dir, (name) => name === "index.ts"),
 };

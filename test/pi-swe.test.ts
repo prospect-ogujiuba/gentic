@@ -12,6 +12,11 @@ test("package discovery sees pi-swe extension", () => {
   assert.deepEqual(packageJson.pi?.extensions, ["./extensions"]);
   assert.ok(readdirSync(join(root, "extensions"), { withFileTypes: true }).some((entry) => entry.isDirectory() && entry.name === "pi-swe"));
   assert.equal(existsSync(join(root, "extensions/pi-swe/index.ts")), true);
+  assert.equal(existsSync(join(root, "extensions/pi-swe/src/pi/commands.ts")), true);
+  assert.equal(existsSync(join(root, "extensions/pi-swe/src/pi/events.ts")), true);
+  const entrypoint = readFileSync(join(root, "extensions/pi-swe/index.ts"), "utf8");
+  assert.match(entrypoint, /\.\/src\/pi\/commands\.ts/);
+  assert.match(entrypoint, /\.\/src\/pi\/events\.ts/);
   assert.equal(metadata.id, "pi-swe");
 });
 
@@ -137,8 +142,39 @@ test("/swe orchestrate subcommands provide deterministic guidance-only handoffs"
 });
 
 const baseStages = ["plan", "diagnose", "implement", "verify", "review", "finalize"] as const;
+const lifecycleResourceStages = [...baseStages, "tdd", "dsa", "orchestrate"] as const;
 const dsaReferenceFiles = ["decision-rubric", "algorithm-playbook", "data-structures-catalog"] as const;
 const tddReferences = ["rgr-playbook", "tdd-architecture", "red-green-refactor"] as const;
+
+test("pi-swe rollout resources remain discoverable by package and anatomy tooling", () => {
+  const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  const extensionRoot = join(root, "extensions/pi-swe");
+  const anatomy = JSON.parse(readFileSync(join(extensionRoot, "extension.anatomy.json"), "utf8"));
+
+  assert.deepEqual(packageJson.pi?.extensions, ["./extensions"]);
+  assert.ok(packageJson.pi?.prompts?.includes("./extensions/**/prompts/**/*.md"));
+  assert.ok(packageJson.pi?.skills?.includes("./extensions/**/skills"));
+  assert.equal(anatomy.publicEntry, "index.ts");
+  assert.ok(anatomy.tests.includes("npm run test:swe"));
+
+  for (const resourceDir of ["docs", "prompts", "skills", "references"] as const) {
+    assert.equal(existsSync(join(extensionRoot, resourceDir)), true, `${resourceDir}/ should stay top-level`);
+    assert.ok(anatomy.resources.includes(resourceDir), `${resourceDir}/ should be declared as a pi-swe resource`);
+  }
+  assert.equal(existsSync(join(extensionRoot, "pi-swe.schema.json")), true, "schema should stay top-level discoverable");
+  assert.ok(anatomy.resources.includes("schemas"));
+
+  for (const stage of lifecycleResourceStages) {
+    assert.equal(existsSync(join(extensionRoot, `prompts/swe-${stage}.md`)), true, `missing prompt for ${stage}`);
+    assert.equal(existsSync(join(extensionRoot, `skills/swe-${stage}/SKILL.md`)), true, `missing skill for ${stage}`);
+  }
+  for (const reference of dsaReferenceFiles) {
+    assert.equal(existsSync(join(extensionRoot, `references/dsa/${reference}.md`)), true, `missing DSA reference ${reference}`);
+  }
+  for (const reference of tddReferences) {
+    assert.equal(existsSync(join(extensionRoot, `references/tdd-rgr/${reference}.md`)), true, `missing TDD reference ${reference}`);
+  }
+});
 
 test("all base pi-swe prompt templates are discoverable", () => {
   const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));

@@ -3,10 +3,10 @@
   "state": "transitional",
   "publicEntry": "index.ts",
   "layers": ["config", "domain", "app", "pi", "resources"],
-  "resources": ["skills", "prompts", "schemas"],
+  "resources": ["docs", "prompts", "skills", "references", "schemas"],
   "tests": ["npm run test:swe"],
   "notes": [
-    "Transitional layered state: index.ts is already a thin adapter that creates runtime state and delegates to command/event registration modules.",
-    "Layer roles are truthful but not folderized yet: config.ts handles config, classify/policy/state helpers hold domain/app logic, commands.ts and events.ts wire Pi runtime behavior, and skills/prompts/schema files are package resources."
+    "Layered state: index.ts is a thin adapter that creates app runtime state and delegates to src/pi command/event registration modules.",
+    "Layer roles are folderized for this phase: src/config owns config loading/defaults, src/domain holds pure decisions, src/app holds runtime/evidence/state services, src/pi/commands.ts and src/pi/events.ts wire Pi runtime behavior, and top-level docs/prompts/skills/references/schema files remain package resources."
   ]
 }

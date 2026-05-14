@@ -1,16 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { createVerificationEvidence } from "../extensions/pi-swe/src/evidence.ts";
+import { createSweEvidenceService, createVerificationEvidence } from "../extensions/pi-swe/src/app/evidence.ts";
 import {
   createSweState,
+  createSweStateService,
   normalizeSwePath,
   recordChangedPath,
   recordInspectedPath,
   recordVerification,
   resetTurnState,
   setActivePlan,
-} from "../extensions/pi-swe/src/state.ts";
+} from "../extensions/pi-swe/src/app/state.ts";
 
 test("pi-swe state reset clears per-turn evidence and preserves active plan", () => {
   const state = recordVerification(
@@ -59,4 +60,16 @@ test("pi-swe active plan markers support todo artifact and prompt sources", () =
   assert.deepEqual(setActivePlan(base, { source: "artifact", marker: " .model-artifacts/todo/pi-swe/plan.md " }).activePlan, { source: "artifact", marker: ".model-artifacts/todo/pi-swe/plan.md" });
   assert.deepEqual(setActivePlan(base, { source: "prompt", marker: "user request" }).activePlan, { source: "prompt", marker: "user request" });
   assert.equal(setActivePlan(base, undefined).activePlan, undefined);
+});
+
+test("pi-swe app state and evidence services use explicit clocks", () => {
+  const stateService = createSweStateService({ now: () => "t-service" });
+  const evidenceService = createSweEvidenceService({ now: () => "t-evidence" });
+
+  const reset = stateService.resetTurn(createSweState({ turnStartedAt: "t0", activePlan: { source: "todo", marker: "todo-1" } }));
+  const verified = stateService.recordVerification(reset, evidenceService.createCommandEvidence({ command: "npm run test:swe", exitCode: 0, scope: "focused" }));
+
+  assert.equal(reset.turnStartedAt, "t-service");
+  assert.deepEqual(reset.activePlan, { source: "todo", marker: "todo-1" });
+  assert.deepEqual(verified.verification, [{ kind: "command", command: "npm run test:swe", exitCode: 0, scope: "focused", timestamp: "t-evidence" }]);
 });

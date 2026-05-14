@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { classifyToolCall, classifyToolResult } from "../extensions/pi-swe/src/classify.ts";
+import { classifyToolCall, classifyToolResult } from "../extensions/pi-swe/src/domain/classify.ts";
 
 test("pi-swe classifiers detect file inspection calls", () => {
   assert.deepEqual(classifyToolCall({ toolName: "read", args: { path: "./src/../src/a.ts" } }), [{ kind: "inspection", toolName: "read", path: "src/a.ts" }]);

@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { assessDsa } from "../extensions/pi-swe/src/dsa.ts";
-import { adviseTdd } from "../extensions/pi-swe/src/tdd.ts";
+import { assessDsa } from "../extensions/pi-swe/src/domain/dsa.ts";
+import { adviseTdd } from "../extensions/pi-swe/src/domain/tdd.ts";
 
 const root = new URL("..", import.meta.url).pathname;
 
