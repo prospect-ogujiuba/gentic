@@ -16,6 +16,12 @@ Use primitives for small, reusable Pi runtime building blocks that should apply 
 - **Reference role:** simple hub example; no `src/*` layer folders are needed while primitive loading stays shallow.
 - **Mismatch notes:** none; `index.ts` hosts the lightweight runtime loader and primitive resources live in `primitives/`.
 
+## Included primitives
+
+- `concise-output`: always-on system prompt guidance that keeps agent output short and file-oriented.
+- `implementation-file-completion`: conditional guidance for marking completed implementation files.
+- `model-artifacts`: conditional guidance for durable generated artifacts under `.model-artifacts/`.
+
 ## Add a primitive
 
 1. Create `primitives/<name>/index.ts`.

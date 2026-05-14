@@ -55,6 +55,32 @@ test("implementation-file-completion primitive skips unrelated prompts", async (
     systemPromptOptions: {},
   });
 
+  assert.match(result?.systemPrompt || "", /Output and Responses Efficiency Policy/);
+  assert.doesNotMatch(result?.systemPrompt || "", /\[COMPLETE\]/);
+});
+
+test("concise-output primitive injects reusable output policy", async () => {
+  const handler = await beforeAgentStartPipeline();
+
+  const result = handler({
+    prompt: "Explain TypeScript generics",
+    systemPrompt: "BASE",
+    systemPromptOptions: {},
+  });
+
+  assert.match(result?.systemPrompt || "", /Output and Responses Efficiency Policy/);
+  assert.match(result?.systemPrompt || "", /Minimize visible output\./);
+});
+
+test("concise-output primitive skips duplicate policy", async () => {
+  const handler = await beforeAgentStartPipeline();
+
+  const result = handler({
+    prompt: "Explain TypeScript generics",
+    systemPrompt: "BASE\n\n# Output and Responses Efficiency Policy\n\nExisting copy.",
+    systemPromptOptions: {},
+  });
+
   assert.equal(result, undefined);
 });
 
