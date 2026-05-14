@@ -1,7 +1,7 @@
-import { createPiContextHudSnapshot, getSessionState } from "../pi-context/src/app/index.ts";
-import { getGitStatus } from "./git.ts";
+import { createPiContextHudSnapshot, getSessionState } from "../../../pi-context/src/app/index.ts";
+import { getGitStatus } from "./git-status.ts";
 import { state } from "./state.ts";
-import type { HudSnapshot, SnapshotContext, UsageSnapshot } from "./types.ts";
+import type { HudSnapshot, SnapshotContext, UsageSnapshot } from "../../types.ts";
 
 function numberOrUndefined(value: number | null | undefined): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;

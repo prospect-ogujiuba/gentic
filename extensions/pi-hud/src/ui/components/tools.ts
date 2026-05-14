@@ -1,6 +1,6 @@
 import { MUTED_WARNING_COLOR } from "../lib/format.ts";
-import { state } from "../state.ts";
-import type { HudSnapshot, Theme } from "../types.ts";
+import { state } from "../../app/state.ts";
+import type { HudSnapshot, Theme } from "../../../types.ts";
 
 export function renderToolBadges(s: HudSnapshot, theme: Theme): string {
   return Object.entries(s.toolCounts)

@@ -5,8 +5,8 @@ import { renderHarnessEvents } from "../components/events.ts";
 import { renderGitStatus } from "../components/git.ts";
 import { renderModel, renderThinkingLevel } from "../components/model.ts";
 import { renderToolBadges, renderToolSummary } from "../components/tools.ts";
-import { state } from "../state.ts";
-import type { HudSnapshot, Theme } from "../types.ts";
+import { state } from "../../app/state.ts";
+import type { HudSnapshot, Theme } from "../../../types.ts";
 import { cleanTruncate, fitLeftRight, fitResponsive, stripAnsi } from "../lib/format.ts";
 
 type HudSnapshotSource = HudSnapshot | (() => HudSnapshot);

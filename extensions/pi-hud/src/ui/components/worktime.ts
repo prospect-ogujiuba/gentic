@@ -1,5 +1,5 @@
-import { getWorkElapsedMs, getWorkRunMs, state } from "../state.ts";
-import type { HudSnapshot, Theme } from "../types.ts";
+import { getWorkElapsedMs, getWorkRunMs, state } from "../../app/state.ts";
+import type { HudSnapshot, Theme } from "../../../types.ts";
 
 function formatDuration(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);

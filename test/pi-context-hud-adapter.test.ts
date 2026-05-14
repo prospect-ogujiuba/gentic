@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { createPiContextHudSnapshot } from "../extensions/pi-context/src/app/index.ts";
 import { normalizeLedgerEntry } from "../extensions/pi-context/src/domain/index.ts";
-import { renderPiContextLedgerDetails, renderPiContextLedgerSummary } from "../extensions/pi-hud/components/context.ts";
+import { renderPiContextLedgerDetails, renderPiContextLedgerSummary } from "../extensions/pi-hud/src/ui/components/context.ts";
 import type { Theme } from "../extensions/pi-hud/types.ts";
 
 const theme: Theme = { fg: (_color: unknown, text: string) => text };

@@ -6,9 +6,9 @@ import { renderGitStatus } from "../components/git.ts";
 import { renderModel, renderThinkingLevel } from "../components/model.ts";
 import { renderToolBadges, renderToolSummary } from "../components/tools.ts";
 import { fitLeftRight } from "../lib/format.ts";
-import { createSnapshot, withLiveUsage } from "../snapshot.ts";
-import { state } from "../state.ts";
-import type { HudSnapshot, Theme } from "../types.ts";
+import { createSnapshot, withLiveUsage } from "../../app/snapshot.ts";
+import { state } from "../../app/state.ts";
+import type { HudSnapshot, Theme } from "../../../types.ts";
 
 function sectionTitle(theme: Theme, title: string, width: number): string[] {
   const label = ` ${title} `;

@@ -1,5 +1,5 @@
 import { compactCurrency, compactNumber, FRESH_COLOR, formatPercent, MUTED_WARNING_COLOR } from "../lib/format.ts";
-import type { HudSnapshot, Theme } from "../types.ts";
+import type { HudSnapshot, Theme } from "../../../types.ts";
 
 const CONTEXT_BAR_WIDTH = 16;
 

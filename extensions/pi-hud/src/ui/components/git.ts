@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import { MUTED_WARNING_COLOR } from "../lib/format.ts";
-import type { HudSnapshot, Theme } from "../types.ts";
+import type { HudSnapshot, Theme } from "../../../types.ts";
 
 function getWorktreeLabel(worktreeId: string): string {
   const home = process.env.HOME?.replace(/\/$/, "");

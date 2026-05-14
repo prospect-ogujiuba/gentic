@@ -1,5 +1,5 @@
 import { MUTED_WARNING_COLOR } from "../lib/format.ts";
-import type { HudSnapshot, Theme } from "../types.ts";
+import type { HudSnapshot, Theme } from "../../../types.ts";
 
 function shortEventName(name: string): string {
   return name.replace(/^tool_execution_/, "tool_").replace(/^session_/, "sess_").replace(/^message_/, "msg_");

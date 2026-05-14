@@ -1,4 +1,4 @@
-import type { HudSnapshot, Theme } from "../types.ts";
+import type { HudSnapshot, Theme } from "../../../types.ts";
 
 export function renderModel(s: HudSnapshot, theme: Theme): string {
   const model = String(s.modelId ?? "no-model");

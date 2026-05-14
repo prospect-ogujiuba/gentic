@@ -1,8 +1,8 @@
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { createSnapshot, withLiveUsage } from "./snapshot.ts";
-import { COMPONENT_IDS, isComponentId, isPlacement, recordMessageUsage, recordMessagesUsage, resetConfig, resetSessionUsage, resetWorkTimer, startWorkTimer, state, stopWorkTimer } from "./state.ts";
-import { createHudComponent } from "./surfaces/footer.ts";
-import { openModal } from "./surfaces/modal.ts";
+import { createSnapshot, withLiveUsage } from "../app/snapshot.ts";
+import { COMPONENT_IDS, isComponentId, isPlacement, recordMessageUsage, recordMessagesUsage, resetConfig, resetSessionUsage, resetWorkTimer, startWorkTimer, state, stopWorkTimer } from "../app/state.ts";
+import { createHudComponent } from "../ui/surfaces/footer.ts";
+import { openModal } from "../ui/surfaces/modal.ts";
 
 const TEST_COMMAND_RE = /(^|\s)(npm|pnpm|yarn|bun)\s+(run\s+)?(test|check|lint|typecheck|build)(\s|$)|\b(vitest|jest|pytest|ruff|eslint|tsc)\b/i;
 const HUD_USAGE = "Usage: /pi-hud [open|show|hide|reset|placement footer|widget|both|toggle <component>|only <component>]";

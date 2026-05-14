@@ -1,4 +1,4 @@
-import type { HudComponentId, HudState, Placement, UsageSnapshot } from "./types.ts";
+import type { HudComponentId, HudState, Placement, UsageSnapshot } from "../../types.ts";
 
 export const COMPONENT_IDS = ["model", "context", "git", "session", "tools", "events", "worktime"] as const satisfies readonly HudComponentId[];
 export const PLACEMENTS = ["footer", "widget", "both"] as const satisfies readonly Placement[];
