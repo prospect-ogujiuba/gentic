@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { emptyTodoState, reduceTodoState } from "../extensions/pi-todo/src/domain/reducer.ts";
+import { nextTodo, orderedDocketTodos } from "../extensions/pi-todo/src/app/query.ts";
 import { formatTodoTitleForTui, renderTodoDocketLines, renderTodoProgress } from "../extensions/pi-todo/src/ui/docket.ts";
 import { ansiTodoTheme, plainTodoTheme } from "../extensions/pi-todo/src/ui/theme.ts";
 import type { TodoEvent } from "../extensions/pi-todo/src/domain/types.ts";
@@ -27,6 +28,49 @@ test("todo docket keeps legacy progress bar vocabulary", () => {
   const lines = renderTodoDocketLines(state, plainTodoTheme, { width: 100 });
   assert.match(lines.join("\n"), /TASKS/);
   assert.match(lines.join("\n"), /\[~\] Active task/);
+});
+
+test("todo docket promotes an active child group before older work within the row limit", () => {
+  const at = "2026-05-11T00:00:00.000Z";
+  const base = { description: undefined, priority: "normal" as const, createdAt: at, updatedAt: at, dependsOn: [], tags: [], acceptanceCriteria: [], evidence: [], notes: [], revision: 0 };
+  const state = reduceTodoState([
+    { id: "e1", type: "todo.created", at, todo: { ...base, id: "todo_old", title: "Older parent", status: "ready" } },
+    { id: "e2", type: "todo.created", at, todo: { ...base, id: "todo_parent", title: "Second parent", status: "ready" } },
+    { id: "e3", type: "todo.created", at, todo: { ...base, id: "todo_child_1", parentId: "todo_parent", title: "First split child", status: "ready" } },
+    { id: "e4", type: "todo.created", at, todo: { ...base, id: "todo_child_2", parentId: "todo_parent", title: "Second split child active", status: "in_progress" } },
+  ] satisfies TodoEvent[]);
+
+  const rows = orderedDocketTodos(state, false).map((todo) => todo.id);
+  assert.deepEqual(rows.slice(0, 3), ["todo_parent", "todo_child_1", "todo_child_2"]);
+  const output = renderTodoDocketLines(state, plainTodoTheme, { width: 100, limit: 3 }).join("\n");
+  assert.match(output, /Second parent/);
+  assert.match(output, /First split child/);
+  assert.match(output, /Second split child active/);
+  assert.doesNotMatch(output, /Older parent/);
+});
+
+test("todo docket keeps sibling presentation order from parent children", () => {
+  const at = "2026-05-11T00:00:00.000Z";
+  const base = { description: undefined, priority: "normal" as const, createdAt: at, updatedAt: at, dependsOn: [], tags: [], acceptanceCriteria: [], evidence: [], notes: [], revision: 0 };
+  const state = reduceTodoState([
+    { id: "e1", type: "todo.created", at, todo: { ...base, id: "todo_parent", title: "Parent", status: "ready", children: ["todo_second", "todo_first"] } },
+    { id: "e2", type: "todo.created", at, todo: { ...base, id: "todo_first", parentId: "todo_parent", title: "Created first", status: "ready" } },
+    { id: "e3", type: "todo.created", at, todo: { ...base, id: "todo_second", parentId: "todo_parent", title: "Listed first", status: "ready" } },
+  ] satisfies TodoEvent[]);
+
+  assert.deepEqual(orderedDocketTodos(state, false).map((todo) => todo.id), ["todo_parent", "todo_second", "todo_first"]);
+});
+
+test("todo docket promotes flat active work without changing next scheduling", () => {
+  const at = "2026-05-11T00:00:00.000Z";
+  const base = { description: undefined, priority: "normal" as const, createdAt: at, updatedAt: at, dependsOn: [], tags: [], acceptanceCriteria: [], evidence: [], notes: [], revision: 0 };
+  const state = reduceTodoState([
+    { id: "e1", type: "todo.created", at, todo: { ...base, id: "todo_old", title: "Older ready", status: "ready" } },
+    { id: "e2", type: "todo.created", at, todo: { ...base, id: "todo_claimed", title: "Claimed current work", status: "claimed" } },
+  ] satisfies TodoEvent[]);
+
+  assert.deepEqual(orderedDocketTodos(state, false).map((todo) => todo.id), ["todo_claimed", "todo_old"]);
+  assert.equal(nextTodo(state)?.id, "todo_old");
 });
 
 test("todo docket concises repeated scenario titles and shows dependencies", () => {

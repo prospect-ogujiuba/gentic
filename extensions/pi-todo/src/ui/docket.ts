@@ -1,5 +1,5 @@
 import type { Todo, TodoState, TodoStatus } from "../domain/types.ts";
-import { activeTodo, nextTodo, openDependencyIds, orderedTodos, readyToClose, summarizeTodos } from "../app/query.ts";
+import { activeTodo, nextTodo, openDependencyIds, orderedDocketTodos, orderedTodos, readyToClose, summarizeTodos } from "../app/query.ts";
 import { isTerminalStatus } from "../domain/lifecycle.ts";
 import { leftRight, wrap } from "./format.ts";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
@@ -127,7 +127,7 @@ export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, option
   if (focus) lines.push(`\x1b[48;5;108m\x1b[30m * ${focus} \x1b[0m`);
   lines.push(...renderSummaryLines(width, left, renderTodoProgress(state, theme)));
 
-  const rows = orderedTodos(state, options.includeDone ?? false).slice(0, options.limit ?? 8);
+  const rows = orderedDocketTodos(state, options.includeDone ?? false).slice(0, options.limit ?? 8);
   const prefix = commonColonPrefix(rows);
   for (const [index, todo] of rows.entries()) {
     const icon = theme.fg(statusColor(todo.status), statusChip(todo.status));
