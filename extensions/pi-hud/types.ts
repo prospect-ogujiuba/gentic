@@ -78,4 +78,4 @@ export interface HudState {
   };
 }
 
-export type SnapshotContext = Pick<ExtensionContext, "cwd" | "model" | "getContextUsage">;
+export type SnapshotContext = Pick<ExtensionContext, "cwd" | "model" | "getContextUsage" | "getSystemPrompt">;

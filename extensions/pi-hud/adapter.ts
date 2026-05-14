@@ -7,7 +7,7 @@ import { openModal } from "./surfaces/modal.ts";
 const TEST_COMMAND_RE = /(^|\s)(npm|pnpm|yarn|bun)\s+(run\s+)?(test|check|lint|typecheck|build)(\s|$)|\b(vitest|jest|pytest|ruff|eslint|tsc)\b/i;
 const HUD_USAGE = "Usage: /pi-hud [open|show|hide|reset|placement footer|widget|both|toggle <component>|only <component>]";
 
-type HudUiContext = Pick<ExtensionContext, "cwd" | "getContextUsage" | "hasUI" | "model" | "ui">;
+type HudUiContext = Pick<ExtensionContext, "cwd" | "getContextUsage" | "getSystemPrompt" | "hasUI" | "model" | "ui">;
 type HudCommandContext = ExtensionCommandContext & HudUiContext;
 
 function applyHud(ctx: HudUiContext): void {

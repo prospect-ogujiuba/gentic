@@ -46,7 +46,7 @@ test("pi-hud usage summary deduplicates repeated message events", () => {
   assert.deepEqual(state.usage, { input: 10, output: 20, cost: 0.5, totalTokens: 30 });
 });
 
-test("pi-hud footer reads live context usage after session_start without another event", async () => {
+test("pi-hud footer includes nonzero startup prompt usage before provider usage arrives", async () => {
   resetConfig();
   resetSessionUsage();
   state.recentEvents = ["loaded"];
@@ -56,11 +56,13 @@ test("pi-hud footer reads live context usage after session_start without another
   const handlers = new Map<string, Array<(event: Record<string, unknown>, ctx: any) => unknown>>();
   let footerFactory: any;
   let usage = { tokens: 0, contextWindow: 1000, percent: 0 };
+  const systemPrompt = "s".repeat(80);
   const ctx = {
     cwd: process.cwd(),
     hasUI: true,
     model: { provider: "mock", id: "m", contextWindow: 1000 },
     getContextUsage: () => usage,
+    getSystemPrompt: () => systemPrompt,
     ui: {
       setFooter(value: unknown) { footerFactory = value; },
       setWidget() {},
@@ -77,9 +79,12 @@ test("pi-hud footer reads live context usage after session_start without another
 
   for (const handler of handlers.get("session_start") ?? []) await handler({ type: "session_start", reason: "test" }, ctx);
   const footer = footerFactory({ requestRender() {} }, plainTheme);
-  assert.match(footer.render(120).join("\n"), /0\/1\.0k\s+0%/);
+  try {
+    assert.match(footer.render(120).join("\n"), /20\/1\.0k\s+2%/);
 
-  usage = { tokens: 250, contextWindow: 1000, percent: 25 };
-  assert.match(footer.render(120).join("\n"), /250\/1\.0k\s+25%/);
-  footer.dispose?.();
+    usage = { tokens: 250, contextWindow: 1000, percent: 25 };
+    assert.match(footer.render(120).join("\n"), /250\/1\.0k\s+25%/);
+  } finally {
+    footer.dispose?.();
+  }
 });

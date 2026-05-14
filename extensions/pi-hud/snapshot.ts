@@ -7,15 +7,24 @@ function numberOrUndefined(value: number | null | undefined): number | undefined
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function estimateSystemPromptTokens(ctx: SnapshotContext): number | undefined {
+  const prompt = ctx.getSystemPrompt?.();
+  return prompt ? Math.ceil(prompt.length / 4) : undefined;
+}
+
 function readUsageSnapshot(ctx: SnapshotContext): UsageSnapshot | undefined {
   const usage = ctx.getContextUsage?.();
   const tokens = numberOrUndefined(usage?.tokens);
+  const promptTokens = tokens === 0 ? estimateSystemPromptTokens(ctx) : undefined;
+  const contextTokens = promptTokens && promptTokens > tokens ? promptTokens : tokens;
+  const contextWindow = usage?.contextWindow;
+  const contextPct = contextTokens !== undefined && contextWindow && contextWindow > 0 ? (contextTokens / contextWindow) * 100 : numberOrUndefined(usage?.percent);
   return usage || state.usage ? {
     ...state.usage,
-    totalTokens: tokens ?? state.usage?.totalTokens,
-    contextTokens: tokens,
-    contextWindow: usage?.contextWindow,
-    contextPct: numberOrUndefined(usage?.percent),
+    totalTokens: contextTokens ?? state.usage?.totalTokens,
+    contextTokens,
+    contextWindow,
+    contextPct,
   } : undefined;
 }
 
