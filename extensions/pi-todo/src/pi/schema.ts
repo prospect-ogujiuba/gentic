@@ -2,6 +2,7 @@ import { Type } from "typebox";
 
 const actions = [
   "create",
+  "create_organized",
   "update",
   "split",
   "split_check",
@@ -117,6 +118,8 @@ export const todoToolParameters = Type.Object({
     ),
   ),
   auto: Type.Optional(Type.Boolean()),
+  autoOrganize: Type.Optional(Type.Boolean()),
+  allowVagueTodo: Type.Optional(Type.Boolean()),
   apply: Type.Optional(Type.Boolean()),
   count: Type.Optional(Type.Number()),
   evidence: Type.Optional(EvidenceSchema),

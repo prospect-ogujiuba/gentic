@@ -1,4 +1,4 @@
-import type { SplitCheckResult, SplitPolicy, Todo } from "./types.ts";
+import { emptyScope, type SplitCheckResult, type SplitPolicy, type SplitSuggestedChild, type Todo, type TodoIntakeAssessment, type TodoIntakeInput } from "./types.ts";
 
 export const defaultSplitPolicy: SplitPolicy = {
   mode: "required",
@@ -74,16 +74,75 @@ function touchedAreas(todo: Todo, text: string): string[] {
   return unique([...fromText, ...fromScope]);
 }
 
-function childSuggestions(todo: Todo, count: number): { title: string; acceptanceCriteria?: string[] }[] {
-  const candidates = [
-    { title: "Define split contract", acceptanceCriteria: ["The child has clear acceptance criteria and validation path"] },
-    { title: "Add data model fields", acceptanceCriteria: ["The task model can represent the required metadata"] },
-    { title: "Enforce lifecycle guard", acceptanceCriteria: ["The lifecycle enforces the child task's done condition"] },
-    { title: "Expose command path", acceptanceCriteria: ["Users can invoke and inspect the behavior through the todo tool"] },
-    { title: "Verify regression cases", acceptanceCriteria: ["Atomic, split-required, too-vague, and epic paths are covered"] },
-    { title: "Document rollout notes", acceptanceCriteria: ["Reviewers can understand the split rationale and next action"] },
+function childSuggestions(todo: Todo, count: number): SplitSuggestedChild[] {
+  const scopedFiles = todo.scope.files.length ? todo.scope.files : todo.scope.paths;
+  const inheritedScope = scopedFiles.length ? { files: todo.scope.files, paths: todo.scope.paths } : undefined;
+  const candidates: SplitSuggestedChild[] = [
+    { title: "Define split contract", description: "Describe the domain-level split decision and result shape.", acceptanceCriteria: ["The child has clear acceptance criteria and validation path"], scope: inheritedScope },
+    { title: "Add data model fields", description: "Represent the metadata needed by the split decision.", acceptanceCriteria: ["The task model can represent the required metadata"], scope: inheritedScope },
+    { title: "Enforce lifecycle guard", description: "Prevent direct work on container-style parent tasks.", acceptanceCriteria: ["The lifecycle enforces the child task's done condition"], scope: inheritedScope },
+    { title: "Expose command path", description: "Surface split assessment behavior through the todo tool.", acceptanceCriteria: ["Users can invoke and inspect the behavior through the todo tool"], scope: inheritedScope },
+    { title: "Verify regression cases", description: "Cover the expected atomic, split-required, too-vague, and epic paths.", acceptanceCriteria: ["Atomic, split-required, too-vague, and epic paths are covered"], scope: inheritedScope },
+    { title: "Document rollout notes", description: "Capture review notes and follow-up behavior.", acceptanceCriteria: ["Reviewers can understand the split rationale and next action"], scope: inheritedScope },
   ].filter((candidate) => !splitTitlesAreTooSimilar(todo.title, candidate.title));
   return candidates.slice(0, Math.max(1, Math.min(count, candidates.length)));
+}
+
+function todoFromIntake(input: TodoIntakeInput): Todo {
+  return {
+    id: "__intake__",
+    title: input.title.trim(),
+    description: input.description,
+    type: "task",
+    status: "ready",
+    priority: "normal",
+    owner: null,
+    activeClaimId: null,
+    leaseExpiresAt: null,
+    parentId: null,
+    children: [],
+    dependsOn: input.dependsOn ?? [],
+    blocks: [],
+    scope: emptyScope(input.scope),
+    inputs: { goal: input.inputs?.goal, context: input.inputs?.context, environment: input.inputs?.environment, constraints: input.inputs?.constraints ?? [] },
+    constraints: input.constraints ?? [],
+    acceptanceCriteria: input.acceptanceCriteria ?? [],
+    definitionOfDone: input.definitionOfDone ?? [],
+    requiredCapabilities: input.requiredCapabilities ?? [],
+    createdAt: "",
+    updatedAt: "",
+    blockers: [],
+    tags: input.tags ?? [],
+    evidence: [],
+    notes: [],
+    revision: 0,
+  };
+}
+
+function clarificationQuestions(input: TodoIntakeInput): string[] {
+  const subject = input.title.trim() || "this todo";
+  return [
+    `What concrete outcome should ${subject} produce?`,
+    "What acceptance criteria would make the work directly verifiable?",
+    "Which files, component, or command path should the work touch?",
+  ];
+}
+
+export function assessTodoIntake(input: TodoIntakeInput, policy: SplitPolicy = defaultSplitPolicy): TodoIntakeAssessment {
+  const result = assessSplitPolicy(todoFromIntake(input), policy);
+  if (result.assessment === "atomic") {
+    return { ...result, organization: "todo", todo: { ...input, title: input.title.trim() }, clarificationQuestions: [] };
+  }
+  if (result.assessment === "too_vague") {
+    return { ...result, organization: "clarify", suggestedChildren: [], clarificationQuestions: clarificationQuestions(input) };
+  }
+  return {
+    ...result,
+    organization: "container",
+    parent: { ...input, title: input.title.trim(), workDirectlyAllowed: false },
+    suggestedChildren: result.suggestedChildren,
+    clarificationQuestions: [],
+  };
 }
 
 export function assessSplitPolicy(todo: Todo, policy: SplitPolicy = defaultSplitPolicy): SplitCheckResult {

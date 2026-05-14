@@ -2,9 +2,9 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { normalizePriority, normalizeStatus, isTerminalStatus } from "../domain/lifecycle.ts";
 import { ineligibleReasons, missingCapabilities, openDependencyIds, type EligibilityOptions } from "../domain/policy.ts";
 import { reduceTodoState } from "../domain/reducer.ts";
-import { assessSplitPolicy, defaultSplitPolicy, shouldBlockForSplit, splitTitleSimilarityProblems } from "../domain/splitting.ts";
+import { assessSplitPolicy, assessTodoIntake, defaultSplitPolicy, shouldBlockForSplit, splitTitleSimilarityProblems } from "../domain/splitting.ts";
 import { nextTodo } from "./query.ts";
-import { emptyScope, type EvidenceRef, type SplitCheckResult, type Todo, type TodoClaim, type TodoEvent, type TodoPolicy, type TodoPriority, type TodoScope, type TodoState, type TodoStatus } from "../domain/types.ts";
+import { emptyScope, type EvidenceRef, type SplitCheckResult, type Todo, type TodoClaim, type TodoEvent, type TodoIntakeAssessment, type TodoPolicy, type TodoPriority, type TodoScope, type TodoState, type TodoStatus } from "../domain/types.ts";
 
 export interface TodoEventStore { read(): Promise<TodoEvent[]>; append(event: TodoEvent): Promise<void> }
 type LifecycleEventPayload =
@@ -24,6 +24,8 @@ const id = (prefix: string) => `${prefix}_${Date.now().toString(36)}_${Math.rand
 export type ArtifactKind = "reports" | "logs" | "specs" | "plans" | "findings" | "todo";
 export type CreateArtifactInput = { kind: ArtifactKind; shortName: string; purpose: string; content: string; category?: string; subcategory?: string };
 export type StartTodoOptions = { splitOverrideReason?: string };
+export type CreateOrganizedTodoOptions = { children?: CreateTodoInput[]; allowVagueTodo?: boolean };
+export type CreateOrganizedTodoResult = { assessment: TodoIntakeAssessment; todo?: Todo; parent?: Todo; children: Todo[] };
 export type TodoRepairHint = { action: string; params: Record<string, unknown> };
 
 export class TodoWorkflowError extends Error {
@@ -144,6 +146,44 @@ export class TodoService {
     const todo = createTodoRecord(input, at);
     await this.append({ id: id("evt"), type: "todo.created", at, commandId: input.commandId, todo });
     return todo;
+  }
+
+  async createOrganized(input: CreateTodoInput, options: CreateOrganizedTodoOptions = {}): Promise<CreateOrganizedTodoResult> {
+    const assessment = assessTodoIntake(input, this.policy.splitting);
+    if (assessment.organization === "todo" || (assessment.organization === "clarify" && options.allowVagueTodo)) {
+      const todo = await this.create(input);
+      return { assessment, todo, children: [] };
+    }
+    if (assessment.organization === "clarify") return { assessment, children: [] };
+
+    const childInputs = options.children?.length ? options.children : assessment.suggestedChildren.map((child) => ({
+      title: child.title,
+      description: child.description,
+      acceptanceCriteria: child.acceptanceCriteria,
+      definitionOfDone: child.definitionOfDone,
+      scope: child.scope,
+      tags: child.tags,
+    }));
+    if (childInputs.length === 0) throw workflowError("INTAKE_CHILDREN_REQUIRED", "organized intake requires child suggestions or caller-provided children");
+    const problems = splitTitleSimilarityProblems(input.title, childInputs.map((child) => child.title));
+    if (problems.length > 0) throw new Error(`organized intake child titles must be distinct; ${problems.join("; ")}; make each child title/scope more specific`);
+
+    const at = now();
+    const parent = {
+      ...createTodoRecord(input, at),
+      workDirectlyAllowed: false,
+      splitAssessment: assessment.assessment,
+      splitAssessmentConfidence: assessment.confidence,
+      splitAssessmentReasons: assessment.reasons,
+      splitPolicySatisfied: false,
+      splitCheckedAt: at,
+    };
+    const children = childInputs.map((child) => createTodoRecord(child, at, parent));
+    const reason = `intake organization ${assessment.assessment}: ${assessment.reasons.join(", ")}`;
+    await this.append({ id: id("evt"), type: "todo.created", at, commandId: input.commandId, todo: parent });
+    await this.append({ id: id("evt"), type: "todo.split", at, commandId: input.commandId, todoId: parent.id, children, reason });
+    const state = await this.state();
+    return { assessment, parent: this.requireTodo(state, parent.id), children: children.map((child) => this.requireTodo(state, child.id)) };
   }
 
   async update(todoId: string, patch: Partial<Todo>): Promise<Todo> {

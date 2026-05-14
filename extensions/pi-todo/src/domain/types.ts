@@ -6,6 +6,7 @@ export type ClaimStatus = "active" | "released";
 export type SplitAssessment = "atomic" | "split_required" | "too_vague" | "epic";
 export type SplitConfidence = "low" | "medium" | "high";
 export type SplitPolicyMode = "advisory" | "required" | "strict" | "autonomous";
+export type TodoIntakeOrganization = "todo" | "container" | "clarify";
 
 export type SplitPolicy = {
   mode: SplitPolicyMode;
@@ -20,13 +21,22 @@ export type SplitPolicy = {
   allowOverride: boolean;
 };
 
+export type SplitSuggestedChild = {
+  title: string;
+  description?: string;
+  acceptanceCriteria?: string[];
+  definitionOfDone?: string[];
+  scope?: Partial<TodoScope>;
+  tags?: string[];
+};
+
 export type SplitCheckResult = {
   assessment: SplitAssessment;
   confidence: SplitConfidence;
   reasons: string[];
   recommendedChildCount: number;
   splitPolicySatisfied: boolean;
-  suggestedChildren: { title: string; acceptanceCriteria?: string[] }[];
+  suggestedChildren: SplitSuggestedChild[];
 };
 
 export type TodoScope = {
@@ -44,6 +54,31 @@ export type TodoScope = {
 };
 
 export type TodoInputs = { goal?: string; context?: string; environment?: string; constraints: string[] };
+export type TodoIntakeInput = {
+  title: string;
+  description?: string;
+  acceptanceCriteria?: string[];
+  definitionOfDone?: string[];
+  dependsOn?: string[];
+  tags?: string[];
+  scope?: Partial<TodoScope>;
+  inputs?: { goal?: string; context?: string; environment?: string; constraints?: string[] };
+  constraints?: string[];
+  requiredCapabilities?: string[];
+};
+export type TodoIntakeContainerInput = TodoIntakeInput & { workDirectlyAllowed: false };
+export type TodoIntakeAssessment = {
+  assessment: SplitAssessment;
+  confidence: SplitConfidence;
+  organization: TodoIntakeOrganization;
+  reasons: string[];
+  recommendedChildCount: number;
+  splitPolicySatisfied: boolean;
+  todo?: TodoIntakeInput;
+  parent?: TodoIntakeContainerInput;
+  suggestedChildren: SplitSuggestedChild[];
+  clarificationQuestions: string[];
+};
 
 export type EvidenceRef =
   | { type: "file_changed"; path: string; summary?: string }

@@ -50,6 +50,30 @@ function mutationResult(action: string, todo: Todo, extraDetails: Record<string,
   };
 }
 
+function organizedCreateResult(result: Awaited<ReturnType<TodoService["createOrganized"]>>) {
+  if (result.todo) {
+    const text = result.assessment.organization === "clarify"
+      ? `Created vague todo via explicit fallback ${renderTodo(result.todo)}\nclarification recommended: ${result.assessment.reasons.join(", ")}`
+      : `Created atomic todo ${renderTodo(result.todo)}`;
+    return {
+      content: [{ type: "text" as const, text }],
+      details: { ...result, nextActions: nextActions(result.todo) },
+    };
+  }
+  if (result.parent) {
+    const text = [`compound request organized ${renderTodo(result.parent)}`, "children:", ...result.children.map((child) => `  - ${renderTodo(child)}`)].join("\n");
+    return {
+      content: [{ type: "text" as const, text }],
+      details: { ...result, nextActions: result.children.length > 0 ? [{ action: "start", params: { todoId: result.children[0].id } }, { action: "begin", params: {} }] : [] },
+    };
+  }
+  const questions = result.assessment.clarificationQuestions.map((question) => `  - ${question}`).join("\n");
+  return {
+    content: [{ type: "text" as const, text: `intake needs clarification: ${result.assessment.reasons.join(", ")}\nquestions:\n${questions}` }],
+    details: { ...result, nextActions: [{ action: "create", params: { title: "specific outcome with acceptance criteria" } }] },
+  };
+}
+
 function workflowErrorResult(error: TodoWorkflowError) {
   const repair = error.repair ? { action: error.repair.action, ...error.repair.params } : undefined;
   return {
@@ -143,10 +167,15 @@ export async function executeTodoAction(pi: ExtensionAPI, ctx: ExtensionContext,
 
 async function executeTodoActionUnsafe(pi: ExtensionAPI, ctx: ExtensionContext, params: Record<string, unknown>) {
   const svc = service(pi, ctx);
-  if (params.action === "create") {
-    const todo = await svc.create(createInput(params));
+  if (params.action === "create" || params.action === "create_organized") {
+    if (params.action === "create" && params.autoOrganize === false) {
+      const todo = await svc.create(createInput(params));
+      await updateTodoWidget(pi, ctx);
+      return mutationResult("Created", todo);
+    }
+    const result = await svc.createOrganized(createInput(params), { children: params.children as CreateTodoInput[] | undefined, allowVagueTodo: params.allowVagueTodo as boolean | undefined });
     await updateTodoWidget(pi, ctx);
-    return mutationResult("Created", todo);
+    return organizedCreateResult(result);
   }
   if (params.action === "list") {
     const state = await svc.state();

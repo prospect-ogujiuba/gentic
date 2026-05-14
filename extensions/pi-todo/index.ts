@@ -31,7 +31,7 @@ export default function piTodo(pi: ExtensionAPI): void {
     name: "todo",
     label: "Todo",
     description:
-      "Unified Gentic todo ledger tool with create/update/split/split_check/begin/claim/start/block/complete/finish/attach_evidence/create_artifact/note_artifact/record_artifact/verify/reopen/list/get/history/graph actions.",
+      "Unified Gentic todo ledger tool with create/create_organized/update/split/split_check/begin/claim/start/block/complete/finish/attach_evidence/create_artifact/note_artifact/record_artifact/verify/reopen/list/get/history/graph actions.",
     promptSnippet:
       "Use todo first. If no active todo, call todo action=begin; it deterministically returns active work or starts the next ready todo. Prefer finish over complete when ending active work. Prefer create_artifact/note_artifact for generated notes, reports, plans, logs, TODO files, and artifacts so pi-todo creates a valid .model-artifacts/<kind>/<topic>/ path and records evidence automatically. Use record_artifact only for files that already exist. For TODO/planning artifacts use kind=todo with category such as pi-todo, pi-swe, or gentic and subcategory for phase sets like pi-swe-phases.",
     parameters: todoToolParameters,
