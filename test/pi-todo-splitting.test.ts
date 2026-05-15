@@ -468,9 +468,9 @@ test("message-start docket check requests cleanup before assistant text", async 
   assert.equal(messages[0].message.customType, "gentic.todo.clean-docket");
   assert.equal(messages[0].options?.triggerTurn, true);
   assert.equal(messages[0].options?.deliverAs, "steer");
-  assert.match(messages[0].message.content, /unresolved todo ledger entries/);
+  assert.match(messages[0].message.content, /todo ledger entries are still open/);
   assert.match(messages[0].message.content, /pi-todo:split-scaffold|open entries/);
-  assert.equal(notifications[0].type, "warning");
+  assert.equal(notifications[0].type, "info");
 });
 
 test("message-start docket check ignores non-assistant messages", async () => {

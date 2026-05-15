@@ -182,8 +182,8 @@ function docketCleanupMessage(state: Awaited<ReturnType<TodoService["state"]>>):
   const items = active ? [active, ...splitItems.filter((todo) => todo.id !== active.id)] : splitItems;
   const key = items.map((todo) => `${todo.id}:${todo.status}:${todo.revision}`).sort().join("|");
   const lines = [
-    "pi-todo docket check: unresolved todo ledger entries remain after the agent turn.",
-    "Before presenting final completion, use the todo tool to finish completed work, cancel/abandon stale split scaffolds, or explain why a task is intentionally still open.",
+    "pi-todo note: todo ledger entries are still open before the final response.",
+    "Wrap up completed work, abandon stale split scaffolds, or briefly explain why a task is intentionally still open.",
     "open entries:",
     ...items.slice(0, 6).map((todo) => `- ${todo.id} [${todo.status}] ${todo.title}`),
   ];
@@ -214,7 +214,7 @@ async function requestDocketCleanupTurn(
   const key = `${ctx.sessionId ?? ctx.cwd ?? "session"}:${deliverAs}:${reminder.key}`;
   if (promptedDocketCleanupKeys.has(key)) return;
   promptedDocketCleanupKeys.add(key);
-  ctx.ui.notify("pi-todo docket has unresolved active/scaffold entries; requesting cleanup turn", "warning");
+  ctx.ui.notify("pi-todo has open entries to wrap up before the final response", "info");
   pi.sendMessage(
     { customType: "gentic.todo.clean-docket", content: reminder.content, display: false },
     { triggerTurn: true, deliverAs },
