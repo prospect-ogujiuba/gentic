@@ -124,7 +124,6 @@ function specsFor(kind: ScaffoldKind, name: string, variant?: ScaffoldVariant): 
     return [
       { template: `${templateDir}/README.template.md`, target: `extensions/${name}/README.md`, description: `${variant} extension README` },
       { template: `${templateDir}/index.template.ts`, target: `extensions/${name}/index.ts`, description: `${variant} extension entrypoint` },
-      { template: `${templateDir}/extension.anatomy.template.json`, target: `extensions/${name}/extension.anatomy.json`, description: `${variant} extension anatomy declaration` },
     ];
   }
   if (kind === "command") {

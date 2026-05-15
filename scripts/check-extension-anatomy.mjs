@@ -165,7 +165,6 @@ function blockingFailures(row, dir) {
   const failures = [...(row.declaration.failures ?? [])];
 
   if (row.readme !== "yes") failures.push("missing README.md");
-  if (!row.declaration.present) failures.push("missing extension.anatomy.json");
 
   if (row.declaration.present && row.declaration.mode === "layered") {
     const publicEntry = row.declaration.publicEntry;
@@ -223,7 +222,7 @@ try {
   const rows = extensionRows();
   console.log(`check-extension-anatomy: ci-enforcement (${rows.length} extensions)`);
   console.log(
-    "check-extension-anatomy: blocking=missing-readme,missing-declaration,invalid-declaration,resource-placement,layered-entrypoint; warning-only=index-line-count,transitional-layer-mismatch,domain-purity",
+    "check-extension-anatomy: blocking=missing-readme,invalid-declaration,resource-placement,layered-entrypoint; optional=extension.anatomy.json; warning-only=index-line-count,transitional-layer-mismatch,domain-purity",
   );
   const failures = [];
   for (const row of rows) {

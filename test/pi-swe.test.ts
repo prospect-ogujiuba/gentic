@@ -146,23 +146,19 @@ const lifecycleResourceStages = [...baseStages, "tdd", "dsa", "orchestrate"] as 
 const dsaReferenceFiles = ["decision-rubric", "algorithm-playbook", "data-structures-catalog"] as const;
 const tddReferences = ["rgr-playbook", "tdd-architecture", "red-green-refactor"] as const;
 
-test("pi-swe rollout resources remain discoverable by package and anatomy tooling", () => {
+test("pi-swe rollout resources remain discoverable by package and filesystem tooling", () => {
   const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const extensionRoot = join(root, "extensions/pi-swe");
-  const anatomy = JSON.parse(readFileSync(join(extensionRoot, "extension.anatomy.json"), "utf8"));
 
   assert.deepEqual(packageJson.pi?.extensions, ["./extensions"]);
   assert.ok(packageJson.pi?.prompts?.includes("./extensions/**/prompts/**/*.md"));
   assert.ok(packageJson.pi?.skills?.includes("./extensions/**/skills"));
-  assert.equal(anatomy.publicEntry, "index.ts");
-  assert.ok(anatomy.tests.includes("npm run test:swe"));
+  assert.equal(existsSync(join(extensionRoot, "index.ts")), true, "public entrypoint should stay top-level discoverable");
 
   for (const resourceDir of ["docs", "prompts", "skills", "references"] as const) {
     assert.equal(existsSync(join(extensionRoot, resourceDir)), true, `${resourceDir}/ should stay top-level`);
-    assert.ok(anatomy.resources.includes(resourceDir), `${resourceDir}/ should be declared as a pi-swe resource`);
   }
   assert.equal(existsSync(join(extensionRoot, "pi-swe.schema.json")), true, "schema should stay top-level discoverable");
-  assert.ok(anatomy.resources.includes("schemas"));
 
   for (const stage of lifecycleResourceStages) {
     assert.equal(existsSync(join(extensionRoot, `prompts/swe-${stage}.md`)), true, `missing prompt for ${stage}`);

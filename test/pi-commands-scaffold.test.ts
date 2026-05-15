@@ -53,7 +53,7 @@ test("scaffold preview renders extension targets without writing files", () => {
   assert.match(text, /No files written\./);
   assert.match(text, /extensions\/phase-six-test-extension\/README\.md/);
   assert.match(text, /extensions\/phase-six-test-extension\/index\.ts/);
-  assert.match(text, /extensions\/phase-six-test-extension\/extension\.anatomy\.json/);
+  assert.doesNotMatch(text, /extension\.anatomy\.json/);
   assert.ok(preview.files.every((file) => !file.renderedContent.includes("{{")), "placeholders should be rendered");
 });
 
@@ -120,11 +120,9 @@ test("scaffold apply writes extension files and refuses overwrites", () => {
     assert.deepEqual(result.createdPaths, [
       "extensions/phase-eight-test-extension/README.md",
       "extensions/phase-eight-test-extension/index.ts",
-      "extensions/phase-eight-test-extension/extension.anatomy.json",
     ]);
     assert.match(text, /Applied scaffold: extension phase-eight-test-extension simple/);
-    assert.match(text, /- created extensions\/phase-eight-test-extension\/extension\.anatomy\.json/);
-    assert.equal(existsSync(`${targetDir}/extension.anatomy.json`), true);
+    assert.equal(existsSync(`${targetDir}/extension.anatomy.json`), false);
     assert.throws(() => applyScaffold("extension", "phase-eight-test-extension", "simple"), /Refusing to overwrite/);
   } finally {
     rmSync(targetDir, { recursive: true, force: true });
