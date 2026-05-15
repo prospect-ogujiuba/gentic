@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { SPLIT_SCAFFOLD_TAG, TodoService, type TodoEventStore } from "../extensions/pi-todo/src/app/service.ts";
 import { orderedTodos, readyToClose } from "../extensions/pi-todo/src/app/query.ts";
-import { checkTodoDocketAtAgentEnd, checkTodoDocketBeforeFinalMessage, executeTodoAction } from "../extensions/pi-todo/src/pi/actions.ts";
+import { checkTodoDocketAtAgentEnd, checkTodoDocketAtMessageStart, checkTodoDocketBeforeFinalMessage, executeTodoAction } from "../extensions/pi-todo/src/pi/actions.ts";
 import { todoToolParameters } from "../extensions/pi-todo/src/pi/schema.ts";
 import { assessTodoIntake, splitTitlesAreTooSimilar } from "../extensions/pi-todo/src/domain/splitting.ts";
 import type { TodoEvent } from "../extensions/pi-todo/src/domain/types.ts";
@@ -424,7 +424,7 @@ test("split accepts distinct children and terminal children stay out of the open
   assert.equal(openTitles.includes(unrelated.title), true);
 });
 
-test("turn-end docket check requests cleanup before final completion", async () => {
+test("turn-end docket check stays passive during active agent work", async () => {
   const { pi, ctx, messages, notifications } = actionHarness();
   const created = await executeTodoAction(pi as never, ctx as never, {
     action: "create",
@@ -442,6 +442,28 @@ test("turn-end docket check requests cleanup before final completion", async () 
 
   await checkTodoDocketBeforeFinalMessage(pi as never, ctx as never);
 
+  assert.equal(messages.length, 0);
+  assert.equal(notifications.length, 0);
+});
+
+test("message-start docket check requests cleanup before assistant text", async () => {
+  const { pi, ctx, messages, notifications } = actionHarness();
+  const created = await executeTodoAction(pi as never, ctx as never, {
+    action: "create",
+    title: "Implement message start split path",
+    description: "Touches lifecycle and validation.",
+  });
+  const todoId = created.details.todo.id;
+  const preview = await executeTodoAction(pi as never, ctx as never, { action: "split", todoId, auto: true });
+  await executeTodoAction(pi as never, ctx as never, {
+    action: "split",
+    todoId,
+    children: preview.details.children,
+    reason: "persist generated scaffold for message-start cleanup check",
+  });
+
+  await checkTodoDocketAtMessageStart(pi as never, ctx as never, { message: { role: "assistant" } });
+
   assert.equal(messages.length, 1);
   assert.equal(messages[0].message.customType, "gentic.todo.clean-docket");
   assert.equal(messages[0].options?.triggerTurn, true);
@@ -451,8 +473,30 @@ test("turn-end docket check requests cleanup before final completion", async () 
   assert.equal(notifications[0].type, "warning");
 });
 
-test("agent-end docket check remains a follow-up fallback", async () => {
-  const { pi, ctx, messages } = actionHarness();
+test("message-start docket check ignores non-assistant messages", async () => {
+  const { pi, ctx, messages, notifications } = actionHarness();
+  const created = await executeTodoAction(pi as never, ctx as never, {
+    action: "create",
+    title: "Implement user message split path",
+    description: "Touches lifecycle and validation.",
+  });
+  const todoId = created.details.todo.id;
+  const preview = await executeTodoAction(pi as never, ctx as never, { action: "split", todoId, auto: true });
+  await executeTodoAction(pi as never, ctx as never, {
+    action: "split",
+    todoId,
+    children: preview.details.children,
+    reason: "persist generated scaffold for non-assistant cleanup check",
+  });
+
+  await checkTodoDocketAtMessageStart(pi as never, ctx as never, { message: { role: "user" } });
+
+  assert.equal(messages.length, 0);
+  assert.equal(notifications.length, 0);
+});
+
+test("agent-end docket check stays passive after assistant response", async () => {
+  const { pi, ctx, messages, notifications } = actionHarness();
   const created = await executeTodoAction(pi as never, ctx as never, {
     action: "create",
     title: "Implement fallback split path",
@@ -469,14 +513,12 @@ test("agent-end docket check remains a follow-up fallback", async () => {
 
   await checkTodoDocketAtAgentEnd(pi as never, ctx as never);
 
-  assert.equal(messages.length, 1);
-  assert.equal(messages[0].message.customType, "gentic.todo.clean-docket");
-  assert.equal(messages[0].options?.triggerTurn, true);
-  assert.equal(messages[0].options?.deliverAs, "followUp");
+  assert.equal(messages.length, 0);
+  assert.equal(notifications.length, 0);
 });
 
-test("agent-end docket check requests cleanup for legacy untagged split descendants", async () => {
-  const { pi, ctx, messages } = actionHarness();
+test("agent-end docket check passively reconciles legacy untagged split descendants", async () => {
+  const { pi, ctx, messages, notifications } = actionHarness();
   const created = await executeTodoAction(pi as never, ctx as never, {
     action: "create",
     title: "Implement legacy split path",
@@ -492,6 +534,6 @@ test("agent-end docket check requests cleanup for legacy untagged split descenda
 
   await checkTodoDocketAtAgentEnd(pi as never, ctx as never);
 
-  assert.equal(messages.length, 1);
-  assert.match(messages[0].message.content, /Resolve untagged legacy child/);
+  assert.equal(messages.length, 0);
+  assert.equal(notifications.length, 0);
 });

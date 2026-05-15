@@ -221,12 +221,22 @@ async function requestDocketCleanupTurn(
   );
 }
 
+function messageRole(event: unknown): string | undefined {
+  const message = (event as { message?: { role?: unknown } } | undefined)?.message;
+  return typeof message?.role === "string" ? message.role : undefined;
+}
+
 export async function checkTodoDocketBeforeFinalMessage(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
+  await reconcileTodoDocket(pi, ctx);
+}
+
+export async function checkTodoDocketAtMessageStart(pi: ExtensionAPI, ctx: ExtensionContext, event: unknown): Promise<void> {
+  if (messageRole(event) !== "assistant") return;
   await requestDocketCleanupTurn(pi, ctx, "steer");
 }
 
 export async function checkTodoDocketAtAgentEnd(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
-  await requestDocketCleanupTurn(pi, ctx, "followUp");
+  await reconcileTodoDocket(pi, ctx);
 }
 
 export async function updateTodoWidget(
