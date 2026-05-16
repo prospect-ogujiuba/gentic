@@ -3,7 +3,7 @@ import { Key, matchesKey, visibleWidth, wrapTextWithAnsi } from "@earendil-works
 import { renderWorktime, renderWorktimeDetails } from "../components/worktime.ts";
 import { renderContextBar, renderPiContextLedgerDetails, renderUsageSummary } from "../components/context.ts";
 import { renderGitStatus } from "../components/git.ts";
-import { renderModel, renderThinkingLevel } from "../components/model.ts";
+import { renderModel, renderProvider, renderThinkingLevel } from "../components/model.ts";
 import { renderToolBadges, renderToolSummary } from "../components/tools.ts";
 import { fitLeftRight } from "../lib/format.ts";
 import { createSnapshot, withLiveUsage } from "../../app/snapshot.ts";
@@ -38,7 +38,8 @@ function framed(theme: Theme, width: number, title: string, body: string[]): str
 
 function modalBody(s: HudSnapshot, theme: Theme, width: number): string[] {
   const bodyWidth = Math.max(24, width - 2);
-  const modelLine = [renderModel(s, theme), renderThinkingLevel(s, theme), renderContextBar(s, theme)].filter(Boolean).join(theme.fg("dim", "  "));
+  const providerModel = [state.components.provider ? renderProvider(s, theme) : "", state.components.model ? renderModel(s, theme) : ""].filter(Boolean).join(theme.fg("dim", "/"));
+  const modelLine = [providerModel, state.components.model ? renderThinkingLevel(s, theme) : "", renderContextBar(s, theme)].filter(Boolean).join(theme.fg("dim", "  "));
   const workLine = state.components.worktime ? renderWorktime(s, theme) : "";
   const lines = bodyWidth >= 84
     ? [fitLeftRight(bodyWidth, modelLine, renderUsageSummary(s, theme)), fitLeftRight(bodyWidth, renderGitStatus(s, theme), workLine)]

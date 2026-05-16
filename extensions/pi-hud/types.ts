@@ -1,7 +1,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { PiContextHudSnapshot } from "../pi-context/src/app/index.ts";
 
-export type HudComponentId = "model" | "context" | "git" | "session" | "tools" | "events" | "worktime";
+export type HudComponentId = "provider" | "model" | "context" | "git" | "session" | "tools" | "events" | "worktime";
 export type AgentState = "idle" | "thinking" | "reading" | "editing" | "writing" | "executing" | "testing";
 export type Placement = "footer" | "widget" | "both";
 

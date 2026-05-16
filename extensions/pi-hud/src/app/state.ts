@@ -1,12 +1,12 @@
 import type { HudComponentId, HudState, Placement, UsageSnapshot } from "../../types.ts";
 
-export const COMPONENT_IDS = ["model", "context", "git", "session", "tools", "events", "worktime"] as const satisfies readonly HudComponentId[];
+export const COMPONENT_IDS = ["provider", "model", "context", "git", "session", "tools", "events", "worktime"] as const satisfies readonly HudComponentId[];
 export const PLACEMENTS = ["footer", "widget", "both"] as const satisfies readonly Placement[];
 
 export const state: HudState = {
   enabled: true,
   placement: "footer",
-  components: { model: true, context: true, git: true, session: true, tools: true, events: true, worktime: true },
+  components: { provider: true, model: true, context: true, git: true, session: true, tools: true, events: true, worktime: true },
   agent: "idle",
   turn: 0,
   recentEvents: ["loaded"],

@@ -3,7 +3,7 @@ import { renderWorktime } from "../components/worktime.ts";
 import { renderContextBar, renderPiContextLedgerSummary, renderUsageSummary } from "../components/context.ts";
 import { renderHarnessEvents } from "../components/events.ts";
 import { renderGitStatus } from "../components/git.ts";
-import { renderModel, renderThinkingLevel } from "../components/model.ts";
+import { renderModel, renderProvider, renderThinkingLevel } from "../components/model.ts";
 import { renderToolBadges, renderToolSummary } from "../components/tools.ts";
 import { state } from "../../app/state.ts";
 import type { HudSnapshot, Theme } from "../../../types.ts";
@@ -43,7 +43,8 @@ function fitToolLine(width: number, badges: string, summary: string): string {
 }
 
 export function renderFooterLines(s: HudSnapshot, theme: Theme, width: number): string[] {
-  const modelThinking = [state.components.model ? renderModel(s, theme) : "", state.components.model ? renderThinkingLevel(s, theme) : ""].filter(Boolean).join(theme.fg("dim", " "));
+  const providerModel = [state.components.provider ? renderProvider(s, theme) : "", state.components.model ? renderModel(s, theme) : ""].filter(Boolean).join(theme.fg("dim", "/"));
+  const modelThinking = [providerModel, state.components.model ? renderThinkingLevel(s, theme) : ""].filter(Boolean).join(theme.fg("dim", " "));
   const context = state.components.context ? renderContextBar(s, theme) : "";
   const ledger = state.components.context ? renderPiContextLedgerSummary(s, theme) : "";
   const lineOne = fitResponsive(width, [

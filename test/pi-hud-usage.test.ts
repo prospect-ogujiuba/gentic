@@ -47,7 +47,7 @@ test("pi-hud footer renders representative layered HUD output", () => {
     }, plainTheme, 120);
 
     assert.equal(lines.length, 4);
-    assert.match(lines[0], /claude-sonnet \(medium\).*250\/1\.0k 25%.*ledger 120 left 880 hot Tools.*IN 1\.2k\s+OUT 56\s+\$0\.0123/);
+    assert.match(lines[0], /anthropic\/claude-sonnet \(medium\).*250\/1\.0k 25%.*ledger 120 left 880 hot Tools.*IN 1\.2k\s+OUT 56\s+\$0\.0123/);
     assert.match(lines[1], /gentic · main\(\*\) · origin · ↓\(0\)\|↑\(1\) · unstaged \(2\) · untracked \(1\) · staged \(1\).*work: 0:00/);
     assert.match(lines[2], /\[bash 2\] \[read 1\].*err 0 · warn 1 · ok\/fail 3:0 · pending 1/);
     assert.match(lines[3], /Events \| ◆ tool_started ◇ msg_created/);
@@ -59,6 +59,25 @@ test("pi-hud footer renders representative layered HUD output", () => {
     state.toolCounts = {};
     state.recentEvents = [];
     state.thinkingLevel = undefined;
+  }
+});
+
+test("pi-hud footer can render provider without model", () => {
+  resetConfig();
+  for (const id of Object.keys(state.components)) state.components[id as keyof typeof state.components] = id === "provider";
+
+  try {
+    const lines = renderFooterLines({
+      modelId: "anthropic/claude-sonnet",
+      worktreeId: ".",
+      activeTools: [],
+      toolCounts: {},
+      recentEvents: [],
+    }, plainTheme, 80);
+
+    assert.equal(lines[0], "anthropic");
+  } finally {
+    resetConfig();
   }
 });
 
