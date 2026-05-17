@@ -384,6 +384,46 @@ test("completion closes tagged split scaffolding without artifact todos", async 
   assert.equal(state.todos[discovery.id].evidence.some((item) => item.type === "generated_artifact"), false);
 });
 
+test("completing replacement supersedes an older split tree", async () => {
+  const service = new TodoService(new MemoryStore());
+  const oldParent = await service.create({ title: "Implement supersession cleanup", description: "Original broad split tree." });
+  const [blockedChild, readyChild] = await service.split(oldParent.id, [
+    { title: "Wait on obsolete design", tags: [SPLIT_SCAFFOLD_TAG] },
+    { title: "Patch obsolete implementation", tags: [SPLIT_SCAFFOLD_TAG] },
+  ], "obsolete planner scaffold");
+  await service.block(blockedChild.id, "waiting on old plan");
+  const replacement = await service.create({ title: "Implement equivalent narrow fix" });
+
+  await service.complete(replacement.id, [{ type: "manual_note", note: "replacement done" }], "done", oldParent.id);
+  const state = await service.state();
+
+  assert.equal(state.todos[replacement.id].status, "completed");
+  assert.equal(state.todos[oldParent.id].status, "superseded");
+  assert.equal(state.todos[blockedChild.id].status, "superseded");
+  assert.equal(state.todos[readyChild.id].status, "superseded");
+  assert.equal(state.todos[oldParent.id].supersededBy, replacement.id);
+  assert.equal(orderedTodos(state, false).some((todo) => todo.id === oldParent.id || todo.parentId === oldParent.id), false);
+});
+
+test("supersede action closes a parent with never-started split scaffold children", async () => {
+  const service = new TodoService(new MemoryStore());
+  const oldParent = await service.create({ title: "Plan generated cleanup", description: "Planner scaffold." });
+  const [first, second] = await service.split(oldParent.id, [
+    { title: "Inspect generated scaffold", tags: [SPLIT_SCAFFOLD_TAG] },
+    { title: "Patch generated scaffold", tags: [SPLIT_SCAFFOLD_TAG] },
+  ], "planner-generated scaffold");
+  const replacement = await service.create({ title: "Use replacement task" });
+  await service.complete(replacement.id, [{ type: "manual_note", note: "done" }]);
+
+  await service.supersede(oldParent.id, replacement.id, "replacement completed equivalent work");
+  const state = await service.state();
+
+  assert.equal(state.todos[oldParent.id].status, "superseded");
+  assert.equal(state.todos[first.id].status, "superseded");
+  assert.equal(state.todos[second.id].status, "superseded");
+  assert.equal(orderedTodos(state, false).some((todo) => todo.id === oldParent.id || todo.parentId === oldParent.id), false);
+});
+
 test("reconcile closes stale tagged split scaffolding left by missed completion cleanup", async () => {
   const store = new MemoryStore();
   const service = new TodoService(store);

@@ -264,10 +264,10 @@ export class TodoService {
     return this.start(todo.id, capabilities, leaseMs, owner, options);
   }
 
-  async finish(todoId?: string, evidence: EvidenceRef[] = [], summary?: string, owner?: string | null): Promise<Todo> {
+  async finish(todoId?: string, evidence: EvidenceRef[] = [], summary?: string, owner?: string | null, supersededBy?: string): Promise<Todo> {
     const target = todoId ? await this.get(todoId) : await this.active(owner);
     if (!target) throw workflowError("NO_ACTIVE_TODO", "no active todo to finish", { action: "begin", params: {} });
-    return this.complete(target.id, evidence, summary);
+    return this.complete(target.id, evidence, summary, supersededBy);
   }
 
   async noteArtifact(todoId: string | undefined, input: CreateArtifactInput, owner?: string | null): Promise<{ todo: Todo; path: string }> {
@@ -319,7 +319,7 @@ export class TodoService {
     return this.get(todoId);
   }
 
-  async complete(todoId: string, evidence: EvidenceRef[] = [], summary?: string): Promise<Todo> {
+  async complete(todoId: string, evidence: EvidenceRef[] = [], summary?: string, supersededBy?: string): Promise<Todo> {
     const todo = await this.get(todoId);
     if (this.policy.requireEvidenceForDone && todo.evidence.length + evidence.length === 0) {
       throw workflowError(
@@ -330,6 +330,7 @@ export class TodoService {
     }
     this.ensureStatusTransition(todo, "completed", "complete");
     await this.append({ id: id("evt"), type: "todo.completed", at: now(), todoId, evidence, summary });
+    if (supersededBy) await this.supersedeTree(supersededBy, todoId, `superseded by completed replacement ${todoId}`);
     await this.closeStaleSplitScaffold(todoId);
     return this.get(todoId);
   }
@@ -379,7 +380,7 @@ export class TodoService {
   async fail(todoId: string, reason?: string, evidence: EvidenceRef[] = []): Promise<Todo> { return this.lifecycle(todoId, { type: "todo.failed", reason, evidence }); }
   async reopen(todoId: string, reason?: string, targetStatus: TodoStatus = "ready"): Promise<Todo> { return this.lifecycle(todoId, { type: "todo.reopened", reason, targetStatus }); }
   async cancel(todoId: string, reason?: string): Promise<Todo> { return this.lifecycle(todoId, { type: "todo.cancelled", reason }); }
-  async supersede(todoId: string, supersededBy?: string, reason?: string): Promise<Todo> { return this.lifecycle(todoId, { type: "todo.superseded", supersededBy, reason }); }
+  async supersede(todoId: string, supersededBy?: string, reason?: string): Promise<Todo> { return this.supersedeTree(todoId, supersededBy, reason); }
   async abandon(todoId: string, reason?: string): Promise<Todo> { return this.cancel(todoId, reason ? `abandoned: ${reason}` : "abandoned"); }
 
   async block(todoId: string, reason: string): Promise<Todo> {
@@ -429,6 +430,25 @@ export class TodoService {
     if (payload.type === "todo.cancelled" || payload.type === "todo.abandoned") return "cancelled";
     if (payload.type === "todo.superseded") return "superseded";
     return "ready";
+  }
+
+  private async supersedeTree(todoId: string, supersededBy?: string, reason?: string): Promise<Todo> {
+    const state = await this.state();
+    const root = this.requireTodo(state, todoId);
+    const seen = new Set<string>();
+    const visit = async (todo: Todo): Promise<void> => {
+      if (seen.has(todo.id)) return;
+      seen.add(todo.id);
+      for (const childId of todo.children) {
+        const child = state.todos[childId];
+        if (child) await visit(child);
+      }
+      if (isTerminalStatus(todo.status)) return;
+      this.ensureStatusTransition(todo, "superseded", "supersede");
+      await this.append({ id: id("evt"), type: "todo.superseded", at: now(), todoId: todo.id, supersededBy, reason });
+    };
+    await visit(root);
+    return this.get(todoId);
   }
 
   private ensureStatusTransition(todo: Todo, targetStatus: TodoStatus | string | undefined, action: string, options: { allowNoop?: boolean } = {}): void {

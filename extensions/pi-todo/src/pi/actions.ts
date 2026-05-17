@@ -298,7 +298,7 @@ async function executeTodoActionUnsafe(pi: ExtensionAPI, ctx: ExtensionContext, 
   }
   if (params.action === "finish") {
     const todoId = params.todoId ? await svc.resolveId(params.todoId as string) : undefined;
-    const todo = await svc.finish(todoId, normalizeEvidence(params.evidence), params.summary as string | undefined, owner);
+    const todo = await svc.finish(todoId, normalizeEvidence(params.evidence), params.summary as string | undefined, owner, params.supersededBy as string | undefined);
     await updateTodoWidget(pi, ctx);
     return mutationResult("finish", todo);
   }
@@ -362,7 +362,7 @@ async function executeTodoActionUnsafe(pi: ExtensionAPI, ctx: ExtensionContext, 
     : params.action === "cancel" ? await svc.cancel(todoId, params.reason as string | undefined)
     : params.action === "supersede" ? await svc.supersede(todoId, params.supersededBy as string | undefined, params.reason as string | undefined)
     : params.action === "abandon" ? await svc.abandon(todoId, params.reason as string | undefined)
-    : params.action === "complete" ? await svc.complete(todoId, normalizeEvidence(params.evidence), params.summary as string | undefined)
+    : params.action === "complete" ? await svc.complete(todoId, normalizeEvidence(params.evidence), params.summary as string | undefined, params.supersededBy as string | undefined)
     : params.action === "attach_evidence" ? await svc.attachEvidence(todoId, normalizeEvidence(params.evidence))
     : params.action === "record_artifact" ? await svc.attachEvidence(todoId, [{ type: "generated_artifact", path: String(params.path || ""), summary: String(params.summary || "generated artifact"), createdByTodoId: todoId, recordedAt: new Date().toISOString() }])
     : params.action === "verify" ? await svc.verify(todoId, normalizeEvidence(params.evidence), params.summary as string | undefined, params.requiredCapabilities as string[] | undefined)
