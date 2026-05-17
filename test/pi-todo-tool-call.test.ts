@@ -117,8 +117,9 @@ test("tool_call hook surfaces invalid config diagnostics while falling back safe
     const result = await (handlers.get("tool_call") as ToolCallHandler)({ type: "tool_call", toolName: "write" }, ctx);
 
     assert.equal(typeof result, "object");
-    assert.match(String((result as { reason?: unknown }).reason), /default requireTodo policy/);
+    assert.match(String((result as { reason?: unknown }).reason), /requireTodo rule 'write'/);
     assert.match(String((result as { reason?: unknown }).reason), /Config diagnostics: .*invalid 'enforcement\.defaultAction'/);
+    assert.match(String((result as { reason?: unknown }).reason), /defaultAction forced to 'requireTodo'/);
     assert.match(String((result as { reason?: unknown }).reason), /Call todo\(\{ "action": "begin" \}\)/);
   });
 });

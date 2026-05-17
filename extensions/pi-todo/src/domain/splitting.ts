@@ -1,4 +1,4 @@
-import { emptyScope, type SplitCheckResult, type SplitPolicy, type SplitSuggestedChild, type Todo, type TodoIntakeAssessment, type TodoIntakeInput } from "./types.ts";
+import { emptyScope, type SplitCheckResult, type SplitPolicy, type SplitPolicyDecision, type SplitSuggestedChild, type Todo, type TodoIntakeAssessment, type TodoIntakeInput } from "./types.ts";
 
 export const defaultSplitPolicy: SplitPolicy = {
   mode: "required",
@@ -161,7 +161,7 @@ export function assessSplitPolicy(todo: Todo, policy: SplitPolicy = defaultSplit
 
   if (todo.workDirectlyAllowed === false || (todo.children ?? []).length > 0) {
     reasons.push(todo.workDirectlyAllowed === false ? "parent container is not directly workable" : "task already has child tasks");
-    return { assessment: "epic", confidence: "high", reasons, recommendedChildCount: Math.max(policy.idealChildMin, Math.min(policy.idealChildMax, todo.children.length || policy.idealChildMin)), splitPolicySatisfied: false, suggestedChildren: [] };
+    return { assessment: "epic", confidence: "high", reasons, recommendedChildCount: Math.max(policy.idealChildMin, Math.min(policy.idealChildMax, todo.children.length || policy.idealChildMin)), splitPolicySatisfied: false, policyDecision: "block_external", suggestedChildren: [] };
   }
 
   if (epicTitle && (areas.length > policy.maxTouchedAreas || hasDescription || acceptanceCount > 1)) reasons.push("title describes a broad initiative");
@@ -172,25 +172,29 @@ export function assessSplitPolicy(todo: Todo, policy: SplitPolicy = defaultSplit
   if (broadTitle && (hasDescription || areas.length > 0 || acceptanceCount > 1 || wordCount > 4)) reasons.push("title uses a broad implementation verb");
 
   if (vagueTitle && !hasDescription && acceptanceCount === 0 && areas.length === 0 && wordCount <= 4) {
-    return { assessment: "too_vague", confidence: "high", reasons: ["no concrete deliverable or validation path"], recommendedChildCount: 0, splitPolicySatisfied: false, suggestedChildren: [] };
+    return { assessment: "too_vague", confidence: "high", reasons: ["no concrete deliverable or validation path"], recommendedChildCount: 0, splitPolicySatisfied: false, policyDecision: "warn", suggestedChildren: [] };
   }
 
   if (epicTitle && reasons.length > 0) {
     const recommendedChildCount = Math.min(policy.maxChildCount, Math.max(policy.idealChildMin, reasons.length + 2));
-    return { assessment: "epic", confidence: "medium", reasons, recommendedChildCount, splitPolicySatisfied: false, suggestedChildren: childSuggestions(todo, Math.min(policy.idealChildMax, recommendedChildCount)) };
+    return { assessment: "epic", confidence: "medium", reasons, recommendedChildCount, splitPolicySatisfied: false, policyDecision: policy.requireChildrenForEpics ? "block_external" : "suggest_split", suggestedChildren: childSuggestions(todo, Math.min(policy.idealChildMax, recommendedChildCount)) };
   }
 
   if (reasons.length > 0) {
     const recommendedChildCount = Math.min(policy.maxChildCount, Math.max(policy.idealChildMin, Math.min(policy.idealChildMax, reasons.length + 2)));
-    return { assessment: "split_required", confidence: reasons.length > 1 ? "high" : "medium", reasons, recommendedChildCount, splitPolicySatisfied: false, suggestedChildren: childSuggestions(todo, recommendedChildCount) };
+    return { assessment: "split_required", confidence: reasons.length > 1 ? "high" : "medium", reasons, recommendedChildCount, splitPolicySatisfied: false, policyDecision: "suggest_split", suggestedChildren: childSuggestions(todo, recommendedChildCount) };
   }
 
-  return { assessment: "atomic", confidence: "medium", reasons: ["one concern with no split-pressure signals"], recommendedChildCount: 1, splitPolicySatisfied: true, suggestedChildren: [] };
+  return { assessment: "atomic", confidence: "medium", reasons: ["one concern with no split-pressure signals"], recommendedChildCount: 1, splitPolicySatisfied: true, policyDecision: "allow", suggestedChildren: [] };
+}
+
+export function splitPolicyDecision(result: SplitCheckResult, policy: SplitPolicy = defaultSplitPolicy, overrideReason?: string): SplitPolicyDecision {
+  if (result.splitPolicySatisfied) return "allow";
+  if (result.policyDecision === "block_external") return overrideReason?.trim() && policy.allowOverride && policy.mode !== "autonomous" ? "warn" : "block_external";
+  if (result.assessment === "too_vague") return "warn";
+  return "suggest_split";
 }
 
 export function shouldBlockForSplit(result: SplitCheckResult, policy: SplitPolicy = defaultSplitPolicy, overrideReason?: string): boolean {
-  if (result.splitPolicySatisfied) return false;
-  if (policy.mode === "advisory") return false;
-  if (overrideReason?.trim() && policy.allowOverride && policy.mode !== "autonomous") return false;
-  return true;
+  return splitPolicyDecision(result, policy, overrideReason) === "block_external";
 }

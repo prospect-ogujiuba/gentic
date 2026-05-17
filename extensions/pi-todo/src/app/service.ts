@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { canTransitionStatus, normalizePriority, normalizeStatus, isSuccessStatus, isTerminalStatus, transitionAllowedStatuses } from "../domain/lifecycle.ts";
 import { ineligibleReasons, missingCapabilities, openDependencyIds, type EligibilityOptions } from "../domain/policy.ts";
 import { reduceTodoState } from "../domain/reducer.ts";
-import { assessSplitPolicy, assessTodoIntake, defaultSplitPolicy, shouldBlockForSplit, splitTitleSimilarityProblems } from "../domain/splitting.ts";
+import { assessSplitPolicy, assessTodoIntake, defaultSplitPolicy, shouldBlockForSplit, splitPolicyDecision, splitTitleSimilarityProblems } from "../domain/splitting.ts";
 import { nextTodo } from "./query.ts";
 import { emptyScope, type EvidenceRef, type SplitCheckResult, type Todo, type TodoClaim, type TodoEvent, type TodoIntakeAssessment, type TodoPolicy, type TodoPriority, type TodoScope, type TodoState, type TodoStatus } from "../domain/types.ts";
 
@@ -281,14 +281,18 @@ export class TodoService {
     let todo = this.requireTodo(state, todoId);
     if (todo.status === "external_blocked") throw workflowError("TODO_EXTERNAL_BLOCKED", "cannot start externally blocked todo", { action: "get", params: { todoId } });
     const splitResult = await this.splitCheck(todoId);
+    const splitDecision = splitPolicyDecision(splitResult, this.policy.splitting, options.splitOverrideReason);
     if (shouldBlockForSplit(splitResult, this.policy.splitting, options.splitOverrideReason)) {
-      const nextAction = splitResult.assessment === "too_vague" ? "clarify expected outcome and acceptance criteria" : splitResult.assessment === "epic" ? "split into child tasks or mark as parent-only" : "split into child tasks";
+      const nextAction = splitResult.assessment === "epic" ? "start a child task or unblock the external parent-only dependency" : "resolve the external blocker";
       throw workflowError(
-        "SPLIT_REQUIRED",
-        `needs_refinement: task requires splitting; assessment:${splitResult.assessment}; reason:${splitResult.reasons.join(", ")}; next_action:${nextAction}`,
-        { action: "split", params: { todoId, auto: true, apply: false } },
-        { splitCheck: splitResult },
+        "BLOCK_EXTERNAL",
+        `block_external: task cannot start directly; assessment:${splitResult.assessment}; reason:${splitResult.reasons.join(", ")}; next_action:${nextAction}`,
+        { action: "get", params: { todoId } },
+        { splitCheck: splitResult, policyDecision: splitDecision },
       );
+    }
+    if (splitDecision === "suggest_split") {
+      await this.append({ id: id("evt"), type: "todo.note_added", at: now(), todoId, note: `suggest_split: ${splitResult.reasons.join(", ")}; auto split is advisory via todo({\"action\":\"split\",\"todoId\":\"${todoId}\",\"auto\":true})` });
     }
     if (options.splitOverrideReason?.trim() && !splitResult.splitPolicySatisfied) {
       await this.append({ id: id("evt"), type: "todo.updated", at: now(), todoId, patch: { splitOverrideReason: options.splitOverrideReason.trim(), splitPolicySatisfied: true } });

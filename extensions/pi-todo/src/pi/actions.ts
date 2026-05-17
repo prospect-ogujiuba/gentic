@@ -125,6 +125,7 @@ function splitCheckText(todo: Todo, result: Awaited<ReturnType<TodoService["spli
     `task: ${todo.id}`,
     `assessment: ${result.assessment}`,
     `confidence: ${result.confidence}`,
+    `policy decision: ${result.policyDecision}`,
     "reasons:",
     ...result.reasons.map((reason) => `  - ${reason}`),
     `recommended child count: ${result.recommendedChildCount}`,

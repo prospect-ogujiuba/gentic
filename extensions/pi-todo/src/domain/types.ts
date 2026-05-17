@@ -6,6 +6,7 @@ export type ClaimStatus = "active" | "released";
 export type SplitAssessment = "atomic" | "split_required" | "too_vague" | "epic";
 export type SplitConfidence = "low" | "medium" | "high";
 export type SplitPolicyMode = "advisory" | "required" | "strict" | "autonomous";
+export type SplitPolicyDecision = "allow" | "warn" | "suggest_split" | "block_external";
 export type TodoIntakeOrganization = "todo" | "container" | "clarify";
 
 export type SplitPolicy = {
@@ -36,6 +37,7 @@ export type SplitCheckResult = {
   reasons: string[];
   recommendedChildCount: number;
   splitPolicySatisfied: boolean;
+  policyDecision: SplitPolicyDecision;
   suggestedChildren: SplitSuggestedChild[];
 };
 

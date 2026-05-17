@@ -276,7 +276,7 @@ test("split-check classifies atomic tasks and records metadata", async () => {
   assert.equal(checked.splitPolicySatisfied, true);
 });
 
-test("required split policy keeps broad tasks actionable until they are split or overridden", async () => {
+test("split pressure is advisory and broad multi-file work can start", async () => {
   const service = new TodoService(new MemoryStore());
   const todo = await service.create({
     title: "Implement mandatory task splitting in pi-todo",
@@ -285,23 +285,40 @@ test("required split policy keeps broad tasks actionable until they are split or
     scope: { paths: ["extensions/pi-todo/src/domain", "extensions/pi-todo/src/app", "extensions/pi-todo/index.ts"] },
   });
 
-  await assert.rejects(() => service.start(todo.id), /needs_refinement: task requires splitting; assessment:split_required/);
-  assert.equal((await service.get(todo.id)).status, "ready");
+  const started = await service.start(todo.id, [], undefined, "agent-a");
 
-  const overridden = await service.start(todo.id, [], undefined, "agent-a", { splitOverrideReason: "small enough after inspection" });
-  assert.equal(overridden.status, "in_progress");
-  assert.equal(overridden.splitOverrideReason, "small enough after inspection");
+  assert.equal(started.status, "in_progress");
+  assert.equal(started.splitAssessment, "split_required");
+  assert.equal(started.splitPolicySatisfied, false);
+  assert.ok(started.notes.some((note) => note.startsWith("suggest_split:")));
 });
 
-test("too vague tasks stay ready with a clarification assessment", async () => {
+test("begin can start a simple multi-file fix without split ceremony", async () => {
+  const service = new TodoService(new MemoryStore());
+  await service.create({
+    title: "Fix tmux workspace transcript regression",
+    description: "Update policy, service, tests, and docs for the blocking behavior.",
+    acceptanceCriteria: ["Begin starts the work without auto-split preview"],
+    scope: { files: ["extensions/pi-todo/src/domain/splitting.ts", "extensions/pi-todo/src/app/service.ts", "test/pi-todo-splitting.test.ts"] },
+  });
+
+  const started = await service.begin([], undefined, "agent-a");
+
+  assert.equal(started.status, "in_progress");
+  assert.equal(started.splitAssessment, "split_required");
+  assert.ok(started.notes.some((note) => note.startsWith("suggest_split:")));
+});
+
+test("too vague tasks warn without becoming a hard split blocker", async () => {
   const service = new TodoService(new MemoryStore());
   const todo = await service.create({ title: "Improve todo" });
 
   const result = await service.splitCheck(todo.id);
+  const started = await service.start(todo.id, [], undefined, "agent-a");
 
   assert.equal(result.assessment, "too_vague");
-  await assert.rejects(() => service.start(todo.id), /assessment:too_vague/);
-  assert.equal((await service.get(todo.id)).status, "ready");
+  assert.equal(result.policyDecision, "warn");
+  assert.equal(started.status, "in_progress");
 });
 
 test("split parents become containers that cannot be started directly", async () => {
@@ -313,7 +330,7 @@ test("split parents become containers that cannot be started directly", async ()
   assert.equal(splitParent.workDirectlyAllowed, false);
   assert.equal(splitParent.splitAssessment, "epic");
   assert.equal(child.parentId, parent.id);
-  await assert.rejects(() => service.start(parent.id), /assessment:epic/);
+  await assert.rejects(() => service.start(parent.id), /block_external: task cannot start directly; assessment:epic/);
 });
 
 test("split-check suggestions avoid parent-like child titles", async () => {
