@@ -7,6 +7,7 @@ import type { TodoTheme } from "./theme.ts";
 
 function statusLabel(status: TodoStatus): string {
   if (status === "in_progress") return "in progress";
+  if (status === "external_blocked") return "external blocked";
   return status;
 }
 
@@ -19,15 +20,17 @@ function prioritySignal(priority: Todo["priority"], theme: TodoTheme): string | 
 
 function statusColor(status: TodoStatus): string {
   if (["done", "completed", "verified"].includes(status)) return "syntaxComment";
-  if (["blocked", "cancelled", "failed", "abandoned"].includes(status)) return "error";
+  if (status === "external_blocked") return "warning";
+  if (["cancelled", "failed", "superseded"].includes(status)) return "error";
   if (["in_progress", "claimed", "needs_review"].includes(status)) return "syntaxString";
   return "text";
 }
 
 function statusChip(status: TodoStatus): string {
   if (["done", "completed", "verified"].includes(status)) return "[✓]";
-  if (status === "blocked") return "[!]";
-  if (["cancelled", "abandoned"].includes(status)) return "[-]";
+  if (status === "external_blocked") return "[⧗]";
+  if (status === "cancelled") return "[-]";
+  if (status === "superseded") return "[↷]";
   if (status === "failed") return "[×]";
   if (["in_progress", "claimed"].includes(status)) return "[~]";
   if (["needs_review", "proposed"].includes(status)) return "[?]";
@@ -36,8 +39,8 @@ function statusChip(status: TodoStatus): string {
 
 function progressBlock(status: TodoStatus, theme: TodoTheme): string {
   if (["done", "completed", "verified"].includes(status)) return theme.fg("syntaxComment", "■");
-  if (["cancelled", "abandoned", "failed"].includes(status)) return theme.fg("muted", "!");
-  if (status === "blocked") return theme.fg("muted", "!");
+  if (status === "external_blocked") return theme.fg("warning", "⧗");
+  if (["cancelled", "failed", "superseded"].includes(status)) return theme.fg("muted", "!");
   if (["in_progress", "claimed", "needs_review"].includes(status)) return theme.fg("syntaxString", "▶");
   return theme.fg("dim", "□");
 }
@@ -50,7 +53,7 @@ export function renderTodoProgress(state: TodoState, theme: TodoTheme): string {
   const pct = counts.total > 0 ? Math.round((resolved / counts.total) * 100) : 0;
   const statColor = pct >= 100 ? "syntaxComment" : pct > 0 ? "accent" : "dim";
   const bar = `${theme.fg("dim", "[")}${todos.map((todo) => progressBlock(todo.status, theme)).join("")}${theme.fg("dim", "]")}`;
-  return `${bar} ${theme.fg(statColor, `${resolved}/${counts.total}`)} ${theme.fg(statColor, `${pct}%`)} ${theme.fg("dim", "S/F")} ${theme.fg(counts.byStatus.cancelled > 0 ? "error" : "syntaxComment", `${resolved}/${counts.byStatus.cancelled + counts.byStatus.failed + counts.byStatus.abandoned}`)}`;
+  return `${bar} ${theme.fg(statColor, `${resolved}/${counts.total}`)} ${theme.fg(statColor, `${pct}%`)} ${theme.fg("dim", "S/F")} ${theme.fg(counts.byStatus.cancelled + counts.byStatus.superseded > 0 ? "error" : "syntaxComment", `${resolved}/${counts.byStatus.cancelled + counts.byStatus.failed + counts.byStatus.superseded}`)}`;
 }
 
 export function formatTodoTitleForTui(title: string, options: { commonPrefix?: string; maxWidth?: number } = {}): string {
@@ -182,7 +185,7 @@ export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, option
   if (counts.total === 0) return [];
   const activeCount = counts.byStatus.in_progress + counts.byStatus.claimed;
   const doneCount = counts.byStatus.completed + counts.byStatus.verified;
-  const failedCount = counts.byStatus.cancelled + counts.byStatus.failed + counts.byStatus.abandoned;
+  const failedCount = counts.byStatus.cancelled + counts.byStatus.failed + counts.byStatus.superseded;
   const title = theme.bold ? theme.bold("TASKS") : "TASKS";
   const taskSummary = `${theme.fg("accent", title)}${theme.fg("dim", " - ")}${theme.fg("accent", `Total ${counts.total}`)}${theme.fg("dim", " · /todo")}`;
   const statusStat = (label: string, count: number, color: string) => {
@@ -210,7 +213,7 @@ export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, option
     const selected = options.selectedTodoId === todo.id;
     const selectionPrefix = options.selectedTodoId ? theme.fg(selected ? "accent" : "dim", selected ? "› " : "  ") : "";
     const title = formatTodoTitleForTui(todo.title, { commonPrefix: prefix, maxWidth: Math.max(24, width - visibleWidth(selectionPrefix) - 10) });
-    const titleText = theme.fg(todo.status === "cancelled" ? "muted" : "text", title);
+    const titleText = theme.fg(todo.status === "cancelled" || todo.status === "superseded" ? "muted" : "text", title);
     const deps = dependencyBadge(todo, state, theme);
     const close = readyToClose(todo, state) ? theme.fg("accent", "close") : undefined;
     const priority = prioritySignal(todo.priority, theme);

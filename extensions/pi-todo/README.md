@@ -9,6 +9,14 @@ Deterministic agent defaults:
 - Use `create_artifact` or `note_artifact` for generated durable notes/reports/plans so pi-todo creates the `.model-artifacts/<kind>/<topic>/...` path and attaches evidence automatically.
 - Use `record_artifact` only for existing files.
 
+## Lifecycle contract
+
+Canonical task states are `ready`, `claimed`, `in_progress`, `external_blocked`, `completed`, `verified`, `failed`, `cancelled`, and `superseded`. `completed`, `verified`, `failed`, `cancelled`, and `superseded` are terminal for scheduling; `completed` and `verified` count as done. Active work is `claimed` or `in_progress`. Open work is any non-terminal state. Stale is not a task state: expired claims return to `ready`, and stale split scaffolds are closed as `cancelled` with a reason.
+
+`external_blocked` is only for work waiting on an outside dependency, user decision, or external system. Internal planning friction (for example a task that needs refinement or splitting) stays actionable as `ready`; commands return repair guidance instead of forcing the task into a blocked state.
+
+Compatibility aliases are accepted for old ledgers and inputs: `proposed`/`pending` → `ready`, `done`/`needs_review` → `completed`, `blocked` → `external_blocked`, and `abandoned` → `cancelled` with abandonment preserved as a reason. Legal transitions are defined in `src/domain/lifecycle.ts` as `TODO_TRANSITIONS` and enforced by `TodoService` lifecycle actions.
+
 ## Intake organization and splitting
 
 By default, `todo({ "action": "create", ... })` creates one explicit todo so progress stays aligned with the caller's intended unit of work.

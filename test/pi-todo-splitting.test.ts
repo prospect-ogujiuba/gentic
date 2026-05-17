@@ -276,7 +276,7 @@ test("split-check classifies atomic tasks and records metadata", async () => {
   assert.equal(checked.splitPolicySatisfied, true);
 });
 
-test("required split policy blocks broad tasks until they are split or overridden", async () => {
+test("required split policy keeps broad tasks actionable until they are split or overridden", async () => {
   const service = new TodoService(new MemoryStore());
   const todo = await service.create({
     title: "Implement mandatory task splitting in pi-todo",
@@ -285,14 +285,15 @@ test("required split policy blocks broad tasks until they are split or overridde
     scope: { paths: ["extensions/pi-todo/src/domain", "extensions/pi-todo/src/app", "extensions/pi-todo/index.ts"] },
   });
 
-  await assert.rejects(() => service.start(todo.id), /blocked: task requires splitting; assessment:split_required/);
+  await assert.rejects(() => service.start(todo.id), /needs_refinement: task requires splitting; assessment:split_required/);
+  assert.equal((await service.get(todo.id)).status, "ready");
 
   const overridden = await service.start(todo.id, [], undefined, "agent-a", { splitOverrideReason: "small enough after inspection" });
   assert.equal(overridden.status, "in_progress");
   assert.equal(overridden.splitOverrideReason, "small enough after inspection");
 });
 
-test("too vague tasks are blocked with a clarification assessment", async () => {
+test("too vague tasks stay ready with a clarification assessment", async () => {
   const service = new TodoService(new MemoryStore());
   const todo = await service.create({ title: "Improve todo" });
 
@@ -300,6 +301,7 @@ test("too vague tasks are blocked with a clarification assessment", async () => 
 
   assert.equal(result.assessment, "too_vague");
   await assert.rejects(() => service.start(todo.id), /assessment:too_vague/);
+  assert.equal((await service.get(todo.id)).status, "ready");
 });
 
 test("split parents become containers that cannot be started directly", async () => {

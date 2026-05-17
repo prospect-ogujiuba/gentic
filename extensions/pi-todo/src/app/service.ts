@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { normalizePriority, normalizeStatus, isSuccessStatus, isTerminalStatus } from "../domain/lifecycle.ts";
+import { canTransitionStatus, normalizePriority, normalizeStatus, isSuccessStatus, isTerminalStatus, transitionAllowedStatuses } from "../domain/lifecycle.ts";
 import { ineligibleReasons, missingCapabilities, openDependencyIds, type EligibilityOptions } from "../domain/policy.ts";
 import { reduceTodoState } from "../domain/reducer.ts";
 import { assessSplitPolicy, assessTodoIntake, defaultSplitPolicy, shouldBlockForSplit, splitTitleSimilarityProblems } from "../domain/splitting.ts";
@@ -12,6 +12,7 @@ type LifecycleEventPayload =
   | Omit<Extract<TodoEvent, { type: "todo.verified" }>, "id" | "at" | "todoId">
   | Omit<Extract<TodoEvent, { type: "todo.reopened" }>, "id" | "at" | "todoId">
   | Omit<Extract<TodoEvent, { type: "todo.cancelled" }>, "id" | "at" | "todoId">
+  | Omit<Extract<TodoEvent, { type: "todo.superseded" }>, "id" | "at" | "todoId">
   | Omit<Extract<TodoEvent, { type: "todo.abandoned" }>, "id" | "at" | "todoId">;
 export const defaultTodoPolicy: TodoPolicy = { requireEvidenceForDone: true, maxInProgress: 1, splitting: defaultSplitPolicy };
 export const MODEL_ARTIFACTS_DIR = ".model-artifacts/";
@@ -181,7 +182,8 @@ export class TodoService {
   }
 
   async update(todoId: string, patch: Partial<Todo>): Promise<Todo> {
-    await this.requireExisting(todoId);
+    const todo = await this.get(todoId);
+    if (patch.status !== undefined) this.ensureStatusTransition(todo, patch.status, "update", { allowNoop: true });
     await this.append({ id: id("evt"), type: "todo.updated", at: now(), todoId, patch });
     return this.get(todoId);
   }
@@ -226,6 +228,7 @@ export class TodoService {
   async claim(todoId: string, capabilities: string[] = [], leaseMs?: number, owner?: string | null): Promise<Todo> {
     const state = await this.expireClaims(await this.state());
     const todo = this.requireTodo(state, todoId);
+    this.ensureStatusTransition(todo, "claimed", "claim");
     const reasons = ineligibleReasons(todo, state, { capabilities });
     if (reasons.length > 0) throw new Error(`todo is not claimable: ${reasons.join(", ")}`);
     const at = now();
@@ -276,13 +279,13 @@ export class TodoService {
   async start(todoId: string, capabilities: string[] = [], leaseMs?: number, owner?: string | null, options: StartTodoOptions = {}): Promise<Todo> {
     let state = await this.expireClaims(await this.state());
     let todo = this.requireTodo(state, todoId);
-    if (todo.status === "blocked") throw workflowError("TODO_BLOCKED", "cannot start blocked todo", { action: "get", params: { todoId } });
+    if (todo.status === "external_blocked") throw workflowError("TODO_EXTERNAL_BLOCKED", "cannot start externally blocked todo", { action: "get", params: { todoId } });
     const splitResult = await this.splitCheck(todoId);
     if (shouldBlockForSplit(splitResult, this.policy.splitting, options.splitOverrideReason)) {
       const nextAction = splitResult.assessment === "too_vague" ? "clarify expected outcome and acceptance criteria" : splitResult.assessment === "epic" ? "split into child tasks or mark as parent-only" : "split into child tasks";
       throw workflowError(
         "SPLIT_REQUIRED",
-        `blocked: task requires splitting; assessment:${splitResult.assessment}; reason:${splitResult.reasons.join(", ")}; next_action:${nextAction}`,
+        `needs_refinement: task requires splitting; assessment:${splitResult.assessment}; reason:${splitResult.reasons.join(", ")}; next_action:${nextAction}`,
         { action: "split", params: { todoId, auto: true, apply: false } },
         { splitCheck: splitResult },
       );
@@ -307,6 +310,7 @@ export class TodoService {
       state = await this.state();
       todo = this.requireTodo(state, todoId);
     }
+    this.ensureStatusTransition(todo, "in_progress", "start");
     await this.append({ id: id("evt"), type: "todo.started", at: now(), todoId });
     return this.get(todoId);
   }
@@ -320,6 +324,7 @@ export class TodoService {
         { action: "attach_evidence", params: { todoId, evidence: [{ type: "manual_note", note: "describe verification or completed work" }] } },
       );
     }
+    this.ensureStatusTransition(todo, "completed", "complete");
     await this.append({ id: id("evt"), type: "todo.completed", at: now(), todoId, evidence, summary });
     await this.closeStaleSplitScaffold(todoId);
     return this.get(todoId);
@@ -370,18 +375,21 @@ export class TodoService {
   async fail(todoId: string, reason?: string, evidence: EvidenceRef[] = []): Promise<Todo> { return this.lifecycle(todoId, { type: "todo.failed", reason, evidence }); }
   async reopen(todoId: string, reason?: string, targetStatus: TodoStatus = "ready"): Promise<Todo> { return this.lifecycle(todoId, { type: "todo.reopened", reason, targetStatus }); }
   async cancel(todoId: string, reason?: string): Promise<Todo> { return this.lifecycle(todoId, { type: "todo.cancelled", reason }); }
-  async abandon(todoId: string, reason?: string): Promise<Todo> { return this.lifecycle(todoId, { type: "todo.abandoned", reason }); }
+  async supersede(todoId: string, supersededBy?: string, reason?: string): Promise<Todo> { return this.lifecycle(todoId, { type: "todo.superseded", supersededBy, reason }); }
+  async abandon(todoId: string, reason?: string): Promise<Todo> { return this.cancel(todoId, reason ? `abandoned: ${reason}` : "abandoned"); }
 
   async block(todoId: string, reason: string): Promise<Todo> {
-    if (!reason.trim()) throw new Error("block reason is required");
-    await this.requireExisting(todoId);
-    await this.append({ id: id("evt"), type: "todo.blocked", at: now(), todoId, reason });
+    if (!reason.trim()) throw new Error("external block reason is required");
+    const todo = await this.get(todoId);
+    this.ensureStatusTransition(todo, "external_blocked", "block");
+    await this.append({ id: id("evt"), type: "todo.external_blocked", at: now(), todoId, reason });
     return this.get(todoId);
   }
 
   async unblock(todoId: string): Promise<Todo> {
     const todo = await this.get(todoId);
-    if (todo.status !== "blocked") throw new Error("only blocked todos can be unblocked");
+    if (todo.status !== "external_blocked") throw new Error("only externally blocked todos can be unblocked");
+    this.ensureStatusTransition(todo, "ready", "unblock");
     await this.append({ id: id("evt"), type: "todo.unblocked", at: now(), todoId });
     return this.get(todoId);
   }
@@ -404,9 +412,30 @@ export class TodoService {
   }
 
   private async lifecycle(todoId: string, payload: LifecycleEventPayload): Promise<Todo> {
-    await this.requireExisting(todoId);
+    const todo = await this.get(todoId);
+    this.ensureStatusTransition(todo, this.lifecycleTargetStatus(payload), payload.type.replace(/^todo\./, ""));
     await this.append({ id: id("evt"), at: now(), todoId, ...payload } as TodoEvent);
     return this.get(todoId);
+  }
+
+  private lifecycleTargetStatus(payload: LifecycleEventPayload): TodoStatus {
+    if (payload.type === "todo.verified") return "verified";
+    if (payload.type === "todo.failed") return "failed";
+    if (payload.type === "todo.reopened") return normalizeStatus(payload.targetStatus ?? "ready");
+    if (payload.type === "todo.cancelled" || payload.type === "todo.abandoned") return "cancelled";
+    if (payload.type === "todo.superseded") return "superseded";
+    return "ready";
+  }
+
+  private ensureStatusTransition(todo: Todo, targetStatus: TodoStatus | string | undefined, action: string, options: { allowNoop?: boolean } = {}): void {
+    const to = normalizeStatus(targetStatus);
+    if (canTransitionStatus(todo.status, to, options)) return;
+    throw workflowError(
+      "ILLEGAL_STATUS_TRANSITION",
+      `illegal todo lifecycle transition ${todo.status} -> ${to} for ${action}`,
+      { action: "get", params: { todoId: todo.id } },
+      { from: todo.status, to, allowed: transitionAllowedStatuses(todo.status) },
+    );
   }
 
   private isSplitScaffold(todo: Todo): boolean {

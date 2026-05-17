@@ -175,7 +175,7 @@ test("todo docket keeps progress visible when summary is too wide", () => {
   assert.match(lines[1] ?? "", /Open 2/);
   assert.match(lines[1] ?? "", /Active 1/);
   assert.match(lines[1] ?? "", /Done 8/);
-  assert.match(lines[2] ?? "", /\[■■■■■■■■▶!\] 8\/10 80% S\/F 8\/0/);
+  assert.match(lines[2] ?? "", /\[■■■■■■■■▶⧗\] 8\/10 80% S\/F 8\/0/);
   assert.doesNotMatch(lines.join("\n"), /Cancelled 0/);
 });
 

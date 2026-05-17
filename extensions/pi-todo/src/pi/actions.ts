@@ -42,6 +42,7 @@ function nextActions(todo: Todo): TodoRepairHint[] {
     if (todo.evidence.length > 0) actions.push({ action: "finish", params: { todoId: todo.id } });
     return actions;
   }
+  if (todo.status === "external_blocked") return [{ action: "unblock", params: { todoId: todo.id } }, { action: "cancel", params: { todoId: todo.id } }];
   if (todo.status === "completed") return [{ action: "verify", params: { todoId: todo.id } }];
   return [];
 }
@@ -358,6 +359,7 @@ async function executeTodoActionUnsafe(pi: ExtensionAPI, ctx: ExtensionContext, 
     : params.action === "block" ? await svc.block(todoId, (params.reason as string | undefined) || "")
     : params.action === "unblock" ? await svc.unblock(todoId)
     : params.action === "cancel" ? await svc.cancel(todoId, params.reason as string | undefined)
+    : params.action === "supersede" ? await svc.supersede(todoId, params.supersededBy as string | undefined, params.reason as string | undefined)
     : params.action === "abandon" ? await svc.abandon(todoId, params.reason as string | undefined)
     : params.action === "complete" ? await svc.complete(todoId, normalizeEvidence(params.evidence), params.summary as string | undefined)
     : params.action === "attach_evidence" ? await svc.attachEvidence(todoId, normalizeEvidence(params.evidence))

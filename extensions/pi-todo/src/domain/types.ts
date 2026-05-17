@@ -1,5 +1,5 @@
-export type TodoStatus = "ready" | "claimed" | "in_progress" | "blocked" | "completed" | "verified" | "failed" | "abandoned" | "cancelled";
-export type CompatTodoStatus = "proposed" | "pending" | "done" | "needs_review";
+export type TodoStatus = "ready" | "claimed" | "in_progress" | "external_blocked" | "completed" | "verified" | "failed" | "cancelled" | "superseded";
+export type CompatTodoStatus = "proposed" | "pending" | "done" | "needs_review" | "blocked" | "abandoned";
 export type TodoStatusInput = TodoStatus | CompatTodoStatus;
 export type TodoPriority = "low" | "normal" | "medium" | "high" | "critical" | "urgent";
 export type ClaimStatus = "active" | "released";
@@ -128,7 +128,9 @@ export type Todo = {
   startedAt?: string;
   completedAt?: string;
   blockedReason?: string;
+  externalBlocker?: string;
   blockers: string[];
+  supersededBy?: string;
   splitAssessment?: SplitAssessment;
   splitAssessmentConfidence?: SplitConfidence;
   splitAssessmentReasons?: string[];
@@ -154,6 +156,7 @@ export type TodoEvent =
   | { id: string; type: "todo.released"; at: string; commandId?: string; todoId: string; claimId?: string; reason?: string }
   | { id: string; type: "todo.claim_expired"; at: string; commandId?: string; todoId: string; claimId: string; reason?: string }
   | { id: string; type: "todo.started"; at: string; commandId?: string; todoId: string }
+  | { id: string; type: "todo.external_blocked"; at: string; commandId?: string; todoId: string; reason: string }
   | { id: string; type: "todo.blocked"; at: string; commandId?: string; todoId: string; reason: string }
   | { id: string; type: "todo.unblocked"; at: string; commandId?: string; todoId: string }
   | { id: string; type: "todo.evidence_attached"; at: string; commandId?: string; todoId: string; evidence: EvidenceRef[] }
@@ -162,6 +165,7 @@ export type TodoEvent =
   | { id: string; type: "todo.verified"; at: string; commandId?: string; todoId: string; evidence?: EvidenceRef[]; summary?: string }
   | { id: string; type: "todo.reopened"; at: string; commandId?: string; todoId: string; reason?: string; targetStatus?: TodoStatus }
   | { id: string; type: "todo.cancelled"; at: string; commandId?: string; todoId: string; reason?: string }
+  | { id: string; type: "todo.superseded"; at: string; commandId?: string; todoId: string; supersededBy?: string; reason?: string }
   | { id: string; type: "todo.abandoned"; at: string; commandId?: string; todoId: string; reason?: string }
   | { id: string; type: "todo.note_added"; at: string; commandId?: string; todoId: string; note: string };
 
