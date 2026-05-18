@@ -116,6 +116,51 @@ test("compat statuses normalize to canonical lifecycle", async () => {
   assert.equal(done.status, "completed");
 });
 
+test("legacy created records load with defaults and preserved history", async () => {
+  const store = new MemoryStore();
+  store.events.push({
+    id: "evt-legacy",
+    type: "todo.created",
+    at: "2026-01-01T00:00:00.000Z",
+    todo: {
+      id: "legacy-1",
+      title: "legacy blocked",
+      status: "blocked",
+      blockedReason: "waiting on design",
+      evidence: [{ type: "manual_note", note: "old verification" }],
+    } as TodoEvent extends { todo: infer T } ? T : never,
+  });
+  const service = new TodoService(store);
+  const todo = await service.get("legacy-1");
+  assert.equal(todo.status, "external_blocked");
+  assert.equal(todo.scope.paths.length, 0);
+  assert.deepEqual(todo.blockers, ["waiting on design"]);
+  assert.equal(todo.evidence.length, 1);
+});
+
+test("legacy ceremonial blockers can be cancelled or superseded without losing reason", async () => {
+  const store = new MemoryStore();
+  store.events.push({
+    id: "evt-legacy-cancelled",
+    type: "todo.created",
+    at: "2026-01-01T00:00:00.000Z",
+    todo: { id: "legacy-cancelled", title: "legacy abandoned", status: "abandoned", blockedReason: "stale scaffold" } as TodoEvent extends { todo: infer T } ? T : never,
+  });
+  store.events.push({
+    id: "evt-legacy-superseded",
+    type: "todo.created",
+    at: "2026-01-01T00:00:00.000Z",
+    todo: { id: "legacy-superseded", title: "legacy superseded", status: "blocked", externalBlocker: "replaced by child" } as TodoEvent extends { todo: infer T } ? T : never,
+  });
+  const service = new TodoService(store);
+  const cancelled = await service.get("legacy-cancelled");
+  assert.equal(cancelled.status, "cancelled");
+  assert.ok(cancelled.notes.includes("legacy blocker: stale scaffold"));
+  const superseded = await service.supersede("legacy-superseded", "new-task", "old split scaffold replaced");
+  assert.equal(superseded.status, "superseded");
+  assert.ok(superseded.notes.includes("old split scaffold replaced"));
+});
+
 test("completed tasks can be verified or reopened but are not scheduled", async () => {
   const service = new TodoService(new MemoryStore());
   const todo = await service.create({ title: "review me" });

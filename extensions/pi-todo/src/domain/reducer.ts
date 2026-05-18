@@ -1,11 +1,51 @@
 import { isTerminalStatus, normalizeStatus } from "./lifecycle.ts";
-import type { Todo, TodoClaim, TodoEvent, TodoState } from "./types.ts";
+import { emptyScope, type Todo, type TodoClaim, type TodoEvent, type TodoState } from "./types.ts";
 
 export function emptyTodoState(): TodoState {
   return { todos: {}, order: [], claims: {}, events: [] };
 }
 
 function unique(values: string[]): string[] { return [...new Set(values.filter(Boolean))]; }
+function compatNotes(todo: Partial<Todo>, normalizedStatus: Todo["status"]): string[] {
+  const notes = Array.isArray(todo.notes) ? [...todo.notes] : [];
+  const legacyReason = todo.blockedReason || todo.externalBlocker;
+  if (legacyReason && normalizedStatus !== "external_blocked" && !notes.includes(`legacy blocker: ${legacyReason}`)) notes.push(`legacy blocker: ${legacyReason}`);
+  if ((todo.status as string | undefined) === "abandoned" && !notes.includes("legacy status: abandoned")) notes.push("legacy status: abandoned");
+  return notes;
+}
+function normalizeTodoRecord(raw: Todo): Todo {
+  const todo = raw as Partial<Todo>;
+  const status = normalizeStatus(todo.status);
+  const at = todo.updatedAt ?? todo.createdAt ?? new Date(0).toISOString();
+  return {
+    ...todo,
+    id: todo.id ?? "legacy-missing-id",
+    title: todo.title ?? "Untitled legacy todo",
+    status,
+    priority: todo.priority ?? "medium",
+    activeClaimId: todo.activeClaimId ?? null,
+    leaseExpiresAt: todo.leaseExpiresAt ?? null,
+    parentId: todo.parentId ?? null,
+    children: todo.children ?? [],
+    dependsOn: todo.dependsOn ?? [],
+    blocks: todo.blocks ?? [],
+    scope: emptyScope(todo.scope),
+    inputs: { goal: todo.inputs?.goal, context: todo.inputs?.context, environment: todo.inputs?.environment, constraints: todo.inputs?.constraints ?? [] },
+    constraints: todo.constraints ?? [],
+    acceptanceCriteria: todo.acceptanceCriteria ?? [],
+    definitionOfDone: todo.definitionOfDone ?? [],
+    requiredCapabilities: todo.requiredCapabilities ?? [],
+    createdAt: todo.createdAt ?? at,
+    updatedAt: at,
+    blockedReason: status === "external_blocked" ? todo.blockedReason ?? todo.externalBlocker : todo.blockedReason,
+    externalBlocker: status === "external_blocked" ? todo.externalBlocker ?? todo.blockedReason : todo.externalBlocker,
+    blockers: todo.blockers ?? (status === "external_blocked" && (todo.blockedReason || todo.externalBlocker) ? [todo.blockedReason ?? todo.externalBlocker ?? ""] : []),
+    tags: todo.tags ?? [],
+    evidence: todo.evidence ?? [],
+    notes: compatNotes(todo, status),
+    revision: todo.revision ?? 0,
+  } as Todo;
+}
 function updateTodo(todo: Todo, patch: Partial<Todo>, at: string): Todo {
   return { ...todo, ...patch, updatedAt: at, revision: todo.revision + 1 };
 }
@@ -22,13 +62,13 @@ export function applyTodoEvent(state: TodoState, event: TodoEvent): TodoState {
   const claims = { ...state.claims };
 
   if (event.type === "todo.created") {
-    todos[event.todo.id] = { ...event.todo, status: normalizeStatus(event.todo.status), children: event.todo.children ?? [], blocks: event.todo.blocks ?? [], blockers: event.todo.blockers ?? [], constraints: event.todo.constraints ?? [], definitionOfDone: event.todo.definitionOfDone ?? [], requiredCapabilities: event.todo.requiredCapabilities ?? [] };
+    todos[event.todo.id] = normalizeTodoRecord(event.todo);
     if (!order.includes(event.todo.id)) order.push(event.todo.id);
     if (event.todo.parentId && todos[event.todo.parentId]) todos[event.todo.parentId] = updateTodo(todos[event.todo.parentId], { children: unique([...todos[event.todo.parentId].children, event.todo.id]) }, event.at);
   } else if (event.type === "todo.split") {
     const parent = todos[event.todoId];
     for (const child of event.children) {
-      todos[child.id] = { ...child, status: normalizeStatus(child.status) };
+      todos[child.id] = normalizeTodoRecord(child);
       if (!order.includes(child.id)) order.push(child.id);
     }
     if (parent) todos[event.todoId] = updateTodo(parent, { children: unique([...parent.children, ...event.children.map((child) => child.id)]), notes: [...parent.notes, `split: ${event.reason}`], splitAssessment: "epic", splitAssessmentConfidence: "high", splitAssessmentReasons: [event.reason], splitPolicySatisfied: false, splitCheckedAt: event.at, workDirectlyAllowed: false }, event.at);
