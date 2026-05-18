@@ -1,8 +1,7 @@
-import { TODO_STATUSES, isFailureStatus, isSuccessStatus, isTerminalStatus } from "../domain/lifecycle.ts";
+import { isFailureStatus, isSuccessStatus, isTerminalStatus } from "../domain/lifecycle.ts";
 import { ineligibleReasons, openChildIds, openDependencyIds, readyToClose, type EligibilityOptions } from "../domain/policy.ts";
-import type { Todo, TodoState, TodoStatus } from "../domain/types.ts";
-
-export type TodoCounts = { total: number; open: number; terminal: number; byStatus: Record<TodoStatus, number> };
+import type { Todo, TodoState } from "../domain/types.ts";
+export { summarizeTodos, type TodoCounts } from "./projection.ts";
 
 export function orderedTodos(state: TodoState, includeDone = true): Todo[] {
   return state.order.map((id) => state.todos[id]).filter((todo): todo is Todo => Boolean(todo) && (includeDone || !isTerminalStatus(todo.status)));
@@ -67,13 +66,6 @@ export function orderedDocketTodos(state: TodoState, includeDone = true): Todo[]
   return groups
     .sort((left, right) => Number(right.active) - Number(left.active) || left.index - right.index)
     .flatMap((group) => group.rows);
-}
-
-export function summarizeTodos(state: TodoState): TodoCounts {
-  const byStatus = Object.fromEntries(TODO_STATUSES.map((status) => [status, 0])) as Record<TodoStatus, number>;
-  for (const todo of Object.values(state.todos)) byStatus[todo.status] = (byStatus[todo.status] ?? 0) + 1;
-  const terminal = Object.values(state.todos).filter((todo) => isTerminalStatus(todo.status)).length;
-  return { total: Object.keys(state.todos).length, open: Object.keys(state.todos).length - terminal, terminal, byStatus };
 }
 
 export function activeTodo(state: TodoState): Todo | undefined {

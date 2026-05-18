@@ -1,12 +1,11 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { canTransitionStatus, normalizePriority, normalizeStatus, isSuccessStatus, isTerminalStatus, transitionAllowedStatuses } from "../domain/lifecycle.ts";
+import { canTransitionStatus, normalizeStatus, isSuccessStatus, isTerminalStatus, transitionAllowedStatuses } from "../domain/lifecycle.ts";
 import { ineligibleReasons, missingCapabilities, openDependencyIds, type EligibilityOptions } from "../domain/policy.ts";
-import { reduceTodoState } from "../domain/reducer.ts";
+import { TodoLedger, createTodoRecord, id, now, type CreateTodoInput, type TodoEventStore } from "./ledger.ts";
 import { assessSplitPolicy, assessTodoIntake, defaultSplitPolicy, shouldBlockForSplit, splitPolicyDecision, splitTitleSimilarityProblems } from "../domain/splitting.ts";
 import { nextTodo } from "./query.ts";
-import { emptyScope, type EvidenceRef, type SplitCheckResult, type Todo, type TodoClaim, type TodoEvent, type TodoIntakeAssessment, type TodoPolicy, type TodoPriority, type TodoScope, type TodoState, type TodoStatus } from "../domain/types.ts";
-
-export interface TodoEventStore { read(): Promise<TodoEvent[]>; append(event: TodoEvent): Promise<void> }
+import { emptyScope, type EvidenceRef, type SplitCheckResult, type Todo, type TodoClaim, type TodoEvent, type TodoIntakeAssessment, type TodoPolicy, type TodoState, type TodoStatus } from "../domain/types.ts";
+export type { CreateTodoInput, TodoEventStore } from "./ledger.ts";
 type LifecycleEventPayload =
   | Omit<Extract<TodoEvent, { type: "todo.failed" }>, "id" | "at" | "todoId">
   | Omit<Extract<TodoEvent, { type: "todo.verified" }>, "id" | "at" | "todoId">
@@ -19,9 +18,6 @@ export const MODEL_ARTIFACTS_DIR = ".model-artifacts/";
 export const MODEL_TODO_ARTIFACTS_DIR = ".model-artifacts/todo/";
 export const SPLIT_SCAFFOLD_TAG = "pi-todo:split-scaffold";
 const ARTIFACT_FOLDERS = new Set(["reports", "logs", "specs", "plans", "findings", "todo"]);
-
-const now = () => new Date().toISOString();
-const id = (prefix: string) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
 export type ArtifactKind = "reports" | "logs" | "specs" | "plans" | "findings" | "todo";
 export type CreateArtifactInput = { kind: ArtifactKind; shortName: string; purpose: string; content: string; category?: string; subcategory?: string };
@@ -47,25 +43,6 @@ export class TodoWorkflowError extends Error {
 function workflowError(code: string, message: string, repair?: TodoRepairHint, details?: Record<string, unknown>): TodoWorkflowError {
   return new TodoWorkflowError(code, message, repair, details);
 }
-
-export type CreateTodoInput = {
-  title: string;
-  description?: string;
-  type?: string;
-  status?: TodoStatus | string;
-  priority?: TodoPriority;
-  owner?: string | null;
-  parentId?: string | null;
-  acceptanceCriteria?: string[];
-  definitionOfDone?: string[];
-  dependsOn?: string[];
-  tags?: string[];
-  scope?: Partial<TodoScope>;
-  inputs?: { goal?: string; context?: string; environment?: string; constraints?: string[] };
-  constraints?: string[];
-  requiredCapabilities?: string[];
-  commandId?: string;
-};
 
 function kebabCase(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64) || "artifact";
@@ -100,55 +77,18 @@ function artifactBody(title: string, purpose: string, created: string, content: 
   return `# ${title}\n\nCreated: ${created}\nPurpose: ${purpose.trim()}\n\n${content.trim()}\n`;
 }
 
-function createTodoRecord(input: CreateTodoInput, at: string, parent?: Todo): Todo {
-  if (!input.title.trim()) throw new Error("title is required");
-  return {
-    id: id("todo"),
-    title: input.title.trim(),
-    description: input.description,
-    type: input.type ?? parent?.type ?? "task",
-    status: normalizeStatus(input.status),
-    priority: normalizePriority(input.priority ?? parent?.priority),
-    owner: input.owner ?? parent?.owner,
-    activeClaimId: null,
-    leaseExpiresAt: null,
-    parentId: input.parentId ?? parent?.id ?? null,
-    children: [],
-    dependsOn: input.dependsOn ?? [],
-    blocks: [],
-    scope: emptyScope(input.scope ?? parent?.scope),
-    inputs: { goal: input.inputs?.goal, context: input.inputs?.context, environment: input.inputs?.environment, constraints: input.inputs?.constraints ?? [] },
-    constraints: input.constraints ?? [],
-    acceptanceCriteria: input.acceptanceCriteria ?? [],
-    definitionOfDone: input.definitionOfDone ?? [],
-    requiredCapabilities: input.requiredCapabilities ?? parent?.requiredCapabilities ?? [],
-    createdAt: at,
-    updatedAt: at,
-    blockers: [],
-    tags: input.tags ?? parent?.tags ?? [],
-    evidence: [],
-    notes: [],
-    revision: 0,
-  };
-}
-
 export class TodoService {
-  private store: TodoEventStore;
+  private ledger: TodoLedger;
   private policy: TodoPolicy;
 
   constructor(store: TodoEventStore, policy: TodoPolicy = defaultTodoPolicy) {
-    this.store = store;
+    this.ledger = new TodoLedger(store);
     this.policy = { ...defaultTodoPolicy, ...policy, splitting: { ...defaultSplitPolicy, ...(policy.splitting ?? {}) } };
   }
 
-  async state(): Promise<TodoState> { return reduceTodoState(await this.store.read()); }
+  async state(): Promise<TodoState> { return this.ledger.state(); }
 
-  async create(input: CreateTodoInput): Promise<Todo> {
-    const at = now();
-    const todo = createTodoRecord(input, at);
-    await this.append({ id: id("evt"), type: "todo.created", at, commandId: input.commandId, todo });
-    return todo;
-  }
+  async create(input: CreateTodoInput): Promise<Todo> { return this.ledger.create(input); }
 
   async createOrganized(input: CreateTodoInput, options: CreateOrganizedTodoOptions = {}): Promise<CreateOrganizedTodoResult> {
     const assessment = assessTodoIntake(input, this.policy.splitting);
@@ -409,7 +349,7 @@ export class TodoService {
     throw new Error(`todo not found: ${todoIdOrTitle}`);
   }
   async get(todoId: string): Promise<Todo> { return this.requireTodo(await this.state(), todoId); }
-  async history(todoId: string): Promise<TodoEvent[]> { await this.requireExisting(todoId); return (await this.store.read()).filter((event) => "todoId" in event ? event.todoId === todoId : event.type === "todo.created" && event.todo.id === todoId); }
+  async history(todoId: string): Promise<TodoEvent[]> { await this.requireExisting(todoId); return (await this.ledger.events()).filter((event) => "todoId" in event ? event.todoId === todoId : event.type === "todo.created" && event.todo.id === todoId); }
 
   async graph(todoId?: string): Promise<{ nodes: { id: string; title: string; status: TodoStatus; parentId?: string | null }[]; edges: { from: string; to: string; kind: "depends_on" | "parent_child" }[] }> {
     const todos = Object.values((await this.state()).todos).filter((todo) => !todoId || todo.id === todoId || todo.parentId === todoId || todo.dependsOn.includes(todoId));
@@ -536,6 +476,6 @@ export class TodoService {
   private findActiveTodo(state: TodoState, owner?: string | null, exceptTodoId?: string): Todo | undefined {
     return Object.values(state.todos).find((todo) => todo.id !== exceptTodoId && (todo.status === "in_progress" || todo.status === "claimed") && (owner ? todo.owner === owner : true));
   }
-  private async append(event: TodoEvent): Promise<void> { await this.store.append(event); }
-  private requireTodo(state: TodoState, todoId: string): Todo { const todo = state.todos[todoId]; if (!todo) throw new Error(`todo not found: ${todoId}`); return todo; }
+  private async append(event: TodoEvent): Promise<void> { await this.ledger.append(event); }
+  private requireTodo(state: TodoState, todoId: string): Todo { return this.ledger.requireTodo(state, todoId); }
 }

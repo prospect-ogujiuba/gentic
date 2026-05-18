@@ -1,5 +1,6 @@
 import type { Todo, TodoState, TodoStatus } from "../domain/types.ts";
-import { activeTodo, nextTodo, openDependencyIds, orderedDocketTodos, orderedTodos, readyToClose, summarizeTodos } from "../app/query.ts";
+import { activeTodo, nextTodo, openDependencyIds, orderedDocketTodos, orderedTodos, readyToClose } from "../app/query.ts";
+import { summarizeTodos, todoTuiProjection } from "../app/projection.ts";
 import { isTerminalStatus } from "../domain/lifecycle.ts";
 import { leftRight, padAnsi, wrap } from "./format.ts";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
@@ -181,7 +182,9 @@ function expandedTodoDetailLines(todo: Todo, state: TodoState, theme: TodoTheme,
 
 export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, options: TodoDocketRenderOptions = {}): string[] {
   const width = options.width ?? 80;
-  const counts = summarizeTodos(state);
+  const rows = orderedDocketTodos(state, options.includeDone ?? false).slice(0, options.limit ?? 8);
+  const projection = todoTuiProjection(state, rows);
+  const counts = projection.counts;
   if (counts.total === 0) return [];
   const activeCount = counts.byStatus.in_progress + counts.byStatus.claimed;
   const doneCount = counts.byStatus.completed + counts.byStatus.verified;
@@ -206,9 +209,8 @@ export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, option
   lines.push(...renderPairedLine(width, taskSummary, statusSummary));
   lines.push(...renderPairedLine(width, focusSummary, renderTodoProgress(state, theme)));
 
-  const rows = orderedDocketTodos(state, options.includeDone ?? false).slice(0, options.limit ?? 8);
-  const prefix = commonColonPrefix(rows);
-  for (const todo of rows) {
+  const prefix = commonColonPrefix(projection.todos);
+  for (const todo of projection.todos) {
     const icon = theme.fg(statusColor(todo.status), statusChip(todo.status));
     const selected = options.selectedTodoId === todo.id;
     const selectionPrefix = options.selectedTodoId ? theme.fg(selected ? "accent" : "dim", selected ? "› " : "  ") : "";
