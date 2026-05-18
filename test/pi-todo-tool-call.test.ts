@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import piTodo from "../extensions/pi-todo/index.ts";
 
-type ToolCallHandler = (event: { type: "tool_call"; toolName: string }, ctx: unknown) => Promise<unknown>;
+type ToolCallHandler = (event: { type: "tool_call"; toolName: string; input?: Record<string, unknown> }, ctx: unknown) => Promise<unknown>;
 
 type RegisteredTool = {
   execute: (id: string, params: Record<string, unknown>, signal: AbortSignal, onUpdate: () => void, ctx: unknown) => Promise<unknown>;
@@ -74,6 +74,22 @@ test("tool_call hook allows configured tools without an active todo", async () =
   });
 });
 
+test("tool_call hook allows configured read-only bash without an active todo", async () => {
+  await withTempProject(async (cwd) => {
+    await writeProjectConfig(cwd, {
+      enforcement: {
+        defaultAction: "allow",
+        rules: [{ pattern: "bash", action: "requireTodo" }],
+      },
+    });
+    const { handlers, ctx } = setupPiTodo(cwd);
+
+    const result = await (handlers.get("tool_call") as ToolCallHandler)({ type: "tool_call", toolName: "bash", input: { command: "pwd && ls" } }, ctx);
+
+    assert.equal(result, undefined);
+  });
+});
+
 test("tool_call hook blocks configured require-todo tools with repair text", async () => {
   await withTempProject(async (cwd) => {
     await writeProjectConfig(cwd, {
@@ -85,6 +101,25 @@ test("tool_call hook blocks configured require-todo tools with repair text", asy
     const { handlers, ctx } = setupPiTodo(cwd);
 
     const result = await (handlers.get("tool_call") as ToolCallHandler)({ type: "tool_call", toolName: "bash" }, ctx);
+
+    assert.deepEqual(result, {
+      block: true,
+      reason: 'pi-todo enforcement: requireTodo rule \'bash\'; no active todo. Call todo({ "action": "begin" }) then retry the blocked tool.',
+    });
+  });
+});
+
+test("tool_call hook still blocks mutating bash without an active todo", async () => {
+  await withTempProject(async (cwd) => {
+    await writeProjectConfig(cwd, {
+      enforcement: {
+        defaultAction: "allow",
+        rules: [{ pattern: "bash", action: "requireTodo" }],
+      },
+    });
+    const { handlers, ctx } = setupPiTodo(cwd);
+
+    const result = await (handlers.get("tool_call") as ToolCallHandler)({ type: "tool_call", toolName: "bash", input: { command: "rm -rf tmp" } }, ctx);
 
     assert.deepEqual(result, {
       block: true,

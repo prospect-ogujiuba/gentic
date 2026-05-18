@@ -11,7 +11,7 @@ Deterministic agent defaults:
 
 ## Lifecycle contract
 
-Canonical task states are `ready`, `claimed`, `in_progress`, `external_blocked`, `completed`, `verified`, `failed`, `cancelled`, and `superseded`. `completed`, `verified`, `failed`, `cancelled`, and `superseded` are terminal for scheduling; `completed` and `verified` count as done. Active work is `claimed` or `in_progress`. Open work is any non-terminal state. Stale is not a task state: expired claims return to `ready`, and stale split scaffolds are closed as `cancelled` with a reason.
+Canonical task states are `ready`, `claimed`, `in_progress`, `external_blocked`, `completed`, `verified`, `failed`, `cancelled`, and `superseded`. `completed`, `verified`, `failed`, `cancelled`, and `superseded` are terminal for scheduling; `completed` and `verified` count as done. Active work is `claimed` or `in_progress`. TUI open counts mean actionable non-terminal work and intentionally exclude `external_blocked`; blocked-external and historical terminal work are shown as separate counts. Stale is not a task state: expired claims return to `ready`, and stale split scaffolds are closed as `cancelled` with a reason.
 
 `external_blocked` is only for work waiting on an outside dependency, user decision, or external system. Internal planning friction (for example a task that needs refinement or splitting) stays actionable as `ready`; commands return repair guidance instead of forcing the task into a blocked state.
 
@@ -40,6 +40,31 @@ pi-todo reads `~/.pi/agent/pi-todo.json` and project `.pi/pi-todo.json`, with pr
   },
   "enforcement": {
     "defaultAction": "requireTodo",
+    "bashReadonlyAllowlist": [
+      "pwd",
+      "ls",
+      "find",
+      "rg",
+      "grep",
+      "head",
+      "tail",
+      "wc",
+      "file",
+      "tree",
+      "du",
+      "stat",
+      "cd",
+      "git status",
+      "git diff",
+      "git log",
+      "git show",
+      "git branch",
+      "git rev-parse",
+      "git ls-files",
+      "git grep",
+      "git remote",
+      "git describe"
+    ],
     "rules": [
       { "pattern": "read", "action": "allow" },
       { "pattern": "ctx_search", "action": "allow" },
@@ -62,7 +87,7 @@ pi-todo reads `~/.pi/agent/pi-todo.json` and project `.pi/pi-todo.json`, with pr
 
 Set `docket.showCompletedFocus` to `false` to hide the last completed task chip once all tasks are closed. The default is `true`, so the docket keeps showing the latest completed work for handoff visibility.
 
-`enforcement.defaultAction` is `requireTodo` by default, preserving strict behavior for mutating, executable, and unknown tools. The `todo` tool is always allowed so agents can start work. Add exact `enforcement.rules` to allow low-risk inspection tools before a todo is active: built-in tools such as `read`, safe context lookup/status tools such as `ctx_search`, `ctx_stats`, `ctx_doctor` and their `context_mode_ctx_*` equivalents, and third-party/search tools such as `web_search` or `code_search`. Keep mutating tools (`edit`, `write`), command/code execution tools (`bash`, `ctx_execute`, `ctx_execute_file`, `context_mode_ctx_execute`, `context_mode_ctx_execute_file`, deploy tools), and broad third-party patterns at `requireTodo`; explicit `requireTodo` rules always take precedence over `allow` rules, even when the `allow` rule is more specific.
+`enforcement.defaultAction` is `requireTodo` by default, preserving strict behavior for mutating, executable, and unknown tools. The `todo` tool is always allowed so agents can start work. Add exact `enforcement.rules` to allow low-risk inspection tools before a todo is active: built-in tools such as `read`, safe context lookup/status tools such as `ctx_search`, `ctx_stats`, `ctx_doctor` and their `context_mode_ctx_*` equivalents, and third-party/search tools such as `web_search` or `code_search`. `enforcement.bashReadonlyAllowlist` is evaluated only for the `bash` tool and allows conservative one-line exploratory command chains before a todo is active. It rejects redirects, command substitution, shell pipes/backgrounding, unknown commands, mutating `find` actions, git write subcommands, and scripts. Set it to `[]` to disable pre-todo bash entirely. Keep mutating tools (`edit`, `write`), general command/code execution (`bash`, `ctx_execute`, `ctx_execute_file`, `context_mode_ctx_execute`, `context_mode_ctx_execute_file`, deploy tools), and broad third-party patterns at `requireTodo`; for non-bash rules, explicit `requireTodo` rules always take precedence over `allow` rules, even when the `allow` rule is more specific.
 
 ### Enforcement migration modes
 
@@ -76,6 +101,7 @@ Recommended relaxed allowlist:
 {
   "enforcement": {
     "defaultAction": "requireTodo",
+    "bashReadonlyAllowlist": ["pwd", "ls", "find", "rg", "grep", "cd", "git status", "git diff", "git log", "git show"],
     "rules": [
       { "pattern": "read", "action": "allow" },
       { "pattern": "ctx_search", "action": "allow" },

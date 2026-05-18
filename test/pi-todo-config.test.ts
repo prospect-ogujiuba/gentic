@@ -15,7 +15,7 @@ test("pi-todo effective config keeps completed docket focus by default", () => {
 
   assert.deepEqual(result.config, DEFAULT_PI_TODO_CONFIG);
   assert.equal(result.config.docket.showCompletedFocus, true);
-  assert.deepEqual(result.config.enforcement, { defaultAction: "requireTodo", rules: [] });
+  assert.deepEqual(result.config.enforcement, DEFAULT_PI_TODO_CONFIG.enforcement);
   assert.deepEqual(result.diagnostics, []);
 });
 
@@ -70,7 +70,20 @@ test("pi-todo effective config accepts project enforcement allow rules", () => {
       { pattern: "ctx_search", action: "allow" },
       { pattern: "edit", action: "requireTodo" },
     ],
+    bashReadonlyAllowlist: DEFAULT_PI_TODO_CONFIG.enforcement.bashReadonlyAllowlist,
   });
+  assert.deepEqual(result.diagnostics, []);
+});
+
+test("pi-todo effective config accepts project bash read-only allowlist", () => {
+  const cwd = tempDir();
+  const homeDir = tempDir();
+  mkdirSync(join(cwd, ".pi"), { recursive: true });
+  writeFileSync(join(cwd, ".pi", "pi-todo.json"), JSON.stringify({ enforcement: { bashReadonlyAllowlist: ["pwd", "git status"] } }));
+
+  const result = loadEffectiveTodoConfig({ cwd, homeDir });
+
+  assert.deepEqual(result.config.enforcement.bashReadonlyAllowlist, ["pwd", "git status"]);
   assert.deepEqual(result.diagnostics, []);
 });
 
@@ -90,6 +103,7 @@ test("pi-todo effective config merges global and project enforcement predictably
   assert.deepEqual(result.config.enforcement, {
     defaultAction: "requireTodo",
     rules: [{ pattern: "edit", action: "requireTodo" }],
+    bashReadonlyAllowlist: DEFAULT_PI_TODO_CONFIG.enforcement.bashReadonlyAllowlist,
   });
   assert.deepEqual(result.diagnostics, []);
 });
@@ -129,7 +143,11 @@ test("pi-todo effective config falls back safely for invalid enforcement config"
 
   const result = loadEffectiveTodoConfig({ cwd, homeDir });
 
-  assert.deepEqual(result.config.enforcement, { defaultAction: "requireTodo", rules: [{ pattern: "read", action: "allow" }] });
+  assert.deepEqual(result.config.enforcement, {
+    defaultAction: "requireTodo",
+    rules: [{ pattern: "read", action: "allow" }],
+    bashReadonlyAllowlist: DEFAULT_PI_TODO_CONFIG.enforcement.bashReadonlyAllowlist,
+  });
   assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("invalid 'enforcement.defaultAction'")));
   assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("unknown enforcement field 'extra'")));
   assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("invalid 'enforcement.rules[1].action'")));
@@ -153,7 +171,11 @@ test("pi-todo effective config forces invalid relaxed enforcement closed", () =>
 
   const result = loadEffectiveTodoConfig({ cwd, homeDir });
 
-  assert.deepEqual(result.config.enforcement, { defaultAction: "requireTodo", rules: [] });
+  assert.deepEqual(result.config.enforcement, {
+    defaultAction: "requireTodo",
+    rules: [],
+    bashReadonlyAllowlist: DEFAULT_PI_TODO_CONFIG.enforcement.bashReadonlyAllowlist,
+  });
   assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("invalid 'enforcement.rules[0].action'")));
   assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("defaultAction forced to 'requireTodo'")));
 });

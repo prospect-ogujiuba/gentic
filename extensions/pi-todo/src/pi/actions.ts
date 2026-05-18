@@ -256,7 +256,7 @@ export async function updateTodoWidget(
   }
   ctx.ui.setStatus(
     STATUS_KEY,
-    `todo open ${counts.open} · active ${counts.byStatus.in_progress} · done ${counts.byStatus.completed + counts.byStatus.verified}`,
+    `todo open ${counts.open} · active ${counts.active} · blocked external ${counts.blockedExternal} · history ${counts.completedHistory}`,
   );
   ctx.ui.setWidget(STATUS_KEY, createTodoDocketComponent(state, { showCompletedFocus: config.docket.showCompletedFocus }));
 }

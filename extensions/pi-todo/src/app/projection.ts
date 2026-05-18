@@ -1,15 +1,27 @@
 import { TODO_STATUSES, isTerminalStatus } from "../domain/lifecycle.ts";
 import type { Todo, TodoState, TodoStatus } from "../domain/types.ts";
 
-export type TodoCounts = { total: number; open: number; terminal: number; byStatus: Record<TodoStatus, number> };
+export type TodoCounts = {
+  total: number;
+  open: number;
+  terminal: number;
+  active: number;
+  blockedExternal: number;
+  completedHistory: number;
+  byStatus: Record<TodoStatus, number>;
+};
 export type TodoProjectionWarning = { todoId: string; kind: "open_dependencies" | "ready_to_close"; count?: number };
 export type TodoTuiProjection = { todos: Todo[]; counts: TodoCounts; warnings: TodoProjectionWarning[] };
 
 export function summarizeTodos(state: TodoState): TodoCounts {
   const byStatus = Object.fromEntries(TODO_STATUSES.map((status) => [status, 0])) as Record<TodoStatus, number>;
   for (const todo of Object.values(state.todos)) byStatus[todo.status] = (byStatus[todo.status] ?? 0) + 1;
-  const terminal = Object.values(state.todos).filter((todo) => isTerminalStatus(todo.status)).length;
-  return { total: Object.keys(state.todos).length, open: Object.keys(state.todos).length - terminal, terminal, byStatus };
+  const todos = Object.values(state.todos);
+  const terminal = todos.filter((todo) => isTerminalStatus(todo.status)).length;
+  const blockedExternal = byStatus.external_blocked;
+  const active = byStatus.claimed + byStatus.in_progress;
+  const completedHistory = byStatus.completed + byStatus.verified + byStatus.cancelled + byStatus.failed + byStatus.superseded;
+  return { total: todos.length, open: todos.length - terminal - blockedExternal, terminal, active, blockedExternal, completedHistory, byStatus };
 }
 
 export function todoTuiProjection(state: TodoState, todos: Todo[]): TodoTuiProjection {

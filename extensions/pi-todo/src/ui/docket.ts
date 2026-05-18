@@ -186,9 +186,10 @@ export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, option
   const projection = todoTuiProjection(state, rows);
   const counts = projection.counts;
   if (counts.total === 0) return [];
-  const activeCount = counts.byStatus.in_progress + counts.byStatus.claimed;
+  const activeCount = counts.active;
+  const blockedExternalCount = counts.blockedExternal;
   const doneCount = counts.byStatus.completed + counts.byStatus.verified;
-  const failedCount = counts.byStatus.cancelled + counts.byStatus.failed + counts.byStatus.superseded;
+  const historyCount = counts.completedHistory;
   const title = theme.bold ? theme.bold("TASKS") : "TASKS";
   const taskSummary = `${theme.fg("accent", title)}${theme.fg("dim", " - ")}${theme.fg("accent", `Total ${counts.total}`)}${theme.fg("dim", " · /todo")}`;
   const statusStat = (label: string, count: number, color: string) => {
@@ -200,8 +201,9 @@ export function renderTodoDocketLines(state: TodoState, theme: TodoTheme, option
   const statusSummary = [
     statusStat("Open", counts.open, "dim"),
     statusStat("Active", activeCount, "syntaxString"),
+    statusStat("Blocked external", blockedExternalCount, "warning"),
     statusStat("Done", doneCount, "accent"),
-    statusStat("Cancelled", failedCount, "error"),
+    statusStat("History", historyCount, "error"),
   ].filter(Boolean).join(theme.fg("dim", " | "));
   const lines: string[] = [];
   const focus = summaryTitle(state, options);

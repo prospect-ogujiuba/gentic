@@ -363,6 +363,32 @@ test("split rejects parent-like and sibling-like child titles", async () => {
   );
 });
 
+test("tmux-workspace-style split flow finishes with no stale actionable final-response work", async () => {
+  const { pi, ctx, messages, notifications } = actionHarness();
+  const created = await executeTodoAction(pi as never, ctx as never, {
+    action: "create",
+    title: "Implement mandatory task splitting in pi-todo",
+    description: "Touches lifecycle, command behavior, persistence, validation, and tests."
+  });
+  const todoId = created.details.todo.id;
+  const preview = await executeTodoAction(pi as never, ctx as never, { action: "split", todoId, auto: true });
+  const split = await executeTodoAction(pi as never, ctx as never, {
+    action: "split",
+    todoId,
+    children: preview.details.children,
+    reason: "tmux workspace planning scaffold",
+  });
+  const implementation = split.details.children[0];
+
+  await executeTodoAction(pi as never, ctx as never, { action: "start", todoId: implementation.id, reason: "implementation child is atomic" });
+  await executeTodoAction(pi as never, ctx as never, { action: "complete", todoId: implementation.id, evidence: [{ type: "manual_note", note: "implemented and verified" }], summary: "done" });
+  await checkTodoDocketBeforeFinalMessage(pi as never, ctx as never);
+  await checkTodoDocketAtMessageStart(pi as never, ctx as never, { message: { role: "assistant" } });
+
+  assert.equal(messages.length, 0);
+  assert.equal(notifications.length, 0);
+});
+
 test("completion closes tagged split scaffolding without artifact todos", async () => {
   const service = new TodoService(new MemoryStore());
   const parent = await service.create({ title: "Redesign compact docket", description: "Small UI row reshuffle." });

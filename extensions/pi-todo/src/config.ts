@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
-import type { ToolPolicyAction, ToolPolicyConfig, ToolPolicyRule } from "./domain/policy.ts";
+import { DEFAULT_BASH_READONLY_ALLOWLIST, type ToolPolicyAction, type ToolPolicyConfig, type ToolPolicyRule } from "./domain/policy.ts";
 
 export type PiTodoConfig = {
   $schema?: string;
@@ -13,6 +13,7 @@ export type PiTodoConfig = {
   enforcement?: {
     defaultAction?: ToolPolicyAction;
     rules?: ToolPolicyRule[];
+    bashReadonlyAllowlist?: string[];
   };
 };
 
@@ -46,7 +47,11 @@ export type LoadEffectiveTodoConfigResult = {
 export const DEFAULT_PI_TODO_CONFIG: Readonly<EffectivePiTodoConfig> = Object.freeze({
   version: 1,
   docket: Object.freeze({ showCompletedFocus: true }),
-  enforcement: Object.freeze({ defaultAction: "requireTodo", rules: Object.freeze([]) }),
+  enforcement: Object.freeze({
+    defaultAction: "requireTodo",
+    rules: Object.freeze([]),
+    bashReadonlyAllowlist: DEFAULT_BASH_READONLY_ALLOWLIST,
+  }),
 });
 
 export function loadEffectiveTodoConfig(options: LoadEffectiveTodoConfigOptions = {}): LoadEffectiveTodoConfigResult {
@@ -143,6 +148,7 @@ function normalizeConfig(config: PiTodoConfig, diagnostics: PiTodoConfigDiagnost
       ...DEFAULT_PI_TODO_CONFIG.enforcement,
       ...(normalized.enforcement ?? {}),
       rules: normalized.enforcement?.rules ?? DEFAULT_PI_TODO_CONFIG.enforcement.rules,
+      bashReadonlyAllowlist: normalized.enforcement?.bashReadonlyAllowlist ?? DEFAULT_PI_TODO_CONFIG.enforcement.bashReadonlyAllowlist,
     },
   };
 }
@@ -164,7 +170,7 @@ function normalizeEnforcement(enforcement: Record<string, unknown>, diagnostics:
   const normalized: PiTodoConfig["enforcement"] = {};
 
   for (const key of Object.keys(enforcement)) {
-    if (key !== "defaultAction" && key !== "rules") diagnostics.push({ path, message: `unknown enforcement field '${key}' ignored` });
+    if (key !== "defaultAction" && key !== "rules" && key !== "bashReadonlyAllowlist") diagnostics.push({ path, message: `unknown enforcement field '${key}' ignored` });
   }
 
   if (isToolPolicyAction(enforcement.defaultAction)) normalized.defaultAction = enforcement.defaultAction;
@@ -172,6 +178,9 @@ function normalizeEnforcement(enforcement: Record<string, unknown>, diagnostics:
 
   if (Array.isArray(enforcement.rules)) normalized.rules = normalizeEnforcementRules(enforcement.rules, diagnostics, path);
   else if (enforcement.rules !== undefined) diagnostics.push({ path, message: "invalid 'enforcement.rules'; expected array" });
+
+  if (Array.isArray(enforcement.bashReadonlyAllowlist)) normalized.bashReadonlyAllowlist = normalizeStringArray(enforcement.bashReadonlyAllowlist, diagnostics, path, "enforcement.bashReadonlyAllowlist");
+  else if (enforcement.bashReadonlyAllowlist !== undefined) diagnostics.push({ path, message: "invalid 'enforcement.bashReadonlyAllowlist'; expected array" });
 
   return normalized;
 }
@@ -200,6 +209,20 @@ function normalizeEnforcementRules(rules: unknown[], diagnostics: PiTodoConfigDi
     }
 
     normalized.push({ pattern: rule.pattern, action: rule.action });
+  }
+
+  return normalized;
+}
+
+function normalizeStringArray(values: unknown[], diagnostics: PiTodoConfigDiagnostic[], path: string, field: string): string[] {
+  const normalized: string[] = [];
+
+  for (const [index, value] of values.entries()) {
+    if (typeof value !== "string" || value.trim() === "") {
+      diagnostics.push({ path, message: `invalid '${field}[${index}]'; expected non-empty string` });
+      continue;
+    }
+    normalized.push(value.trim());
   }
 
   return normalized;

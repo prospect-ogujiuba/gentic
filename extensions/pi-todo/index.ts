@@ -30,7 +30,7 @@ export default function piTodo(pi: ExtensionAPI): void {
     if (activeTodo(state)) return;
 
     const { config, diagnostics } = loadEffectiveTodoConfig({ cwd: ctx.cwd });
-    const decision = decideToolPolicy(event.toolName, config.enforcement);
+    const decision = decideToolPolicy(event.toolName, config.enforcement, event.input);
     if (decision.action === "allow") return;
 
     const policySource = decision.reason === "rule" && decision.pattern ? `requireTodo rule '${decision.pattern}'` : "default requireTodo policy";

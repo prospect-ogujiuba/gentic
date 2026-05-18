@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { decideToolPolicy, matchesToolName, type ToolPolicyConfig } from "../extensions/pi-todo/src/domain/policy.ts";
+import { classifyBashReadonlyCommand, decideToolPolicy, matchesToolName, type ToolPolicyConfig } from "../extensions/pi-todo/src/domain/policy.ts";
 
 const policy: ToolPolicyConfig = {
   defaultAction: "requireTodo",
@@ -62,4 +62,51 @@ test("tool policy gives require-todo rules precedence over more specific allow p
 test("tool policy uses the configured default action for unknown tools", () => {
   assert.deepEqual(decideToolPolicy("write", policy), { action: "requireTodo", reason: "default" });
   assert.deepEqual(decideToolPolicy("write", { defaultAction: "allow", rules: [] }), { action: "allow", reason: "default" });
+});
+
+test("tool policy allows conservative read-only bash before generic bash gating", () => {
+  const bashPolicy: ToolPolicyConfig = { defaultAction: "requireTodo", rules: [{ pattern: "bash", action: "requireTodo" }] };
+
+  assert.deepEqual(decideToolPolicy("bash", bashPolicy, { command: "pwd && ls" }), {
+    action: "allow",
+    reason: "bash_readonly",
+    pattern: "bashReadonlyAllowlist",
+  });
+  assert.deepEqual(decideToolPolicy("bash", bashPolicy, { command: "cd src && rg \"needle\" ." }), {
+    action: "allow",
+    reason: "bash_readonly",
+    pattern: "bashReadonlyAllowlist",
+  });
+  assert.deepEqual(decideToolPolicy("bash", bashPolicy, { command: "find . -name '*.ts'" }), {
+    action: "allow",
+    reason: "bash_readonly",
+    pattern: "bashReadonlyAllowlist",
+  });
+  assert.deepEqual(decideToolPolicy("bash", bashPolicy, { command: "git status --short" }), {
+    action: "allow",
+    reason: "bash_readonly",
+    pattern: "bashReadonlyAllowlist",
+  });
+});
+
+test("read-only bash classifier rejects mutating, unknown, and shell-expansion commands", () => {
+  const blocked = [
+    "rm -rf tmp",
+    "find . -delete",
+    "rg needle > out.txt",
+    "npm test",
+    "git commit -m change",
+    "node script.js",
+    "pwd && rm out.txt",
+    "ls $(pwd)",
+  ];
+
+  for (const command of blocked) assert.equal(classifyBashReadonlyCommand(command).readonly, false, command);
+});
+
+test("empty bash read-only allowlist disables bash pre-todo allowance", () => {
+  assert.deepEqual(
+    decideToolPolicy("bash", { defaultAction: "requireTodo", rules: [{ pattern: "bash", action: "requireTodo" }], bashReadonlyAllowlist: [] }, { command: "pwd" }),
+    { action: "requireTodo", reason: "rule", pattern: "bash" },
+  );
 });

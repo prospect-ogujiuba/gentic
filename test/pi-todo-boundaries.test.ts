@@ -41,5 +41,30 @@ test("TUI projection derives counts and warnings from canonical task data", asyn
   const projection = todoTuiProjection(state, [child]);
   assert.equal(projection.counts.total, 2);
   assert.equal(projection.counts.open, 2);
+  assert.equal(projection.counts.active, 0);
+  assert.equal(projection.counts.blockedExternal, 0);
+  assert.equal(projection.counts.completedHistory, 0);
   assert.deepEqual(projection.warnings, [{ todoId: child.id, kind: "open_dependencies", count: 1 }]);
+});
+
+test("TUI projection separates actionable open, external blockers, active work, and history", async () => {
+  const service = new TodoService(new MemoryStore());
+  const active = await service.create({ title: "active implementation" });
+  const blocked = await service.create({ title: "waiting on external decision" });
+  const done = await service.create({ title: "completed history" });
+  const superseded = await service.create({ title: "old superseded plan" });
+
+  await service.start(active.id, [], undefined, "agent-a");
+  await service.block(blocked.id, "waiting on user decision");
+  await service.complete(done.id, [{ type: "manual_note", note: "done" }]);
+  await service.supersede(superseded.id, done.id, "covered by completed work");
+  const projection = todoTuiProjection(await service.state(), []);
+
+  assert.equal(projection.counts.total, 4);
+  assert.equal(projection.counts.open, 1);
+  assert.equal(projection.counts.active, 1);
+  assert.equal(projection.counts.blockedExternal, 1);
+  assert.equal(projection.counts.completedHistory, 2);
+  assert.equal(projection.counts.byStatus.external_blocked, 1);
+  assert.equal(projection.counts.byStatus.superseded, 1);
 });
