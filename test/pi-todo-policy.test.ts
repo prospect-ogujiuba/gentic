@@ -89,6 +89,28 @@ test("tool policy allows conservative read-only bash before generic bash gating"
   });
 });
 
+test("read-only bash classifier allows broad discovery, reading, exploration, and navigation commands", () => {
+  const allowed = [
+    "cat README.md",
+    "sed -n '1,20p' extensions/pi-todo/src/domain/policy.ts",
+    "jq . package.json",
+    "git blame extensions/pi-todo/src/domain/policy.ts",
+    "git ls-tree HEAD extensions",
+    "git config --get remote.origin.url",
+    "env",
+    "ps aux",
+    "df -h",
+    "ss -ltn",
+    "which node",
+    "realpath .",
+    "dirname extensions/pi-todo/src/domain/policy.ts",
+    "sort package.json",
+    "diff README.md README.md",
+  ];
+
+  for (const command of allowed) assert.equal(classifyBashReadonlyCommand(command).readonly, true, command);
+});
+
 test("read-only bash classifier rejects mutating, unknown, and shell-expansion commands", () => {
   const blocked = [
     "rm -rf tmp",
@@ -96,6 +118,11 @@ test("read-only bash classifier rejects mutating, unknown, and shell-expansion c
     "rg needle > out.txt",
     "npm test",
     "git commit -m change",
+    "git stash pop",
+    "git worktree add ../copy",
+    "sed -i 's/a/b/' file.txt",
+    "sort -o sorted.txt unsorted.txt",
+    "yq -i . file.yml",
     "node script.js",
     "pwd && rm out.txt",
     "ls $(pwd)",

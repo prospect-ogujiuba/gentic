@@ -18,19 +18,98 @@ export type ToolPolicyDecision = {
 export type BashReadonlyClassification = { readonly: boolean; reason: string };
 
 export const DEFAULT_BASH_READONLY_ALLOWLIST = Object.freeze([
+  // Navigation / location.
   "pwd",
+  "cd",
+  "dirs",
+  "basename",
+  "dirname",
+  "realpath",
+  "readlink",
+
+  // Directory and file discovery.
   "ls",
+  "ll",
+  "la",
+  "dir",
+  "vdir",
+  "tree",
   "find",
-  "rg",
-  "grep",
+  "fd",
+  "locate",
+  "which",
+  "whereis",
+  "command",
+  "type",
+  "compgen",
+
+  // Reading and summarizing file content/metadata.
+  "cat",
+  "bat",
+  "less",
+  "more",
   "head",
   "tail",
   "wc",
   "file",
-  "tree",
-  "du",
   "stat",
-  "cd",
+  "du",
+  "df",
+  "lsblk",
+  "mount",
+  "nl",
+  "od",
+  "xxd",
+  "strings",
+
+  // Text search, filtering, and read-only data shaping.
+  "rg",
+  "grep",
+  "egrep",
+  "fgrep",
+  "ag",
+  "ack",
+  "sed",
+  "sort",
+  "uniq",
+  "cut",
+  "paste",
+  "comm",
+  "diff",
+  "cmp",
+  "jq",
+  "yq",
+
+  // Environment, process, and system information.
+  "env",
+  "printenv",
+  "set",
+  "locale",
+  "uname",
+  "hostname",
+  "whoami",
+  "id",
+  "groups",
+  "date",
+  "uptime",
+  "ps",
+  "pgrep",
+  "jobs",
+  "ulimit",
+  "umask",
+  "free",
+  "vmstat",
+  "iostat",
+  "lscpu",
+  "nproc",
+  "lsmem",
+  "lsusb",
+  "lspci",
+  "ip",
+  "ss",
+  "netstat",
+
+  // Read-only git exploration.
   "git status",
   "git diff",
   "git log",
@@ -41,6 +120,16 @@ export const DEFAULT_BASH_READONLY_ALLOWLIST = Object.freeze([
   "git grep",
   "git remote",
   "git describe",
+  "git blame",
+  "git ls-tree",
+  "git cat-file",
+  "git config",
+  "git for-each-ref",
+  "git reflog",
+  "git tag",
+  "git stash",
+  "git worktree",
+  "git submodule",
 ] as const);
 
 export function matchesToolName(pattern: string, toolName: string): boolean {
@@ -249,13 +338,43 @@ function classifyGitReadonlyCommand(words: readonly string[], allowlist: BashAll
   if (!subcommand || subcommand.startsWith("-")) return { readonly: false, reason: "git_subcommand_missing" };
   if (!allowlist.gitSubcommands.has(subcommand)) return { readonly: false, reason: `git_subcommand_not_allowlisted:${subcommand}` };
   if (words.some((word) => word === "--output" || word.startsWith("--output="))) return { readonly: false, reason: "dangerous_option:git" };
+  const args = words.slice(index + 1);
+  if (subcommand === "config" && !isReadonlyGitConfig(args)) return { readonly: false, reason: "dangerous_option:git" };
+  if (subcommand === "stash" && !isReadonlyGitStash(args)) return { readonly: false, reason: "dangerous_option:git" };
+  if (subcommand === "worktree" && !isReadonlyGitWorktree(args)) return { readonly: false, reason: "dangerous_option:git" };
+  if (subcommand === "submodule" && !isReadonlyGitSubmodule(args)) return { readonly: false, reason: "dangerous_option:git" };
   return { readonly: true, reason: "readonly_allowlist" };
+}
+
+function isReadonlyGitConfig(args: readonly string[]): boolean {
+  const operations = args.filter((arg) => !arg.startsWith("-") || arg === "--get" || arg === "--get-all" || arg === "--list" || arg === "--name-only");
+  return args.some((arg) => ["--get", "--get-all", "--get-regexp", "--list", "--name-only"].includes(arg)) || operations.length <= 1;
+}
+
+function isReadonlyGitStash(args: readonly string[]): boolean {
+  const operation = args.find((arg) => !arg.startsWith("-"));
+  return operation === undefined || operation === "list" || operation === "show";
+}
+
+function isReadonlyGitWorktree(args: readonly string[]): boolean {
+  const operation = args.find((arg) => !arg.startsWith("-"));
+  return operation === undefined || operation === "list";
+}
+
+function isReadonlyGitSubmodule(args: readonly string[]): boolean {
+  const operation = args.find((arg) => !arg.startsWith("-"));
+  return operation === undefined || operation === "status" || operation === "summary";
 }
 
 function hasDangerousReadOption(command: string, args: readonly string[]): boolean {
   if (command === "find") return args.some((arg) => ["-delete", "-exec", "-execdir", "-ok", "-okdir", "-fls", "-fprint", "-fprintf"].includes(arg));
   if (command === "tree") return args.some((arg) => arg === "-o" || arg === "--output");
   if (command === "tail") return args.some((arg) => arg === "-f" || arg === "--follow" || arg.startsWith("--follow="));
+  if (command === "sed") return args.some((arg) => arg === "-i" || arg.startsWith("-i") || arg === "--in-place" || arg.startsWith("--in-place="));
+  if (command === "sort") return args.some((arg) => arg === "-o" || arg.startsWith("--output="));
+  if (command === "uniq") return args.some((arg) => arg === "-o" || arg.startsWith("--output="));
+  if (command === "jq") return args.some((arg) => arg === "--in-place");
+  if (command === "yq") return args.some((arg) => arg === "-i" || arg === "--inplace" || arg === "--in-place");
   return false;
 }
 
