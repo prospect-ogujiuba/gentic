@@ -197,6 +197,30 @@ export async function todoState(pi: ExtensionAPI, ctx: ExtensionContext) {
   return service(pi, ctx).state();
 }
 
+function toolCallTarget(input: unknown): string | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  const record = input as Record<string, unknown>;
+  for (const key of ["path", "file_path", "file", "command"] as const) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim().split(/\s+/)[0];
+  }
+  return undefined;
+}
+
+export async function ensureActiveTodoForToolCall(pi: ExtensionAPI, ctx: ExtensionContext, toolName: string, input: unknown): Promise<Todo> {
+  const svc = service(pi, ctx);
+  const owner = ctx.sessionId ?? ctx.cwd ?? null;
+  const existing = await svc.active(owner);
+  if (existing) return existing;
+  const title = [`use ${toolName}`, toolCallTarget(input)].filter(Boolean).join(" on ");
+  const todo = await svc.create({
+    title,
+    description: "Auto-created by pi-todo before a requireTodo tool guard blocked execution, so the agent can retry the original tool without todo backtracking.",
+    tags: ["pi-todo:auto-tool-guard"],
+  });
+  return svc.start(todo.id, [], undefined, owner, { splitOverrideReason: "auto-created atomic tool guard task" });
+}
+
 export async function reconcileTodoDocket(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
   await service(pi, ctx).reconcileSplitScaffolds();
   await updateTodoWidget(pi, ctx);

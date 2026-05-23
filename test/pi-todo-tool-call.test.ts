@@ -90,7 +90,7 @@ test("tool_call hook allows configured read-only bash without an active todo", a
   });
 });
 
-test("tool_call hook blocks configured require-todo tools with repair text", async () => {
+test("tool_call hook creates an active todo before blocking require-todo tools", async () => {
   await withTempProject(async (cwd) => {
     await writeProjectConfig(cwd, {
       enforcement: {
@@ -98,18 +98,21 @@ test("tool_call hook blocks configured require-todo tools with repair text", asy
         rules: [{ pattern: "bash", action: "requireTodo" }],
       },
     });
-    const { handlers, ctx } = setupPiTodo(cwd);
+    const { handlers, tools, ctx } = setupPiTodo(cwd);
 
-    const result = await (handlers.get("tool_call") as ToolCallHandler)({ type: "tool_call", toolName: "bash" }, ctx);
+    const result = await (handlers.get("tool_call") as ToolCallHandler)({ type: "tool_call", toolName: "bash", input: { command: "rm -rf tmp" } }, ctx);
 
-    assert.deepEqual(result, {
-      block: true,
-      reason: 'pi-todo enforcement: requireTodo rule \'bash\'; no active todo. Call todo({ "action": "begin" }) then retry the blocked tool.',
-    });
+    assert.equal(typeof result, "object");
+    assert.match(String((result as { reason?: unknown }).reason), /created and started 'use bash on rm'/);
+    assert.match(String((result as { reason?: unknown }).reason), /Retry the original bash call now; do not call todo begin\/list\/split first/);
+
+    const active = await tools.get("todo")?.execute("list", { action: "list" }, new AbortController().signal, () => {}, ctx);
+    assert.match(String((active as { content?: Array<{ text: string }> }).content?.[0]?.text), /use bash on rm/);
+    assert.match(String((active as { content?: Array<{ text: string }> }).content?.[0]?.text), /in progress/);
   });
 });
 
-test("tool_call hook still blocks mutating bash without an active todo", async () => {
+test("tool_call hook still blocks mutating bash after creating guard todo", async () => {
   await withTempProject(async (cwd) => {
     await writeProjectConfig(cwd, {
       enforcement: {
@@ -121,10 +124,9 @@ test("tool_call hook still blocks mutating bash without an active todo", async (
 
     const result = await (handlers.get("tool_call") as ToolCallHandler)({ type: "tool_call", toolName: "bash", input: { command: "rm -rf tmp" } }, ctx);
 
-    assert.deepEqual(result, {
-      block: true,
-      reason: 'pi-todo enforcement: requireTodo rule \'bash\'; no active todo. Call todo({ "action": "begin" }) then retry the blocked tool.',
-    });
+    assert.equal(typeof result, "object");
+    assert.match(String((result as { reason?: unknown }).reason), /created and started 'use bash on rm'/);
+    assert.match(String((result as { reason?: unknown }).reason), /Retry the original bash call now/);
   });
 });
 
@@ -155,7 +157,7 @@ test("tool_call hook surfaces invalid config diagnostics while falling back safe
     assert.match(String((result as { reason?: unknown }).reason), /requireTodo rule 'write'/);
     assert.match(String((result as { reason?: unknown }).reason), /Config diagnostics: .*invalid 'enforcement\.defaultAction'/);
     assert.match(String((result as { reason?: unknown }).reason), /defaultAction forced to 'requireTodo'/);
-    assert.match(String((result as { reason?: unknown }).reason), /Call todo\(\{ "action": "begin" \}\)/);
+    assert.match(String((result as { reason?: unknown }).reason), /Retry the original write call now/);
   });
 });
 

@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   activeTodo,
+  ensureActiveTodoForToolCall,
   executeTodoAction,
   executeTodoCommand,
   getTodoCommandCompletions,
@@ -38,10 +39,11 @@ export default function piTodo(pi: ExtensionAPI): void {
       ? ` Config diagnostics: ${diagnostics.map((diagnostic) => `${diagnostic.path}: ${diagnostic.message}`).join("; ")}.`
       : "";
 
+    const started = await ensureActiveTodoForToolCall(pi, ctx, event.toolName, event.input);
     await updateTodoWidget(pi, ctx);
     return {
       block: true,
-      reason: `pi-todo enforcement: ${policySource}; no active todo. Call todo({ "action": "begin" }) then retry the blocked tool.${diagnosticNote}`,
+      reason: `pi-todo enforcement: ${policySource}; no active todo existed, so pi-todo created and started '${started.title}' (${started.id}) before blocking. Retry the original ${event.toolName} call now; do not call todo begin/list/split first.${diagnosticNote}`,
     };
   });
 
