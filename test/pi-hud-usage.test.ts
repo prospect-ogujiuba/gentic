@@ -3,7 +3,7 @@ import { test } from "node:test";
 import piHud from "../extensions/pi-hud/index.ts";
 import { renderUsageSummary } from "../extensions/pi-hud/src/ui/components/context.ts";
 import { renderFooterLines } from "../extensions/pi-hud/src/ui/surfaces/footer.ts";
-import { recordMessageUsage, resetConfig, resetSessionUsage, resetWorkTimer, state } from "../extensions/pi-hud/src/app/state.ts";
+import { recordMessageUsage, resetConfig, resetSessionUsage, resetWorkTimer, setDisplayMode, state } from "../extensions/pi-hud/src/app/state.ts";
 import type { Theme } from "../extensions/pi-hud/types.ts";
 
 const plainTheme: Theme = {
@@ -118,6 +118,7 @@ test("pi-hud usage summary deduplicates repeated message events", () => {
 
 test("pi-hud footer includes nonzero startup prompt usage before provider usage arrives", async () => {
   resetConfig();
+  setDisplayMode("footer");
   resetSessionUsage();
   state.recentEvents = ["loaded"];
   state.activeTools = [];
@@ -130,6 +131,7 @@ test("pi-hud footer includes nonzero startup prompt usage before provider usage 
   const ctx = {
     cwd: process.cwd(),
     hasUI: true,
+    mode: "tui",
     model: { provider: "mock", id: "m", contextWindow: 1000 },
     getContextUsage: () => usage,
     getSystemPrompt: () => systemPrompt,

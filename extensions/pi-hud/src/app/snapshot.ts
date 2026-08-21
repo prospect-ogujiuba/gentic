@@ -1,5 +1,5 @@
 import { createPiContextHudSnapshot, getSessionState } from "../../../pi-context/src/app/index.ts";
-import { getGitStatus } from "./git-status.ts";
+import { gitSnapshotService } from "./git-snapshot-service.ts";
 import { state } from "./state.ts";
 import type { HudSnapshot, SnapshotContext, UsageSnapshot } from "../../types.ts";
 
@@ -34,12 +34,14 @@ export function withLiveUsage(snapshot: HudSnapshot, ctx: SnapshotContext): HudS
 }
 
 export function createSnapshot(ctx: SnapshotContext): HudSnapshot {
+  const gitState = gitSnapshotService.getState(ctx.cwd);
   return {
     modelId: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
     worktreeId: ctx.cwd,
     usage: readUsageSnapshot(ctx),
     piContext: createPiContextHudSnapshot(getSessionState(), { topContributors: 3 }),
-    git: getGitStatus(ctx.cwd),
+    git: gitState.snapshot,
+    gitState,
     activeTools: state.activeTools,
     toolCounts: state.toolCounts,
     recentEvents: state.recentEvents,

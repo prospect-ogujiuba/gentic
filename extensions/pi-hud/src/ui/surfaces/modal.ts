@@ -132,6 +132,7 @@ class PiHudModalComponent {
 }
 
 export async function openModal(ctx: ExtensionCommandContext): Promise<void> {
+  if (ctx.mode !== "tui") return;
   let component: PiHudModalComponent | undefined;
   try {
     await ctx.ui.custom<void>((tui, theme, _kb, done) => {

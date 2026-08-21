@@ -1,30 +1,57 @@
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { gitSnapshotService } from "../app/git-snapshot-service.ts";
 import { createSnapshot, withLiveUsage } from "../app/snapshot.ts";
-import { COMPONENT_IDS, isComponentId, isPlacement, recordMessageUsage, recordMessagesUsage, resetConfig, resetSessionUsage, resetWorkTimer, startWorkTimer, state, stopWorkTimer } from "../app/state.ts";
-import { createHudComponent } from "../ui/surfaces/footer.ts";
+import { COMPONENT_IDS, isComponentId, isDisplayMode, recordMessageUsage, recordMessagesUsage, resetConfig, resetSessionUsage, resetWorkTimer, setDisplayMode, startWorkTimer, state, stopWorkTimer } from "../app/state.ts";
+import { createHudComponent, renderFooterLines } from "../ui/surfaces/footer.ts";
 import { openModal } from "../ui/surfaces/modal.ts";
+import type { Theme } from "../../types.ts";
 
 const TEST_COMMAND_RE = /(^|\s)(npm|pnpm|yarn|bun)\s+(run\s+)?(test|check|lint|typecheck|build)(\s|$)|\b(vitest|jest|pytest|ruff|eslint|tsc)\b/i;
-const HUD_USAGE = "Usage: /pi-hud [open|show|hide|reset|placement footer|widget|both|toggle <component>|only <component>]";
+const HUD_USAGE = "Usage: /pi-hud [open|show|hide|reset|mode off|widget-first|footer|placement footer|widget|both|toggle <component>|only <component>]";
+const HUD_WIDGET_ID = "pi-hud";
+const RPC_RENDER_WIDTH = 120;
+const RPC_THEME: Theme = { fg: (_color: unknown, text: string) => text };
 
-type HudUiContext = Pick<ExtensionContext, "cwd" | "getContextUsage" | "getSystemPrompt" | "hasUI" | "model" | "ui">;
+type HudUiContext = Pick<ExtensionContext, "cwd" | "getContextUsage" | "getSystemPrompt" | "mode" | "model" | "ui">;
 type HudCommandContext = ExtensionCommandContext & HudUiContext;
 
-function applyHud(ctx: HudUiContext): void {
-  ctx.ui.setFooter(undefined);
-  ctx.ui.setWidget("pi-hud", undefined);
-  if (!state.enabled) return;
+export function cleanupHud(ctx: HudUiContext): void {
+  if (ctx.mode === "tui") {
+    ctx.ui.setFooter(undefined);
+    ctx.ui.setWidget(HUD_WIDGET_ID, undefined);
+  } else if (ctx.mode === "rpc") {
+    ctx.ui.setWidget(HUD_WIDGET_ID, undefined);
+  }
+}
+
+export function applyHud(ctx: HudUiContext): void {
+  cleanupHud(ctx);
+  if (state.displayMode === "off" || (ctx.mode !== "tui" && ctx.mode !== "rpc")) return;
 
   const snapshot = createSnapshot(ctx);
   const liveSnapshot = () => withLiveUsage(snapshot, ctx);
+  if (ctx.mode === "rpc") {
+    ctx.ui.setWidget(HUD_WIDGET_ID, renderFooterLines(liveSnapshot(), RPC_THEME, RPC_RENDER_WIDTH));
+    return;
+  }
+
   state.modal?.update(liveSnapshot());
-  if (state.placement === "footer" || state.placement === "both") ctx.ui.setFooter(createHudComponent(liveSnapshot));
-  if (state.placement === "widget" || state.placement === "both") ctx.ui.setWidget("pi-hud", createHudComponent(liveSnapshot));
+  if (state.displayMode === "footer") ctx.ui.setFooter(createHudComponent(liveSnapshot));
+  else ctx.ui.setWidget(HUD_WIDGET_ID, createHudComponent(liveSnapshot));
+}
+
+function refreshGitSnapshot(ctx: HudUiContext): void {
+  const refresh = gitSnapshotService.requestRefresh(ctx.cwd);
+  const generation = gitSnapshotService.currentGeneration();
+  void refresh.then(() => {
+    if (gitSnapshotService.isCurrent(generation, ctx.cwd)) applyHud(ctx);
+  });
 }
 
 function recordEvent(ctx: HudUiContext, name: string): void {
   state.recentEvents = [name, ...state.recentEvents.filter((event) => event !== name)].slice(0, 8);
-  if (ctx.hasUI) applyHud(ctx);
+  applyHud(ctx);
+  if (ctx.mode === "tui" || ctx.mode === "rpc") refreshGitSnapshot(ctx);
 }
 
 function setAgentForTool(toolName: string, args: unknown): void {
@@ -38,23 +65,31 @@ function setAgentForTool(toolName: string, args: unknown): void {
 
 async function handleHudCommand(args: string, ctx: HudCommandContext): Promise<void> {
   const [cmd, target] = args.trim().split(/\s+/);
-  if (!cmd || cmd === "open" || cmd === "modal") return openModal(ctx);
-  if (cmd === "show") state.enabled = true;
-  else if (cmd === "hide") state.enabled = false;
-  else if (cmd === "placement" && isPlacement(target)) state.placement = target;
+  if (!cmd || cmd === "open" || cmd === "modal") {
+    if (ctx.mode === "tui") return openModal(ctx);
+    if (ctx.mode === "rpc") ctx.ui.notify("pi-hud: modal is available only in TUI mode", "info");
+    return;
+  }
+  if (cmd === "show") {
+    if (state.displayMode === "off") setDisplayMode("widget-first");
+  } else if (cmd === "hide") setDisplayMode("off");
+  else if (cmd === "mode" && isDisplayMode(target)) setDisplayMode(target);
+  else if (cmd === "placement" && (target === "footer" || target === "widget" || target === "both")) setDisplayMode(target);
   else if (cmd === "toggle" && isComponentId(target)) state.components[target] = !state.components[target];
   else if (cmd === "only" && isComponentId(target)) for (const id of COMPONENT_IDS) state.components[id] = id === target;
   else if (cmd === "reset") resetConfig();
   else {
-    ctx.ui.notify(HUD_USAGE, "info");
+    if (ctx.mode === "tui" || ctx.mode === "rpc") ctx.ui.notify(HUD_USAGE, "info");
     return;
   }
   applyHud(ctx);
-  ctx.ui.notify(`pi-hud: ${state.enabled ? "enabled" : "hidden"}; placement=${state.placement}; components=${COMPONENT_IDS.filter((id) => state.components[id]).join(",")}`, "info");
+  if (ctx.mode === "tui" || ctx.mode === "rpc") {
+    ctx.ui.notify(`pi-hud: mode=${state.displayMode}; components=${COMPONENT_IDS.filter((id) => state.components[id]).join(",")}`, "info");
+  }
 }
 
 export function registerHudEventHandlers(pi: ExtensionAPI): void {
-  pi.on("session_start", (event, ctx) => { state.agent = "idle"; resetWorkTimer(); resetSessionUsage(); recordEvent(ctx, event.type); });
+  pi.on("session_start", (event, ctx) => { state.agent = "idle"; resetWorkTimer(); resetSessionUsage(); gitSnapshotService.reset(ctx.cwd); recordEvent(ctx, event.type); });
   pi.on("model_select", (event, ctx) => recordEvent(ctx, event.type));
   pi.on("thinking_level_select", (event, ctx) => { state.thinkingLevel = event.level; recordEvent(ctx, event.type); });
   pi.on("agent_start", (event, ctx) => { state.agent = "thinking"; startWorkTimer(); recordEvent(ctx, event.type); });
@@ -77,7 +112,7 @@ export function registerHudEventHandlers(pi: ExtensionAPI): void {
     recordEvent(ctx, event.type);
   });
   pi.on("message_end", (event, ctx) => { recordMessageUsage(event.message); recordEvent(ctx, event.type); });
-  pi.on("session_shutdown", (_event, ctx) => { stopWorkTimer(); ctx.ui.setFooter(undefined); ctx.ui.setWidget("pi-hud", undefined); });
+  pi.on("session_shutdown", (_event, ctx) => { stopWorkTimer(); gitSnapshotService.dispose(); cleanupHud(ctx); });
 }
 
 export function registerHudCommand(pi: ExtensionAPI): void {

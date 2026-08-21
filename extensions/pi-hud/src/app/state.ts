@@ -1,11 +1,11 @@
-import type { HudComponentId, HudState, Placement, UsageSnapshot } from "../../types.ts";
+import type { DisplayMode, HudComponentId, HudState, UsageSnapshot } from "../../types.ts";
 
 export const COMPONENT_IDS = ["provider", "model", "context", "git", "session", "tools", "events", "worktime"] as const satisfies readonly HudComponentId[];
-export const PLACEMENTS = ["footer", "widget", "both"] as const satisfies readonly Placement[];
+export const DISPLAY_MODES = ["off", "widget-first", "footer"] as const satisfies readonly DisplayMode[];
+export const DEFAULT_DISPLAY_MODE: DisplayMode = "widget-first";
 
 export const state: HudState = {
-  enabled: true,
-  placement: "footer",
+  displayMode: DEFAULT_DISPLAY_MODE,
   components: { provider: true, model: true, context: true, git: true, session: true, tools: true, events: true, worktime: true },
   agent: "idle",
   turn: 0,
@@ -23,13 +23,36 @@ export function isComponentId(value: string | undefined): value is HudComponentI
   return COMPONENT_IDS.includes(value as HudComponentId);
 }
 
-export function isPlacement(value: string | undefined): value is Placement {
-  return PLACEMENTS.includes(value as Placement);
+export function isDisplayMode(value: string | undefined): value is DisplayMode {
+  return DISPLAY_MODES.includes(value as DisplayMode);
+}
+
+export function resolveDisplayModeConfig(value: unknown): DisplayMode {
+  if (value === undefined || value === null) return DEFAULT_DISPLAY_MODE;
+  if (typeof value === "string") {
+    if (isDisplayMode(value)) return value;
+    if (value === "widget" || value === "both") return "widget-first";
+    throw new TypeError(`Invalid pi-hud display mode: ${value}`);
+  }
+  if (typeof value !== "object" || Array.isArray(value)) throw new TypeError("Invalid pi-hud configuration: expected an object");
+
+  const config = value as { displayMode?: unknown; enabled?: unknown; placement?: unknown };
+  if (config.displayMode !== undefined) return resolveDisplayModeConfig(config.displayMode);
+  if (config.enabled !== undefined && typeof config.enabled !== "boolean") throw new TypeError("Invalid pi-hud configuration: enabled must be boolean");
+  if (config.enabled === false) return "off";
+  if (config.placement !== undefined) {
+    if (typeof config.placement !== "string") throw new TypeError("Invalid pi-hud configuration: placement must be a string");
+    return resolveDisplayModeConfig(config.placement);
+  }
+  return DEFAULT_DISPLAY_MODE;
+}
+
+export function setDisplayMode(value: unknown): void {
+  state.displayMode = resolveDisplayModeConfig(value);
 }
 
 export function resetConfig(): void {
-  state.enabled = true;
-  state.placement = "footer";
+  state.displayMode = DEFAULT_DISPLAY_MODE;
   for (const id of COMPONENT_IDS) state.components[id] = true;
 }
 

@@ -3,7 +3,7 @@ import type { PiContextHudSnapshot } from "../pi-context/src/app/index.ts";
 
 export type HudComponentId = "provider" | "model" | "context" | "git" | "session" | "tools" | "events" | "worktime";
 export type AgentState = "idle" | "thinking" | "reading" | "editing" | "writing" | "executing" | "testing";
-export type Placement = "footer" | "widget" | "both";
+export type DisplayMode = "off" | "widget-first" | "footer";
 
 export type Theme = {
   fg(color: any, text: string): string;
@@ -28,6 +28,19 @@ export interface GitStatus {
   behindCount: number;
 }
 
+export type GitSnapshotStatus = "loading" | "fresh" | "stale" | "unavailable" | "error";
+
+export interface GitSnapshotState {
+  status: GitSnapshotStatus;
+  generation: number;
+  snapshot?: GitStatus;
+  updatedAt?: number;
+  error?: {
+    code: string;
+    message: string;
+  };
+}
+
 export interface UsageSnapshot {
   input?: number;
   output?: number;
@@ -44,6 +57,7 @@ export interface HudSnapshot {
   usage?: UsageSnapshot;
   piContext?: PiContextHudSnapshot;
   git?: GitStatus;
+  gitState?: GitSnapshotState;
   activeTools: ActiveTool[];
   toolCounts: Record<string, number>;
   recentEvents: string[];
@@ -55,8 +69,7 @@ export interface HudModalHandle {
 }
 
 export interface HudState {
-  enabled: boolean;
-  placement: Placement;
+  displayMode: DisplayMode;
   components: Record<HudComponentId, boolean>;
   agent: AgentState;
   turn: number;
