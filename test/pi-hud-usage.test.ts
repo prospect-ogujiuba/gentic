@@ -3,7 +3,7 @@ import { test } from "node:test";
 import piHud from "../extensions/pi-hud/index.ts";
 import { renderUsageSummary } from "../extensions/pi-hud/src/ui/components/context.ts";
 import { renderFooterLines } from "../extensions/pi-hud/src/ui/surfaces/footer.ts";
-import { recordMessageUsage, resetConfig, resetSessionUsage, resetWorkTimer, setDisplayMode, state } from "../extensions/pi-hud/src/app/state.ts";
+import { recordMessageUsage, resetConfig, resetSessionUsage, resetWorkTimer, state } from "../extensions/pi-hud/src/app/state.ts";
 import type { Theme } from "../extensions/pi-hud/types.ts";
 
 const plainTheme: Theme = {
@@ -49,7 +49,7 @@ test("pi-hud footer renders representative layered HUD output", () => {
     assert.equal(lines.length, 4);
     assert.match(lines[0], /anthropic\/claude-sonnet \(medium\).*250\/1\.0k 25%.*ledger 120 left 880 hot Tools.*IN 1\.2k\s+OUT 56\s+\$0\.0123/);
     assert.match(lines[1], /gentic · main\(\*\) · origin · ↓\(0\)\|↑\(1\) · unstaged \(2\) · untracked \(1\) · staged \(1\).*work: 0:00/);
-    assert.match(lines[2], /\[bash 2\] \[read 1\].*err 0 · warn 1 · ok\/fail 3:0 · pending 1/);
+    assert.match(lines[2], /\[bash 2\] \[read 1\].*pending 1 · err 0 · warn 1 · ok\/fail 3:0/);
     assert.match(lines[3], /Events \| ◆ tool_started ◇ msg_created/);
   } finally {
     state.successCalls = 0;
@@ -116,16 +116,15 @@ test("pi-hud usage summary deduplicates repeated message events", () => {
   assert.deepEqual(state.usage, { input: 10, output: 20, cost: 0.5, totalTokens: 30 });
 });
 
-test("pi-hud footer includes nonzero startup prompt usage before provider usage arrives", async () => {
+test("pi-hud surface includes nonzero startup prompt usage before provider usage arrives", async () => {
   resetConfig();
-  setDisplayMode("footer");
   resetSessionUsage();
   state.recentEvents = ["loaded"];
   state.activeTools = [];
   state.toolCounts = {};
 
   const handlers = new Map<string, Array<(event: Record<string, unknown>, ctx: any) => unknown>>();
-  let footerFactory: any;
+  let surfaceFactory: any;
   let usage = { tokens: 0, contextWindow: 1000, percent: 0 };
   const systemPrompt = "s".repeat(80);
   const ctx = {
@@ -136,8 +135,9 @@ test("pi-hud footer includes nonzero startup prompt usage before provider usage 
     getContextUsage: () => usage,
     getSystemPrompt: () => systemPrompt,
     ui: {
-      setFooter(value: unknown) { footerFactory = value; },
-      setWidget() {},
+      setFooter(value: unknown) { if (value) surfaceFactory = value; },
+      setWidget(_id: string, value: unknown) { if (value) surfaceFactory = value; },
+      setStatus() {},
       notify() {},
     },
   };
@@ -150,7 +150,7 @@ test("pi-hud footer includes nonzero startup prompt usage before provider usage 
   } as never);
 
   for (const handler of handlers.get("session_start") ?? []) await handler({ type: "session_start", reason: "test" }, ctx);
-  const footer = footerFactory({ requestRender() {} }, plainTheme);
+  const footer = surfaceFactory({ requestRender() {} }, plainTheme);
   try {
     assert.match(footer.render(120).join("\n"), /20\/1\.0k\s+2%/);
 
@@ -158,5 +158,6 @@ test("pi-hud footer includes nonzero startup prompt usage before provider usage 
     assert.match(footer.render(120).join("\n"), /250\/1\.0k\s+25%/);
   } finally {
     footer.dispose?.();
+    for (const handler of handlers.get("session_shutdown") ?? []) await handler({ type: "session_shutdown", reason: "quit" }, ctx);
   }
 });

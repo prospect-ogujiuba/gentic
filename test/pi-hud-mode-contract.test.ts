@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { applyHud } from "../extensions/pi-hud/src/pi/adapter.ts";
 import { DEFAULT_DISPLAY_MODE, resetConfig, resolveDisplayModeConfig, setDisplayMode, state } from "../extensions/pi-hud/src/app/state.ts";
 import { openModal } from "../extensions/pi-hud/src/ui/surfaces/modal.ts";
+import { hudRuntime } from "../extensions/pi-hud/src/pi/runtime.ts";
 import type { DisplayMode } from "../extensions/pi-hud/types.ts";
 
 type RuntimeMode = "tui" | "rpc" | "json" | "print";
@@ -59,26 +60,31 @@ test("pi-hud reset keeps footer replacement opt-in", () => {
 for (const runtime of ["tui", "rpc", "json", "print"] as const) {
   for (const displayMode of ["off", "widget-first", "footer"] as const satisfies readonly DisplayMode[]) {
     test(`pi-hud routes ${displayMode} in ${runtime}`, () => {
-      setDisplayMode(displayMode);
       const { ctx, calls } = contextFor(runtime);
-      applyHud(ctx);
+      hudRuntime.start(ctx);
+      setDisplayMode(displayMode);
+      try {
+        applyHud(ctx);
 
-      const footerValues = calls.filter((call) => call.method === "setFooter").map((call) => call.value);
-      const widgetValues = calls.filter((call) => call.method === "setWidget").map((call) => call.value);
-      assert.equal(calls.some((call) => call.method === "custom" || call.method === "setWorkingIndicator" || call.method === "setStatus"), false);
+        const footerValues = calls.filter((call) => call.method === "setFooter").map((call) => call.value);
+        const widgetValues = calls.filter((call) => call.method === "setWidget").map((call) => call.value);
+        assert.equal(calls.some((call) => call.method === "custom" || call.method === "setWorkingIndicator" || call.method === "setStatus"), false);
 
-      if (runtime === "json" || runtime === "print") {
-        assert.deepEqual(calls, []);
-      } else if (runtime === "rpc") {
-        assert.deepEqual(footerValues, []);
-        assert.equal(widgetValues[0], undefined);
-        assert.equal(widgetValues.length, displayMode === "off" ? 1 : 2);
-        if (displayMode !== "off") assert.equal(Array.isArray(widgetValues[1]), true);
-      } else {
-        assert.equal(footerValues[0], undefined);
-        assert.equal(widgetValues[0], undefined);
-        assert.equal(footerValues.filter((value) => value !== undefined).length, displayMode === "footer" ? 1 : 0);
-        assert.equal(widgetValues.filter((value) => value !== undefined).length, displayMode === "widget-first" ? 1 : 0);
+        if (runtime === "json" || runtime === "print") {
+          assert.deepEqual(calls, []);
+        } else if (runtime === "rpc") {
+          assert.deepEqual(footerValues, []);
+          assert.equal(widgetValues[0], undefined);
+          assert.equal(widgetValues.length, displayMode === "off" ? 1 : 2);
+          if (displayMode !== "off") assert.equal(Array.isArray(widgetValues[1]), true);
+        } else {
+          assert.equal(footerValues[0], undefined);
+          assert.equal(widgetValues[0], undefined);
+          assert.equal(footerValues.filter((value) => value !== undefined).length, displayMode === "footer" ? 1 : 0);
+          assert.equal(widgetValues.filter((value) => value !== undefined).length, displayMode === "widget-first" ? 1 : 0);
+        }
+      } finally {
+        hudRuntime.shutdown(ctx);
       }
     });
   }
@@ -87,7 +93,7 @@ for (const runtime of ["tui", "rpc", "json", "print"] as const) {
 test("pi-hud modal never invokes custom UI outside TUI mode", async () => {
   for (const mode of ["rpc", "json", "print"] as const) {
     let customCalls = 0;
-    await openModal({ mode, ui: { custom() { customCalls += 1; } } } as never);
+    await openModal({ mode, ui: { custom() { customCalls += 1; } } } as never, { attachModal() {}, detachModal() {} });
     assert.equal(customCalls, 0);
   }
 });

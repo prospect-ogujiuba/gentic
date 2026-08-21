@@ -56,6 +56,21 @@ export function resetConfig(): void {
   for (const id of COMPONENT_IDS) state.components[id] = true;
 }
 
+export function resetHudState(): void {
+  resetConfig();
+  state.agent = "idle";
+  state.turn = 0;
+  state.recentEvents = ["loaded"];
+  state.activeTools = [];
+  state.toolCounts = {};
+  state.successCalls = 0;
+  state.errorCalls = 0;
+  state.warningCalls = 0;
+  state.thinkingLevel = undefined;
+  resetSessionUsage();
+  resetWorkTimer();
+}
+
 function numberOrUndefined(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }

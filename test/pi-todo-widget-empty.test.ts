@@ -12,6 +12,7 @@ test("todo widget clears status and widget when no tasks exist", async () => {
   const ctx = {
     cwd: process.cwd(),
     hasUI: true,
+    mode: "tui",
     sessionManager: { getBranch: () => [] },
     ui: {
       setStatus: (key: string, value: unknown) => calls.push({ method: "setStatus", key, value }),

@@ -66,6 +66,7 @@ export interface HudSnapshot {
 
 export interface HudModalHandle {
   update(snapshot: HudSnapshot): void;
+  dispose(): void;
 }
 
 export interface HudState {
@@ -82,7 +83,6 @@ export interface HudState {
   usage?: UsageSnapshot;
   usageMessageKeys: Set<string>;
   thinkingLevel?: string;
-  modal?: HudModalHandle;
   workTimer: {
     active: boolean;
     startedAt?: number;

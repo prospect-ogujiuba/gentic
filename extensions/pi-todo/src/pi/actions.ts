@@ -7,19 +7,22 @@ import { SPLIT_SCAFFOLD_TAG, TodoService, TodoWorkflowError, type CreateArtifact
 import { readyToClose, summarizeTodos } from "../app/query.ts";
 import { isTerminalStatus } from "../domain/lifecycle.ts";
 import { loadEffectiveTodoConfig } from "../config.ts";
-import type { EvidenceRef, Todo } from "../domain/types.ts";
+import type { EvidenceRef, Todo, TodoState } from "../domain/types.ts";
 import {
   createTodoDocketComponent,
   renderTodoDocketLines,
+  renderTodoWidgetLines,
 } from "../ui/docket.ts";
 import { openTodoModal } from "../ui/modal.ts";
-import { ansiTodoTheme } from "../ui/theme.ts";
+import { ansiTodoTheme, plainTodoTheme } from "../ui/theme.ts";
 import { syncTodoSessionName } from "./session-name.ts";
 import { PiTodoEventStore } from "./store.ts";
 
 const STATUS_KEY = "todo";
 const TODO_COMMANDS = ["open", "list", "next", "graph", "history", "get", "split-check"];
-const promptedDocketCleanupKeys = new Set<string>();
+const REMINDER_KEYS_SYMBOL = Symbol.for("gentic.pi-todo.shown-reminder-keys");
+const shownDocketReminderKeys: Set<string> = ((globalThis as Record<PropertyKey, unknown>)[REMINDER_KEYS_SYMBOL] as Set<string> | undefined) ?? new Set<string>();
+(globalThis as Record<PropertyKey, unknown>)[REMINDER_KEYS_SYMBOL] = shownDocketReminderKeys;
 
 function service(pi: ExtensionAPI, ctx: ExtensionContext): TodoService {
   return new TodoService(new PiTodoEventStore(pi, ctx), undefined, ctx.cwd);
@@ -184,20 +187,48 @@ function unresolvedSplitDocketItems(state: Awaited<ReturnType<TodoService["state
   ));
 }
 
-function docketCleanupMessage(state: Awaited<ReturnType<TodoService["state"]>>): { key: string; content: string } | undefined {
+function reminderRepair(todo: Todo): Record<string, unknown> {
+  if (todo.tags.includes(SPLIT_SCAFFOLD_TAG) && todo.status === "ready") return { action: "cancel", todoId: todo.id, reason: "stale split scaffold" };
+  if (todo.status === "claimed" || todo.status === "in_progress") {
+    return todo.evidence.length > 0
+      ? { action: "finish", todoId: todo.id, summary: "describe completed work" }
+      : { action: "attach_evidence", todoId: todo.id, evidence: [{ type: "manual_note", note: "describe completed or verified work" }] };
+  }
+  if (todo.status === "external_blocked") return { action: "unblock", todoId: todo.id };
+  if (todo.status === "completed") return { action: "verify", todoId: todo.id };
+  return { action: "start", todoId: todo.id };
+}
+
+export function todoReminderMessage(state: TodoState): { key: string; content: string } | undefined {
   const active = activeTodo(state);
   const splitItems = unresolvedSplitDocketItems(state);
   if (!active && splitItems.length === 0) return undefined;
   const items = active ? [active, ...splitItems.filter((todo) => todo.id !== active.id)] : splitItems;
+  const target = items[0]!;
   const key = items.map((todo) => `${todo.id}:${todo.status}:${todo.revision}`).sort().join("|");
   const lines = [
-    "pi-todo note: todo ledger entries are still open before the final response.",
-    "Wrap up completed work, abandon stale split scaffolds, or briefly explain why a task is intentionally still open.",
-    "open entries:",
-    ...items.slice(0, 6).map((todo) => `- ${todo.id} [${todo.status}] ${todo.title}`),
+    `pi-todo: ${target.id} [${target.status}] ${target.title}`,
+    `next_call: todo(${JSON.stringify(reminderRepair(target))})`,
   ];
-  if (items.length > 6) lines.push(`- ... ${items.length - 6} more`);
+  if (items.length > 1) lines.push(`additional open entries: ${items.length - 1}; inspect with todo({"action":"list"})`);
   return { key, content: lines.join("\n") };
+}
+
+function conciseTitle(todo: Todo): string {
+  return todo.title.length > 48 ? `${todo.title.slice(0, 47)}…` : todo.title;
+}
+
+export function todoStatusText(state: TodoState): string | undefined {
+  const active = activeTodo(state);
+  if (active) return `todo active ${active.id}: ${conciseTitle(active)} · finish/block`;
+  const todos = Object.values(state.todos).sort((a, b) => a.id.localeCompare(b.id));
+  const ready = todos.find((todo) => todo.status === "ready");
+  if (ready) return `todo next ${ready.id}: ${conciseTitle(ready)} · start`;
+  const blocked = todos.find((todo) => todo.status === "external_blocked");
+  if (blocked) return `todo blocked ${blocked.id}: ${conciseTitle(blocked)} · unblock/cancel`;
+  const completed = todos.find((todo) => todo.status === "completed");
+  if (completed) return `todo completed ${completed.id}: ${conciseTitle(completed)} · verify`;
+  return undefined;
 }
 
 export async function todoState(pi: ExtensionAPI, ctx: ExtensionContext) {
@@ -233,25 +264,15 @@ export async function reconcileTodoDocket(pi: ExtensionAPI, ctx: ExtensionContex
   await updateTodoWidget(pi, ctx);
 }
 
-async function requestDocketCleanupTurn(
-  pi: ExtensionAPI,
-  ctx: ExtensionContext,
-  deliverAs: "steer" | "followUp",
-): Promise<void> {
-  const svc = service(pi, ctx);
-  await svc.reconcileSplitScaffolds();
+async function showDocketReminder(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
   await updateTodoWidget(pi, ctx);
-  const state = await svc.state();
-  const reminder = docketCleanupMessage(state);
-  if (!reminder) return;
-  const key = `${sessionOwner(ctx) ?? "session"}:${deliverAs}:${reminder.key}`;
-  if (promptedDocketCleanupKeys.has(key)) return;
-  promptedDocketCleanupKeys.add(key);
-  ctx.ui.notify("pi-todo has open entries to wrap up before the final response", "info");
-  pi.sendMessage(
-    { customType: "gentic.todo.clean-docket", content: reminder.content, display: false },
-    { triggerTurn: true, deliverAs },
-  );
+  const state = await service(pi, ctx).state();
+  const reminder = todoReminderMessage(state);
+  if (!reminder || !ctx.hasUI || (ctx.mode !== "tui" && ctx.mode !== "rpc")) return;
+  const key = `${sessionOwner(ctx) ?? "session"}:${reminder.key}`;
+  if (shownDocketReminderKeys.has(key)) return;
+  shownDocketReminderKeys.add(key);
+  ctx.ui.notify(reminder.content, "info");
 }
 
 function messageRole(event: unknown): string | undefined {
@@ -260,16 +281,26 @@ function messageRole(event: unknown): string | undefined {
 }
 
 export async function checkTodoDocketBeforeFinalMessage(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
-  await reconcileTodoDocket(pi, ctx);
+  await showDocketReminder(pi, ctx);
 }
 
 export async function checkTodoDocketAtMessageStart(pi: ExtensionAPI, ctx: ExtensionContext, event: unknown): Promise<void> {
   if (messageRole(event) !== "assistant") return;
-  await requestDocketCleanupTurn(pi, ctx, "steer");
+  await showDocketReminder(pi, ctx);
 }
 
 export async function checkTodoDocketAtAgentEnd(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
-  await reconcileTodoDocket(pi, ctx);
+  await showDocketReminder(pi, ctx);
+}
+
+export function clearTodoInteractionState(ctx: ExtensionContext, preserveReminderKeys = false): void {
+  if (!preserveReminderKeys) {
+    const ownerPrefix = `${sessionOwner(ctx) ?? "session"}:`;
+    for (const key of shownDocketReminderKeys) if (key.startsWith(ownerPrefix)) shownDocketReminderKeys.delete(key);
+  }
+  if (!ctx.hasUI || (ctx.mode !== "tui" && ctx.mode !== "rpc")) return;
+  ctx.ui.setStatus(STATUS_KEY, undefined);
+  ctx.ui.setWidget(STATUS_KEY, undefined);
 }
 
 export async function updateTodoWidget(
@@ -279,17 +310,19 @@ export async function updateTodoWidget(
   const state = await service(pi, ctx).state();
   const config = loadEffectiveTodoConfig({ cwd: ctx.cwd }).config;
   const counts = summarizeTodos(state);
+  if (!ctx.hasUI || (ctx.mode !== "tui" && ctx.mode !== "rpc")) return;
   syncTodoSessionName(pi, ctx, state);
   if (counts.total === 0) {
     ctx.ui.setStatus(STATUS_KEY, undefined);
     ctx.ui.setWidget(STATUS_KEY, undefined);
     return;
   }
-  ctx.ui.setStatus(
-    STATUS_KEY,
-    `todo open ${counts.open} · active ${counts.active} · blocked external ${counts.blockedExternal} · history ${counts.completedHistory}`,
-  );
-  ctx.ui.setWidget(STATUS_KEY, createTodoDocketComponent(state, { showCompletedFocus: config.docket.showCompletedFocus }));
+  ctx.ui.setStatus(STATUS_KEY, todoStatusText(state) ?? `todo history ${counts.completedHistory}`);
+  if (ctx.mode === "rpc") {
+    ctx.ui.setWidget(STATUS_KEY, renderTodoWidgetLines(state, plainTodoTheme, 92, { showCompletedFocus: config.docket.showCompletedFocus }));
+  } else {
+    ctx.ui.setWidget(STATUS_KEY, createTodoDocketComponent(state, { showCompletedFocus: config.docket.showCompletedFocus }));
+  }
 }
 
 export async function executeTodoAction(pi: ExtensionAPI, ctx: ExtensionContext, params: Record<string, unknown>) {

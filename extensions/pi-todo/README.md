@@ -22,12 +22,25 @@ Runtime persistence uses `gentic.todo.event` envelopes with `version: 1`. Legacy
 
 | Pi lifecycle event | pi-todo behavior |
 |---|---|
-| `session_start` | Reconstruct active-branch state and render the docket. |
+| `session_start` | Reconstruct active-branch state and render the mode-appropriate docket. Reload preserves the last reminder key for deduplication. |
 | `session_tree` | Reconstruct/render from the new active branch. |
 | `session_info_changed` | Reconcile session title and docket. |
-| `turn_end` | Check final-message todo guidance. |
-| `agent_settled` | Run settled-state docket checks after retries/follow-ups. |
-| `session_shutdown` | Clear session-name closure state. |
+| `turn_end` | Show at most one display-only actionable final reminder for the current todo revision. |
+| `agent_settled` | Refresh the display and deduplicate the same reminder after retries/follow-ups. |
+| `session_shutdown` | Dispose the TUI modal, clear status/widget/session-name state, and clear reminder memory except across reload replay. |
+
+## Interaction and reminder policy
+
+Todo enforcement is unchanged: mutating or otherwise configured tools still require active work. Display hooks only reconstruct state; they never reconcile, transition, create, or close ledger entries.
+
+| Pi mode | Persistent display | Final reminder | `/todo open` |
+|---|---|---|---|
+| `tui` | Status text plus component-factory docket widget. | One concise notification per session + todo revision. | Fresh custom modal; disposed on close/replacement/shutdown. |
+| `rpc` | Status text plus string-array docket widget. | One supported fire-and-forget notification; no component factory. | Refreshes the RPC status/widget; no custom modal. |
+| `json` | No custom UI calls. | None. | No custom UI. |
+| `print` | No custom UI calls. | None. | No custom UI. |
+
+Status text names the exact active, next, blocked, or completed todo and the action (`finish/block`, `start`, `unblock/cancel`, or `verify`). A final reminder names one exact todo and emits a copyable `next_call: todo({...})`; additional entries are summarized with a deterministic `todo({"action":"list"})` repair. Rendering and reminder replay never call `sendMessage`, set `triggerTurn`, or enqueue autonomous follow-up work. Repeated `turn_end`, assistant `message_start`, and `agent_settled` events share one reminder key, and reload replay retains that key to avoid duplicate notification/turn behavior.
 
 ## Intake organization and splitting
 

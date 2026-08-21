@@ -16,11 +16,11 @@ export function renderToolBadges(s: HudSnapshot, theme: Theme): string {
 export function renderToolSummary(s: HudSnapshot, theme: Theme): string {
   const completed = state.successCalls + state.errorCalls;
   const parts: string[] = [];
+  if (s.activeTools.length > 0) parts.push(`${theme.fg("accent", "pending")} ${theme.fg("accent", `${s.activeTools.length}`)}`);
   if (completed > 0) {
     parts.push(`${theme.fg("error", "err")} ${theme.fg(state.errorCalls > 0 ? "error" : "dim", `${state.errorCalls}`)}`);
     parts.push(`${theme.fg(MUTED_WARNING_COLOR, "warn")} ${theme.fg(state.warningCalls > 0 ? MUTED_WARNING_COLOR : "dim", `${state.warningCalls}`)}`);
     parts.push(`${theme.fg("dim", "ok/fail")} ${theme.fg(state.successCalls > 0 ? "success" : "dim", `${state.successCalls}`)}${theme.fg("dim", ":")}${theme.fg(state.errorCalls > 0 ? "error" : "dim", `${state.errorCalls}`)}`);
   }
-  if (s.activeTools.length > 0) parts.push(`${theme.fg("accent", "pending")} ${theme.fg("accent", `${s.activeTools.length}`)}`);
   return parts.join(` ${theme.fg("dim", "·")} `);
 }

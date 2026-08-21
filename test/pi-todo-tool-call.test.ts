@@ -47,6 +47,7 @@ function setupPiTodo(cwd: string) {
     cwd,
     sessionId: "pi-todo-tool-call-test",
     hasUI: true,
+    mode: "tui",
     sessionManager: { getBranch: () => entries },
     ui: {
       setStatus: (key: string, value: unknown) => uiCalls.push({ method: "setStatus", key, value }),

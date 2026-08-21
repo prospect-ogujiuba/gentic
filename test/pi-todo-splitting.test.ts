@@ -29,6 +29,7 @@ function actionHarness() {
     sessionId: "test-session",
     cwd: "/tmp/gentic",
     hasUI: true,
+    mode: "tui",
     sessionManager: { getBranch: () => entries },
     ui: { setStatus() {}, setWidget() {}, setTitle() {}, notify(message: string, type?: string) { notifications.push({ message, type }); } },
   };
@@ -510,7 +511,7 @@ test("split accepts distinct children and terminal children stay out of the open
   assert.equal(openTitles.includes(unrelated.title), true);
 });
 
-test("turn-end docket check stays passive during active agent work", async () => {
+test("turn-end docket check shows one display-only actionable reminder", async () => {
   const { pi, ctx, messages, notifications } = actionHarness();
   const created = await executeTodoAction(pi as never, ctx as never, {
     action: "create",
@@ -529,10 +530,11 @@ test("turn-end docket check stays passive during active agent work", async () =>
   await checkTodoDocketBeforeFinalMessage(pi as never, ctx as never);
 
   assert.equal(messages.length, 0);
-  assert.equal(notifications.length, 0);
+  assert.equal(notifications.length, 1);
+  assert.match(notifications[0].message, /next_call: todo\(/);
 });
 
-test("message-start docket check requests cleanup before assistant text", async () => {
+test("message-start docket check displays cleanup without requesting another turn", async () => {
   const { pi, ctx, messages, notifications } = actionHarness();
   const created = await executeTodoAction(pi as never, ctx as never, {
     action: "create",
@@ -550,12 +552,9 @@ test("message-start docket check requests cleanup before assistant text", async 
 
   await checkTodoDocketAtMessageStart(pi as never, ctx as never, { message: { role: "assistant" } });
 
-  assert.equal(messages.length, 1);
-  assert.equal(messages[0].message.customType, "gentic.todo.clean-docket");
-  assert.equal(messages[0].options?.triggerTurn, true);
-  assert.equal(messages[0].options?.deliverAs, "steer");
-  assert.match(messages[0].message.content, /todo ledger entries are still open/);
-  assert.match(messages[0].message.content, /pi-todo:split-scaffold|open entries/);
+  assert.equal(messages.length, 0);
+  assert.equal(notifications.length, 1);
+  assert.match(notifications[0].message, /next_call: todo\(/);
   assert.equal(notifications[0].type, "info");
 });
 
@@ -581,7 +580,7 @@ test("message-start docket check ignores non-assistant messages", async () => {
   assert.equal(notifications.length, 0);
 });
 
-test("agent-end docket check stays passive after assistant response", async () => {
+test("agent-end docket check displays without enqueueing a follow-up turn", async () => {
   const { pi, ctx, messages, notifications } = actionHarness();
   const created = await executeTodoAction(pi as never, ctx as never, {
     action: "create",
@@ -600,11 +599,11 @@ test("agent-end docket check stays passive after assistant response", async () =
   await checkTodoDocketAtAgentEnd(pi as never, ctx as never);
 
   assert.equal(messages.length, 0);
-  assert.equal(notifications.length, 0);
+  assert.equal(notifications.length, 1);
 });
 
-test("agent-end docket check passively reconciles legacy untagged split descendants", async () => {
-  const { pi, ctx, messages, notifications } = actionHarness();
+test("agent-end docket check leaves legacy untagged split descendants unchanged", async () => {
+  const { pi, ctx, messages, notifications, entries } = actionHarness();
   const created = await executeTodoAction(pi as never, ctx as never, {
     action: "create",
     title: "Implement legacy split path",
@@ -617,9 +616,11 @@ test("agent-end docket check passively reconciles legacy untagged split descenda
     children: [{ title: "Resolve untagged legacy child" }],
     reason: "legacy split before scaffold tags were preserved",
   });
+  const eventCount = entries.length;
 
   await checkTodoDocketAtAgentEnd(pi as never, ctx as never);
 
   assert.equal(messages.length, 0);
-  assert.equal(notifications.length, 0);
+  assert.equal(notifications.length, 1);
+  assert.equal(entries.length, eventCount);
 });

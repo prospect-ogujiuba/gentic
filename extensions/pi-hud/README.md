@@ -43,22 +43,41 @@ Configuration resolution is strict: absent configuration uses `widget-first`; in
 
 | Surface | Owner / conflict policy | Cleanup path |
 |---|---|---|
-| Native footer | Pi owns it in `off`, `widget-first`, and modal use. `footer` explicitly transfers ownership to pi-hud. | pi-hud calls `setFooter(undefined)` before changing TUI mode and on shutdown. |
+| Native footer | Pi owns it in `off`, `widget-first`, and modal use. `footer` explicitly transfers rendering to pi-hud while consuming Pi's `footerData` branch and extension statuses. | pi-hud calls `setFooter(undefined)` before changing TUI mode and on shutdown; the footer component unsubscribes `onBranchChange()` in idempotent disposal. |
 | HUD widget | pi-hud owns only widget id `pi-hud`; it does not overwrite other widget ids. | pi-hud calls `setWidget("pi-hud", undefined)` before refresh/mode changes and on TUI/RPC shutdown. |
-| Status entries | Pi and other extensions retain ownership; pi-hud does not set or clear status keys. | No pi-hud cleanup is required. |
+| Status entries | Pi and other extensions retain their status keys. The native footer displays them in default mode; footer replacement renders equivalent `getExtensionStatuses()` values without mutating keys. pi-hud reserves only key `pi-hud`. | Session cleanup clears only `setStatus("pi-hud", undefined)`; other extension keys are untouched. |
 | Working message/indicator | Pi retains ownership; pi-hud never changes working visibility, message, or indicator. | No pi-hud cleanup is required. |
-| Modal | pi-hud owns the component only while `/pi-hud open` is active in TUI mode. | `custom()` completion disposes the component and clears `state.modal` in `finally`. |
+| Modal | The runtime owner holds exactly one component only while `/pi-hud open` is active in TUI mode. | Close, replacement, `custom()` completion, session shutdown, and partial failure all call idempotent disposal and discard the reference. |
 
 ## Runtime mode matrix
 
 | `ctx.mode` | `off` | `widget-first` | `footer` | On-demand modal |
 |---|---|---|---|---|
-| `tui` | Clear pi-hud footer/widget ownership. | Component factory in widget `pi-hud`; native footer remains. | Component factory replaces footer; widget is cleared. | Supported through `custom()`. |
+| `tui` | Clear pi-hud footer/widget ownership. | Component factory in widget `pi-hud`; native footer and extension statuses remain. | Component factory replaces the footer, reads `getGitBranch()`/`getExtensionStatuses()`, subscribes once with `onBranchChange()`, and clears the widget. | Supported through `custom()` with a fresh component per opening. |
 | `rpc` | Clear widget `pi-hud`. | Fire-and-forget `setWidget` with rendered string lines. | Same safe widget projection; `setFooter` is unsupported and is never called. | Unsupported; `custom()` is never called. |
 | `json` | No custom UI calls. | No custom UI calls. | No custom UI calls. | Unsupported. |
 | `print` | No custom UI calls. | No custom UI calls. | No custom UI calls. | Unsupported. |
 
 Component factories and `custom()` are gated by `ctx.mode === "tui"`. RPC receives only the supported string-array widget request; JSON and print modes invoke no pi-hud UI methods.
+
+## Responsive rendering
+
+Every returned line is finally truncated with Pi's ANSI-aware width helpers, so its visible width never exceeds the supplied width. Ordering is deterministic:
+
+- **Narrow (`<48`)**: omit the decorative recent-events line; retain model, Git/worktree, active-tool count, errors, and warnings. Tool badges and completion detail yield before active/error state.
+- **Medium (`48–79`)**: restore recent events, compact context/Git detail, and keep only the highest-priority tool badges or native statuses that fit.
+- **Wide (`>=80`)**: render full component candidates, all fitting native statuses, and left/right alignment.
+- **Footer native line**: below 24 columns, preserve the first non-empty extension status (or branch when no status exists); from 24 columns upward, preserve a bounded branch segment plus status summary, omitting later statuses as `+N` before truncating high-priority content.
+
+Render calls are pure with respect to processes, timers, and subscriptions. Surface factories own the optional one-second render timer; footer construction owns exactly one branch subscription, and disposal clears both. Modal construction remains on-demand, TUI-only, and fresh per opening.
+
+## Lifecycle and disposal
+
+`src/pi/runtime.ts` is the single session runtime owner. `session_start` first tears down any still-active generation, resets all HUD state/configuration, and starts a new snapshot generation. `session_shutdown` is idempotent: it marks the generation inactive before clearing the modal, footer, widget, reserved status key, surface timers/subscriptions through Pi component disposal, work timer/state, debounce work, abort controller, and cached snapshot state.
+
+Pi exposes reload and replacement through lifecycle reasons rather than a separate extension-reload hook: `session_shutdown` reports `reload | new | resume | fork`, then the rebound extension receives `session_start` with `reload | new | resume | fork`; clone is represented as `fork`. The runtime also refreshes through Phase 5.2 coalescing on `agent_settled` and `session_info_changed`. A captured runtime generation plus snapshot generation prevents late completions from applying after shutdown or replacement.
+
+Extension factories start no resources. Surface timers/subscriptions begin only when Pi instantiates a component; modal timers begin only on an actual TUI opening. Cleanup before initialization is a no-op, cleanup operations are individually guarded after partial setup, and repeated cleanup does not repeat UI or disposal side effects.
 
 ## Git snapshot service
 
@@ -72,7 +91,8 @@ Collection uses sequential asynchronous Git commands under one 800 ms total dead
 
 - `index.ts` is the thin Pi extension public entrypoint.
 - `src/pi/register.ts` owns extension registration orchestration.
-- `src/pi/adapter.ts` owns `/pi-hud` command parsing, harness event mapping, and HUD refresh side effects so the entrypoint does not become a parsing/mapping dumping ground.
+- `src/pi/adapter.ts` owns `/pi-hud` command parsing and harness event mapping so the entrypoint does not become a parsing/mapping dumping ground.
+- `src/pi/runtime.ts` centrally owns session generations, surface application/cleanup, modal identity, and snapshot refresh publication.
 - `src/app/state.ts` owns HUD app state, config guards, usage aggregation, and work timer selectors.
 - `src/app/snapshot.ts` owns synchronous cache-only snapshot assembly from Pi context, HUD state, live usage, and cached Git state.
 - `src/app/git-snapshot-service.ts` owns generation ordering, single-flight refresh, debounce, freshness, cancellation, and last-good state.
@@ -89,4 +109,4 @@ The current `layered-lite` state is behavior-preserving rather than fully pure l
 ## Verification
 
 - `npm run check` validates Pi extension API usage and extension anatomy/resource placement.
-- `node --experimental-strip-types --test test/pi-hud-snapshot-service.test.ts test/pi-hud-mode-contract.test.ts test/pi-hud-usage.test.ts test/pi-context-hud-adapter.test.ts` covers async Git bounds, generation/cancellation, coalescing/debounce, display routing, representative pi-hud usage accounting, footer output, and pi-context HUD adapter behavior.
+- `node --experimental-strip-types --test test/pi-hud-lifecycle.test.ts test/pi-hud-responsive-rendering.test.ts test/pi-hud-snapshot-service.test.ts test/pi-hud-mode-contract.test.ts test/pi-hud-usage.test.ts test/pi-context-hud-adapter.test.ts` covers repeated reload/new/resume/fork/clone lifecycle, idempotent and partial-failure cleanup, late generation rejection, modal reopen/disposal, responsive rendering, async Git bounds, display routing, usage accounting, and pi-context HUD behavior.

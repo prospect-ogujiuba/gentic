@@ -35,12 +35,13 @@ export function fitLeftRight(width: number, left: string, right: string): string
 }
 
 export function fitResponsive(width: number, leftCandidates: string[], rightCandidates: string[]): string {
+  const boundedWidth = Math.max(0, width);
   for (const left of leftCandidates) {
     for (const right of rightCandidates) {
-      if (!left) return right;
-      if (!right) return left;
-      if (visibleWidth(left) + 1 + visibleWidth(right) <= width) return cleanTruncate(fitLeftRight(width, left, right), width);
+      if (!left && visibleWidth(right) <= boundedWidth) return cleanTruncate(right, boundedWidth);
+      if (!right && visibleWidth(left) <= boundedWidth) return cleanTruncate(left, boundedWidth);
+      if (visibleWidth(left) + 1 + visibleWidth(right) <= boundedWidth) return cleanTruncate(fitLeftRight(boundedWidth, left, right), boundedWidth);
     }
   }
-  return cleanTruncate([leftCandidates.at(-1), rightCandidates.at(-1)].filter(Boolean).join(" "), width);
+  return cleanTruncate([leftCandidates.at(-1), rightCandidates.at(-1)].filter(Boolean).join(" "), boundedWidth);
 }

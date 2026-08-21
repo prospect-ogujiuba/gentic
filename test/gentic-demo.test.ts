@@ -45,6 +45,7 @@ function createContext(entries: Array<Record<string, unknown>>) {
     cwd: root,
     sessionId: "demo-session",
     hasUI: true,
+    mode: "tui" as const,
     signal: undefined,
     sessionManager: {
       getEntries: () => entries,

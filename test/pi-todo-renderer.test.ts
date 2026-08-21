@@ -218,7 +218,7 @@ test("todo docket emits legacy ANSI colors", () => {
   ] satisfies TodoEvent[]);
 
   const output = renderTodoDocketLines(state, ansiTodoTheme, { width: 100 }).join("\n");
-  assert.match(output, /\x1b\[48;5;108m\x1b\[30m Active task /);
+  assert.match(output, /\x1b\[48;5;108m\x1b\[30m todo_1 Active task · finish\/block /);
   assert.match(output, /\x1b\[38;2;189;180;124m▶\x1b\[0m/);
   assert.match(output, /\x1b\[38;2;111;125;115m■\x1b\[0m/);
   assert.match(output, /\x1b\[48;2;32;45;37m\x1b\[38;2;201;133;120m History 2 /);

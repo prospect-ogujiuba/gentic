@@ -5,7 +5,7 @@ import {
   executeTodoAction,
   executeTodoCommand,
   getTodoCommandCompletions,
-  reconcileTodoDocket,
+  clearTodoInteractionState,
   checkTodoDocketAtAgentEnd,
   checkTodoDocketAtMessageStart,
   checkTodoDocketBeforeFinalMessage,
@@ -15,17 +15,25 @@ import {
 import { loadEffectiveTodoConfig } from "./src/config.ts";
 import { decideToolPolicy } from "./src/domain/policy.ts";
 import { resetTodoSessionNameMemory } from "./src/pi/session-name.ts";
+import { disposeTodoModal } from "./src/ui/modal.ts";
 import { todoToolParameters } from "./src/pi/schema.ts";
 
 export default function piTodo(pi: ExtensionAPI): void {
   let todoExecutionQueue: Promise<void> = Promise.resolve();
   pi.on("session_start", async (event, ctx) => {
-    if (event.reason !== "reload") resetTodoSessionNameMemory();
+    if (event.reason !== "reload") {
+      resetTodoSessionNameMemory();
+      clearTodoInteractionState(ctx);
+    }
     await updateTodoWidget(pi, ctx);
   });
   pi.on("session_tree", async (_event, ctx) => updateTodoWidget(pi, ctx));
   pi.on("session_info_changed", async (_event, ctx) => updateTodoWidget(pi, ctx));
-  pi.on("session_shutdown", () => resetTodoSessionNameMemory());
+  pi.on("session_shutdown", (event, ctx) => {
+    disposeTodoModal();
+    clearTodoInteractionState(ctx, event.reason === "reload");
+    if (event.reason !== "reload") resetTodoSessionNameMemory();
+  });
   pi.on("message_start", async (event, ctx) => checkTodoDocketAtMessageStart(pi, ctx, event));
   pi.on("turn_end", async (_event, ctx) => checkTodoDocketBeforeFinalMessage(pi, ctx));
   pi.on("agent_settled", async (_event, ctx) => checkTodoDocketAtAgentEnd(pi, ctx));

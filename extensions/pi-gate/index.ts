@@ -4,7 +4,7 @@ export { DEFAULT_AUDIT_PATH, LEGACY_AUDIT_PATH, defaultConfig, getConfig, getCon
 export { BUILTIN_PERMISSIONS, decideWithConfig, hasShellControlSyntax, mergePermissions, normalizeCommand, patternRegex, rulesFromPermissions, type Action, type Decision, type PermissionChoice, type Permissions, type Remember, type Request, type Rule, type Source } from "./src/domain/policy.ts";
 export { appendAudit } from "./src/app/audit.ts";
 export { clearSessionDecisions, getSessionDecision, persistGlobalRule, persistProjectRule, persistRule, projectConfigPath, rememberSessionDecision } from "./src/app/remember.ts";
-export { promptPermission } from "./src/ui/prompt.ts";
+export { cancelPendingGatePrompts, promptPermission, promptPermissionOutcome, type GatePromptOptions, type GatePromptOutcome, type GatePromptOutcomeKind } from "./src/ui/prompt.ts";
 export { decide, gate, registerPiGate } from "./src/pi/register.ts";
 
 import { registerPiGate } from "./src/pi/register.ts";

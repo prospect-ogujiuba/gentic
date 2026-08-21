@@ -9,9 +9,16 @@ function getWorktreeLabel(worktreeId: string): string {
 
 export function renderGitStatus(s: HudSnapshot, theme: Theme): string {
   const cwd = getWorktreeLabel(s.worktreeId);
-  if (!s.git) return [theme.fg("text", cwd), theme.fg("dim", "no git repo")].join(` ${theme.fg("dim", "·")} `);
+  if (!s.git) {
+    const gitLabel = s.gitState?.status === "loading" ? "git loading"
+      : s.gitState?.status === "error" ? "git error"
+      : "no git repo";
+    return [theme.fg("text", cwd), theme.fg(s.gitState?.status === "error" ? MUTED_WARNING_COLOR : "dim", gitLabel)].join(` ${theme.fg("dim", "·")} `);
+  }
 
   const parts = [theme.fg("text", cwd), `${theme.fg("text", s.git.branch)}${s.git.dirty ? theme.fg("error", "(*)") : ""}`];
+  if (s.gitState?.status === "stale") parts.push(theme.fg(MUTED_WARNING_COLOR, "stale"));
+  else if (s.gitState?.status === "loading") parts.push(theme.fg("dim", "refreshing"));
   if (!s.git.upstream) {
     parts.push(theme.fg("dim", "no upstream"));
   } else {

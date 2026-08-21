@@ -8,7 +8,12 @@ import { renderToolBadges, renderToolSummary } from "../components/tools.ts";
 import { fitLeftRight } from "../lib/format.ts";
 import { createSnapshot, withLiveUsage } from "../../app/snapshot.ts";
 import { state } from "../../app/state.ts";
-import type { HudSnapshot, Theme } from "../../../types.ts";
+import type { HudModalHandle, HudSnapshot, Theme } from "../../../types.ts";
+
+export interface HudModalOwner {
+  attachModal(handle: HudModalHandle): void;
+  detachModal(handle: HudModalHandle): void;
+}
 
 function sectionTitle(theme: Theme, title: string, width: number): string[] {
   const label = ` ${title} `;
@@ -56,10 +61,11 @@ function modalBody(s: HudSnapshot, theme: Theme, width: number): string[] {
   return lines;
 }
 
-class PiHudModalComponent {
+class PiHudModalComponent implements HudModalHandle {
   private cachedWidth?: number;
   private cachedLines?: string[];
   private scrollOffset = 0;
+  private disposed = false;
 
   private readonly timer: ReturnType<typeof setInterval>;
   private theme: Theme;
@@ -93,6 +99,7 @@ class PiHudModalComponent {
   }
 
   update(snapshot: HudSnapshot): void {
+    if (this.disposed) return;
     this.snapshot = snapshot;
     this.invalidate();
     this.requestRender();
@@ -121,6 +128,12 @@ class PiHudModalComponent {
   }
 
   close(): void {
+    this.dispose();
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     clearInterval(this.timer);
     this.closeModal();
   }
@@ -131,20 +144,21 @@ class PiHudModalComponent {
   }
 }
 
-export async function openModal(ctx: ExtensionCommandContext): Promise<void> {
+export async function openModal(ctx: ExtensionCommandContext, owner: HudModalOwner): Promise<void> {
   if (ctx.mode !== "tui") return;
   let component: PiHudModalComponent | undefined;
   try {
     await ctx.ui.custom<void>((tui, theme, _kb, done) => {
       const snapshot = createSnapshot(ctx);
       component = new PiHudModalComponent(theme, withLiveUsage(snapshot, ctx), () => tui.requestRender(), () => done(), () => tui.terminal.rows, (current) => withLiveUsage(current, ctx));
-      state.modal = component;
+      owner.attachModal(component);
       return component;
     }, {
       overlay: true,
       overlayOptions: { anchor: "center", width: "82%", minWidth: 54, maxHeight: "86%", margin: 1, visible: (termWidth) => termWidth >= 54 },
     });
   } finally {
-    if (state.modal === component) state.modal = undefined;
+    component?.dispose();
+    if (component) owner.detachModal(component);
   }
 }

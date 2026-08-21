@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { DEFAULT_AUDIT_PATH, decide, getConfig, getConfigDiagnostics, loadConfig, patternRegex, persistRule, promptPermission } from "../extensions/pi-gate/index.ts";
+import { cancelPendingGatePrompts, DEFAULT_AUDIT_PATH, decide, getConfig, getConfigDiagnostics, loadConfig, patternRegex, persistRule, promptPermission, promptPermissionOutcome } from "../extensions/pi-gate/index.ts";
 
 function writeGateConfig(cwd: string, config: Record<string, unknown>): string {
   const path = join(cwd, ".pi/pi-gate/pi-gate.json");
@@ -175,10 +175,59 @@ test("pi-gate rewrites remembered rules with canonical audit path", () => {
 });
 
 test("pi-gate no-UI prompt falls back safely", async () => {
-  const ctx = { hasUI: false } as any;
   const req = { source: "agent", command: "sudo true", cwd: process.cwd() } as const;
+  for (const mode of ["json", "print"] as const) {
+    let uiCalls = 0;
+    const ctx = { mode, hasUI: false, ui: { select() { uiCalls += 1; } } } as any;
+    assert.deepEqual(await promptPermissionOutcome(ctx, req, { action: "ask", ruleId: "x", reason: "test" }), { action: "deny", outcome: "unavailable", remember: false, error: undefined });
+    assert.equal(await promptPermission(ctx, req, { action: "ask", ruleId: "x", reason: "test" }), "deny");
+    assert.equal(uiCalls, 0);
+  }
+});
 
-  assert.equal(await promptPermission(ctx, req, { action: "ask", ruleId: "x", reason: "test" }), "deny");
+test("pi-gate TUI and RPC prompt matrix resolves allow, deny, cancel, timeout, and error safely", async () => {
+  const req = { source: "agent", command: "sudo true", cwd: process.cwd() } as const;
+  const decision = { action: "ask", ruleId: "x", reason: "test" } as const;
+  for (const mode of ["tui", "rpc"] as const) {
+    for (const scenario of ["allow", "deny", "cancel", "timeout", "error"] as const) {
+      let customCalls = 0;
+      const ctx = {
+        mode,
+        hasUI: true,
+        ui: {
+          custom() { customCalls += 1; },
+          async select(_title: string, labels: string[], options: { signal?: AbortSignal }) {
+            if (scenario === "allow") return labels[0];
+            if (scenario === "deny") return labels.at(-1);
+            if (scenario === "cancel") return undefined;
+            if (scenario === "error") throw new Error("dialog failed");
+            return new Promise<string | undefined>((resolve) => options.signal?.addEventListener("abort", () => resolve(undefined), { once: true }));
+          },
+        },
+      } as any;
+      const result = await promptPermissionOutcome(ctx, req, decision, { timeoutMs: 5 });
+      assert.equal(result.action, scenario === "allow" ? "allow" : "deny", `${mode}:${scenario}`);
+      assert.equal(result.outcome, scenario, `${mode}:${scenario}`);
+      assert.equal(customCalls, 0);
+    }
+  }
+});
+
+test("pi-gate lifecycle cancellation closes a pending prompt with deny", async () => {
+  const ctx = {
+    mode: "tui",
+    hasUI: true,
+    ui: {
+      select(_title: string, _labels: string[], options: { signal?: AbortSignal }) {
+        return new Promise<undefined>((resolve) => options.signal?.addEventListener("abort", () => resolve(undefined), { once: true }));
+      },
+    },
+  } as any;
+  const pending = promptPermissionOutcome(ctx, { source: "agent", command: "sudo true", cwd: process.cwd() }, { action: "ask", ruleId: "x", reason: "test" }, { timeoutMs: 10_000 });
+  cancelPendingGatePrompts();
+  const result = await pending;
+  assert.equal(result.action, "deny");
+  assert.equal(result.outcome, "cancel");
 });
 
 test("pi-gate broad allows cannot authorize compound shell syntax", () => {

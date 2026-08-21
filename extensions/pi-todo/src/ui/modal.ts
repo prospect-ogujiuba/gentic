@@ -12,6 +12,7 @@ import { renderTodoDocketLines } from "./docket.ts";
 import type { TodoTheme } from "./theme.ts";
 
 const TODO_MODAL_MAX_HEIGHT_RATIO = 0.85;
+let activeTodoModal: TodoModalComponent | undefined;
 
 function framed(
   theme: TodoTheme,
@@ -56,6 +57,7 @@ class TodoModalComponent {
   private showAll = true;
   private selectedIndex = 0;
   private expandedTodoIds = new Set<string>();
+  private closed = false;
 
   constructor(
     theme: TodoTheme,
@@ -76,16 +78,18 @@ class TodoModalComponent {
   }
 
   async refresh(): Promise<void> {
-    if (this.refreshInFlight) return;
+    if (this.closed || this.refreshInFlight) return;
     this.refreshInFlight = true;
     try {
-      this.update(await this.refreshState());
+      const state = await this.refreshState();
+      if (!this.closed) this.update(state);
     } finally {
       this.refreshInFlight = false;
     }
   }
 
   update(state: TodoState): void {
+    if (this.closed) return;
     if (
       state.lastEventId === this.state.lastEventId &&
       Object.keys(state.todos).length === Object.keys(this.state.todos).length
@@ -185,7 +189,7 @@ class TodoModalComponent {
       matchesKey(data, Key.ctrl("c")) ||
       data === "q"
     )
-      return this.closeModal();
+      return this.close();
     if (data === "a") {
       this.showAll = !this.showAll;
       this.scrollOffset = 0;
@@ -222,7 +226,14 @@ class TodoModalComponent {
     this.cachedLines = undefined;
   }
 
+  close(): void {
+    if (this.closed) return;
+    this.dispose();
+    this.closeModal();
+  }
+
   dispose(): void {
+    this.closed = true;
     if (this.pollTimer) clearInterval(this.pollTimer);
     this.pollTimer = undefined;
   }
@@ -248,32 +259,49 @@ export function createLiveTodoModalComponent(options: {
   );
 }
 
+export function disposeTodoModal(): void {
+  const modal = activeTodoModal;
+  activeTodoModal = undefined;
+  modal?.close();
+}
+
 export async function openTodoModal(
   pi: ExtensionAPI,
   ctx: ExtensionCommandContext,
 ): Promise<void> {
+  if (!ctx.hasUI || ctx.mode !== "tui") return;
+  disposeTodoModal();
   const svc = new TodoService(new PiTodoEventStore(pi, ctx));
   const state = await svc.state();
-  await ctx.ui.custom<void>(
-    (tui, theme, _kb, done) =>
-      createLiveTodoModalComponent({
-        theme,
-        state,
-        requestRender: () => tui.requestRender(),
-        closeModal: () => done(),
-        getRows: () => tui.terminal.rows,
-        refreshState: () => svc.state(),
-      }),
-    {
-      overlay: true,
-      overlayOptions: {
-        anchor: "center",
-        width: "90%",
-        minWidth: 54,
-        maxHeight: `${Math.round(TODO_MODAL_MAX_HEIGHT_RATIO * 100)}%`,
-        margin: 1,
-        visible: (termWidth) => termWidth >= 54,
+  let component: TodoModalComponent | undefined;
+  try {
+    await ctx.ui.custom<void>(
+      (tui, theme, _kb, done) => {
+        component = createLiveTodoModalComponent({
+          theme,
+          state,
+          requestRender: () => tui.requestRender(),
+          closeModal: () => done(),
+          getRows: () => tui.terminal.rows,
+          refreshState: () => svc.state(),
+        });
+        activeTodoModal = component;
+        return component;
       },
-    },
-  );
+      {
+        overlay: true,
+        overlayOptions: {
+          anchor: "center",
+          width: "90%",
+          minWidth: 54,
+          maxHeight: `${Math.round(TODO_MODAL_MAX_HEIGHT_RATIO * 100)}%`,
+          margin: 1,
+          visible: (termWidth) => termWidth >= 54,
+        },
+      },
+    );
+  } finally {
+    component?.dispose();
+    if (activeTodoModal === component) activeTodoModal = undefined;
+  }
 }

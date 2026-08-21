@@ -5,7 +5,7 @@ import { appendAudit } from "../app/audit.ts";
 import { clearSessionDecisions, getSessionDecision } from "../app/remember.ts";
 import { getConfig, getConfigDiagnostics, getConfigPaths, loadConfig, type Config } from "../config/index.ts";
 import { BUILTIN_PERMISSIONS, decideWithConfig, rulesFromPermissions, type Request } from "../domain/policy.ts";
-import { promptPermission } from "../ui/prompt.ts";
+import { cancelPendingGatePrompts, promptPermissionOutcome, type GatePromptOutcomeKind } from "../ui/prompt.ts";
 
 const EXT = "pi-gate";
 let stats = { allowed: 0, denied: 0, asked: 0 };
@@ -17,14 +17,17 @@ export function decide(req: Request) {
 export async function gate(ctx: ExtensionContext, req: Request): Promise<{ block: boolean; reason?: string }> {
   const d = decide(req);
   let action = d.action;
+  let promptOutcome: GatePromptOutcomeKind | undefined;
   if (action === "ask") {
-    if (ctx.mode === "tui") stats.asked++;
-    action = await promptPermission(ctx, req, d);
+    stats.asked++;
+    const result = await promptPermissionOutcome(ctx, req, d);
+    action = result.action;
+    promptOutcome = result.outcome;
   }
   if (action === "allow") stats.allowed++; else stats.denied++;
   appendAudit(ctx, req, { ...d, action }, getConfig());
-  ctx.ui.setStatus(EXT, `gate a:${stats.allowed} d:${stats.denied} ?:${stats.asked}`);
-  return action === "deny" ? { block: true, reason: `pi-gate: ${d.reason}` } : { block: false };
+  if (ctx.hasUI) ctx.ui.setStatus(EXT, `gate a:${stats.allowed} d:${stats.denied} ?:${stats.asked}`);
+  return action === "deny" ? { block: true, reason: `pi-gate: ${d.reason}${promptOutcome ? ` (${promptOutcome})` : ""}` } : { block: false };
 }
 
 function protectedPath(tool: "read" | "edit" | "write", inputPath: string, cwd: string): string | undefined {
@@ -44,9 +47,13 @@ async function projectTrust(event: { cwd: string }, ctx: ProjectTrustContext): P
   if (policy === "allow") return { trusted: "yes" };
   if (policy === "deny") return { trusted: "no" };
   if (policy === "defer") return { trusted: "undecided" };
-  if (!ctx.hasUI) return { trusted: "no" };
-  const trusted = await ctx.ui.confirm("pi-gate project trust", `Trust project resources in ${event.cwd}?`, { timeout: 30_000 });
-  return { trusted: trusted ? "yes" : "no" };
+  if (!ctx.hasUI || (ctx.mode !== "tui" && ctx.mode !== "rpc")) return { trusted: "no" };
+  try {
+    const trusted = await ctx.ui.confirm("pi-gate project trust", `Trust project resources in ${event.cwd}?`, { timeout: 30_000 });
+    return { trusted: trusted ? "yes" : "no" };
+  } catch {
+    return { trusted: "no" };
+  }
 }
 
 export function registerPiGate(pi: ExtensionAPI): void {
@@ -54,9 +61,13 @@ export function registerPiGate(pi: ExtensionAPI): void {
   pi.on("session_start", (event, ctx) => {
     loadConfig(ctx.cwd, { includeProject: ctx.isProjectTrusted?.() ?? true });
     if (event.reason !== "reload") { stats = { allowed: 0, denied: 0, asked: 0 }; clearSessionDecisions(); }
-    ctx.ui.setStatus(EXT, `gate ${getConfig().enabled ? getConfig().mode : "off"}`);
+    if (ctx.hasUI) ctx.ui.setStatus(EXT, `gate ${getConfig().enabled ? getConfig().mode : "off"}`);
     const errors = getConfigDiagnostics();
-    if (errors.length > 0) ctx.ui.notify(`pi-gate retained last-known-good policy:\n${errors.join("\n")}`, "error");
+    if (ctx.hasUI && errors.length > 0) ctx.ui.notify(`pi-gate retained last-known-good policy:\n${errors.join("\n")}`, "error");
+  });
+  pi.on("session_shutdown", (_event, ctx) => {
+    cancelPendingGatePrompts();
+    if (ctx.hasUI) ctx.ui.setStatus(EXT, undefined);
   });
   pi.on("tool_call", async (event, ctx) => {
     if (isToolCallEventType("bash", event)) {
