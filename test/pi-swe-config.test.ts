@@ -95,9 +95,10 @@ test("pi-swe config resources remain top-level discoverable", () => {
   const extensionRoot = join(process.cwd(), "extensions", "pi-swe");
   const schemaPath = join(extensionRoot, "pi-swe.schema.json");
 
-  for (const resourceDir of ["docs", "prompts", "skills", "references"]) {
+  for (const resourceDir of ["docs", "skills", "references"]) {
     assert.equal(existsSync(join(extensionRoot, resourceDir)), true, `${resourceDir}/ should stay top-level`);
   }
 
+  assert.equal(existsSync(join(extensionRoot, "prompts")), false, "mirrored SWE prompts should stay removed");
   assert.equal(existsSync(schemaPath), true, "pi-swe.schema.json should stay top-level for compatibility");
 });

@@ -24,7 +24,7 @@ Skip the artifact for tiny reviews where the chat response is sufficient and no 
 
 When required, write the review artifact to:
 
-`.model-artifacts/review/<topic>/YYYY-MM-DD_HHMM-review.md`
+`.model-artifacts/reports/<topic>/YYYY-MM-DD_HHMM-review.md`
 
 Include these sections:
 

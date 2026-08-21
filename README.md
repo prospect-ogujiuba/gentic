@@ -116,7 +116,7 @@ docs/             # Repository conventions, including model artifacts
 .model-artifacts/ # Generated reports, plans, findings, logs, specs, and todo artifacts
 ```
 
-For first-class resources, discovery is constrained to avoid accidental docs-as-resources: skill and prompt `README.md` files are excluded by the package manifest.
+For first-class resources, discovery is constrained to avoid accidental docs-as-resources: skill and prompt `README.md` files are excluded by the package manifest. Ownership and invocation migration are documented in [`docs/pi-package-resources.md`](docs/pi-package-resources.md).
 
 ## Staying in sync with Pi
 
@@ -127,3 +127,5 @@ npm run check:pi-api
 ```
 
 The check reads the installed `@earendil-works/pi-coding-agent` package directly and verifies that Gentic's package assumptions still line up with the local Pi install.
+
+Run `npm run check:resources` for native resource validation and `npm run check:commands` to load Gentic in Pi and inspect collision-free `get_commands` provenance.

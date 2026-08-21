@@ -63,10 +63,11 @@ extensions/foo/
   themes/
 ```
 
-Examples in this repository:
+Example in this repository:
 
 - `pi-commands` is a simple command hub: `index.ts`, `commands/`, and a small shared type file.
-- `pi-prompts` is a simple prompt-template hub: `index.ts` plus `prompts/*.md`.
+
+Shared prompts and skills belong in the package-root `prompts/` and `skills/` directories and do not need no-op extension entrypoints.
 
 ### Layered extension
 
@@ -105,7 +106,7 @@ Resources may live with the extension that owns their behavior:
 - `prompts/`: reusable prompt templates discovered from `prompts/**/*.md`.
 - `themes/`: Pi theme JSON discovered from `themes/**/*.json`.
 
-Keep resources near the code that owns their semantics. Use a central hub extension only when the resource is intentionally shared or has no stronger owner.
+Keep resources near the code that owns their semantics. Put suite-wide resources in the package-root `skills/` and `prompts/` directories; do not create a runtime extension solely to own native files.
 
 ## Non-goals
 

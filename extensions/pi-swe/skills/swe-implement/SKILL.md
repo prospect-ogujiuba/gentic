@@ -28,14 +28,14 @@ When the slice is an assigned plan, phase, implementation, or todo file, treat t
 
 Trivial implementation that stays within the assigned contract does not require a note file. When a note is useful, write it under:
 
-`.model-artifacts/implementation/<topic>/YYYY-MM-DD_HHMM-implementation-notes.md`
+`.model-artifacts/findings/<topic>/YYYY-MM-DD_HHMM-implementation-notes.md`
 
 Keep the note short and include at least:
 
 - Original contract: assigned file/todo and the promised behavior.
 - Discovered drift: what changed, expanded, contradicted, or became blocked.
 - Decision taken: stopped, implemented with confirmation, deferred, or narrowed.
-- Follow-up slice: what should go back to `/swe-plan`, a phase file update, or a new todo.
+- Follow-up slice: what should go back to `/skill:swe-plan`, a phase file update, or a new todo.
 - Affected paths: files, commands, or areas touched or expected to change.
 
 When a todo is active, also record the created artifact, drift note, or follow-up decision in the todo ledger when it materially changes handoff state.
@@ -43,7 +43,7 @@ After writing an artifact, keep chat output concise and path-oriented: artifact 
 
 ## Handoff language
 
-For drift that should return to planning, say exactly where it belongs: `/swe-plan`, the named phase/implementation file, or a new todo. Include the affected paths and the smallest suggested follow-up slice.
+For drift that should return to planning, say exactly where it belongs: `/skill:swe-plan`, the named phase/implementation file, or a new todo. Include the affected paths and the smallest suggested follow-up slice.
 
 ## Success criteria
 

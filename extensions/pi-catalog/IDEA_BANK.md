@@ -4,8 +4,8 @@ Purpose: durable, non-ephemeral idea bank for future Pi/Gentic quality-of-life e
 
 ## Current local surfaces
 
-- `extensions/pi-skills/skills`: repeatable agent workflows.
-- `extensions/pi-prompts/prompts`: reusable prompt templates.
+- `skills`: root-owned repeatable agent workflows.
+- `prompts`: root-owned reusable prompt templates.
 - `extensions/pi-primitives/primitives`: conditional prompt/context primitives.
 - `extensions/pi-commands/commands`: slash-command UX.
 - `extensions/pi-catalog`: durable catalog/reference docs and introspection helpers.
@@ -80,7 +80,7 @@ Standardize durable generated outputs without treating them as ephemeral chat ar
 ## Candidate location
 
 - `pi-commands`: `/artifact`
-- `pi-prompts`: artifact templates
+- root `prompts/`: artifact templates
 - Maybe `pi-catalog`: idea bank, durable reference docs, and public catalog notes
 
 ## Commands

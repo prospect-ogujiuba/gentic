@@ -22,9 +22,11 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "check": "npm run check:pi-api && npm run check:anatomy",
+    "check": "npm run check:pi-api && npm run check:anatomy && npm run check:resources",
     "check:pi-api": "node scripts/check-pi-extension-api.mjs",
     "check:anatomy": "node scripts/check-extension-anatomy.mjs",
+    "check:resources": "node --experimental-strip-types scripts/check-package-resources.ts",
+    "check:commands": "node scripts/check-command-inventory.mjs",
     "test": "node --experimental-strip-types --test test/**/*.test.ts",
     "test:todo": "node --experimental-strip-types --test test/pi-todo*.test.ts",
     "test:swe": "node --experimental-strip-types --test test/pi-swe*.test.ts",

@@ -1,6 +1,6 @@
 ---
 name: add-skill
-description: Create or update a Gentic pi skill under extensions/pi-skills. Use when the user wants a repeatable on-demand workflow, capability package, or skill-like instructions.
+description: Create or update a root-owned Gentic pi skill. Use when the user wants a repeatable on-demand workflow, capability package, or skill-like instructions.
 ---
 
 # Add Skill
@@ -13,13 +13,13 @@ The user should provide the desired skill name and purpose. If either is unclear
 
 ## Workflow
 
-1. Inspect `extensions/pi-skills/README.md` and existing `extensions/pi-skills/skills/*/SKILL.md` files.
+1. Inspect existing `skills/*/SKILL.md` package resources.
 2. Choose a valid skill name:
    - lowercase `a-z`, `0-9`, and hyphens only
    - no leading/trailing hyphen
    - no consecutive hyphens
    - max 64 characters
-3. Create or update `extensions/pi-skills/skills/<name>/SKILL.md`.
+3. Create or update `skills/<name>/SKILL.md`.
 4. Add required frontmatter:
    - `name`: exactly `<name>`
    - `description`: specific description of what the skill does and when to use it

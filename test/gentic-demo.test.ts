@@ -11,8 +11,6 @@ import piGate from "../extensions/pi-gate/index.ts";
 import piGit from "../extensions/pi-git/index.ts";
 import piHud from "../extensions/pi-hud/index.ts";
 import piPrimitives from "../extensions/pi-primitives/index.ts";
-import piPrompts from "../extensions/pi-prompts/index.ts";
-import piSkills from "../extensions/pi-skills/index.ts";
 import piSwe from "../extensions/pi-swe/index.ts";
 import piTodo from "../extensions/pi-todo/index.ts";
 
@@ -185,8 +183,6 @@ test("demo activates every Gentic extension and exercises shared runtime paths",
   await harness.activate("pi-git", piGit as never);
   await harness.activate("pi-hud", piHud as never);
   await harness.activate("pi-primitives", piPrimitives as never);
-  await harness.activate("pi-prompts", piPrompts as never);
-  await harness.activate("pi-skills", piSkills as never);
   await harness.activate("pi-swe", piSwe as never);
   await harness.activate("pi-todo", piTodo as never);
 

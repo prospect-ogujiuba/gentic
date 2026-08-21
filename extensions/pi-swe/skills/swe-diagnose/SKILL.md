@@ -21,9 +21,9 @@ Use this when behavior is broken, failing, or regressing.
 
 For trivial one-step diagnoses, keep the investigation in chat unless the user asks for a file.
 
-For hard bugs, multi-step investigations, performance regressions, or investigations whose evidence or fix-slice should be handed to `/swe-plan` or `/swe-implement`, write a durable diagnosis artifact at:
+For hard bugs, multi-step investigations, performance regressions, or investigations whose evidence or fix-slice should be handed to `/skill:swe-plan` or `/skill:swe-implement`, write a durable diagnosis artifact at:
 
-`.model-artifacts/diagnosis/<topic>/YYYY-MM-DD_HHMM-diagnosis.md`
+`.model-artifacts/findings/<topic>/YYYY-MM-DD_HHMM-diagnosis.md`
 
 Keep the artifact concise and structured with these sections:
 
@@ -38,7 +38,7 @@ Keep the artifact concise and structured with these sections:
 After writing the artifact, keep chat output to a summary: artifact path, top finding, and next action.
 When a todo is active, record the diagnosis artifact in the todo ledger.
 
-When the candidate fix-slice is ready for implementation, feed it into a phase file or implementation contract before `/swe-implement` starts. Use the durable artifact as evidence and context, not as expanded implementation scope.
+When the candidate fix-slice is ready for implementation, feed it into a phase file or implementation contract before `/skill:swe-implement` starts. Use the durable artifact as evidence and context, not as expanded implementation scope.
 
 ## Success criteria
 

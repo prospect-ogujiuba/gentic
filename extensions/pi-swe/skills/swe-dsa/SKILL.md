@@ -23,7 +23,7 @@ Use this for implementation-aware data-structure and algorithm advice inside the
 
 For consequential representation choices, non-obvious algorithm changes, persistent data migrations, performance-sensitive access patterns, or decisions likely to affect a phase handoff, write a short artifact under:
 
-`.model-artifacts/decision/<topic>/YYYY-MM-DD_HHMM-dsa-decision.md`
+`.model-artifacts/findings/<topic>/YYYY-MM-DD_HHMM-dsa-decision.md`
 
 Do not create a DSA artifact for obvious standard-library choices, trivial one-step changes, or advice that is already fully captured in the active todo/phase handoff.
 

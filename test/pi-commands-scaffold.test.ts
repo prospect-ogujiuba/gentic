@@ -64,11 +64,11 @@ test("scaffold preview supports command skill prompt and primitive target paths"
   );
   assert.deepEqual(
     createScaffoldPreview("skill", "demo-skill", "directory").files.map((file) => file.target),
-    ["extensions/pi-skills/skills/demo-skill/SKILL.md"],
+    ["skills/demo-skill/SKILL.md"],
   );
   assert.deepEqual(
     createScaffoldPreview("prompt", "demo-prompt").files.map((file) => file.target),
-    ["extensions/pi-prompts/prompts/demo-prompt.md"],
+    ["prompts/demo-prompt.md"],
   );
   assert.deepEqual(
     createScaffoldPreview("primitive", "demo-primitive").files.map((file) => file.target),
@@ -93,7 +93,7 @@ test("/scaffold command rejects unsafe names and defaults to safe dry-run", asyn
   assert.equal(defaultPreview.notifications[0]?.type, "info");
   assert.match(defaultPreview.notifications[0]?.message ?? "", /Dry-run scaffold: prompt phase-eight-handler-prompt/);
   assert.match(defaultPreview.notifications[0]?.message ?? "", /No files written\./);
-  assert.equal(existsSync(`${root}/extensions/pi-prompts/prompts/phase-eight-handler-prompt.md`), false);
+  assert.equal(existsSync(`${root}/prompts/phase-eight-handler-prompt.md`), false);
 });
 
 test("/scaffold command emits concise dry-run output", async () => {
@@ -106,7 +106,7 @@ test("/scaffold command emits concise dry-run output", async () => {
   assert.equal(notifications[0]?.type, "info");
   assert.match(notifications[0]?.message ?? "", /Dry-run scaffold: skill demo-skill simple/);
   assert.match(notifications[0]?.message ?? "", /No files written\./);
-  assert.match(notifications[0]?.message ?? "", /extensions\/pi-skills\/skills\/demo-skill\/SKILL\.md/);
+  assert.match(notifications[0]?.message ?? "", /skills\/demo-skill\/SKILL\.md/);
 });
 
 test("scaffold apply writes extension files and refuses overwrites", () => {

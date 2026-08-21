@@ -140,12 +140,12 @@ function specsFor(kind: ScaffoldKind, name: string, variant?: ScaffoldVariant): 
   if (kind === "skill") {
     const templateDir = variant === "directory" ? "skill-directory" : "skill-simple";
     return [
-      { template: `${templateDir}/SKILL.template.md`, target: `extensions/pi-skills/skills/${name}/SKILL.md`, description: `${variant} skill definition` },
+      { template: `${templateDir}/SKILL.template.md`, target: `skills/${name}/SKILL.md`, description: `${variant} skill definition` },
     ];
   }
   if (kind === "prompt") {
     return [
-      { template: "prompt-simple/prompt.template.md", target: `extensions/pi-prompts/prompts/${name}.md`, description: "prompt template" },
+      { template: "prompt-simple/prompt.template.md", target: `prompts/${name}.md`, description: "prompt template" },
     ];
   }
   return [
@@ -166,7 +166,6 @@ function renderTemplate(template: string, name: string, kind: ScaffoldKind): str
     skillTitle: toTitle(name),
     promptName: name,
     primitiveName: name,
-    ownerExtension: kind === "prompt" ? "pi-prompts" : "pi-skills",
     description: `TODO: describe ${kind} ${name}`,
     registeredSurfaces: "TODO: list commands/tools/resources",
     eventNames: "none yet",

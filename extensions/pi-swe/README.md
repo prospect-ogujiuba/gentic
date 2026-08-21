@@ -10,18 +10,18 @@ The extension may read optional peer capabilities such as `pi-todo` when they ar
 - **State:** `transitional`
 - **Public entry:** `index.ts`
 - **Layers:** `config`, `domain`, `app`, `pi`, `resources`
-- **Resources:** `docs/`, `prompts/`, `skills/`, `references/`, `pi-swe.schema.json`
+- **Resources:** `docs/`, `skills/`, `references/`, `pi-swe.schema.json`
 - **Machine declaration:** `extension.anatomy.json`
 - **Reference role:** targeted behavior-preserving declaration; `index.ts` is already a thin adapter.
-- **Mismatch notes:** config is folderized under `src/config/`, canonical implementations live under `src/domain/`, `src/app/`, and `src/pi/`, and flat `src/*.ts` compatibility shims remain for existing imports. Top-level docs/prompts/skills/references/schema files remain package resources.
+- **Mismatch notes:** config is folderized under `src/config/`, canonical implementations live under `src/domain/`, `src/app/`, and `src/pi/`, and flat `src/*.ts` compatibility shims remain for existing imports. Top-level docs/skills/references/schema files remain package resources.
 
 ## Orientation block
 
-- **What it does:** observes planning/inspection/change/verification signals, maintains per-turn SWE state, issues advisory workflow warnings, exposes SWE status/config, and provides staged SWE prompts/skills.
-- **Commands/tools it registers:** `/swe status`, `/swe config`, and guidance-only `/swe orchestrate`; no model-callable tool is registered by `pi-swe`. Prompt templates such as `/swe-plan`, `/swe-implement`, `/swe-verify`, and `/swe-orchestrate` are package resources discovered from `prompts/`.
+- **What it does:** observes planning/inspection/change/verification signals, maintains per-turn SWE state, issues advisory workflow warnings, exposes SWE status/config, and provides staged SWE skills.
+- **Commands/tools it registers:** `/swe status`, `/swe config`, and guidance-only `/swe orchestrate`; no model-callable tool is registered by `pi-swe`. Stage guidance is discovered natively from `skills/` and invoked as `/skill:swe-*`.
 - **Pi events it listens to:** `session_start` loads config and resets runtime state; `turn_start` resets turn state; `tool_call` classifies inspection/code-change/todo-completion facts; `tool_result` classifies verification facts.
 - **State/config files it reads/writes:** reads project `.pi/pi-swe.json`, global `~/.pi/agent/pi-swe.json`, defaults, and `pi-swe.schema.json`; keeps runtime state, warnings, peer context, and verification evidence in memory; writes no state file.
-- **Internal module map:** `index.ts` wires events and `/swe`; `src/config/` loads config; `src/domain/classify.ts` extracts workflow facts; `src/domain/state.ts` tracks active plan, inspected/changed paths, and verification; `src/domain/policy.ts` evaluates advisory warnings; `src/capabilities.ts` reads optional peer capability surfaces; `src/domain/evidence.ts`, `src/domain/tdd.ts`, and `src/domain/dsa.ts` hold focused helpers; `docs/`, `prompts/`, `skills/`, and `references/` provide resource guidance.
+- **Internal module map:** `index.ts` wires events and `/swe`; `src/config/` loads config; `src/domain/classify.ts` extracts workflow facts; `src/domain/state.ts` tracks active plan, inspected/changed paths, and verification; `src/domain/policy.ts` evaluates advisory warnings; `src/capabilities.ts` reads optional peer capability surfaces; `src/domain/evidence.ts`, `src/domain/tdd.ts`, and `src/domain/dsa.ts` hold focused helpers; `docs/`, `skills/`, and `references/` provide resource guidance.
 - **Tests to run:** `npm run test:swe` for the focused pi-swe suite, `npm run check` for package/anatomy discovery, or the full `npm test` suite when broader regression risk justifies it.
 - **Known boundaries/non-goals:** guidance is advisory unless config disables/enables checks; it does not import peer internals, replace explicit read-before-edit discipline, or reintroduce legacy `/sop`, `/tdd-rgr`, or `/dsa-advisor` surfaces.
 
@@ -39,20 +39,20 @@ The extension may read optional peer capabilities such as `pi-todo` when they ar
 - `/swe config` reports the effective project/global/default configuration and config diagnostics.
 - `/swe orchestrate` is guidance-only: it reports artifact readiness, recommends the next lifecycle step, routes missing verification/review/finalize gates, and emits deterministic exception handoffs without running hidden multi-step work.
 
-## Stage prompts and skills
+## Stage skills
 
-Use these prompt templates for SWE work:
+Use these canonical Pi skill commands for SWE work:
 
 ```text
-/swe-plan       Define, design, slice, DoD, and verification target.
-/swe-diagnose   Reproduce, minimise, hypothesise, instrument, fix, regression-test.
-/swe-implement  Implement the smallest honest vertical slice from an assigned file or plan.
-/swe-verify     Compile, run, test, and record verification evidence.
-/swe-review     Review correctness, hardening, cleanup, verification fit, and residual risk.
-/swe-finalize   Summarize behavior, changed files, verification, and follow-up guidance.
-/swe-tdd        Red/Green/Refactor for the next observable behavior.
-/swe-dsa        Data-structure and algorithm assessment with validation plan.
-/swe-orchestrate Sequence lifecycle stages from artifacts and handoff gates.
+/skill:swe-plan       Define, design, slice, DoD, and verification target.
+/skill:swe-diagnose   Reproduce, minimise, hypothesise, instrument, fix, regression-test.
+/skill:swe-implement  Implement the smallest honest vertical slice from an assigned file or plan.
+/skill:swe-verify     Compile, run, test, and record verification evidence.
+/skill:swe-review     Review correctness, hardening, cleanup, verification fit, and residual risk.
+/skill:swe-finalize   Summarize behavior, changed files, verification, and follow-up guidance.
+/skill:swe-tdd        Red/Green/Refactor for the next observable behavior.
+/skill:swe-dsa        Data-structure and algorithm assessment with validation plan.
+/skill:swe-orchestrate Sequence lifecycle stages from artifacts and handoff gates.
 ```
 
 Matching skills live under `extensions/pi-swe/skills/swe-*/SKILL.md`. Compact references live under `extensions/pi-swe/references/`.
@@ -61,39 +61,39 @@ Matching skills live under `extensions/pi-swe/skills/swe-*/SKILL.md`. Compact re
 
 Use `pi-swe` as a phase-gated lifecycle. Each stage should leave enough durable evidence for the next stage to continue without relying on chat memory.
 
-1. **Diagnose when behavior is broken or unclear** — `/swe-diagnose`
+1. **Diagnose when behavior is broken or unclear** — `/skill:swe-diagnose`
    - Reproduce the symptom, minimize the failing scope, inspect relevant code/config/logs, list hypotheses with falsifiers, instrument only when needed, and name the smallest credible fix slice.
    - Durable output when non-trivial: `.model-artifacts/findings/<topic>/...` or a diagnosis artifact referenced by the active todo.
 
-2. **Plan before non-trivial changes** — `/swe-plan`
+2. **Plan before non-trivial changes** — `/skill:swe-plan`
    - Define outcome, constraints, non-goals, phase order, acceptance criteria, and verification targets.
    - Durable output: editable phase files under `.model-artifacts/todo/<topic>/phases/`; each phase is an implementation contract.
 
-3. **Use TDD when the next behavior should be proven first** — `/swe-tdd`
+3. **Use TDD when the next behavior should be proven first** — `/skill:swe-tdd`
    - Add one failing test for the next observable behavior, make the smallest production change, then refactor only after green.
-   - TDD can replace or precede `/swe-implement` for a narrow behavior slice; it does not expand phase scope.
+   - TDD can replace or precede `/skill:swe-implement` for a narrow behavior slice; it does not expand phase scope.
 
-4. **Implement one assigned slice** — `/swe-implement`
+4. **Implement one assigned slice** — `/skill:swe-implement`
    - Read the assigned phase/todo/plan file first, restate intended behavior and verification target, edit only the required paths, and stop at a verifiable boundary.
    - Scope drift must be made visible through a note, phase update, or return to planning.
 
-5. **Verify before claiming completion** — `/swe-verify`
+5. **Verify before claiming completion** — `/skill:swe-verify`
    - Run focused tests/checks first, then broader checks as risk requires. Record command/manual evidence and known gaps.
    - Durable output for non-trivial verification: `.model-artifacts/reports/<topic>/...`.
 
-6. **Review after implementation or before handoff** — `/swe-review`
+6. **Review after implementation or before handoff** — `/skill:swe-review`
    - Compare the diff to the intended slice, check correctness/hardening/cleanup/security/performance/UX risks, and decide: approve, request changes, or return to plan.
    - Durable output for substantial reviews: `.model-artifacts/reports/<topic>/...`.
 
-7. **Orchestrate across artifacts when resuming or handing off** — `/swe-orchestrate` and `/swe orchestrate`
+7. **Orchestrate across artifacts when resuming or handing off** — `/skill:swe-orchestrate` and `/swe orchestrate`
    - Inspect work orders, todo context when available, and model artifacts; choose the next lifecycle stage; route back to verification/review when gates are missing; or emit an exception handoff.
    - The orchestrator composes existing stage skills and does not replace their instructions or execute hidden work.
 
-8. **Finalize the handoff** — `/swe-finalize`
+8. **Finalize the handoff** — `/skill:swe-finalize`
    - Summarize what changed, why, key paths, verification evidence, review decision, residual risks, and next action such as commit/PR/release or return-to-plan.
    - Durable output for larger handoffs: `.model-artifacts/reports/<topic>/...`.
 
-Optional `/swe-dsa` fits before planning or implementation whenever representation, access patterns, complexity, memory, ordering, persistence, or migration risk materially affect the slice. Its decision and validation plan should feed the phase file or implementation contract.
+Optional `/skill:swe-dsa` fits before planning or implementation whenever representation, access patterns, complexity, memory, ordering, persistence, or migration risk materially affect the slice. Its decision and validation plan should feed the phase file or implementation contract.
 
 Lifecycle gates:
 
@@ -107,24 +107,24 @@ Lifecycle gates:
 Plan and implement a scoped change:
 
 ```text
-/swe-plan Add a cache for repeated project metadata reads. Define intended behavior, file scope, acceptance criteria, and verification target.
-/swe-implement Implement the assigned plan file. Read it first, edit only named targets, and stop at a verifiable boundary.
-/swe-verify Run the planned focused test/check command and report evidence.
-/swe-finalize Summarize behavior, changed files, verification evidence, and follow-up gaps.
+/skill:swe-plan Add a cache for repeated project metadata reads. Define intended behavior, file scope, acceptance criteria, and verification target.
+/skill:swe-implement Implement the assigned plan file. Read it first, edit only named targets, and stop at a verifiable boundary.
+/skill:swe-verify Run the planned focused test/check command and report evidence.
+/skill:swe-finalize Summarize behavior, changed files, verification evidence, and follow-up gaps.
 ```
 
 Diagnose and fix with TDD:
 
 ```text
-/swe-diagnose Diagnose this failing command before editing: npm test -- test/project-cache.test.ts
-/swe-tdd Add one failing regression test, make the smallest production fix, refactor only after green, and name verification.
-/swe-review Review the fix for correctness and residual risk.
+/skill:swe-diagnose Diagnose this failing command before editing: npm test -- test/project-cache.test.ts
+/skill:swe-tdd Add one failing regression test, make the smallest production fix, refactor only after green, and name verification.
+/skill:swe-review Review the fix for correctness and residual risk.
 ```
 
 Assess a DSA choice before implementation:
 
 ```text
-/swe-dsa Assess whether this lookup should remain an array scan or move to a Map. Include access patterns, complexity, memory tradeoff, migration risk, rejected alternatives, and validation plan.
+/skill:swe-dsa Assess whether this lookup should remain an array scan or move to a Map. Include access patterns, complexity, memory tradeoff, migration risk, rejected alternatives, and validation plan.
 ```
 
 ## End-to-end scenarios
@@ -149,7 +149,7 @@ These scenarios are executable by a new contributor from a fresh Pi session and 
 
 `pi-swe` is standalone:
 
-- With no peers installed, stage prompts work from the user-provided context. `/swe status` may report `detected peers: none`, `active plan: none`, `todo scope: none`, and `todo evidence count: 0`.
+- With no peers installed, stage skills work from the user-provided context. `/swe status` may report `detected peers: none`, `active plan: none`, `todo scope: none`, and `todo evidence count: 0`.
 - With `pi-todo` installed, `pi-swe` may summarize the active todo, todo scope, and todo evidence through public capability surfaces. This context enriches status and policy hints; it does not replace read-before-edit, narrow scope, or verification requirements.
 - Other peers such as `pi-gate` may be detected for status only unless they expose explicit public capabilities.
 
@@ -169,32 +169,34 @@ Config is loaded from project, global, then defaults. The schema is `extensions/
 
 `mode` may be `off`, `advisory`, or `enforced`.
 
-## Migration from legacy concepts
+## Resource invocation migration
+
+The mirrored `/swe-*` prompt templates were removed. Use the canonical skill commands `/skill:swe-*`; arguments after the command are appended to the loaded skill. The runtime `/swe status`, `/swe config`, and `/swe orchestrate` commands are unchanged.
 
 ### Programming SOP → pi-swe stages
 
 Legacy Programming SOP spread guidance across define/design/develop/verify/harden/explain/maintain/reflect surfaces and `/sop`-style runtime concepts. In `pi-swe`, the canonical replacement is the staged SWE path:
 
-- define/design/slice → `/swe-plan`
-- develop → `/swe-implement`
-- verify → `/swe-verify`
-- harden/review → `/swe-review`
-- explain/reflect/hand off → `/swe-finalize`
-- bug-first work → `/swe-diagnose`
+- define/design/slice → `/skill:swe-plan`
+- develop → `/skill:swe-implement`
+- verify → `/skill:swe-verify`
+- harden/review → `/skill:swe-review`
+- explain/reflect/hand off → `/skill:swe-finalize`
+- bug-first work → `/skill:swe-diagnose`
 
 Use assigned plan/phase/todo files as implementation contracts. Do not call legacy `programming_sop` tools or `/sop` namespaces for core `pi-swe` work.
 
-### TDD RGR → `/swe-tdd`
+### TDD RGR → `/skill:swe-tdd`
 
-Legacy TDD RGR exposed a `/tdd-rgr` prompt/command and `tdd_rgr` coaching tool. In `pi-swe`, TDD is guidance-only through `/swe-tdd`, its skill, and compact references under `references/tdd-rgr/`.
+Legacy TDD RGR exposed a `/tdd-rgr` prompt/command and `tdd_rgr` coaching tool. In `pi-swe`, TDD is guidance-only through `/skill:swe-tdd`, its skill, and compact references under `references/tdd-rgr/`.
 
-Use `/swe-tdd` when the slice needs Red → Green → Refactor discipline: one failing test, smallest production change, refactor only after green, and explicit verification evidence.
+Use `/skill:swe-tdd` when the slice needs Red → Green → Refactor discipline: one failing test, smallest production change, refactor only after green, and explicit verification evidence.
 
-### DSA Advisor → `/swe-dsa`
+### DSA Advisor → `/skill:swe-dsa`
 
-Legacy DSA Advisor exposed `/dsa-advisor`, `dsa_advisor`, assessment state, catalogs, and detailed advisor machinery. In `pi-swe`, DSA assessment is implementation-aware SWE guidance through `/swe-dsa`, its skill, and compact references under `references/dsa/`.
+Legacy DSA Advisor exposed `/dsa-advisor`, `dsa_advisor`, assessment state, catalogs, and detailed advisor machinery. In `pi-swe`, DSA assessment is implementation-aware SWE guidance through `/skill:swe-dsa`, its skill, and compact references under `references/dsa/`.
 
-Use `/swe-dsa` when representation, access patterns, complexity, memory, ordering, persistence, migration risk, or validation strategy matter.
+Use `/skill:swe-dsa` when representation, access patterns, complexity, memory, ordering, persistence, migration risk, or validation strategy matter.
 
 ## Intentionally omitted legacy surfaces
 

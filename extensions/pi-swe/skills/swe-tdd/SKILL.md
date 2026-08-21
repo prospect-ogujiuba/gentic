@@ -26,7 +26,7 @@ Compact references:
 
 For multi-cycle work, flaky/debug-heavy behavior, or changes where Red/Green/Refactor evidence must survive handoff, write a short artifact under:
 
-`.model-artifacts/tdd/<topic>/YYYY-MM-DD_HHMM-tdd-cycle.md`
+`.model-artifacts/reports/<topic>/YYYY-MM-DD_HHMM-tdd-cycle.md`
 
 Use one artifact entry per observable behavior. Keep it as a behavior ledger, not broad design notes. Each behavior entry should include:
 

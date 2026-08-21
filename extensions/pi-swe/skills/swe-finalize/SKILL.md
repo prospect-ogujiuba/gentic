@@ -24,7 +24,7 @@ Skip the artifact for a single small change where the final chat response is suf
 
 When required, write the handoff artifact to:
 
-`.model-artifacts/finalize/<topic>/YYYY-MM-DD_HHMM-handoff.md`
+`.model-artifacts/reports/<topic>/YYYY-MM-DD_HHMM-handoff.md`
 
 Include these sections:
 
