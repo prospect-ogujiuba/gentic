@@ -22,9 +22,12 @@ export default function piTodo(pi: ExtensionAPI): void {
     if (event.reason !== "reload") resetTodoSessionNameMemory();
     await updateTodoWidget(pi, ctx);
   });
+  pi.on("session_tree", async (_event, ctx) => updateTodoWidget(pi, ctx));
+  pi.on("session_info_changed", async (_event, ctx) => updateTodoWidget(pi, ctx));
+  pi.on("session_shutdown", () => resetTodoSessionNameMemory());
   pi.on("message_start", async (event, ctx) => checkTodoDocketAtMessageStart(pi, ctx, event));
   pi.on("turn_end", async (_event, ctx) => checkTodoDocketBeforeFinalMessage(pi, ctx));
-  pi.on("agent_end", async (_event, ctx) => checkTodoDocketAtAgentEnd(pi, ctx));
+  pi.on("agent_settled", async (_event, ctx) => checkTodoDocketAtAgentEnd(pi, ctx));
   pi.on("tool_call", async (event, ctx) => {
     if (event.toolName === "todo") return;
     const state = await todoState(pi, ctx);

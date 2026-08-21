@@ -19,11 +19,24 @@ The extension may read optional peer capabilities such as `pi-todo` when they ar
 
 - **What it does:** observes planning/inspection/change/verification signals, maintains per-turn SWE state, issues advisory workflow warnings, exposes SWE status/config, and provides staged SWE skills.
 - **Commands/tools it registers:** `/swe status`, `/swe config`, and guidance-only `/swe orchestrate`; no model-callable tool is registered by `pi-swe`. Stage guidance is discovered natively from `skills/` and invoked as `/skill:swe-*`.
-- **Pi events it listens to:** `session_start` loads config and resets runtime state; `turn_start` resets turn state; `tool_call` classifies inspection/code-change/todo-completion facts; `tool_result` classifies verification facts.
-- **State/config files it reads/writes:** reads project `.pi/pi-swe.json`, global `~/.pi/agent/pi-swe.json`, defaults, and `pi-swe.schema.json`; keeps runtime state, warnings, peer context, and verification evidence in memory; writes no state file.
+- **Pi events it listens to:** `session_start` loads config and reconstructs active-branch state; `session_tree` reconstructs after navigation; `turn_start` resets turn-local state; `tool_call` classifies inspection/code-change/todo-completion facts; `tool_result` classifies verification facts; `agent_settled` persists required cross-turn state; `session_shutdown` clears runtime state.
+- **State/config files it reads/writes:** reads project `.pi/pi-swe.json`, global `~/.pi/agent/pi-swe.json`, defaults, and `pi-swe.schema.json`; persists only active plan/stage in versioned `gentic.swe.state` custom entries and reconstructs them from `sessionManager.getBranch()`; inspected/changed paths, warnings, peer context, and verification evidence remain turn-local.
 - **Internal module map:** `index.ts` wires events and `/swe`; `src/config/` loads config; `src/domain/classify.ts` extracts workflow facts; `src/domain/state.ts` tracks active plan, inspected/changed paths, and verification; `src/domain/policy.ts` evaluates advisory warnings; `src/capabilities.ts` reads optional peer capability surfaces; `src/domain/evidence.ts`, `src/domain/tdd.ts`, and `src/domain/dsa.ts` hold focused helpers; `docs/`, `skills/`, and `references/` provide resource guidance.
 - **Tests to run:** `npm run test:swe` for the focused pi-swe suite, `npm run check` for package/anatomy discovery, or the full `npm test` suite when broader regression risk justifies it.
 - **Known boundaries/non-goals:** guidance is advisory unless config disables/enables checks; it does not import peer internals, replace explicit read-before-edit discipline, or reintroduce legacy `/sop`, `/tdd-rgr`, or `/dsa-advisor` surfaces.
+
+## Runtime lifecycle contract
+
+| Pi lifecycle event | pi-swe behavior |
+|---|---|
+| `session_start` | Load config/capabilities and decode required state from the active branch. |
+| `session_tree` | Reconstruct from the selected branch; abandoned branch state is ignored. |
+| `session_info_changed` | Refresh peer/session-derived context. |
+| `turn_start` | Clear inspected paths, changed paths, verification evidence, and warnings while preserving active plan/stage. |
+| `agent_settled` | Append a version-1 active plan/stage snapshot when state exists. |
+| `session_shutdown` | Clear runtime state and advisory UI. |
+
+Unknown future state-envelope versions are ignored. Failed commands, notes/manual evidence, and successful `nearby` checks remain visible evidence but do not satisfy final verification; only successful `focused` or `broad` command evidence clears `missing_verification`.
 
 ## Commands
 

@@ -48,6 +48,7 @@ export type ContextSourceMetadata = {
   afterTokens?: number;
   deltaTokens?: number;
   savedTokens?: number;
+  uncollectedEventCount?: number;
 };
 
 export type ContextLedgerEntry = {

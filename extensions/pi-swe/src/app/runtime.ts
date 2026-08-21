@@ -22,6 +22,11 @@ export type PiSweRuntime = {
 };
 
 export const SWE_ADVISORY_WIDGET_KEY = "pi-swe-advisories";
+export const PI_SWE_STATE_CUSTOM_TYPE = "gentic.swe.state";
+export const PI_SWE_STATE_VERSION = 1 as const;
+
+type PersistedSweState = Pick<PiSweState, "activePlan" | "activeStage">;
+export type PiSweStateEnvelope = { version: typeof PI_SWE_STATE_VERSION; state: PersistedSweState };
 
 const stateService = createSweStateService();
 const evidenceService = createSweEvidenceService();
@@ -47,10 +52,67 @@ export function loadSessionRuntime(runtime: PiSweRuntime, pi: ExtensionAPI, ctx:
   runtime.configDiagnostics = loaded.diagnostics;
   runtime.configSource = describeConfigSource(loaded.paths);
   runtime.externalCapabilities = createSweExternalCapabilities(pi);
-  runtime.state = { ...stateService.createState({ turnStartedAt: new Date().toISOString() }) };
+  runtime.state = {
+    ...stateService.createState({ turnStartedAt: new Date().toISOString() }),
+    ...reconstructPersistedSweState(readActiveBranch(ctx)),
+  };
   refreshPeerContext(runtime);
   runtime.warnings = [];
   renderAdvisoryWidget(ctx, runtime.warnings);
+}
+
+export function reloadBranchRuntime(runtime: PiSweRuntime, ctx: ExtensionContext): void {
+  runtime.state = {
+    ...stateService.createState({ turnStartedAt: new Date().toISOString() }),
+    ...reconstructPersistedSweState(readActiveBranch(ctx)),
+  };
+  refreshPeerContext(runtime);
+  runtime.warnings = [];
+  renderAdvisoryWidget(ctx, runtime.warnings);
+}
+
+export function persistSessionRuntime(runtime: PiSweRuntime, pi: ExtensionAPI): void {
+  const state: PersistedSweState = {};
+  if (runtime.state.activePlan) state.activePlan = { ...runtime.state.activePlan };
+  if (runtime.state.activeStage) state.activeStage = runtime.state.activeStage;
+  if (!state.activePlan && !state.activeStage) return;
+  const envelope: PiSweStateEnvelope = { version: PI_SWE_STATE_VERSION, state };
+  pi.appendEntry(PI_SWE_STATE_CUSTOM_TYPE, envelope);
+}
+
+export function resetSessionRuntime(runtime: PiSweRuntime, ctx?: ExtensionContext): void {
+  runtime.state = { ...stateService.createState() };
+  runtime.todoEvidence = [];
+  runtime.todoScope = undefined;
+  runtime.warnings = [];
+  runtime.capabilityWarnings = [];
+  runtime.detectedPeers = [];
+  renderAdvisoryWidget(ctx, []);
+}
+
+export function reconstructPersistedSweState(entries: readonly unknown[]): PersistedSweState {
+  let reconstructed: PersistedSweState = {};
+  for (const entry of entries) {
+    if (!isRecord(entry) || entry.type !== "custom" || entry.customType !== PI_SWE_STATE_CUSTOM_TYPE) continue;
+    const decoded = decodeSweStateEnvelope(entry.data);
+    if (decoded) reconstructed = decoded;
+  }
+  return reconstructed;
+}
+
+export function decodeSweStateEnvelope(data: unknown): PersistedSweState | undefined {
+  if (!isRecord(data) || data.version !== PI_SWE_STATE_VERSION || !isRecord(data.state)) return undefined;
+  const state: PersistedSweState = {};
+  if (isRecord(data.state.activePlan)) {
+    const source = data.state.activePlan.source;
+    const marker = data.state.activePlan.marker;
+    if ((source === "todo" || source === "artifact" || source === "prompt") && typeof marker === "string" && marker.trim()) {
+      state.activePlan = { source, marker: marker.trim() };
+    }
+  }
+  const stage = data.state.activeStage;
+  if (stage === "plan" || stage === "diagnose" || stage === "implement" || stage === "verify" || stage === "review" || stage === "finalize" || stage === "tdd" || stage === "dsa") state.activeStage = stage;
+  return state;
 }
 
 export function resetTurnRuntime(runtime: PiSweRuntime, ctx?: ExtensionContext): void {
@@ -86,11 +148,9 @@ export function refreshPeerContext(runtime: PiSweRuntime): void {
 }
 
 function policyState(runtime: PiSweRuntime): PiSweState {
-  if (runtime.state.verification.length || runtime.todoEvidence.length === 0) return runtime.state;
-  return {
-    ...runtime.state,
-    verification: [evidenceService.createNoteEvidence({ note: `todo evidence available (${runtime.todoEvidence.length})`, scope: "manual" })],
-  };
+  // Todo evidence remains visible evidence, but only a successful focused/broad
+  // verification command can satisfy the verification policy.
+  return runtime.state;
 }
 
 function todoPlanMarker(todo: SweExternalTodo): string {
@@ -122,6 +182,15 @@ function renderAdvisoryWidget(ctx: ExtensionContext | undefined, warnings: reado
 
 function chip(ctx: ExtensionContext, text: string): string {
   return ctx.ui.theme.bg("customMessageBg", ` ${text} `);
+}
+
+function readActiveBranch(ctx: ExtensionContext): readonly unknown[] {
+  const manager = ctx.sessionManager as unknown as { getBranch?: () => readonly unknown[] } | undefined;
+  return manager?.getBranch?.() ?? [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function dedupeWarnings(warnings: SwePolicyResult[]): SwePolicyResult[] {

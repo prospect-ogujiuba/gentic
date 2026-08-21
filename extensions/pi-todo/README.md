@@ -17,6 +17,17 @@ Canonical task states are `ready`, `claimed`, `in_progress`, `external_blocked`,
 
 Compatibility aliases are accepted for old ledgers and inputs: `proposed`/`pending` → `ready`, `done`/`needs_review` → `completed`, `blocked` → `external_blocked`, and `abandoned` → `cancelled` with abandonment preserved as a reason. Legal transitions are defined in `src/domain/lifecycle.ts` as `TODO_TRANSITIONS` and enforced by `TodoService` lifecycle actions.
 
+Runtime persistence uses `gentic.todo.event` envelopes with `version: 1`. Legacy unwrapped events are decoded for migration; malformed and unknown future versions are ignored. Reconstruction always reads `sessionManager.getBranch()`, so abandoned `/tree` branches cannot affect the active ledger. Compaction retains custom entries on the active branch and therefore does not change todo semantics.
+
+| Pi lifecycle event | pi-todo behavior |
+|---|---|
+| `session_start` | Reconstruct active-branch state and render the docket. |
+| `session_tree` | Reconstruct/render from the new active branch. |
+| `session_info_changed` | Reconcile session title and docket. |
+| `turn_end` | Check final-message todo guidance. |
+| `agent_settled` | Run settled-state docket checks after retries/follow-ups. |
+| `session_shutdown` | Clear session-name closure state. |
+
 ## Intake organization and splitting
 
 By default, `todo({ "action": "create", ... })` creates one explicit todo so progress stays aligned with the caller's intended unit of work.

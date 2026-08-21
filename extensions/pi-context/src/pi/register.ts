@@ -10,9 +10,12 @@ import type {
   MessageUpdateEvent,
   SessionBeforeCompactEvent,
   SessionCompactEvent,
+  SessionInfoChangedEvent,
   SessionStartEvent,
+  SessionTreeEvent,
   ToolExecutionEndEvent,
   ToolExecutionStartEvent,
+  ToolExecutionUpdateEvent,
   ToolResultEvent,
   TurnEndEvent,
   TurnStartEvent,
@@ -22,6 +25,7 @@ type ModelSelectEvent = { model: unknown };
 type ResourcesDiscoverEvent = { type: "resources_discover"; cwd: string; reason: "startup" | "reload" };
 
 import {
+  clearLedgerEntries,
   createPiContextReportSnapshot,
   getSessionState,
   parsePiContextReportArgs,
@@ -42,15 +46,32 @@ import {
   collectRuntimeMessage,
   collectRuntimeToolExecutionEnd,
   collectRuntimeToolExecutionStart,
+  collectRuntimeToolExecutionUpdate,
   collectRuntimeToolResult,
   type RuntimeLedgerResult,
 } from "./runtime-ledger.ts";
 import { collectStaticInventoryFromBeforeAgentStart } from "./static-inventory.ts";
 
+export const MESSAGE_UPDATE_SAMPLE_RATE = 8;
+
 export function registerPiContext(pi: ExtensionAPI): void {
   let currentTurnId: string | undefined;
   let compactCount = 0;
   let beforeCompactUsage: Omit<PiContextUsageSnapshot, "capturedAt" | "event"> | undefined;
+  let pendingInputs: Array<{ event: Pick<InputEvent, "text" | "source" | "images">; at: string }> = [];
+  let messageUpdateCount = 0;
+  let suppressedMessageUpdates = 0;
+  const toolCalls = new Map<string, { args?: unknown; result?: unknown; details?: unknown }>();
+
+  const resetRuntimeClosure = (): void => {
+    currentTurnId = undefined;
+    compactCount = 0;
+    beforeCompactUsage = undefined;
+    pendingInputs = [];
+    messageUpdateCount = 0;
+    suppressedMessageUpdates = 0;
+    toolCalls.clear();
+  };
 
   pi.registerCommand("pi-context", {
     description: "Show the maintained context ledger summary or write report artifacts",
@@ -79,6 +100,7 @@ export function registerPiContext(pi: ExtensionAPI): void {
   });
 
   pi.on("session_start", (event, ctx) => {
+    resetRuntimeClosure();
     startSessionState({
       reason: event.reason,
       previousSessionFile: event.previousSessionFile,
@@ -100,7 +122,11 @@ export function registerPiContext(pi: ExtensionAPI): void {
   pi.on("input", (event, ctx) => {
     ensureStarted(ctx, "input");
     updateSessionState({ event: "input", metadata: readSessionMetadata(ctx), usageSnapshot: readUsageSnapshot(ctx) });
-    recordRuntime(collectRuntimeInput(event, { turnId: currentTurnId }));
+    const at = new Date().toISOString();
+    const pending = { event: { text: event.text, source: event.source, images: event.images }, at };
+    pendingInputs.push(pending);
+    // Record immediately without a turn rather than assigning new input to the previous turn.
+    recordRuntime(collectRuntimeInput(pending.event, { at }));
   });
 
   pi.on("before_agent_start", (event, ctx) => {
@@ -120,10 +146,18 @@ export function registerPiContext(pi: ExtensionAPI): void {
     updateSessionState({ event: "agent_end", metadata: readSessionMetadata(ctx), usageSnapshot: readUsageSnapshot(ctx) });
   });
 
+  pi.on("agent_settled", (_event, ctx) => {
+    ensureStarted(ctx, "agent_settled");
+    updateSessionState({ event: "agent_settled", metadata: readSessionMetadata(ctx), usageSnapshot: readUsageSnapshot(ctx) });
+    currentTurnId = undefined;
+  });
+
   pi.on("turn_start", (event, ctx) => {
     currentTurnId = `turn-${event.turnIndex}`;
     ensureStarted(ctx, "turn_start");
     updateSessionState({ event: "turn_start", metadata: readSessionMetadata(ctx), usageSnapshot: readUsageSnapshot(ctx) });
+    for (const pending of pendingInputs) recordRuntime(collectRuntimeInput(pending.event, { at: pending.at, turnId: currentTurnId }));
+    pendingInputs = [];
   });
 
   pi.on("turn_end", (_event, ctx) => {
@@ -142,12 +176,19 @@ export function registerPiContext(pi: ExtensionAPI): void {
   });
 
   pi.on("message_start", (event, ctx) => {
+    messageUpdateCount = 0;
+    suppressedMessageUpdates = 0;
     ensureStarted(ctx, "message_start");
     updateSessionState({ event: "message_start", metadata: readSessionMetadata(ctx), usageSnapshot: readUsageSnapshot(ctx) });
     recordRuntime(collectRuntimeMessage("message_start", event.message, { turnId: currentTurnId }));
   });
 
   pi.on("message_update", (event, ctx) => {
+    messageUpdateCount += 1;
+    if (messageUpdateCount % MESSAGE_UPDATE_SAMPLE_RATE !== 0) {
+      suppressedMessageUpdates += 1;
+      return;
+    }
     ensureStarted(ctx, "message_update");
     updateSessionState({ event: "message_update", metadata: readSessionMetadata(ctx), usageSnapshot: readUsageSnapshot(ctx) });
     recordRuntime(collectRuntimeMessage("message_update", event.message, { turnId: currentTurnId }));
@@ -156,25 +197,63 @@ export function registerPiContext(pi: ExtensionAPI): void {
   pi.on("message_end", (event, ctx) => {
     ensureStarted(ctx, "message_end");
     updateSessionState({ event: "message_end", metadata: readSessionMetadata(ctx), usageSnapshot: readUsageSnapshot(ctx) });
-    recordRuntime(collectRuntimeMessage("message_end", event.message, { turnId: currentTurnId }));
+    recordRuntime(collectRuntimeMessage("message_end", event.message, {
+      turnId: currentTurnId,
+      uncollectedEventCount: suppressedMessageUpdates || undefined,
+    }));
+    messageUpdateCount = 0;
+    suppressedMessageUpdates = 0;
   });
 
   pi.on("tool_execution_start", (event, ctx) => {
+    toolCalls.set(event.toolCallId, { args: event.args });
     ensureStarted(ctx, "tool_execution_start");
     updateSessionState({ event: "tool_execution_start", metadata: readSessionMetadata(ctx), usageSnapshot: readUsageSnapshot(ctx) });
     recordRuntime(collectRuntimeToolExecutionStart(event, { turnId: currentTurnId }));
   });
 
-  pi.on("tool_execution_end", (event, ctx) => {
-    ensureStarted(ctx, "tool_execution_end");
-    updateSessionState({ event: "tool_execution_end", metadata: readSessionMetadata(ctx), usageSnapshot: readUsageSnapshot(ctx) });
-    recordRuntime(collectRuntimeToolExecutionEnd(event, { turnId: currentTurnId }));
+  pi.on("tool_execution_update", (event, ctx) => {
+    const lifecycle = toolCalls.get(event.toolCallId) ?? {};
+    lifecycle.args = lifecycle.args ?? event.args;
+    lifecycle.result = event.partialResult;
+    toolCalls.set(event.toolCallId, lifecycle);
+    ensureStarted(ctx, "tool_execution_update");
+    updateSessionState({ event: "tool_execution_update", metadata: readSessionMetadata(ctx) });
+    recordRuntime(collectRuntimeToolExecutionUpdate({ ...event, args: lifecycle.args, partialResult: lifecycle.result }, { turnId: currentTurnId }));
   });
 
   pi.on("tool_result", (event, ctx) => {
+    const lifecycle = toolCalls.get(event.toolCallId) ?? {};
+    lifecycle.args = event.input ?? lifecycle.args;
+    lifecycle.result = event.content;
+    lifecycle.details = event.details;
+    toolCalls.set(event.toolCallId, lifecycle);
     ensureStarted(ctx, "tool_result");
     updateSessionState({ event: "tool_result", metadata: readSessionMetadata(ctx), usageSnapshot: readUsageSnapshot(ctx) });
     recordRuntime(collectRuntimeToolResult(event, { turnId: currentTurnId }));
+  });
+
+  pi.on("tool_execution_end", (event, ctx) => {
+    const lifecycle = toolCalls.get(event.toolCallId) ?? {};
+    lifecycle.result = event.result ?? lifecycle.result;
+    ensureStarted(ctx, "tool_execution_end");
+    updateSessionState({ event: "tool_execution_end", metadata: readSessionMetadata(ctx), usageSnapshot: readUsageSnapshot(ctx) });
+    recordRuntime(collectRuntimeToolExecutionEnd({ ...event, result: lifecycle.result }, { turnId: currentTurnId, input: lifecycle.args, details: lifecycle.details }));
+    toolCalls.delete(event.toolCallId);
+  });
+
+  pi.on("session_info_changed", (_event, ctx) => {
+    ensureStarted(ctx, "session_info_changed");
+    updateSessionState({ event: "session_info_changed", metadata: readSessionMetadata(ctx) });
+  });
+
+  pi.on("session_tree", (_event, ctx) => {
+    currentTurnId = undefined;
+    pendingInputs = [];
+    toolCalls.clear();
+    clearLedgerEntries();
+    ensureStarted(ctx, "session_tree");
+    updateSessionState({ event: "session_tree", metadata: readSessionMetadata(ctx), usageSnapshot: readUsageSnapshot(ctx) });
   });
 
   pi.on("session_before_switch", (event) => {
@@ -199,6 +278,7 @@ export function registerPiContext(pi: ExtensionAPI): void {
   });
 
   pi.on("session_shutdown", (event) => {
+    resetRuntimeClosure();
     resetSessionState(event.reason);
   });
 
@@ -276,6 +356,8 @@ function readNumberProperty(value: unknown, property: string): number | undefine
 
 export type PiContextObservedEvent =
   | SessionStartEvent
+  | SessionInfoChangedEvent
+  | SessionTreeEvent
   | ResourcesDiscoverEvent
   | InputEvent
   | BeforeAgentStartEvent
@@ -287,6 +369,7 @@ export type PiContextObservedEvent =
   | MessageUpdateEvent
   | MessageEndEvent
   | ToolExecutionStartEvent
+  | ToolExecutionUpdateEvent
   | ToolExecutionEndEvent
   | ToolResultEvent
   | SessionBeforeCompactEvent

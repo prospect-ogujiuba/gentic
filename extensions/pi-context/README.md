@@ -8,6 +8,17 @@ Static inventory entries store paths/package names, byte/token estimates, SHA-25
 
 Earliest capture: Pi documents `session_start` as the first extension lifecycle event. If a future runtime misses it, pi-context lazily initializes at the earliest observed hook (`resources_discover`, `before_agent_start`, `context`, or `before_provider_request`) and records a warning for that unavoidable blind spot.
 
+| Pi lifecycle event | pi-context behavior |
+|---|---|
+| `session_start` | Reset closure counters/maps and start a fresh ledger generation. |
+| `input` → `turn_start` | Record input unassigned, then attach it to the newly known turn; never reuse the prior turn. |
+| `message_update` | Sample every 8th streaming update; `message_end` always records final data. |
+| `tool_execution_start/update`, `tool_result`, `tool_execution_end` | Merge arguments, paths, partial/final output, details, and status monotonically by tool-call ID. |
+| `agent_settled` | Close turn attribution after retries and queued continuations settle. |
+| `session_tree` | Drop abandoned-branch observations and begin collection from the selected leaf. |
+| `session_compact` | Replace stale observations with the compaction checkpoint. |
+| `session_shutdown` | Clear all session closure state and mark the ledger inactive. |
+
 ## `/pi-context` command
 
 `/pi-context` or `/pi-context summary` renders a concise terminal report from the maintained in-memory ledger snapshot; it does not rescan the full session history. The summary includes total tokens/bytes, remaining context when exposed by Pi, compaction stats, ordered System/User/Project/Extensions/Session/Tools/Discovered breakdowns, and exact/estimated/unavailable warnings.

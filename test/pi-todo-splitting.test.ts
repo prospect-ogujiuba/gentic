@@ -4,6 +4,7 @@ import { SPLIT_SCAFFOLD_TAG, TodoService, type TodoEventStore } from "../extensi
 import { orderedTodos, readyToClose } from "../extensions/pi-todo/src/app/query.ts";
 import { checkTodoDocketAtAgentEnd, checkTodoDocketAtMessageStart, checkTodoDocketBeforeFinalMessage, executeTodoAction } from "../extensions/pi-todo/src/pi/actions.ts";
 import { todoToolParameters } from "../extensions/pi-todo/src/pi/schema.ts";
+import { decodeTodoEvent } from "../extensions/pi-todo/src/pi/store.ts";
 import { assessTodoIntake, splitTitlesAreTooSimilar } from "../extensions/pi-todo/src/domain/splitting.ts";
 import type { TodoEvent } from "../extensions/pi-todo/src/domain/types.ts";
 
@@ -14,12 +15,12 @@ class MemoryStore implements TodoEventStore {
 }
 
 function actionHarness() {
-  const entries: Array<{ type: "custom"; customType: string; data: TodoEvent }> = [];
+  const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
   const messages: Array<{ message: { customType: string; content: string; display?: boolean }; options?: { triggerTurn?: boolean; deliverAs?: string } }> = [];
   const notifications: Array<{ message: string; type?: string }> = [];
   let sessionName = "";
   const pi = {
-    appendEntry(customType: string, data: TodoEvent) { entries.push({ type: "custom", customType, data }); },
+    appendEntry(customType: string, data: unknown) { entries.push({ type: "custom", customType, data }); },
     sendMessage(message: { customType: string; content: string; display?: boolean }, options?: { triggerTurn?: boolean; deliverAs?: string }) { messages.push({ message, options }); },
     getSessionName() { return sessionName; },
     setSessionName(value: string) { sessionName = value; },
@@ -28,7 +29,7 @@ function actionHarness() {
     sessionId: "test-session",
     cwd: "/tmp/gentic",
     hasUI: true,
-    sessionManager: { getEntries: () => entries },
+    sessionManager: { getBranch: () => entries },
     ui: { setStatus() {}, setWidget() {}, setTitle() {}, notify(message: string, type?: string) { notifications.push({ message, type }); } },
   };
   return { pi, ctx, entries, messages, notifications };
@@ -157,7 +158,7 @@ test("tool create defaults to one explicit todo for observability", async () => 
   assert.match(result.content[0].text, /Created/);
   assert.equal(result.details.todo.title, "Implement mandatory task splitting in pi-todo");
   assert.equal(result.details.assessment, undefined);
-  assert.deepEqual(entries.map((entry) => entry.data.type), ["todo.created"]);
+  assert.deepEqual(entries.map((entry) => decodeTodoEvent(entry.data)?.type), ["todo.created"]);
 });
 
 test("tool organized create previews compound suggestions without persistence unless children are explicit", async () => {
@@ -198,7 +199,7 @@ test("tool organized create persists explicit compound children", async () => {
   assert.equal(result.details.assessment.organization, "container");
   assert.ok(result.details.parent.workDirectlyAllowed === false);
   assert.deepEqual(result.details.children.map((child: { title: string }) => child.title), ["Add split metadata", "Block unsplit parents"]);
-  assert.deepEqual(entries.map((entry) => entry.data.type), ["todo.created", "todo.split"]);
+  assert.deepEqual(entries.map((entry) => decodeTodoEvent(entry.data)?.type), ["todo.created", "todo.split"]);
 });
 
 test("tool organized create reports clarification for vague intake without persistence", async () => {
@@ -238,7 +239,7 @@ test("tool split previews generated children but only persists explicit children
   const preview = await executeTodoAction(pi as never, ctx as never, { action: "split", todoId, auto: true });
   assert.match(preview.content[0].text, /auto split is preview-only/);
   assert.ok(preview.details.children.every((child: { tags?: string[] }) => child.tags?.includes(SPLIT_SCAFFOLD_TAG)));
-  assert.deepEqual(entries.map((entry) => entry.data.type), ["todo.created", "todo.updated", "todo.updated"]);
+  assert.deepEqual(entries.map((entry) => decodeTodoEvent(entry.data)?.type), ["todo.created", "todo.updated", "todo.updated"]);
 
   const split = await executeTodoAction(pi as never, ctx as never, {
     action: "split",

@@ -48,6 +48,7 @@ function createContext(entries: Array<Record<string, unknown>>) {
     signal: undefined,
     sessionManager: {
       getEntries: () => entries,
+      getBranch: () => entries,
     },
     ui: {
       notify(message: string, type?: string) {

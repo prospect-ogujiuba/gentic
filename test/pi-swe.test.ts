@@ -47,7 +47,7 @@ test("pi-swe registers runtime event wiring and /swe command", async () => {
   const ctx = { cwd: root, sessionId: "test", hasUI: true, ui: { notify: (message: string, type?: string) => notifications.push({ message, type }) } };
 
   assert.equal(piSwe(pi as never, ctx as never), undefined);
-  assert.deepEqual([...handlers.keys()], ["session_start", "turn_start", "tool_call", "tool_result"]);
+  assert.deepEqual([...handlers.keys()], ["session_start", "session_tree", "session_info_changed", "session_shutdown", "turn_start", "agent_settled", "tool_call", "tool_result"]);
   assert.equal(commands.has("swe"), true);
 
   handlers.get("session_start")?.({ type: "session_start" }, ctx);

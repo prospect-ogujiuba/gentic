@@ -1,6 +1,16 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { applyFacts, emitWarnings, loadSessionRuntime, resetTurnRuntime, type PiSweRuntime } from "../app/runtime.ts";
+import {
+  applyFacts,
+  emitWarnings,
+  loadSessionRuntime,
+  persistSessionRuntime,
+  refreshPeerContext,
+  reloadBranchRuntime,
+  resetSessionRuntime,
+  resetTurnRuntime,
+  type PiSweRuntime,
+} from "../app/runtime.ts";
 import { classifyToolCall, classifyToolResult } from "../domain/classify.ts";
 
 export function registerSweEvents(pi: ExtensionAPI, runtime: PiSweRuntime): void {
@@ -8,8 +18,25 @@ export function registerSweEvents(pi: ExtensionAPI, runtime: PiSweRuntime): void
     loadSessionRuntime(runtime, pi, ctx);
   });
 
+  pi.on("session_tree", (_event, ctx) => {
+    reloadBranchRuntime(runtime, ctx);
+  });
+
+  pi.on("session_info_changed", (_event, ctx) => {
+    refreshPeerContext(runtime);
+    emitWarnings(ctx, runtime, []);
+  });
+
+  pi.on("session_shutdown", (_event, ctx) => {
+    resetSessionRuntime(runtime, ctx);
+  });
+
   pi.on("turn_start", (_event, ctx) => {
     resetTurnRuntime(runtime, ctx);
+  });
+
+  pi.on("agent_settled", () => {
+    persistSessionRuntime(runtime, pi);
   });
 
   pi.on("tool_call", (event, ctx) => {

@@ -7,6 +7,7 @@ import type {
   MessageUpdateEvent,
   ToolExecutionEndEvent,
   ToolExecutionStartEvent,
+  ToolExecutionUpdateEvent,
   ToolResultEvent,
 } from "@earendil-works/pi-coding-agent";
 import { byteLength, calculateCompactionStats, normalizeLedgerEntry, type ContextLedgerEntry, type ContextSourceKind, type TokenConfidence } from "../domain/index.ts";
@@ -15,6 +16,7 @@ import type { PiContextUsageSnapshot } from "../app/index.ts";
 export type RuntimeLedgerContext = {
   at?: string;
   turnId?: string;
+  uncollectedEventCount?: number;
 };
 
 export type RuntimeCompactionInput = RuntimeLedgerContext & {
@@ -95,6 +97,7 @@ export function collectRuntimeMessage(
           pathCount: 0,
           status: "present",
           warning,
+          uncollectedEventCount: context.uncollectedEventCount,
         },
         redaction: { redacted: true, reason: "runtime message content is not stored", originalByteCount: measured.byteCount },
       }),
@@ -114,14 +117,32 @@ export function collectRuntimeToolExecutionStart(event: Pick<ToolExecutionStartE
   });
 }
 
-export function collectRuntimeToolExecutionEnd(event: Pick<ToolExecutionEndEvent, "toolCallId" | "toolName" | "result" | "isError">, context: RuntimeLedgerContext = {}): RuntimeLedgerResult {
+export function collectRuntimeToolExecutionUpdate(event: Pick<ToolExecutionUpdateEvent, "toolCallId" | "toolName" | "args" | "partialResult">, context: RuntimeLedgerContext = {}): RuntimeLedgerResult {
+  return collectRuntimeTool({
+    at: context.at,
+    turnId: context.turnId,
+    eventType: "tool_execution_update",
+    toolCallId: event.toolCallId,
+    toolName: event.toolName,
+    input: event.args,
+    result: event.partialResult,
+    executionStatus: "started",
+  });
+}
+
+export function collectRuntimeToolExecutionEnd(
+  event: Pick<ToolExecutionEndEvent, "toolCallId" | "toolName" | "result" | "isError">,
+  context: RuntimeLedgerContext & { input?: unknown; details?: unknown } = {},
+): RuntimeLedgerResult {
   return collectRuntimeTool({
     at: context.at,
     turnId: context.turnId,
     eventType: "tool_execution_end",
     toolCallId: event.toolCallId,
     toolName: event.toolName,
+    input: context.input,
     result: event.result,
+    details: context.details,
     isError: event.isError,
     executionStatus: event.isError ? "error" : "success",
   });
@@ -182,7 +203,7 @@ export function collectRuntimeCompaction(input: RuntimeCompactionInput): Runtime
 function collectRuntimeTool(input: {
   at?: string;
   turnId?: string;
-  eventType: "tool_execution_start" | "tool_execution_end" | "tool_result";
+  eventType: "tool_execution_start" | "tool_execution_update" | "tool_execution_end" | "tool_result";
   toolCallId: string;
   toolName: string;
   input?: unknown;

@@ -74,7 +74,7 @@ export function evaluateSwePolicy(options: EvaluateSwePolicyOptions): PiSwePolic
     }
   }
 
-  if (checkEnabled(config, "verification") && needsVerification(options.state, facts) && options.state.verification.length === 0) {
+  if (checkEnabled(config, "verification") && needsVerification(options.state, facts) && !hasSuccessfulScopedVerification(options.state)) {
     warnings.push(result("missing_verification", "No verification evidence before completion/finalization.", "Run focused verification or record why it was not possible."));
   }
 
@@ -91,6 +91,13 @@ function needsInspection(fact: PiSweFact): boolean {
 
 function needsVerification(state: PiSweState, facts: readonly PiSweFact[]): boolean {
   return state.activeStage === "finalize" || facts.some((fact) => fact.kind === "todo_completion_attempt");
+}
+
+export function hasSuccessfulScopedVerification(state: PiSweState): boolean {
+  return state.verification.some((evidence) =>
+    evidence.kind === "command"
+    && evidence.exitCode === 0
+    && (evidence.scope === "focused" || evidence.scope === "broad"));
 }
 
 function normalizedUnique(paths: readonly string[]): string[] {

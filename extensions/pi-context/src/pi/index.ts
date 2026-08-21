@@ -5,6 +5,7 @@ export {
   collectRuntimeMessage,
   collectRuntimeToolExecutionEnd,
   collectRuntimeToolExecutionStart,
+  collectRuntimeToolExecutionUpdate,
   collectRuntimeToolResult,
   type RuntimeCompactionInput,
   type RuntimeLedgerContext,
