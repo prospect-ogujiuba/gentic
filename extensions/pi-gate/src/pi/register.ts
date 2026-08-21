@@ -40,7 +40,7 @@ export function registerPiGate(pi: ExtensionAPI): void {
   });
   pi.registerCommand("gate", { description: "Manage pi-gate bash permissions: status, reload, check <cmd>, mode <ask|strict|permissive|off>", handler: async (args, ctx) => {
     const [cmd, ...rest] = args.trim().split(/\s+/);
-    if (cmd === "reload") { loadConfig(ctx.cwd); ctx.ui.notify(`pi-gate reloaded: ${rulesFromPermissions(getConfig().permissions).length} permission patterns`, "success"); return; }
+    if (cmd === "reload") { loadConfig(ctx.cwd); ctx.ui.notify(`pi-gate reloaded: ${rulesFromPermissions(getConfig().permissions).length} permission patterns`, "info"); return; }
     if (cmd === "mode") {
       const mode = rest[0];
       const config = getConfig();

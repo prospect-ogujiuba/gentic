@@ -43,7 +43,7 @@ export function persistRule(ctx: ExtensionContext, path: string, pattern: string
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(next, null, 2)}\n`);
   loadConfig(ctx.cwd);
-  ctx.ui.notify(`pi-gate saved ${action} rule to ${path}`, "success");
+  ctx.ui.notify(`pi-gate saved ${action} rule to ${path}`, "info");
 }
 
 export function persistGlobalRule(ctx: ExtensionContext, command: string, action: Action): void {

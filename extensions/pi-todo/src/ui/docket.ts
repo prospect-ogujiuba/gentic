@@ -176,7 +176,7 @@ function expandedTodoDetailLines(todo: Todo, state: TodoState, theme: TodoTheme,
     ...section("Acceptance", bullets(todo.acceptanceCriteria)),
     ...section("Definition of done", bullets(todo.definitionOfDone)),
     ...section("Notes", bullets(todo.notes.slice(-3))),
-    ...section("Evidence", todo.evidence.length > 0 ? bullets(todo.evidence.slice(-3).map((evidence) => "summary" in evidence ? evidence.summary : evidence.type)) : []),
+    ...section("Evidence", todo.evidence.length > 0 ? bullets(todo.evidence.slice(-3).map((evidence) => "summary" in evidence ? evidence.summary : evidence.type).filter((value): value is string => typeof value === "string")) : []),
   ];
 }
 

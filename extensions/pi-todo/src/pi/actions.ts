@@ -1,5 +1,6 @@
 import type {
   ExtensionAPI,
+  ExtensionCommandContext,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { SPLIT_SCAFFOLD_TAG, TodoService, TodoWorkflowError, type CreateArtifactInput, type CreateTodoInput, type TodoRepairHint } from "../app/service.ts";
@@ -22,6 +23,11 @@ const promptedDocketCleanupKeys = new Set<string>();
 
 function service(pi: ExtensionAPI, ctx: ExtensionContext): TodoService {
   return new TodoService(new PiTodoEventStore(pi, ctx));
+}
+
+function sessionOwner(ctx: ExtensionContext): string | null {
+  const getSessionId = (ctx.sessionManager as { getSessionId?: () => string }).getSessionId;
+  return getSessionId?.call(ctx.sessionManager) ?? ctx.cwd ?? null;
 }
 
 function renderTodo(todo: Todo): string {
@@ -209,7 +215,7 @@ function toolCallTarget(input: unknown): string | undefined {
 
 export async function ensureActiveTodoForToolCall(pi: ExtensionAPI, ctx: ExtensionContext, toolName: string, input: unknown): Promise<Todo> {
   const svc = service(pi, ctx);
-  const owner = ctx.sessionId ?? ctx.cwd ?? null;
+  const owner = sessionOwner(ctx);
   const existing = await svc.active(owner);
   if (existing) return existing;
   const title = [`use ${toolName}`, toolCallTarget(input)].filter(Boolean).join(" on ");
@@ -237,7 +243,7 @@ async function requestDocketCleanupTurn(
   const state = await svc.state();
   const reminder = docketCleanupMessage(state);
   if (!reminder) return;
-  const key = `${ctx.sessionId ?? ctx.cwd ?? "session"}:${deliverAs}:${reminder.key}`;
+  const key = `${sessionOwner(ctx) ?? "session"}:${deliverAs}:${reminder.key}`;
   if (promptedDocketCleanupKeys.has(key)) return;
   promptedDocketCleanupKeys.add(key);
   ctx.ui.notify("pi-todo has open entries to wrap up before the final response", "info");
@@ -314,7 +320,7 @@ async function executeTodoActionUnsafe(pi: ExtensionAPI, ctx: ExtensionContext, 
     const todo = await svc.next();
     return { content: [{ type: "text" as const, text: todo ? renderTodo(todo) : "No next todo." }], details: { todo, nextActions: todo ? nextActions(todo) : [{ action: "create", params: { title: "describe next task" } }] } };
   }
-  const owner = (params.owner as string | undefined) ?? ctx.sessionId ?? ctx.cwd ?? null;
+  const owner = (params.owner as string | undefined) ?? sessionOwner(ctx);
   if (params.action === "begin") {
     const todo = await svc.begin(params.requiredCapabilities as string[] | undefined, params.leaseMs as number | undefined, owner, { splitOverrideReason: params.reason as string | undefined });
     await updateTodoWidget(pi, ctx);
@@ -408,7 +414,7 @@ export function getTodoCommandCompletions(prefix: string) {
     .map((value) => ({ value, label: value }));
 }
 
-export async function executeTodoCommand(pi: ExtensionAPI, ctx: ExtensionContext, args: string): Promise<void> {
+export async function executeTodoCommand(pi: ExtensionAPI, ctx: ExtensionCommandContext, args: string): Promise<void> {
   const [subcommandRaw, id] = args.trim().split(/\s+/, 2);
   const subcommand = subcommandRaw || "open";
   if (subcommand === "open") {

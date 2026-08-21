@@ -1,13 +1,18 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = resolve(new URL("..", import.meta.url).pathname);
+const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const piRoot = join(root, "node_modules", "@earendil-works", "pi-coding-agent");
 const piPackageJson = join(piRoot, "package.json");
 const extensionTypes = join(piRoot, "dist", "core", "extensions", "types.d.ts");
-const contractPath = join(root, "src", "pi-contract.ts");
+const contractArgIndex = process.argv.indexOf("--contract");
+const contractPath = contractArgIndex >= 0 && process.argv[contractArgIndex + 1]
+  ? resolve(root, process.argv[contractArgIndex + 1])
+  : join(root, "src", "pi-contract.ts");
 const packageJsonPath = join(root, "package.json");
+const packageLockPath = join(root, "package-lock.json");
 
 function fail(message) {
   console.error(`check-pi-api: ${message}`);
@@ -18,12 +23,20 @@ if (!existsSync(piPackageJson)) fail("installed @earendil-works/pi-coding-agent 
 if (!existsSync(extensionTypes)) fail("installed Pi extension type declarations not found");
 if (!existsSync(contractPath)) fail("src/pi-contract.ts not found");
 if (!existsSync(packageJsonPath)) fail("package.json not found");
+if (!existsSync(packageLockPath)) fail("package-lock.json not found");
 if (process.exitCode) process.exit();
 
 const piPackage = JSON.parse(readFileSync(piPackageJson, "utf8"));
 const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+const packageLock = JSON.parse(readFileSync(packageLockPath, "utf8"));
 const dts = readFileSync(extensionTypes, "utf8");
 const contract = readFileSync(contractPath, "utf8");
+
+const supportedPiVersion = packageJson.dependencies?.["@earendil-works/pi-coding-agent"];
+const lockedPiVersion = packageLock.packages?.["node_modules/@earendil-works/pi-coding-agent"]?.version;
+if (supportedPiVersion !== "0.84.2") fail(`package.json must pin the supported Pi baseline to 0.84.2, got ${String(supportedPiVersion)}`);
+if (lockedPiVersion !== supportedPiVersion) fail(`package-lock Pi version must equal the documented baseline. expected=${String(supportedPiVersion)}, got=${String(lockedPiVersion)}`);
+if (piPackage.version !== supportedPiVersion) fail(`installed Pi version must equal the repository baseline. expected=${String(supportedPiVersion)}, got=${String(piPackage.version)}`);
 
 for (const path of [contractPath, packageJsonPath]) {
   const text = readFileSync(path, "utf8");

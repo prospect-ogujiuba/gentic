@@ -22,7 +22,13 @@ export type PiSweConfig = {
   };
 };
 
-export type EffectivePiSweConfig = Required<Omit<PiSweConfig, "$schema">>;
+export type EffectivePiSweConfig = {
+  version: number;
+  enabled: boolean;
+  mode: PiSweMode;
+  stages: Record<PiSweStageCheckName, PiSweStageCheckConfig>;
+  surgicalChange: { maxFiles: number };
+};
 
 export type PiSweConfigDiagnostic = {
   path: string;
@@ -96,7 +102,7 @@ function mergeConfig(...configs: Array<PiSweConfig | EffectivePiSweConfig | unde
 
   for (const config of configs) {
     if (!config) continue;
-    if (config.$schema !== undefined) merged.$schema = config.$schema;
+    if ("$schema" in config && config.$schema !== undefined) merged.$schema = config.$schema;
     if (config.version !== undefined) merged.version = config.version;
     if (config.enabled !== undefined) merged.enabled = config.enabled;
     if (config.mode !== undefined) merged.mode = config.mode;

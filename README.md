@@ -20,6 +20,21 @@ pi install -l /absolute/path/to/gentic
 
 The `-l` flag writes the package reference to `.pi/settings.json` for the current project instead of your global Pi settings.
 
+## Development baseline
+
+Gentic currently supports exactly `@earendil-works/pi-coding-agent` **0.84.2**. The exact pin keeps the compatibility artifact and lockfile reproducible; widening the supported range requires updating and verifying the compatibility baseline first.
+
+Development and CI require Node.js **22.19.0 or newer**. From a clean checkout:
+
+```bash
+npm ci
+npm run typecheck
+npm run check
+npm test
+```
+
+`package.json#engines` enforces the Node requirement, and `check:pi-api` verifies that the manifest, lockfile, installed Pi package, and all `ExtensionAPI.on` event overloads match the documented baseline.
+
 ## Runtime discovery
 
 `package.json` points Pi at both root resources and extension-owned resources:

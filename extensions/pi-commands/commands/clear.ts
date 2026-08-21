@@ -10,7 +10,7 @@ export const clearCommand: PiCommandModule = {
         await ctx.waitForIdle();
         await ctx.newSession({
           withSession: async (ctx) => {
-            ctx.ui.notify("New session started", "success");
+            ctx.ui.notify("New session started", "info");
           },
         });
       },

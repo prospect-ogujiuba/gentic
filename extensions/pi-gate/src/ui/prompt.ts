@@ -42,7 +42,7 @@ export async function promptPermission(ctx: ExtensionContext, req: Request, d: D
         else if (matchesKey(data, Key.home)) commandOffset = 0;
         else if (matchesKey(data, Key.end)) commandOffset = Number.MAX_SAFE_INTEGER;
         else if (matchesKey(data, Key.enter)) done(opts[selected]!);
-        else if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c"))) done({ action: "deny", remember: false });
+        else if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c"))) done(opts[3]!);
         else {
           const o = opts.find((x) => data.toLowerCase() === x.k);
           if (o) done(o);

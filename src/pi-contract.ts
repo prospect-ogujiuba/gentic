@@ -100,9 +100,11 @@ export const PI_PACKAGE_SURFACES: readonly PiPackageSurfaceDefinition[] = [
 export const PI_EXTENSION_RESOURCE_DISCOVERY_EVENT = "resources_discover" as const;
 
 export const PI_EXTENSION_EVENT_GROUPS = {
+  project: ["project_trust"],
   resource: ["resources_discover"],
   session: [
     "session_start",
+    "session_info_changed",
     "session_before_switch",
     "session_before_fork",
     "session_before_compact",
@@ -114,10 +116,12 @@ export const PI_EXTENSION_EVENT_GROUPS = {
   agent: [
     "context",
     "before_provider_request",
+    "before_provider_headers",
     "after_provider_response",
     "before_agent_start",
     "agent_start",
     "agent_end",
+    "agent_settled",
     "turn_start",
     "turn_end",
     "message_start",

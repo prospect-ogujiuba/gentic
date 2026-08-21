@@ -16,7 +16,7 @@ function readUsageSnapshot(ctx: SnapshotContext): UsageSnapshot | undefined {
   const usage = ctx.getContextUsage?.();
   const tokens = numberOrUndefined(usage?.tokens);
   const promptTokens = tokens === 0 ? estimateSystemPromptTokens(ctx) : undefined;
-  const contextTokens = promptTokens && promptTokens > tokens ? promptTokens : tokens;
+  const contextTokens = promptTokens && promptTokens > (tokens ?? 0) ? promptTokens : tokens;
   const contextWindow = usage?.contextWindow;
   const contextPct = contextTokens !== undefined && contextWindow && contextWindow > 0 ? (contextTokens / contextWindow) * 100 : numberOrUndefined(usage?.percent);
   return usage || state.usage ? {

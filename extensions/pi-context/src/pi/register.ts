@@ -8,8 +8,6 @@ import type {
   MessageEndEvent,
   MessageStartEvent,
   MessageUpdateEvent,
-  ModelSelectEvent,
-  ResourcesDiscoverEvent,
   SessionBeforeCompactEvent,
   SessionCompactEvent,
   SessionStartEvent,
@@ -19,6 +17,10 @@ import type {
   TurnEndEvent,
   TurnStartEvent,
 } from "@earendil-works/pi-coding-agent";
+
+type ModelSelectEvent = { model: unknown };
+type ResourcesDiscoverEvent = { type: "resources_discover"; cwd: string; reason: "startup" | "reload" };
+
 import {
   createPiContextReportSnapshot,
   getSessionState,

@@ -64,7 +64,7 @@ export function applyFacts(runtime: PiSweRuntime, facts: readonly PiSweFact[]): 
   for (const fact of facts) {
     if (fact.kind === "inspection") runtime.state = { ...stateService.recordInspectedPath(runtime.state, fact.path) };
     else if (fact.kind === "code_change" && fact.path) runtime.state = { ...stateService.recordChangedPath(runtime.state, fact.path) };
-    else if (fact.kind === "verification") runtime.state = { ...stateService.recordVerification(runtime.state, evidenceService.createCommandEvidence({ command: fact.command, exitCode: fact.exitCode, scope: fact.scope, timestamp: new Date().toISOString() })) };
+    else if (fact.kind === "verification" && fact.exitCode !== undefined) runtime.state = { ...stateService.recordVerification(runtime.state, evidenceService.createCommandEvidence({ command: fact.command, exitCode: fact.exitCode, scope: fact.scope, timestamp: new Date().toISOString() })) };
   }
 }
 

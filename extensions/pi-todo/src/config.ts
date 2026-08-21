@@ -72,13 +72,15 @@ export function loadEffectiveTodoConfig(options: LoadEffectiveTodoConfigOptions 
 }
 
 function applyEnforcementDiagnosticFallback(config: EffectivePiTodoConfig, diagnostics: PiTodoConfigDiagnostic[]): EffectivePiTodoConfig {
-  if (config.enforcement.defaultAction !== "allow" || !diagnostics.some(isInvalidEnforcementDiagnostic)) return config;
+  if (!diagnostics.some(isInvalidEnforcementDiagnostic)) return config;
 
   diagnostics.push({
     path: "effective config",
-    message: "invalid enforcement config with defaultAction 'allow'; defaultAction forced to 'requireTodo' to avoid silently allowing tools",
+    message: "invalid enforcement config; defaultAction forced to 'requireTodo' to avoid silently allowing tools",
   });
-  return { ...config, enforcement: { ...config.enforcement, defaultAction: "requireTodo" } };
+  return config.enforcement.defaultAction === "requireTodo"
+    ? config
+    : { ...config, enforcement: { ...config.enforcement, defaultAction: "requireTodo" } };
 }
 
 function isInvalidEnforcementDiagnostic(diagnostic: PiTodoConfigDiagnostic): boolean {
@@ -106,10 +108,19 @@ function mergeConfig(...configs: Array<PiTodoConfig | EffectivePiTodoConfig | un
 
   for (const config of configs) {
     if (!config) continue;
-    if (config.$schema !== undefined) merged.$schema = config.$schema;
+    if ("$schema" in config && config.$schema !== undefined) merged.$schema = config.$schema;
     if (config.version !== undefined) merged.version = config.version;
     if (config.docket !== undefined) merged.docket = { ...(merged.docket ?? {}), ...config.docket };
-    if (config.enforcement !== undefined) merged.enforcement = { ...(merged.enforcement ?? {}), ...config.enforcement };
+    if (config.enforcement !== undefined) {
+      merged.enforcement = {
+        ...(merged.enforcement ?? {}),
+        ...config.enforcement,
+        rules: config.enforcement.rules ? [...config.enforcement.rules] : merged.enforcement?.rules,
+        bashReadonlyAllowlist: config.enforcement.bashReadonlyAllowlist
+          ? [...config.enforcement.bashReadonlyAllowlist]
+          : merged.enforcement?.bashReadonlyAllowlist,
+      };
+    }
   }
 
   return merged;

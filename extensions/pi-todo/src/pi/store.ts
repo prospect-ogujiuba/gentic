@@ -16,8 +16,9 @@ export class PiTodoEventStore implements TodoEventStore {
   async read(): Promise<TodoEvent[]> {
     return this.ctx.sessionManager
       .getEntries()
-      .filter((entry) => entry.type === "custom" && entry.customType === CUSTOM_TYPE)
-      .map((entry) => entry.data as TodoEvent);
+      .flatMap((entry) => entry.type === "custom" && entry.customType === CUSTOM_TYPE && entry.data
+        ? [entry.data as TodoEvent]
+        : []);
   }
 
   async append(event: TodoEvent): Promise<void> {
