@@ -21,7 +21,7 @@ function visibleSlice(lines: string[], offset: number, maxLines: number, marker:
 }
 
 export async function promptPermission(ctx: ExtensionContext, req: Request, d: Decision): Promise<Action> {
-  if (!ctx.hasUI) return d.defaultOnTimeout || "deny";
+  if (!ctx.hasUI || ctx.mode !== "tui") return "deny";
   const result = await ctx.ui.custom<PermissionChoice>((tui, theme, _kb, done) => {
     const opts: PermissionChoice[] = [
       { k: "y", label: "yes, run once", action: "allow", remember: false },
@@ -42,7 +42,7 @@ export async function promptPermission(ctx: ExtensionContext, req: Request, d: D
         else if (matchesKey(data, Key.home)) commandOffset = 0;
         else if (matchesKey(data, Key.end)) commandOffset = Number.MAX_SAFE_INTEGER;
         else if (matchesKey(data, Key.enter)) done(opts[selected]!);
-        else if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c"))) done(opts[3]!);
+        else if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c"))) done(opts[4]!);
         else {
           const o = opts.find((x) => data.toLowerCase() === x.k);
           if (o) done(o);

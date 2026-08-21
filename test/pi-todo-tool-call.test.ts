@@ -5,10 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import piTodo from "../extensions/pi-todo/index.ts";
+import { todoToolParameters } from "../extensions/pi-todo/src/pi/schema.ts";
 
 type ToolCallHandler = (event: { type: "tool_call"; toolName: string; input?: Record<string, unknown> }, ctx: unknown) => Promise<unknown>;
 
 type RegisteredTool = {
+  executionMode?: "sequential" | "parallel";
   execute: (id: string, params: Record<string, unknown>, signal: AbortSignal, onUpdate: () => void, ctx: unknown) => Promise<unknown>;
 };
 
@@ -62,6 +64,21 @@ async function writeProjectConfig(cwd: string, config: unknown): Promise<void> {
   await mkdir(join(cwd, ".pi"), { recursive: true });
   await writeFile(join(cwd, ".pi", "pi-todo.json"), JSON.stringify(config));
 }
+
+test("todo tool uses Google-compatible enums and serializes concurrent mutation calls", async () => {
+  await withTempProject(async (cwd) => {
+    const { tools, ctx } = setupPiTodo(cwd);
+    const tool = tools.get("todo")!;
+    assert.equal(tool.executionMode, "sequential");
+    assert.deepEqual((todoToolParameters.properties.action as { type?: string }).type, "string");
+    assert.ok(Array.isArray((todoToolParameters.properties.action as { enum?: unknown[] }).enum));
+
+    const signal = new AbortController().signal;
+    const calls = Array.from({ length: 20 }, (_, index) => tool.execute(`call-${index}`, { action: "create", title: `retry ${index}`, commandId: "same-create" }, signal, () => {}, ctx));
+    const results = await Promise.all(calls) as Array<{ details: { todo: { id: string } } }>;
+    assert.equal(new Set(results.map((result) => result.details.todo.id)).size, 1);
+  });
+});
 
 test("tool_call hook allows configured tools without an active todo", async () => {
   await withTempProject(async (cwd) => {

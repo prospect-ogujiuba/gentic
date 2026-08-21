@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { DEFAULT_AUDIT_PATH, decide, getConfig, loadConfig, patternRegex, persistRule, promptPermission } from "../extensions/pi-gate/index.ts";
+import { DEFAULT_AUDIT_PATH, decide, getConfig, getConfigDiagnostics, loadConfig, patternRegex, persistRule, promptPermission } from "../extensions/pi-gate/index.ts";
 
 function writeGateConfig(cwd: string, config: Record<string, unknown>): string {
   const path = join(cwd, ".pi/pi-gate/pi-gate.json");
@@ -106,7 +106,7 @@ test("pi-gate config deny beats built-in allow", () => {
   assert.match(decision.ruleId, /^config:deny:/);
 });
 
-test("pi-gate strict permissive and disabled modes short-circuit policy", () => {
+test("pi-gate strict and disabled modes short-circuit while permissive still enforces deny", () => {
   const strictCwd = mkdtempSync(join(tmpdir(), "pi-gate-strict-"));
   writeGateConfig(strictCwd, { version: 2, enabled: true, mode: "strict", audit: { enabled: false }, permissions: { allow: ["pwd"] } });
   loadConfig(strictCwd);
@@ -115,7 +115,7 @@ test("pi-gate strict permissive and disabled modes short-circuit policy", () => 
   const permissiveCwd = mkdtempSync(join(tmpdir(), "pi-gate-permissive-"));
   writeGateConfig(permissiveCwd, { version: 2, enabled: true, mode: "permissive", audit: { enabled: false }, permissions: { deny: ["pwd"] } });
   loadConfig(permissiveCwd);
-  assert.equal(decide({ source: "agent", command: "pwd", cwd: permissiveCwd }).action, "allow");
+  assert.equal(decide({ source: "agent", command: "pwd", cwd: permissiveCwd }).action, "deny");
 
   const disabledCwd = mkdtempSync(join(tmpdir(), "pi-gate-disabled-"));
   writeGateConfig(disabledCwd, { version: 2, enabled: false, mode: "ask", audit: { enabled: false }, permissions: { deny: ["pwd"] } });
@@ -132,7 +132,11 @@ test("pi-gate project persistence does not duplicate rules", () => {
   persistRule(ctx, path, "echo once*", "allow");
 
   const saved = JSON.parse(readFileSync(path, "utf8"));
-  assert.deepEqual(saved.permissions.allow, ["echo once*"]);
+  assert.deepEqual(saved.literalPermissions.allow, ["echo once*"]);
+
+  loadConfig(cwd);
+  assert.equal(decide({ source: "agent", command: "echo once*", cwd }).action, "allow");
+  assert.notEqual(decide({ source: "agent", command: "echo once anything", cwd }).action, "allow");
 });
 
 test("pi-gate migrates legacy root audit path to pi-gate state directory", () => {
@@ -175,7 +179,43 @@ test("pi-gate no-UI prompt falls back safely", async () => {
   const req = { source: "agent", command: "sudo true", cwd: process.cwd() } as const;
 
   assert.equal(await promptPermission(ctx, req, { action: "ask", ruleId: "x", reason: "test" }), "deny");
-  assert.equal(await promptPermission(ctx, req, { action: "ask", ruleId: "x", reason: "test", defaultOnTimeout: "allow" }), "allow");
+});
+
+test("pi-gate broad allows cannot authorize compound shell syntax", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-gate-adversarial-"));
+  writeGateConfig(cwd, { version: 3, enabled: true, mode: "permissive", audit: { enabled: false }, permissions: { allow: ["ls*"] } });
+  loadConfig(cwd);
+  for (const command of ["ls; rm -rf /tmp/x", "ls && whoami", "ls | sh", "ls > /tmp/x", "ls $(whoami)", "ls\nwhoami"]) {
+    assert.notEqual(decide({ source: "agent", command, cwd }).action, "allow", command);
+  }
+});
+
+test("pi-gate detects reordered and long destructive rm flags", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-gate-rm-"));
+  writeGateConfig(cwd, { version: 3, enabled: true, mode: "permissive", audit: { enabled: false } });
+  loadConfig(cwd);
+  for (const command of ["rm -fr /", "rm --force --recursive /", "command rm -r -f $HOME", "sudo rm -rf ~"]) {
+    assert.equal(decide({ source: "agent", command, cwd }).action, "deny", command);
+  }
+});
+
+test("pi-gate invalid reload retains last-known-good policy", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-gate-lkg-"));
+  const path = writeGateConfig(cwd, { version: 3, enabled: true, mode: "ask", audit: { enabled: false }, permissions: { deny: ["secret*"] } });
+  loadConfig(cwd);
+  assert.equal(decide({ source: "agent", command: "secret value", cwd }).action, "deny");
+  writeFileSync(path, JSON.stringify({ version: 999, mode: "broken" }));
+  loadConfig(cwd);
+  assert.ok(getConfigDiagnostics().length > 0);
+  assert.equal(decide({ source: "agent", command: "secret value", cwd }).action, "deny");
+});
+
+test("pi-gate can exclude untrusted project policy", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-gate-untrusted-"));
+  writeGateConfig(cwd, { version: 3, permissions: { allow: ["project-only*"] } });
+  loadConfig(cwd, { includeProject: false });
+  const decision = decide({ source: "agent", command: "project-only command", cwd });
+  assert.notEqual(decision.ruleId, "config:allow:project-only*");
 });
 
 test("pi-gate loads global extension config and project config with project-specific permissions", () => {

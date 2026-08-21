@@ -1,4 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, unlink, writeFile } from "node:fs/promises";
+import { dirname, relative, resolve, sep } from "node:path";
 import { canTransitionStatus, normalizeStatus, isSuccessStatus, isTerminalStatus, transitionAllowedStatuses } from "../domain/lifecycle.ts";
 import { ineligibleReasons, missingCapabilities, openDependencyIds, type EligibilityOptions } from "../domain/policy.ts";
 import { TodoLedger, createTodoRecord, id, now, type CreateTodoInput, type TodoEventStore } from "./ledger.ts";
@@ -80,10 +81,12 @@ function artifactBody(title: string, purpose: string, created: string, content: 
 export class TodoService {
   private ledger: TodoLedger;
   private policy: TodoPolicy;
+  private cwd: string;
 
-  constructor(store: TodoEventStore, policy: TodoPolicy = defaultTodoPolicy) {
+  constructor(store: TodoEventStore, policy: TodoPolicy = defaultTodoPolicy, cwd = process.cwd()) {
     this.ledger = new TodoLedger(store);
     this.policy = { ...defaultTodoPolicy, ...policy, splitting: { ...defaultSplitPolicy, ...(policy.splitting ?? {}) } };
+    this.cwd = resolve(cwd);
   }
 
   async state(): Promise<TodoState> { return this.ledger.state(); }
@@ -92,6 +95,17 @@ export class TodoService {
 
   async createOrganized(input: CreateTodoInput, options: CreateOrganizedTodoOptions = {}): Promise<CreateOrganizedTodoResult> {
     const assessment = assessTodoIntake(input, this.policy.splitting);
+    if (input.commandId) {
+      const priorEvents = await this.ledger.events();
+      const created = priorEvents.find((event) => event.type === "todo.created" && event.commandId === input.commandId);
+      if (created?.type === "todo.created") {
+        const state = await this.state();
+        const parent = this.requireTodo(state, created.todo.id);
+        const split = priorEvents.find((event) => event.type === "todo.split" && event.commandId === input.commandId && event.todoId === parent.id);
+        if (split?.type === "todo.split") return { assessment, parent, children: split.children.map((child) => this.requireTodo(state, child.id)) };
+        return { assessment, todo: parent, children: [] };
+      }
+    }
     if (assessment.organization === "todo" || (assessment.organization === "clarify" && options.allowVagueTodo)) {
       const todo = await this.create(input);
       return { assessment, todo, children: [] };
@@ -159,8 +173,18 @@ export class TodoService {
   }
 
   async linkDependency(todoId: string, dependencyTodoId: string): Promise<Todo> {
-    await this.requireExisting(dependencyTodoId);
-    await this.requireExisting(todoId);
+    const state = await this.state();
+    this.requireTodo(state, dependencyTodoId);
+    const todo = this.requireTodo(state, todoId);
+    if (todoId === dependencyTodoId) throw workflowError("DEPENDENCY_SELF", "a todo cannot depend on itself", { action: "get", params: { todoId } });
+    if (todo.dependsOn.includes(dependencyTodoId)) return todo;
+    const reachesTarget = (currentId: string, seen = new Set<string>()): boolean => {
+      if (currentId === todoId) return true;
+      if (seen.has(currentId)) return false;
+      seen.add(currentId);
+      return (state.todos[currentId]?.dependsOn ?? []).some((dependencyId) => reachesTarget(dependencyId, seen));
+    };
+    if (reachesTarget(dependencyTodoId)) throw workflowError("DEPENDENCY_CYCLE", `dependency ${dependencyTodoId} would create a cycle`, { action: "graph", params: { todoId } });
     await this.append({ id: id("evt"), type: "todo.dependency_linked", at: now(), todoId, dependencyTodoId });
     return this.get(todoId);
   }
@@ -305,10 +329,15 @@ export class TodoService {
     if (!input.purpose.trim()) throw new Error("artifact purpose is required");
     const at = now();
     const path = artifactPath(input.kind, input.shortName, at, existing, input);
-    await mkdir(path.slice(0, path.lastIndexOf("/")), { recursive: true });
-    await writeFile(path, artifactBody(input.shortName, input.purpose, at, input.content), "utf8");
-    const todo = await this.attachEvidence(todoId, [{ type: "generated_artifact", path, summary: input.purpose.trim(), createdByTodoId: todoId, recordedAt: at }]);
-    return { todo, path };
+    const absolute = await this.safeArtifactPath(path, true);
+    await writeFile(absolute, artifactBody(input.shortName, input.purpose, at, input.content), { encoding: "utf8", flag: "wx", mode: 0o600 });
+    try {
+      const todo = await this.attachEvidence(todoId, [{ type: "generated_artifact", path, summary: input.purpose.trim(), createdByTodoId: todoId, recordedAt: at }]);
+      return { todo, path };
+    } catch (error) {
+      await unlink(absolute).catch(() => undefined);
+      throw error;
+    }
   }
 
   async verify(todoId: string, evidence: EvidenceRef[] = [], summary?: string, capabilities?: string[]): Promise<Todo> {
@@ -467,11 +496,24 @@ export class TodoService {
     if (name.includes("todo") && !path.startsWith(MODEL_TODO_ARTIFACTS_DIR)) throw workflowError("ARTIFACT_PATH_INVALID", `todo files must be under ${MODEL_TODO_ARTIFACTS_DIR}`, repair);
     if (!/^\d{4}-\d{2}-\d{2}_\d{4}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.test(name)) throw workflowError("ARTIFACT_PATH_INVALID", "generated artifact filenames must be YYYY-MM-DD_HHMM-short-kebab-name.md", repair);
     try {
-      const text = await readFile(path, "utf8");
+      const absolute = await this.safeArtifactPath(path, false);
+      const text = await readFile(absolute, "utf8");
       if (!/^# .+\n\nCreated: .+\nPurpose: .+/m.test(text)) throw workflowError("ARTIFACT_FORMAT_INVALID", "generated artifact markdown must start with heading, Created, and Purpose", repair);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
+  }
+  private async safeArtifactPath(path: string, createParent: boolean): Promise<string> {
+    const root = await realpath(this.cwd);
+    const absolute = resolve(root, path);
+    const rel = relative(root, absolute);
+    if (rel === ".." || rel.startsWith(`..${sep}`) || rel.startsWith(sep)) throw workflowError("ARTIFACT_PATH_INVALID", "artifact path escapes ctx.cwd");
+    const parent = dirname(absolute);
+    if (createParent) await mkdir(parent, { recursive: true });
+    const realParent = await realpath(parent);
+    const parentRel = relative(root, realParent);
+    if (parentRel === ".." || parentRel.startsWith(`..${sep}`) || parentRel.startsWith(sep)) throw workflowError("ARTIFACT_PATH_INVALID", "artifact parent resolves outside ctx.cwd");
+    return resolve(realParent, absolute.slice(parent.length + 1));
   }
   private findActiveTodo(state: TodoState, owner?: string | null, exceptTodoId?: string): Todo | undefined {
     return Object.values(state.todos).find((todo) => todo.id !== exceptTodoId && (todo.status === "in_progress" || todo.status === "claimed") && (owner ? todo.owner === owner : true));

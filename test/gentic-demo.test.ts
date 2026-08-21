@@ -142,8 +142,8 @@ function createPiHarness() {
       execCalls.push({ command, args });
       const key = args.join(" ");
       if (key === "rev-parse --show-toplevel") return { stdout: `${root}\n`, code: 0 };
-      if (key === "branch --show-current") return { stdout: "demo\n", code: 0 };
-      if (key === "status --short --branch") return { stdout: "## demo\n", code: 0 };
+      if (key === "status --porcelain=v1 --branch -z --untracked-files=all") return { stdout: "## demo\0", code: 0 };
+      if (key === "remote -v") return { stdout: "", code: 0 };
       return { stdout: "", stderr: "", code: 0 };
     },
     appendEntry(customType: string, data: unknown) {

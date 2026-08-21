@@ -18,6 +18,7 @@ import { resetTodoSessionNameMemory } from "./src/pi/session-name.ts";
 import { todoToolParameters } from "./src/pi/schema.ts";
 
 export default function piTodo(pi: ExtensionAPI): void {
+  let todoExecutionQueue: Promise<void> = Promise.resolve();
   pi.on("session_start", async (event, ctx) => {
     if (event.reason !== "reload") resetTodoSessionNameMemory();
     await updateTodoWidget(pi, ctx);
@@ -58,8 +59,20 @@ export default function piTodo(pi: ExtensionAPI): void {
     promptSnippet:
       "Use todo first. If no active todo, call todo action=begin; it deterministically returns active work or starts the next ready todo. Prefer finish over complete when ending active work. Prefer create_artifact/note_artifact for generated notes, reports, plans, logs, TODO files, and artifacts so pi-todo creates a valid .model-artifacts/<kind>/<topic>/ path and records evidence automatically. Use record_artifact only for files that already exist. For TODO/planning artifacts use kind=todo with category such as pi-todo, pi-swe, or gentic and subcategory for phase sets like pi-swe-phases.",
     parameters: todoToolParameters,
-    async execute(_id, params, _signal, _onUpdate, ctx) {
-      return executeTodoAction(pi, ctx, params);
+    executionMode: "sequential",
+    async execute(_id, params, signal, onUpdate, ctx) {
+      signal?.throwIfAborted();
+      if (params.action === "graph" || params.action === "create_artifact" || params.action === "note_artifact") {
+        onUpdate?.({ content: [{ type: "text", text: `${params.action} in progress` }], details: undefined });
+      }
+      const run = todoExecutionQueue.then(async () => {
+        signal?.throwIfAborted();
+        const result = await executeTodoAction(pi, ctx, params);
+        signal?.throwIfAborted();
+        return result;
+      });
+      todoExecutionQueue = run.then(() => undefined, () => undefined);
+      return run;
     },
   });
 

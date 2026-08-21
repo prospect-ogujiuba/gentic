@@ -8,6 +8,7 @@ Deterministic agent defaults:
 - Use `todo({ "action": "finish", "summary": "..." })` to close active work. Existing attached evidence counts toward completion.
 - Use `create_artifact` or `note_artifact` for generated durable notes/reports/plans so pi-todo creates the `.model-artifacts/<kind>/<topic>/...` path and attaches evidence automatically.
 - Use `record_artifact` only for existing files.
+- Artifact creation resolves beneath `ctx.cwd`, rejects symlink escapes and collisions, and rolls the file back if evidence publication fails.
 
 ## Lifecycle contract
 
@@ -17,7 +18,7 @@ Canonical task states are `ready`, `claimed`, `in_progress`, `external_blocked`,
 
 Compatibility aliases are accepted for old ledgers and inputs: `proposed`/`pending` → `ready`, `done`/`needs_review` → `completed`, `blocked` → `external_blocked`, and `abandoned` → `cancelled` with abandonment preserved as a reason. Legal transitions are defined in `src/domain/lifecycle.ts` as `TODO_TRANSITIONS` and enforced by `TodoService` lifecycle actions.
 
-Runtime persistence uses `gentic.todo.event` envelopes with `version: 1`. Legacy unwrapped events are decoded for migration; malformed and unknown future versions are ignored. Reconstruction always reads `sessionManager.getBranch()`, so abandoned `/tree` branches cannot affect the active ledger. Compaction retains custom entries on the active branch and therefore does not change todo semantics.
+Runtime persistence uses `gentic.todo.event` envelopes with `version: 1`. Legacy unwrapped events are decoded for migration; malformed and unknown future versions are ignored. Reconstruction always reads `sessionManager.getBranch()`, so abandoned `/tree` branches cannot affect the active ledger. Compaction retains custom entries on the active branch and therefore does not change todo semantics. The mutating model tool declares sequential execution. `commandId` is an optional create/create_organized idempotency key; a retry returns the first persisted result. Dependency links reject self-edges and transitive cycles.
 
 | Pi lifecycle event | pi-todo behavior |
 |---|---|

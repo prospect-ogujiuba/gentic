@@ -72,6 +72,10 @@ export class TodoLedger {
   async append(event: TodoEvent): Promise<void> { await this.store.append(event); }
 
   async create(input: CreateTodoInput): Promise<Todo> {
+    if (input.commandId) {
+      const prior = (await this.events()).find((event) => event.type === "todo.created" && event.commandId === input.commandId);
+      if (prior?.type === "todo.created") return this.requireTodo(await this.state(), prior.todo.id);
+    }
     const at = now();
     const todo = createTodoRecord(input, at);
     await this.append({ id: id("evt"), type: "todo.created", at, commandId: input.commandId, todo });

@@ -1,9 +1,9 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-export { DEFAULT_AUDIT_PATH, LEGACY_AUDIT_PATH, defaultConfig, getConfig, getConfigPaths, globalConfigPath, loadConfig, normalizeAuditPath, projectConfigPathForCwd, readConfigJson, SCHEMA_URL, type Config, type LoadedConfig } from "./src/config/index.ts";
-export { BUILTIN_PERMISSIONS, decideWithConfig, mergePermissions, normalizeCommand, patternRegex, rulesFromPermissions, type Action, type Decision, type PermissionChoice, type Permissions, type Remember, type Request, type Rule, type Source } from "./src/domain/policy.ts";
+export { DEFAULT_AUDIT_PATH, LEGACY_AUDIT_PATH, defaultConfig, getConfig, getConfigDiagnostics, getConfigPaths, globalConfigPath, loadConfig, normalizeAuditPath, projectConfigPathForCwd, readConfigJson, SCHEMA_URL, type Config, type LoadedConfig } from "./src/config/index.ts";
+export { BUILTIN_PERMISSIONS, decideWithConfig, hasShellControlSyntax, mergePermissions, normalizeCommand, patternRegex, rulesFromPermissions, type Action, type Decision, type PermissionChoice, type Permissions, type Remember, type Request, type Rule, type Source } from "./src/domain/policy.ts";
 export { appendAudit } from "./src/app/audit.ts";
-export { getSessionDecision, persistGlobalRule, persistProjectRule, persistRule, projectConfigPath, rememberSessionDecision } from "./src/app/remember.ts";
+export { clearSessionDecisions, getSessionDecision, persistGlobalRule, persistProjectRule, persistRule, projectConfigPath, rememberSessionDecision } from "./src/app/remember.ts";
 export { promptPermission } from "./src/ui/prompt.ts";
 export { decide, gate, registerPiGate } from "./src/pi/register.ts";
 

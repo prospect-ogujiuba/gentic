@@ -1,3 +1,4 @@
+import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 
 const actions = [
@@ -35,22 +36,10 @@ const actions = [
   "graph",
 ] as const;
 
-const TodoActionSchema = Type.Union(
-  actions.map((action) => Type.Literal(action)) as [
-    ReturnType<typeof Type.Literal>,
-    ReturnType<typeof Type.Literal>,
-    ...ReturnType<typeof Type.Literal>[],
-  ],
-);
+const TodoActionSchema = StringEnum(actions);
 
-const PrioritySchema = Type.Union([
-  Type.Literal("low"),
-  Type.Literal("normal"),
-  Type.Literal("medium"),
-  Type.Literal("high"),
-  Type.Literal("critical"),
-  Type.Literal("urgent"),
-]);
+const priorities = ["low", "normal", "medium", "high", "critical", "urgent"] as const;
+const PrioritySchema = StringEnum(priorities);
 
 const EvidenceSchema = Type.Array(
   Type.Object({
@@ -101,8 +90,9 @@ const ChildTodoInputSchema = Type.Object({
 export const todoToolParameters = Type.Object({
   action: TodoActionSchema,
   todoId: Type.Optional(Type.String()),
+  commandId: Type.Optional(Type.String({ description: "Idempotency key for create/create_organized" })),
   path: Type.Optional(Type.String()),
-  kind: Type.Optional(Type.Union([Type.Literal("reports"), Type.Literal("logs"), Type.Literal("specs"), Type.Literal("plans"), Type.Literal("findings"), Type.Literal("todo")])),
+  kind: Type.Optional(StringEnum(["reports", "logs", "specs", "plans", "findings", "todo"] as const)),
   category: Type.Optional(Type.String()),
   subcategory: Type.Optional(Type.String()),
   shortName: Type.Optional(Type.String()),

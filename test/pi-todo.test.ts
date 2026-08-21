@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TodoService, TodoWorkflowError, type TodoEventStore } from "../extensions/pi-todo/src/app/service.ts";
@@ -204,6 +204,22 @@ test("expired claims do not block new work and emit claim_expired", async () => 
   assert.ok(store.events.some((event) => event.type === "todo.claim_expired"));
 });
 
+test("todo create idempotency keys and dependency cycle checks are deterministic", async () => {
+  const store = new MemoryStore();
+  const service = new TodoService(store);
+  const first = await service.create({ title: "first", commandId: "create-1" });
+  const retry = await service.create({ title: "ignored retry title", commandId: "create-1" });
+  assert.equal(retry.id, first.id);
+  assert.equal(store.events.filter((event) => event.type === "todo.created").length, 1);
+
+  const second = await service.create({ title: "second" });
+  const third = await service.create({ title: "third" });
+  await assert.rejects(() => service.linkDependency(first.id, first.id), /cannot depend on itself/);
+  await service.linkDependency(first.id, second.id);
+  await service.linkDependency(second.id, third.id);
+  await assert.rejects(() => service.linkDependency(third.id, first.id), /create a cycle/);
+});
+
 test("createArtifact writes a headed markdown artifact and records evidence", async () => {
   const previous = process.cwd();
   const dir = await mkdtemp(join(tmpdir(), "pi-todo-artifact-"));
@@ -224,5 +240,27 @@ test("createArtifact writes a headed markdown artifact and records evidence", as
   } finally {
     process.chdir(previous);
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("createArtifact rejects collisions and symlink escapes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-todo-safe-artifact-"));
+  const outside = await mkdtemp(join(tmpdir(), "pi-todo-outside-"));
+  try {
+    const service = new TodoService(new MemoryStore(), undefined, root);
+    const todo = await service.create({ title: "safe artifact", tags: ["safe"] });
+    const input = { kind: "plans" as const, category: "safe", shortName: "same", purpose: "test", content: "x" };
+    await service.createArtifact(todo.id, input);
+    await assert.rejects(() => service.createArtifact(todo.id, input), (error: NodeJS.ErrnoException) => error.code === "EEXIST");
+
+    await mkdir(join(root, ".model-artifacts/findings"), { recursive: true });
+    await symlink(outside, join(root, ".model-artifacts/findings/escape"));
+    await assert.rejects(
+      () => service.createArtifact(todo.id, { kind: "findings", category: "escape", shortName: "bad", purpose: "test", content: "x" }),
+      /outside ctx.cwd/,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
   }
 });

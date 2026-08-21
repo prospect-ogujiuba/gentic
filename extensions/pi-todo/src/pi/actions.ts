@@ -22,7 +22,7 @@ const TODO_COMMANDS = ["open", "list", "next", "graph", "history", "get", "split
 const promptedDocketCleanupKeys = new Set<string>();
 
 function service(pi: ExtensionAPI, ctx: ExtensionContext): TodoService {
-  return new TodoService(new PiTodoEventStore(pi, ctx));
+  return new TodoService(new PiTodoEventStore(pi, ctx), undefined, ctx.cwd);
 }
 
 function sessionOwner(ctx: ExtensionContext): string | null {
@@ -112,6 +112,7 @@ function createInput(params: Record<string, unknown>): CreateTodoInput {
     tags: params.tags as string[] | undefined,
     scope: params.scope as CreateTodoInput["scope"],
     requiredCapabilities: params.requiredCapabilities as string[] | undefined,
+    commandId: params.commandId as string | undefined,
   };
 }
 

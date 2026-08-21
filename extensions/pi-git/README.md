@@ -15,10 +15,10 @@
 
 ## Orientation block
 
-- **What it does:** captures git root, branch, status, staged/unstaged/untracked files, and remotes in a deterministic summary.
+- **What it does:** captures a typed, bounded git root/branch/upstream snapshot with staged, unstaged, untracked, conflict, and remote groups. Git command failures remain typed errors and are never rendered as field values.
 - **Commands/tools it registers:** `git_snapshot` model-callable tool and `/pi-git` command.
 - **Pi events it listens to:** none.
 - **State/config files it reads/writes:** shells out to `git`; writes no state files.
 - **Internal module map:** `index.ts` remains the extension entrypoint; `src/pi/register.ts` wires the tool and command; `src/app/snapshot.ts` collects and renders snapshot data; `prompts/` contains git workflow prompt resources.
-- **Tests to run:** `npm test -- test/gentic-demo.test.ts` or the full `npm test` suite.
+- **Tests to run:** `node --experimental-strip-types --test test/pi-git.test.ts` or the full `npm test` suite.
 - **Known boundaries/non-goals:** reports repository state only; it does not stage, commit, push, or mutate git state.
