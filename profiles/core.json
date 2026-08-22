@@ -1,0 +1,18 @@
+{
+  "id": "core",
+  "description": "Safety, package orientation, scaffolding, git scope, and shared prompt primitives.",
+  "package": {
+    "source": "git:github.com/prospect-ogujiuba/gentic@v0.1.0",
+    "extensions": [
+      "+extensions/gentic/index.ts",
+      "+extensions/pi-catalog/index.ts",
+      "+extensions/pi-commands/index.ts",
+      "+extensions/pi-gate/index.ts",
+      "+extensions/pi-git/index.ts",
+      "+extensions/pi-primitives/index.ts"
+    ],
+    "skills": ["+skills/add-skill/SKILL.md"],
+    "prompts": ["+extensions/pi-git/prompts/git-commit.md"],
+    "themes": []
+  }
+}

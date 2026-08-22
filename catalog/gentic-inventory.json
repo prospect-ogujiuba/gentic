@@ -1,0 +1,515 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "gentic",
+    "version": "0.1.0",
+    "private": true,
+    "piVersion": "0.84.2",
+    "node": ">=22.19.0"
+  },
+  "manifest": {
+    "extensions": [
+      "./extensions"
+    ],
+    "skills": [
+      "./skills",
+      "./extensions/**/skills",
+      "!./skills/**/README.md",
+      "!./extensions/**/skills/**/README.md"
+    ],
+    "prompts": [
+      "./prompts/**/*.md",
+      "./extensions/**/prompts/**/*.md",
+      "!./prompts/**/README.md",
+      "!./extensions/**/prompts/**/README.md"
+    ],
+    "themes": [
+      "./themes/**/*.json",
+      "./extensions/**/themes/**/*.json"
+    ]
+  },
+  "resources": {
+    "extensions": [
+      "extensions/gentic/index.ts",
+      "extensions/pi-catalog/index.ts",
+      "extensions/pi-commands/index.ts",
+      "extensions/pi-context/index.ts",
+      "extensions/pi-gate/index.ts",
+      "extensions/pi-git/index.ts",
+      "extensions/pi-hud/index.ts",
+      "extensions/pi-primitives/index.ts",
+      "extensions/pi-swe/index.ts",
+      "extensions/pi-todo/index.ts"
+    ],
+    "skills": [
+      "extensions/pi-swe/skills/swe-diagnose/SKILL.md",
+      "extensions/pi-swe/skills/swe-dsa/SKILL.md",
+      "extensions/pi-swe/skills/swe-finalize/SKILL.md",
+      "extensions/pi-swe/skills/swe-implement/SKILL.md",
+      "extensions/pi-swe/skills/swe-orchestrate/SKILL.md",
+      "extensions/pi-swe/skills/swe-plan/SKILL.md",
+      "extensions/pi-swe/skills/swe-review/SKILL.md",
+      "extensions/pi-swe/skills/swe-tdd/SKILL.md",
+      "extensions/pi-swe/skills/swe-verify/SKILL.md",
+      "skills/add-skill/SKILL.md"
+    ],
+    "prompts": [
+      "extensions/pi-git/prompts/git-commit.md",
+      "prompts/add-prompt.md"
+    ],
+    "themes": [
+      "themes/catppuccin-macchiato.json",
+      "themes/duo/gentic-dark.json",
+      "themes/gentic-ember.json",
+      "themes/gentic-forest.json",
+      "themes/gentic-graphite.json",
+      "themes/gh-dark.json",
+      "themes/mono/gentic-duo-amber.json",
+      "themes/mono/gentic-duo-moss.json",
+      "themes/mono/gentic-duo-steel.json",
+      "themes/mono/gentic-duo-violet.json",
+      "themes/mono/gentic-mono-ash.json",
+      "themes/mono/gentic-mono-ink.json"
+    ]
+  },
+  "extensions": [
+    {
+      "owner": "gentic",
+      "entrypoint": "extensions/gentic/index.ts",
+      "sourceFiles": [
+        "extensions/gentic/index.ts",
+        "extensions/gentic/src/command-catalog.ts",
+        "extensions/gentic/src/package-summary.ts",
+        "extensions/gentic/src/pi/register.ts"
+      ],
+      "registrations": {
+        "commands": [
+          "gentic"
+        ],
+        "tools": [
+          "gentic_status"
+        ],
+        "events": [
+          "resources_discover",
+          "session_start"
+        ],
+        "shortcuts": [],
+        "flags": [],
+        "providers": [],
+        "renderers": [],
+        "markdownTransformers": 0,
+        "uiSurfaces": [
+          "notify",
+          "setStatus"
+        ]
+      }
+    },
+    {
+      "owner": "pi-catalog",
+      "entrypoint": "extensions/pi-catalog/index.ts",
+      "sourceFiles": [
+        "extensions/pi-catalog/index.ts",
+        "extensions/pi-catalog/src/app/catalog.ts",
+        "extensions/pi-catalog/src/pi/register.ts"
+      ],
+      "registrations": {
+        "commands": [
+          "catalog"
+        ],
+        "tools": [
+          "gentic_catalog"
+        ],
+        "events": [
+          "session_start"
+        ],
+        "shortcuts": [],
+        "flags": [],
+        "providers": [],
+        "renderers": [],
+        "markdownTransformers": 0,
+        "uiSurfaces": [
+          "notify",
+          "setStatus"
+        ]
+      }
+    },
+    {
+      "owner": "pi-commands",
+      "entrypoint": "extensions/pi-commands/index.ts",
+      "sourceFiles": [
+        "extensions/pi-commands/commands/clear.ts",
+        "extensions/pi-commands/commands/index.ts",
+        "extensions/pi-commands/commands/scaffold.ts",
+        "extensions/pi-commands/index.ts",
+        "extensions/pi-commands/types.ts"
+      ],
+      "registrations": {
+        "commands": [
+          "clear",
+          "scaffold"
+        ],
+        "tools": [],
+        "events": [],
+        "shortcuts": [],
+        "flags": [],
+        "providers": [],
+        "renderers": [],
+        "markdownTransformers": 0,
+        "uiSurfaces": [
+          "notify"
+        ]
+      }
+    },
+    {
+      "owner": "pi-context",
+      "entrypoint": "extensions/pi-context/index.ts",
+      "sourceFiles": [
+        "extensions/pi-context/index.ts",
+        "extensions/pi-context/src/app/hud-adapter.ts",
+        "extensions/pi-context/src/app/index.ts",
+        "extensions/pi-context/src/app/report.ts",
+        "extensions/pi-context/src/app/session-state.ts",
+        "extensions/pi-context/src/domain/index.ts",
+        "extensions/pi-context/src/domain/ledger.ts",
+        "extensions/pi-context/src/domain/types.ts",
+        "extensions/pi-context/src/pi/index.ts",
+        "extensions/pi-context/src/pi/register.ts",
+        "extensions/pi-context/src/pi/runtime-ledger.ts",
+        "extensions/pi-context/src/pi/static-inventory.ts"
+      ],
+      "registrations": {
+        "commands": [
+          "pi-context"
+        ],
+        "tools": [],
+        "events": [
+          "agent_end",
+          "agent_settled",
+          "agent_start",
+          "before_agent_start",
+          "before_provider_request",
+          "context",
+          "input",
+          "message_end",
+          "message_start",
+          "message_update",
+          "model_select",
+          "resources_discover",
+          "session_before_compact",
+          "session_before_fork",
+          "session_before_switch",
+          "session_compact",
+          "session_info_changed",
+          "session_shutdown",
+          "session_start",
+          "session_tree",
+          "tool_execution_end",
+          "tool_execution_start",
+          "tool_execution_update",
+          "tool_result",
+          "turn_end",
+          "turn_start"
+        ],
+        "shortcuts": [],
+        "flags": [],
+        "providers": [],
+        "renderers": [],
+        "markdownTransformers": 0,
+        "uiSurfaces": [
+          "notify"
+        ]
+      }
+    },
+    {
+      "owner": "pi-gate",
+      "entrypoint": "extensions/pi-gate/index.ts",
+      "sourceFiles": [
+        "extensions/pi-gate/index.ts",
+        "extensions/pi-gate/src/app/audit.ts",
+        "extensions/pi-gate/src/app/remember.ts",
+        "extensions/pi-gate/src/config/index.ts",
+        "extensions/pi-gate/src/domain/policy.ts",
+        "extensions/pi-gate/src/pi/register.ts",
+        "extensions/pi-gate/src/ui/prompt.ts"
+      ],
+      "registrations": {
+        "commands": [
+          "gate"
+        ],
+        "tools": [],
+        "events": [
+          "project_trust",
+          "session_shutdown",
+          "session_start",
+          "tool_call",
+          "user_bash"
+        ],
+        "shortcuts": [],
+        "flags": [],
+        "providers": [],
+        "renderers": [],
+        "markdownTransformers": 0,
+        "uiSurfaces": [
+          "notify",
+          "setStatus"
+        ]
+      }
+    },
+    {
+      "owner": "pi-git",
+      "entrypoint": "extensions/pi-git/index.ts",
+      "sourceFiles": [
+        "extensions/pi-git/index.ts",
+        "extensions/pi-git/src/app/snapshot.ts",
+        "extensions/pi-git/src/pi/register.ts"
+      ],
+      "registrations": {
+        "commands": [
+          "pi-git"
+        ],
+        "tools": [
+          "git_snapshot"
+        ],
+        "events": [],
+        "shortcuts": [],
+        "flags": [],
+        "providers": [],
+        "renderers": [],
+        "markdownTransformers": 0,
+        "uiSurfaces": [
+          "notify"
+        ]
+      }
+    },
+    {
+      "owner": "pi-hud",
+      "entrypoint": "extensions/pi-hud/index.ts",
+      "sourceFiles": [
+        "extensions/pi-hud/index.ts",
+        "extensions/pi-hud/src/app/git-snapshot-service.ts",
+        "extensions/pi-hud/src/app/git-status.ts",
+        "extensions/pi-hud/src/app/snapshot.ts",
+        "extensions/pi-hud/src/app/state.ts",
+        "extensions/pi-hud/src/domain/git-status.ts",
+        "extensions/pi-hud/src/pi/adapter.ts",
+        "extensions/pi-hud/src/pi/register.ts",
+        "extensions/pi-hud/src/pi/runtime.ts",
+        "extensions/pi-hud/src/ui/components/context.ts",
+        "extensions/pi-hud/src/ui/components/events.ts",
+        "extensions/pi-hud/src/ui/components/git.ts",
+        "extensions/pi-hud/src/ui/components/model.ts",
+        "extensions/pi-hud/src/ui/components/tools.ts",
+        "extensions/pi-hud/src/ui/components/worktime.ts",
+        "extensions/pi-hud/src/ui/lib/format.ts",
+        "extensions/pi-hud/src/ui/surfaces/footer.ts",
+        "extensions/pi-hud/src/ui/surfaces/modal.ts",
+        "extensions/pi-hud/types.ts"
+      ],
+      "registrations": {
+        "commands": [
+          "pi-hud"
+        ],
+        "tools": [],
+        "events": [
+          "agent_end",
+          "agent_settled",
+          "agent_start",
+          "message_end",
+          "model_select",
+          "session_info_changed",
+          "session_shutdown",
+          "session_start",
+          "thinking_level_select",
+          "tool_execution_end",
+          "tool_execution_start",
+          "tool_result",
+          "turn_start"
+        ],
+        "shortcuts": [],
+        "flags": [],
+        "providers": [],
+        "renderers": [],
+        "markdownTransformers": 0,
+        "uiSurfaces": [
+          "notify",
+          "setFooter",
+          "setStatus",
+          "setWidget"
+        ]
+      }
+    },
+    {
+      "owner": "pi-primitives",
+      "entrypoint": "extensions/pi-primitives/index.ts",
+      "sourceFiles": [
+        "extensions/pi-primitives/index.ts",
+        "extensions/pi-primitives/primitives/concise-output/index.ts",
+        "extensions/pi-primitives/primitives/implementation-file-completion/index.ts",
+        "extensions/pi-primitives/primitives/model-artifacts/index.ts",
+        "extensions/pi-primitives/primitives/whimsical/index.ts",
+        "extensions/pi-primitives/triggers.ts"
+      ],
+      "registrations": {
+        "commands": [],
+        "tools": [],
+        "events": [
+          "before_agent_start",
+          "session_start",
+          "turn_end",
+          "turn_start"
+        ],
+        "shortcuts": [],
+        "flags": [],
+        "providers": [],
+        "renderers": [],
+        "markdownTransformers": 0,
+        "uiSurfaces": [
+          "notify",
+          "setStatus"
+        ]
+      }
+    },
+    {
+      "owner": "pi-swe",
+      "entrypoint": "extensions/pi-swe/index.ts",
+      "sourceFiles": [
+        "extensions/pi-swe/index.ts",
+        "extensions/pi-swe/src/app/evidence.ts",
+        "extensions/pi-swe/src/app/runtime.ts",
+        "extensions/pi-swe/src/app/state.ts",
+        "extensions/pi-swe/src/capabilities.ts",
+        "extensions/pi-swe/src/classify.ts",
+        "extensions/pi-swe/src/commands.ts",
+        "extensions/pi-swe/src/config.ts",
+        "extensions/pi-swe/src/config/index.ts",
+        "extensions/pi-swe/src/domain/capabilities.ts",
+        "extensions/pi-swe/src/domain/classify.ts",
+        "extensions/pi-swe/src/domain/dsa.ts",
+        "extensions/pi-swe/src/domain/evidence.ts",
+        "extensions/pi-swe/src/domain/lifecycle.ts",
+        "extensions/pi-swe/src/domain/policy.ts",
+        "extensions/pi-swe/src/domain/state.ts",
+        "extensions/pi-swe/src/domain/tdd.ts",
+        "extensions/pi-swe/src/dsa.ts",
+        "extensions/pi-swe/src/events.ts",
+        "extensions/pi-swe/src/evidence.ts",
+        "extensions/pi-swe/src/lifecycle.ts",
+        "extensions/pi-swe/src/orchestrate.ts",
+        "extensions/pi-swe/src/pi/commands.ts",
+        "extensions/pi-swe/src/pi/events.ts",
+        "extensions/pi-swe/src/policy.ts",
+        "extensions/pi-swe/src/runtime.ts",
+        "extensions/pi-swe/src/state.ts",
+        "extensions/pi-swe/src/tdd.ts"
+      ],
+      "registrations": {
+        "commands": [
+          "swe"
+        ],
+        "tools": [],
+        "events": [
+          "agent_settled",
+          "session_info_changed",
+          "session_shutdown",
+          "session_start",
+          "session_tree",
+          "tool_call",
+          "tool_result",
+          "turn_start"
+        ],
+        "shortcuts": [],
+        "flags": [],
+        "providers": [],
+        "renderers": [],
+        "markdownTransformers": 0,
+        "uiSurfaces": [
+          "notify",
+          "setWidget"
+        ]
+      }
+    },
+    {
+      "owner": "pi-todo",
+      "entrypoint": "extensions/pi-todo/index.ts",
+      "sourceFiles": [
+        "extensions/pi-todo/index.ts",
+        "extensions/pi-todo/src/app/ledger.ts",
+        "extensions/pi-todo/src/app/projection.ts",
+        "extensions/pi-todo/src/app/query.ts",
+        "extensions/pi-todo/src/app/service.ts",
+        "extensions/pi-todo/src/config.ts",
+        "extensions/pi-todo/src/domain/lifecycle.ts",
+        "extensions/pi-todo/src/domain/policy.ts",
+        "extensions/pi-todo/src/domain/reducer.ts",
+        "extensions/pi-todo/src/domain/splitting.ts",
+        "extensions/pi-todo/src/domain/types.ts",
+        "extensions/pi-todo/src/pi/actions.ts",
+        "extensions/pi-todo/src/pi/schema.ts",
+        "extensions/pi-todo/src/pi/session-name.ts",
+        "extensions/pi-todo/src/pi/store.ts",
+        "extensions/pi-todo/src/ui/docket.ts",
+        "extensions/pi-todo/src/ui/format.ts",
+        "extensions/pi-todo/src/ui/modal.ts",
+        "extensions/pi-todo/src/ui/theme.ts"
+      ],
+      "registrations": {
+        "commands": [
+          "todo"
+        ],
+        "tools": [
+          "todo"
+        ],
+        "events": [
+          "agent_settled",
+          "message_start",
+          "session_info_changed",
+          "session_shutdown",
+          "session_start",
+          "session_tree",
+          "tool_call",
+          "turn_end"
+        ],
+        "shortcuts": [],
+        "flags": [],
+        "providers": [],
+        "renderers": [],
+        "markdownTransformers": 0,
+        "uiSurfaces": [
+          "notify",
+          "setStatus",
+          "setWidget"
+        ]
+      }
+    }
+  ],
+  "profiles": [
+    {
+      "id": "core",
+      "path": "profiles/core.json",
+      "extensions": [
+        "+extensions/gentic/index.ts",
+        "+extensions/pi-catalog/index.ts",
+        "+extensions/pi-commands/index.ts",
+        "+extensions/pi-gate/index.ts",
+        "+extensions/pi-git/index.ts",
+        "+extensions/pi-primitives/index.ts"
+      ]
+    },
+    {
+      "id": "full",
+      "path": "profiles/full.json",
+      "extensions": [
+        "+extensions/gentic/index.ts",
+        "+extensions/pi-catalog/index.ts",
+        "+extensions/pi-commands/index.ts",
+        "+extensions/pi-context/index.ts",
+        "+extensions/pi-gate/index.ts",
+        "+extensions/pi-git/index.ts",
+        "+extensions/pi-hud/index.ts",
+        "+extensions/pi-primitives/index.ts",
+        "+extensions/pi-swe/index.ts",
+        "+extensions/pi-todo/index.ts"
+      ]
+    }
+  ]
+}

@@ -16,4 +16,6 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run check
+      - run: npm run check:commands
+      - run: npm run check:performance
       - run: npm test

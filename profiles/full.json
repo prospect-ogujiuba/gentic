@@ -1,0 +1,19 @@
+{
+  "id": "full",
+  "description": "All Gentic extensions and all manifest-discovered skills, prompts, and themes.",
+  "package": {
+    "source": "git:github.com/prospect-ogujiuba/gentic@v0.1.0",
+    "extensions": [
+      "+extensions/gentic/index.ts",
+      "+extensions/pi-catalog/index.ts",
+      "+extensions/pi-commands/index.ts",
+      "+extensions/pi-context/index.ts",
+      "+extensions/pi-gate/index.ts",
+      "+extensions/pi-git/index.ts",
+      "+extensions/pi-hud/index.ts",
+      "+extensions/pi-primitives/index.ts",
+      "+extensions/pi-swe/index.ts",
+      "+extensions/pi-todo/index.ts"
+    ]
+  }
+}

@@ -4,21 +4,16 @@
 
 ## Install
 
-Install Gentic as a normal Pi package globally:
+Gentic 0.x is distributed as a private Git/local Pi package. Install a pinned Git tag or trusted checkout:
 
 ```bash
-pi install npm:gentic
+pi install git:github.com/prospect-ogujiuba/gentic@v0.1.0
 pi install /absolute/path/to/gentic
 ```
 
-For a project-local install:
+For a project-local install, add `-l`. It writes the package reference to `.pi/settings.json` instead of global settings. After local source changes, run `/reload` inside Pi.
 
-```bash
-pi install -l npm:gentic
-pi install -l /absolute/path/to/gentic
-```
-
-The `-l` flag writes the package reference to `.pi/settings.json` for the current project instead of your global Pi settings.
+The `npm:gentic` name is not supported while `package.json#private` is true. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for clean-checkout development.
 
 ## Development baseline
 
@@ -81,27 +76,13 @@ First-class Gentic surfaces are only things Pi discovers directly from package m
 | `prompt-template` | `prompts/`, `extensions/**/prompts` | `pi.prompts` |
 | `theme` | `themes/`, `extensions/**/themes` | `pi.themes` |
 
-Everything else is Pi extension API behavior. Gentic does not catalog those behaviors as package surfaces or encode them into paths.
+Everything else is Pi extension API behavior. `pi-catalog` inventories those APIs as native capability groups, but does not mislabel them as package resources or encode them into manifest paths.
 
 ## Filtering
 
 Gentic does not maintain its own enable/disable registry. Use Pi package filters against stable resource paths.
 
-Example: load all Gentic extensions, include only review skills and planning/review prompts, and keep a dark theme.
-
-```json
-{
-  "packages": [
-    {
-      "source": "npm:gentic",
-      "extensions": ["extensions"],
-      "skills": ["skills/review/**", "extensions/**/skills/review/**"],
-      "prompts": ["prompts/review/**/*.md", "prompts/planning/**/*.md", "extensions/**/prompts/review/**/*.md"],
-      "themes": ["themes/dark/*.json", "extensions/**/themes/dark/*.json"]
-    }
-  ]
-}
-```
+Use the checked native filter fragments in [`profiles/core.json`](profiles/core.json) and [`profiles/full.json`](profiles/full.json). Copy a profile's nested `package` object into the Pi settings `packages` array. Profiles narrow `package.json#pi`; they do not add a Gentic resource kind or patch plugin internals.
 
 ## Repository shape
 
@@ -128,4 +109,6 @@ npm run check:pi-api
 
 The check reads the installed `@earendil-works/pi-coding-agent` package directly and verifies that Gentic's package assumptions still line up with the local Pi install.
 
-Run `npm run check:resources` for native resource validation and `npm run check:commands` to load Gentic in Pi and inspect collision-free `get_commands` provenance.
+Run `npm run check:resources` for native resource validation, `npm run check:inventory` for source/manifest/profile drift, and `npm run check:commands` for collision-free command provenance.
+
+Preview a Pi release with `npm run pi:update -- --target <version> --report <path>`. Release policy, support window, performance budgets, and the verification checklist live in [`docs/release.md`](docs/release.md). Native surface creation is documented in [`docs/plugin-guide.md`](docs/plugin-guide.md).

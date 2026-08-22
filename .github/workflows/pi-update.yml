@@ -1,0 +1,37 @@
+name: pi-update
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Exact @earendil-works/pi-* version to evaluate
+        required: true
+        type: string
+
+jobs:
+  compatibility:
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22.19.0, 24]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - name: Apply candidate and run compatibility matrix
+        continue-on-error: true
+        run: >-
+          npm run pi:update --
+          --target "${{ inputs.target }}"
+          --apply
+          --report ".model-artifacts/reports/pi-update/node-${{ matrix.node }}.md"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pi-update-${{ inputs.target }}-node-${{ matrix.node }}
+          path: .model-artifacts/reports/pi-update/*.md
+      - name: Fail when report contains failed checks
+        run: '! grep -q "| failed" .model-artifacts/reports/pi-update/node-${{ matrix.node }}.md'
