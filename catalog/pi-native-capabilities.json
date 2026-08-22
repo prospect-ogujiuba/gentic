@@ -1,0 +1,187 @@
+{
+  "schemaVersion": "4",
+  "source": {
+    "package": "@earendil-works/pi-coding-agent",
+    "version": "0.84.2",
+    "declarations": "dist/core/extensions/types.d.ts",
+    "docs": "docs/extensions.md"
+  },
+  "packageSurfaces": [
+    {
+      "id": "package",
+      "label": "package manifest",
+      "description": "Pi package manifest metadata, install/update identity, and package filtering.",
+      "discovery": "package-manifest"
+    },
+    {
+      "id": "extension",
+      "surfaceId": "extension",
+      "manifestKey": "extensions",
+      "directory": "extensions",
+      "label": "extension",
+      "resourceKind": "extension",
+      "description": "Pi extension modules discovered from package.json pi.extensions entries.",
+      "discovery": "package.json#pi"
+    },
+    {
+      "id": "skill",
+      "surfaceId": "skill",
+      "manifestKey": "skills",
+      "directory": "skills",
+      "label": "skill",
+      "resourceKind": "skill",
+      "description": "Pi skills discovered from package.json pi.skills entries.",
+      "discovery": "package.json#pi"
+    },
+    {
+      "id": "prompt-template",
+      "surfaceId": "prompt-template",
+      "manifestKey": "prompts",
+      "directory": "prompts",
+      "label": "prompt template",
+      "resourceKind": "prompt-template",
+      "description": "Pi prompt templates discovered from package.json pi.prompts entries.",
+      "discovery": "package.json#pi"
+    },
+    {
+      "id": "theme",
+      "surfaceId": "theme",
+      "manifestKey": "themes",
+      "directory": "themes",
+      "label": "theme",
+      "resourceKind": "theme",
+      "description": "Pi theme JSON files discovered from package.json pi.themes entries.",
+      "discovery": "package.json#pi"
+    }
+  ],
+  "eventGroups": {
+    "project": [
+      "project_trust"
+    ],
+    "resource": [
+      "resources_discover"
+    ],
+    "session": [
+      "session_start",
+      "session_info_changed",
+      "session_before_switch",
+      "session_before_fork",
+      "session_before_compact",
+      "session_compact",
+      "session_shutdown",
+      "session_before_tree",
+      "session_tree"
+    ],
+    "agent": [
+      "context",
+      "before_provider_request",
+      "before_provider_headers",
+      "after_provider_response",
+      "before_agent_start",
+      "agent_start",
+      "agent_end",
+      "agent_settled",
+      "turn_start",
+      "turn_end",
+      "message_start",
+      "message_update",
+      "message_end",
+      "tool_execution_start",
+      "tool_execution_update",
+      "tool_execution_end"
+    ],
+    "model": [
+      "model_select",
+      "thinking_level_select"
+    ],
+    "tool": [
+      "tool_call",
+      "tool_result"
+    ],
+    "user": [
+      "user_bash",
+      "input"
+    ]
+  },
+  "capabilityGroups": {
+    "commands": [
+      "registerCommand",
+      "getCommands"
+    ],
+    "tools": [
+      "registerTool",
+      "getActiveTools",
+      "getAllTools",
+      "setActiveTools"
+    ],
+    "events": [
+      "project_trust",
+      "resources_discover",
+      "session_start",
+      "session_info_changed",
+      "session_before_switch",
+      "session_before_fork",
+      "session_before_compact",
+      "session_compact",
+      "session_shutdown",
+      "session_before_tree",
+      "session_tree",
+      "context",
+      "before_provider_request",
+      "before_provider_headers",
+      "after_provider_response",
+      "before_agent_start",
+      "agent_start",
+      "agent_end",
+      "agent_settled",
+      "turn_start",
+      "turn_end",
+      "message_start",
+      "message_update",
+      "message_end",
+      "tool_execution_start",
+      "tool_execution_update",
+      "tool_execution_end",
+      "model_select",
+      "thinking_level_select",
+      "tool_call",
+      "tool_result",
+      "user_bash",
+      "input"
+    ],
+    "shortcuts": [
+      "registerShortcut"
+    ],
+    "flags": [
+      "registerFlag",
+      "getFlag"
+    ],
+    "providers": [
+      "registerProvider",
+      "unregisterProvider"
+    ],
+    "renderers": [
+      "registerMessageRenderer",
+      "registerEntryRenderer",
+      "renderCall",
+      "renderResult"
+    ],
+    "markdown-transformers": [
+      "registerMarkdownTransformer"
+    ],
+    "ui-surfaces": [
+      "notify",
+      "select",
+      "confirm",
+      "input",
+      "editor",
+      "custom",
+      "setStatus",
+      "setWidget",
+      "setFooter",
+      "setEditorComponent",
+      "setWorkingIndicator",
+      "addAutocompleteProvider"
+    ]
+  }
+}

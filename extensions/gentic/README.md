@@ -8,7 +8,7 @@
 - **State:** `layered-lite`
 - **Public entry:** `index.ts`
 - **Layers:** `app`, `pi`
-- **Machine declaration:** `extension.anatomy.json`
+- **Machine declaration:** optional handwritten `extension.anatomy.json` (not currently present)
 - **Reference role:** suite-orchestrator layered-lite example; `index.ts` stays a thin adapter.
 - **Mismatch notes:** none known; app helpers are shallow modules and Pi registration lives in `src/pi/register.ts`.
 

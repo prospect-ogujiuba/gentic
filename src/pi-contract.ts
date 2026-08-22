@@ -1,6 +1,12 @@
-export const PI_CONTRACT_SCHEMA_VERSION = "3" as const;
+export const PI_CONTRACT_SCHEMA_VERSION = "4" as const;
 export const SCHEMA_VERSION = PI_CONTRACT_SCHEMA_VERSION;
 export const PI_CONTRACT_SCHEMA_VERSION_DETAIL_KEY = "schemaVersion" as const;
+export const PI_CONTRACT_SOURCE = {
+  package: "@earendil-works/pi-coding-agent",
+  version: "0.84.2",
+  declarations: "dist/core/extensions/types.d.ts",
+  docs: "docs/extensions.md",
+} as const;
 
 export const PI_PACKAGE_MANIFEST_KEY = "pi" as const;
 export const PI_PACKAGE_MANIFEST_DISCOVERY = "package.json#pi" as const;
@@ -140,3 +146,30 @@ export const PI_EXTENSION_EVENTS = Object.values(PI_EXTENSION_EVENT_GROUPS).flat
 
 export type PiExtensionEvent = (typeof PI_EXTENSION_EVENTS)[number];
 export type PiExtensionEventGroup = keyof typeof PI_EXTENSION_EVENT_GROUPS;
+
+export const PI_NATIVE_CAPABILITY_GROUPS = {
+  commands: ["registerCommand", "getCommands"],
+  tools: ["registerTool", "getActiveTools", "getAllTools", "setActiveTools"],
+  events: PI_EXTENSION_EVENTS,
+  shortcuts: ["registerShortcut"],
+  flags: ["registerFlag", "getFlag"],
+  providers: ["registerProvider", "unregisterProvider"],
+  renderers: ["registerMessageRenderer", "registerEntryRenderer", "renderCall", "renderResult"],
+  "markdown-transformers": ["registerMarkdownTransformer"],
+  "ui-surfaces": [
+    "notify",
+    "select",
+    "confirm",
+    "input",
+    "editor",
+    "custom",
+    "setStatus",
+    "setWidget",
+    "setFooter",
+    "setEditorComponent",
+    "setWorkingIndicator",
+    "addAutocompleteProvider",
+  ],
+} as const;
+
+export type PiNativeCapabilityGroup = keyof typeof PI_NATIVE_CAPABILITY_GROUPS;

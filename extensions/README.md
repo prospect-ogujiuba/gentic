@@ -34,8 +34,7 @@ Choose the smallest shape that honestly describes the extension. Do not add empt
 `npm run check` runs the anatomy checker as a blocking CI gate for objective, low-risk violations:
 
 - missing extension `README.md`
-- missing `extension.anatomy.json`
-- invalid declaration mode or layer values
+- invalid optional `extension.anatomy.json` mode, layer values, or layered entrypoint when a handwritten declaration is present
 - extension-owned resources placed outside supported directories (`commands/`, `skills/`, `prompts/`, `themes/`, or `primitives/`)
 - layered extensions with a missing, escaping, or nonexistent declared `publicEntry`
 

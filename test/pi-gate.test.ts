@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { cancelPendingGatePrompts, DEFAULT_AUDIT_PATH, decide, getConfig, getConfigDiagnostics, loadConfig, patternRegex, persistRule, promptPermission, promptPermissionOutcome } from "../extensions/pi-gate/index.ts";
+import { cancelPendingGatePrompts, clearSessionDecisions, DEFAULT_AUDIT_PATH, decide, getConfig, getConfigDiagnostics, loadConfig, patternRegex, persistRule, promptPermission, promptPermissionOutcome, registerPiGate, rememberSessionDecision } from "../extensions/pi-gate/index.ts";
 
 function writeGateConfig(cwd: string, config: Record<string, unknown>): string {
   const path = join(cwd, ".pi/pi-gate/pi-gate.json");
@@ -123,6 +123,37 @@ test("pi-gate strict and disabled modes short-circuit while permissive still enf
   assert.equal(decide({ source: "agent", command: "pwd", cwd: disabledCwd }).action, "allow");
 });
 
+test("pi-gate blocks outside-project tool paths by default and permits them when configured", async () => {
+  const handlers = new Map<string, (...args: any[]) => any>();
+  registerPiGate({
+    on(name: string, handler: (...args: any[]) => any) { handlers.set(name, handler); },
+    registerCommand() {},
+  } as any);
+  const toolCall = handlers.get("tool_call")!;
+  const outsidePath = join(tmpdir(), "outside-project.txt");
+
+  const blockedCwd = mkdtempSync(join(tmpdir(), "pi-gate-path-blocked-"));
+  loadConfig(blockedCwd);
+  const blocked = await toolCall({ type: "tool_call", toolName: "read", input: { path: outsidePath } }, { cwd: blockedCwd });
+  assert.equal(blocked?.block, true);
+  assert.match(blocked?.reason, /path outside project root/);
+
+  const allowedCwd = mkdtempSync(join(tmpdir(), "pi-gate-path-allowed-"));
+  writeGateConfig(allowedCwd, { version: 3, allowOutsideProject: true });
+  loadConfig(allowedCwd);
+  assert.equal(await toolCall({ type: "tool_call", toolName: "read", input: { path: outsidePath } }, { cwd: allowedCwd }), undefined);
+  const protectedResult = await toolCall({ type: "tool_call", toolName: "write", input: { path: join(allowedCwd, ".env") } }, { cwd: allowedCwd });
+  assert.equal(protectedResult?.block, true);
+  assert.match(protectedResult?.reason, /protected write path/);
+});
+
+test("pi-gate rejects non-boolean allowOutsideProject config", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-gate-invalid-path-policy-"));
+  writeGateConfig(cwd, { version: 3, allowOutsideProject: "yes" });
+  loadConfig(cwd);
+  assert.ok(getConfigDiagnostics().some((message) => message.includes("allowOutsideProject must be boolean")));
+});
+
 test("pi-gate project persistence does not duplicate rules", () => {
   const cwd = mkdtempSync(join(tmpdir(), "pi-gate-"));
   const path = writeGateConfig(cwd, { version: 2, permissions: { allow: [] } });
@@ -237,6 +268,19 @@ test("pi-gate broad allows cannot authorize compound shell syntax", () => {
   for (const command of ["ls; rm -rf /tmp/x", "ls && whoami", "ls | sh", "ls > /tmp/x", "ls $(whoami)", "ls\nwhoami"]) {
     assert.notEqual(decide({ source: "agent", command, cwd }).action, "allow", command);
   }
+});
+
+test("pi-gate exact remembered permissions authorize compound shell commands", () => {
+  const command = "pwd; find . -maxdepth 3 -type f | head -20";
+  const cwd = mkdtempSync(join(tmpdir(), "pi-gate-exact-compound-"));
+  writeGateConfig(cwd, { version: 3, mode: "permissive", literalPermissions: { allow: [command] } });
+  loadConfig(cwd);
+  assert.equal(decide({ source: "agent", command, cwd }).action, "allow");
+
+  const sessionCommand = "command -v fzf || command -v gum";
+  rememberSessionDecision(sessionCommand, "allow");
+  assert.equal(decide({ source: "agent", command: sessionCommand, cwd }).action, "allow");
+  clearSessionDecisions();
 });
 
 test("pi-gate detects reordered and long destructive rm flags", () => {

@@ -8,19 +8,32 @@
 - **State:** `layered-lite`
 - **Public entry:** `index.ts`
 - **Layers:** `config`, `domain`, `app`, `pi`, `ui`
-- **Machine declaration:** `extension.anatomy.json`
+- **Machine declaration:** optional handwritten `extension.anatomy.json` (not currently present)
 - **Reference role:** layered-lite migrated example.
 - **Mismatch notes:** none known; layer folders are intentionally lightweight rather than deep framework structure.
 
 ## Orientation block
 
-- **What it does:** evaluates deny-first shell policy, blocks protected edit/write paths, and optionally owns configured project-trust decisions. Shell control syntax always requires explicit confirmation; cancellation, timeout, prompt failure, and noninteractive asks fail closed.
+- **What it does:** evaluates deny-first shell policy, blocks protected edit/write paths, and optionally owns configured project-trust decisions. Broad glob rules cannot authorize shell control syntax, but exact literal/session decisions can; cancellation, timeout, prompt failure, and noninteractive asks fail closed.
 - **Commands/tools it registers:** `/gate` command for status, `reload`, `check <cmd>`, and `mode <ask|strict|permissive|off>`. It registers no model-callable tool.
 - **Pi events it listens to:** `project_trust` applies global trust policy before project resources load; `session_start` validates trusted config and sets status; `tool_call` gates `bash`, `read`, `edit`, and `write`; `user_bash` gates user bash commands.
 - **State/config files it reads/writes:** reads `PI_GATE_CONFIG`, `~/.pi/pi-gate/pi-gate.json`, and `<project>/.pi/pi-gate/pi-gate.json`; writes remembered project/global rules to those config locations; writes audit JSONL to `.pi/pi-gate/pi-gate-audit.jsonl` by default; keeps session-only remembered decisions and stats in memory.
 - **Internal module map:** `index.ts` remains the extension entrypoint and public test exports; `src/config/index.ts` loads/merges config; `src/domain/policy.ts` normalizes commands, expands wildcard patterns, and decides allow/ask/deny; `src/app/audit.ts` appends audit JSONL; `src/app/remember.ts` stores session/project/global remembered rules; `src/ui/prompt.ts` owns the mode-aware native dialog and safe outcome contract; `src/pi/register.ts` wires Pi events and `/gate`; `pi-gate.schema.json` documents the JSON config shape.
 - **Tests to run:** `npm run test:gate` or the full `npm test` suite.
 - **Known boundaries/non-goals:** this is conservative classification, not a complete shell parser or sandbox. Configured `permissions` are explicit globs; remembered commands are stored separately in `literalPermissions` and match exactly. Invalid reloads retain the last-known-good policy.
+
+## External paths
+
+`read`, `edit`, and `write` paths outside the project root are blocked by default. To permit them, set `allowOutsideProject` in the global or trusted project config:
+
+```json
+{
+  "version": 3,
+  "allowOutsideProject": true
+}
+```
+
+This only removes the project-root boundary. Configured in-project `protectedPaths` rules continue to apply.
 
 ## Prompt outcome contract
 

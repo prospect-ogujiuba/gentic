@@ -10,7 +10,7 @@ It copies the Visiplane component design: multi-line responsive footer, context 
 - **State:** `layered-lite`
 - **Public entry:** `index.ts`
 - **Layers:** `pi`, `app`, `domain`, `ui`
-- **Machine declaration:** `extension.anatomy.json`
+- **Machine declaration:** optional handwritten `extension.anatomy.json` (not currently present)
 - **Reference role:** targeted behavior-preserving declaration; `index.ts` is a thin public entrypoint delegating to `src/pi/register.ts`.
 - **Layer notes:** Pi adapter/register glue lives under `src/pi/`. Snapshot, state, and git orchestration live under `src/app/`, with pure git status normalization in `src/domain/`. HUD rendering surfaces, components, and formatting helpers live under `src/ui/`; shared contracts remain in root `types.ts` as an intentional `layered-lite` seam.
 

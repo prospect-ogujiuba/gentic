@@ -2,9 +2,9 @@
 
 Central extension for Gentic lightweight primitives.
 
-Primitives are self-contained runtime modules under `primitives/`. Each primitive owns an `index.ts` entrypoint and may carry supporting markdown, scripts, config, or helper files beside it.
+Primitives are retained as self-contained runtime modules under `primitives/`. Each primitive owns an `index.ts` entrypoint and may carry supporting markdown, scripts, config, or helper files beside it.
 
-Use primitives for small, reusable Pi runtime building blocks that should apply across prompts and skills but do not need dedicated top-level extensions.
+Use primitives only for small, reusable Pi runtime building blocks that apply across prompts and skills but do not warrant a native command, tool, event, or package resource. New product plugins must use a native extension template.
 
 ## Anatomy
 
@@ -12,7 +12,7 @@ Use primitives for small, reusable Pi runtime building blocks that should apply 
 - **Public entry:** `index.ts`
 - **Layers:** `pi`, `resources`
 - **Resources:** `primitives/`
-- **Machine declaration:** `extension.anatomy.json`
+- **Machine declaration:** optional handwritten `extension.anatomy.json` (not currently present)
 - **Reference role:** simple hub example; no `src/*` layer folders are needed while primitive loading stays shallow.
 - **Mismatch notes:** none; `index.ts` hosts the lightweight runtime loader and primitive resources live in `primitives/`.
 
@@ -41,5 +41,7 @@ Use primitives for small, reusable Pi runtime building blocks that should apply 
 5. Use `ctx.readText("file.md")` to read primitive-local text files, or `ctx.path("file")` when a primitive needs a safe local path.
 6. Primitive names are loaded alphabetically; prefix names with numbers only when order matters.
 7. Run `/reload` in pi.
+
+`config.json` controls global enablement and disabled primitive names. Each primitive loads in isolation: invalid imports, JSON, or trigger regexes are reported in the `pi-primitives` session status without preventing later modules from loading. Shared trigger handling precompiles regexes and recursively flattens structured context files.
 
 Keep prompt templates and skills focused on their local workflow; use primitives for shared runtime behavior instead of duplicating it.

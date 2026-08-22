@@ -11,6 +11,11 @@
     "mode": { "enum": ["ask", "strict", "permissive"], "default": "ask" },
     "defaultAction": { "enum": ["allow", "deny", "ask"], "default": "ask" },
     "projectTrust": { "enum": ["defer", "ask", "allow", "deny"], "default": "defer" },
+    "allowOutsideProject": {
+      "type": "boolean",
+      "default": false,
+      "description": "Allow read, edit, and write tool paths outside the project root. In-project protectedPaths rules still apply."
+    },
     "audit": {
       "type": "object",
       "additionalProperties": false,

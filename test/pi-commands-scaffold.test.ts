@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 import {
@@ -7,150 +11,138 @@ import {
   createScaffoldPreview,
   formatScaffoldApplyResult,
   formatScaffoldPreview,
+  resolveScaffoldProjectRoot,
   scaffoldCommand,
 } from "../extensions/pi-commands/commands/scaffold.ts";
 
 const root = new URL("..", import.meta.url).pathname;
+const extensionKinds = ["tool", "command", "event", "shortcut", "flag", "provider", "widget", "footer", "overlay"] as const;
 
-type RegisteredCommand = {
-  description?: string;
-  handler: (args: string, ctx: { ui: { notify: (message: string, type?: string) => void } }) => Promise<void> | void;
-};
-
-function registerScaffoldCommand() {
-  const commands = new Map<string, RegisteredCommand>();
-  scaffoldCommand.register({
-    registerCommand(name: string, command: RegisteredCommand) {
-      commands.set(name, command);
-    },
-  } as never);
-  return commands.get("scaffold")!;
+function createProject(): string {
+  const project = mkdtempSync(join(tmpdir(), "gentic-scaffold-"));
+  writeFileSync(join(project, "package.json"), JSON.stringify({ private: true, type: "module", pi: { extensions: ["./extensions"] } }));
+  symlinkSync(join(root, "node_modules"), join(project, "node_modules"), "dir");
+  return project;
+}
+function options(project: string) { return { projectRoot: project }; }
+function allFiles(path: string): string[] {
+  if (!existsSync(path)) return [];
+  return readdirSync(path, { withFileTypes: true }).flatMap((entry) => {
+    const child = join(path, entry.name);
+    if (entry.name === "node_modules" && lstatSync(child).isSymbolicLink()) return [];
+    return entry.isDirectory() ? allFiles(child) : [child];
+  });
 }
 
-function createNotifyContext() {
+function registerScaffoldCommand(cwd: string) {
+  const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> | void }>();
+  scaffoldCommand.register({ registerCommand(name: string, command: never) { commands.set(name, command); } } as never);
   const notifications: Array<{ message: string; type?: string }> = [];
   return {
+    command: commands.get("scaffold")!,
     notifications,
-    ctx: {
-      ui: {
-        notify(message: string, type?: string) {
-          notifications.push({ message, type });
-        },
-      },
-    },
+    ctx: { cwd, ui: { notify(message: string, type?: string) { notifications.push({ message, type }); } } },
   };
 }
 
-test("scaffold preview renders extension targets without writing files", () => {
-  const target = `${root}/extensions/phase-six-test-extension`;
-  assert.equal(existsSync(target), false, "test fixture target should not already exist");
-
-  const preview = createScaffoldPreview("extension", "phase-six-test-extension", "simple");
-  const text = formatScaffoldPreview(preview);
-
-  assert.equal(existsSync(target), false, "dry-run preview must not create target directory");
-  assert.match(text, /Dry-run scaffold: extension phase-six-test-extension simple/);
-  assert.match(text, /No files written\./);
-  assert.match(text, /extensions\/phase-six-test-extension\/README\.md/);
-  assert.match(text, /extensions\/phase-six-test-extension\/index\.ts/);
-  assert.doesNotMatch(text, /extension\.anatomy\.json/);
-  assert.ok(preview.files.every((file) => !file.renderedContent.includes("{{")), "placeholders should be rendered");
-});
-
-test("scaffold preview supports command skill prompt and primitive target paths", () => {
-  assert.deepEqual(
-    createScaffoldPreview("command", "demo-command").files.map((file) => file.target),
-    ["extensions/pi-commands/commands/demo-command.ts", "extensions/pi-commands/commands/index.ts"],
-  );
-  assert.deepEqual(
-    createScaffoldPreview("skill", "demo-skill", "directory").files.map((file) => file.target),
-    ["skills/demo-skill/SKILL.md"],
-  );
-  assert.deepEqual(
-    createScaffoldPreview("prompt", "demo-prompt").files.map((file) => file.target),
-    ["prompts/demo-prompt.md"],
-  );
-  assert.deepEqual(
-    createScaffoldPreview("primitive", "demo-primitive").files.map((file) => file.target),
-    [
-      "extensions/pi-primitives/primitives/demo-primitive/index.ts",
-      "extensions/pi-primitives/primitives/demo-primitive/supporting-file.md",
-      "extensions/pi-primitives/primitives/demo-primitive/triggers.json",
-    ],
-  );
-});
-
-test("/scaffold command rejects unsafe names and defaults to safe dry-run", async () => {
-  const command = registerScaffoldCommand();
-
-  const invalid = createNotifyContext();
-  await command.handler("skill ../bad --simple --dry-run", invalid.ctx);
-  assert.equal(invalid.notifications[0]?.type, "warning");
-  assert.match(invalid.notifications[0]?.message ?? "", /Invalid name/);
-
-  const defaultPreview = createNotifyContext();
-  await command.handler("prompt phase-eight-handler-prompt", defaultPreview.ctx);
-  assert.equal(defaultPreview.notifications[0]?.type, "info");
-  assert.match(defaultPreview.notifications[0]?.message ?? "", /Dry-run scaffold: prompt phase-eight-handler-prompt/);
-  assert.match(defaultPreview.notifications[0]?.message ?? "", /No files written\./);
-  assert.equal(existsSync(`${root}/prompts/phase-eight-handler-prompt.md`), false);
-});
-
-test("/scaffold command emits concise dry-run output", async () => {
-  const command = registerScaffoldCommand();
-  const { ctx, notifications } = createNotifyContext();
-
-  await command.handler("skill demo-skill --simple --dry-run", ctx);
-
-  assert.equal(notifications.length, 1);
-  assert.equal(notifications[0]?.type, "info");
-  assert.match(notifications[0]?.message ?? "", /Dry-run scaffold: skill demo-skill simple/);
-  assert.match(notifications[0]?.message ?? "", /No files written\./);
-  assert.match(notifications[0]?.message ?? "", /skills\/demo-skill\/SKILL\.md/);
-});
-
-test("scaffold apply writes extension files and refuses overwrites", () => {
-  const targetDir = `${root}/extensions/phase-eight-test-extension`;
-  rmSync(targetDir, { recursive: true, force: true });
-
+test("scaffold dry-run is complete and project-aware", () => {
+  const project = createProject();
   try {
-    const result = applyScaffold("extension", "phase-eight-test-extension", "simple");
-    const text = formatScaffoldApplyResult(result);
+    const preview = createScaffoldPreview("extension", "demo-extension", "layered", "dry-run", options(project));
+    const text = formatScaffoldPreview(preview);
+    assert.equal(preview.files.length, 6);
+    assert.match(text, /Project root:/);
+    assert.match(text, /src\/domain\/types\.ts/);
+    assert.ok(preview.files.every((file) => !file.renderedContent.includes("{{")));
+    assert.equal(existsSync(join(project, "extensions/demo-extension")), false);
+    assert.equal(resolveScaffoldProjectRoot(join(project, "nested/path")), project);
+  } finally { rmSync(project, { recursive: true, force: true }); }
+});
 
-    assert.deepEqual(result.createdPaths, [
-      "extensions/phase-eight-test-extension/README.md",
-      "extensions/phase-eight-test-extension/index.ts",
-    ]);
-    assert.match(text, /Applied scaffold: extension phase-eight-test-extension simple/);
-    assert.equal(existsSync(`${targetDir}/extension.anatomy.json`), false);
-    assert.throws(() => applyScaffold("extension", "phase-eight-test-extension", "simple"), /Refusing to overwrite/);
+test("scaffold previews every native variant including theme and contextual command defaults", async () => {
+  const project = createProject();
+  try {
+    const variants = [
+      ["extension", "minimal-extension", "minimal"], ["extension", "layered-extension", "layered"],
+      ...extensionKinds.map((kind) => [kind, `${kind}-sample`, undefined]),
+      ["skill", "simple-skill", "simple"], ["skill", "directory-skill", "directory"],
+      ["prompt", "prompt-sample", undefined], ["theme", "theme-sample", undefined], ["primitive", "primitive-sample", undefined],
+    ] as const;
+    for (const [kind, name, variant] of variants) {
+      const preview = createScaffoldPreview(kind, name, variant, "dry-run", options(project));
+      assert.ok(preview.files.length > 0, `${kind} should have files`);
+      assert.ok(preview.files.every((file) => file.target && !file.renderedContent.includes("{{")));
+    }
+    const harness = registerScaffoldCommand(project);
+    await harness.command.handler("theme contextual-theme", harness.ctx);
+    assert.match(harness.notifications[0]?.message ?? "", /Dry-run scaffold: theme contextual-theme/);
+    assert.equal(existsSync(join(project, "themes/contextual-theme.json")), false);
+  } finally { rmSync(project, { recursive: true, force: true }); }
+});
+
+test("scaffold refuses unsafe names, wrong roots, and overwrites", async () => {
+  const outside = mkdtempSync(join(tmpdir(), "gentic-not-project-"));
+  const project = createProject();
+  try {
+    assert.throws(() => resolveScaffoldProjectRoot(outside), /Refusing scaffold outside a Pi project/);
+    const harness = registerScaffoldCommand(project);
+    await harness.command.handler("skill ../bad --simple", harness.ctx);
+    assert.match(harness.notifications[0]?.message ?? "", /Invalid name/);
+    applyScaffold("theme", "safe-theme", undefined, options(project));
+    assert.throws(() => applyScaffold("theme", "safe-theme", undefined, options(project)), /Refusing to overwrite/);
   } finally {
-    rmSync(targetDir, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+    rmSync(project, { recursive: true, force: true });
   }
 });
 
-test("scaffold apply creates command files and updates command barrel deterministically", () => {
-  const commandName = "phase-eight-test-command";
-  const commandPath = `${root}/extensions/pi-commands/commands/${commandName}.ts`;
-  const indexPath = `${root}/extensions/pi-commands/commands/index.ts`;
-  const originalIndex = readFileSync(indexPath, "utf8");
-  rmSync(commandPath, { force: true });
-
-  try {
-    const result = applyScaffold("command", commandName);
-    const text = formatScaffoldApplyResult(result);
-    const updatedIndex = readFileSync(indexPath, "utf8");
-
-    assert.deepEqual(result.createdPaths, [`extensions/pi-commands/commands/${commandName}.ts`]);
-    assert.deepEqual(result.updatedPaths, ["extensions/pi-commands/commands/index.ts"]);
-    assert.match(text, /- created extensions\/pi-commands\/commands\/phase-eight-test-command\.ts/);
-    assert.match(text, /- updated extensions\/pi-commands\/commands\/index\.ts/);
-    assert.equal(existsSync(commandPath), true);
-    assert.match(updatedIndex, /import \{ phaseEightTestCommandCommand \} from "\.\/phase-eight-test-command\.ts";/);
-    assert.match(updatedIndex, /phaseEightTestCommandCommand/);
-    assert.throws(() => applyScaffold("command", commandName), /Refusing to overwrite/);
-  } finally {
-    rmSync(commandPath, { force: true });
-    writeFileSync(indexPath, originalIndex);
+test("layered scaffold transaction rolls back at every stage and commit step", () => {
+  for (let failAtStep = 1; failAtStep <= 12; failAtStep += 1) {
+    const project = createProject();
+    try {
+      assert.throws(
+        () => applyScaffold("extension", "rollback-extension", "layered", { projectRoot: project, failAtStep }),
+        /Scaffold transaction rolled back/,
+      );
+      assert.equal(existsSync(join(project, "extensions/rollback-extension")), false, `step ${failAtStep} left target files`);
+      assert.equal(allFiles(project).some((path) => path.endsWith(".tmp")), false, `step ${failAtStep} left temp files`);
+    } finally { rmSync(project, { recursive: true, force: true }); }
   }
+});
+
+test("every generated variant typechecks and native extensions smoke-load", async () => {
+  const project = createProject();
+  try {
+    applyScaffold("extension", "minimal-extension", "minimal", options(project));
+    applyScaffold("extension", "layered-extension", "layered", options(project));
+    for (const kind of extensionKinds) applyScaffold(kind, `${kind}-sample`, undefined, options(project));
+    applyScaffold("skill", "simple-skill", "simple", options(project));
+    applyScaffold("skill", "directory-skill", "directory", options(project));
+    applyScaffold("prompt", "prompt-sample", undefined, options(project));
+    applyScaffold("theme", "theme-sample", undefined, options(project));
+
+    writeFileSync(join(project, "tsconfig.json"), JSON.stringify({
+      compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", allowImportingTsExtensions: true, strict: true, skipLibCheck: true, noEmit: true },
+      include: ["extensions/**/*.ts"],
+    }));
+    const typecheck = spawnSync(process.execPath, [join(root, "node_modules/typescript/bin/tsc")], { cwd: project, encoding: "utf8" });
+    assert.equal(typecheck.status, 0, `${typecheck.stdout}\n${typecheck.stderr}`);
+
+    const registrations: string[] = [];
+    const pi = new Proxy({}, { get: (_target, key) => (...args: unknown[]) => { registrations.push(String(key)); return args[1]; } });
+    for (const directory of readdirSync(join(project, "extensions"))) {
+      const entry = join(project, "extensions", directory, "index.ts");
+      if (!existsSync(entry)) continue;
+      const module = await import(`${pathToFileURL(entry).href}?smoke=${directory}`) as { default?: (api: unknown) => void };
+      assert.equal(typeof module.default, "function", `${directory} should export a factory`);
+      module.default?.(pi);
+    }
+    assert.ok(registrations.includes("registerTool"));
+    assert.ok(registrations.includes("registerProvider"));
+
+    const theme = JSON.parse(readFileSync(join(project, "themes/theme-sample.json"), "utf8"));
+    assert.equal(theme.name, "theme-sample");
+    assert.ok(Object.keys(theme.colors).length >= 50);
+    assert.match(formatScaffoldApplyResult(applyScaffold("prompt", "second-prompt", undefined, options(project))), /Applied scaffold/);
+  } finally { rmSync(project, { recursive: true, force: true }); }
 });

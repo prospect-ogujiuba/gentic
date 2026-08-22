@@ -188,22 +188,11 @@ test("demo activates every Gentic extension and exercises shared runtime paths",
   await harness.activate("pi-swe", piSwe as never);
   await harness.activate("pi-todo", piTodo as never);
 
-  for (const command of ["gentic", "catalog", "surfaces", "surface", "events", "clear", "scaffold", "gate", "pi-git", "pi-hud", "swe", "todo"]) {
+  for (const command of ["gentic", "catalog", "clear", "scaffold", "gate", "pi-git", "pi-hud", "swe", "todo"]) {
     assert.equal(harness.commands.has(command), true, `missing /${command}`);
   }
 
-  for (const tool of [
-    "gentic_status",
-    "gentic_surfaces",
-    "gentic_pi_extension_events",
-    "gentic_surface_package",
-    "gentic_surface_extension",
-    "gentic_surface_skill",
-    "gentic_surface_prompt_template",
-    "gentic_surface_theme",
-    "git_snapshot",
-    "todo",
-  ]) {
+  for (const tool of ["gentic_status", "gentic_catalog", "git_snapshot", "todo"]) {
     assert.equal(harness.tools.has(tool), true, `missing tool ${tool}`);
   }
 
@@ -230,7 +219,7 @@ test("demo activates every Gentic extension and exercises shared runtime paths",
   assert.match(genticStatus.content[0].text, /extension command owners:/);
   assert.match(genticStatus.content[0].text, /pi-swe/);
 
-  const surfaces = await harness.tools.get("gentic_surfaces")?.execute("tool-call", {}, undefined, undefined, harness.ctx) as { content: Array<{ text: string }> };
+  const surfaces = await harness.tools.get("gentic_catalog")?.execute("tool-call", { section: "surfaces" }, undefined, undefined, harness.ctx) as { content: Array<{ text: string }> };
   assert.match(surfaces.content[0].text, /prompt-template/);
 
   const gitSnapshot = await harness.tools.get("git_snapshot")?.execute("tool-call", {}, undefined, undefined, harness.ctx) as { content: Array<{ text: string }> };
@@ -245,7 +234,7 @@ test("demo activates every Gentic extension and exercises shared runtime paths",
 
   await harness.commands.get("gentic")?.handler("find swe", harness.ctx);
   await harness.commands.get("gentic")?.handler("run todo list", harness.ctx);
-  await harness.commands.get("catalog")?.handler("surface package", harness.ctx);
+  await harness.commands.get("catalog")?.handler("surfaces package", harness.ctx);
   await harness.commands.get("gate")?.handler("check node --version", harness.ctx);
   await harness.commands.get("pi-git")?.handler("", harness.ctx);
   await harness.commands.get("pi-hud")?.handler("show", harness.ctx);

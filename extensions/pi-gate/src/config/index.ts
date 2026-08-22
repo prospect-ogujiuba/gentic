@@ -10,6 +10,7 @@ export type Config = {
   mode?: "strict" | "ask" | "permissive";
   defaultAction?: Action;
   projectTrust?: "defer" | "ask" | "allow" | "deny";
+  allowOutsideProject?: boolean;
   audit?: { enabled?: boolean; path?: string; maxBytes?: number };
   permissions?: Permissions;
   literalPermissions?: Permissions;
@@ -23,6 +24,7 @@ export type LoadedConfig = {
   mode: "strict" | "ask" | "permissive";
   defaultAction: Action;
   projectTrust: "defer" | "ask" | "allow" | "deny";
+  allowOutsideProject: boolean;
   audit: { enabled: boolean; path: string; maxBytes: number };
   permissions: Permissions;
   literalPermissions: Permissions;
@@ -49,6 +51,7 @@ export function defaultConfig(): LoadedConfig {
     mode: "ask",
     defaultAction: "ask",
     projectTrust: "defer",
+    allowOutsideProject: false,
     audit: { enabled: true, path: DEFAULT_AUDIT_PATH, maxBytes: 1_048_576 },
     permissions: {},
     literalPermissions: {},
@@ -85,6 +88,7 @@ function validate(raw: Partial<Config>, path: string): string[] {
   if (raw.mode !== undefined && !["strict", "ask", "permissive"].includes(raw.mode)) errors.push("mode is invalid");
   if (raw.defaultAction !== undefined && !["allow", "ask", "deny"].includes(raw.defaultAction)) errors.push("defaultAction is invalid");
   if (raw.projectTrust !== undefined && !["defer", "ask", "allow", "deny"].includes(raw.projectTrust)) errors.push("projectTrust is invalid");
+  if (raw.allowOutsideProject !== undefined && typeof raw.allowOutsideProject !== "boolean") errors.push("allowOutsideProject must be boolean");
   for (const [name, permissions] of [["permissions", raw.permissions], ["literalPermissions", raw.literalPermissions]] as const) {
     if (permissions === undefined) continue;
     if (!permissions || typeof permissions !== "object" || Array.isArray(permissions)) errors.push(`${name} must be an object`);
@@ -110,6 +114,7 @@ function merge(base: LoadedConfig, raw: Partial<Config>): LoadedConfig {
     ...base,
     ...raw,
     projectTrust: raw.projectTrust ?? base.projectTrust,
+    allowOutsideProject: raw.allowOutsideProject ?? base.allowOutsideProject,
     audit: { ...base.audit, ...raw.audit, path: normalizeAuditPath(raw.audit?.path ?? base.audit.path) || DEFAULT_AUDIT_PATH },
     permissions: mergePermissions(base.permissions, raw.permissions || {}),
     literalPermissions: mergePermissions(base.literalPermissions, raw.literalPermissions || {}),

@@ -9,7 +9,7 @@
 - **Public entry:** `index.ts`
 - **Layers:** `app`, `pi`, `resources`
 - **Resources:** `prompts/`
-- **Machine declaration:** `extension.anatomy.json`
+- **Machine declaration:** optional handwritten `extension.anatomy.json` (not currently present)
 - **Reference role:** git utility layered-lite example; `index.ts` stays a thin adapter.
 - **Mismatch notes:** none known; snapshot collection/rendering lives in `src/app/snapshot.ts`, Pi registration lives in `src/pi/register.ts`, and prompt resources live in `prompts/`.
 

@@ -34,7 +34,7 @@ function protectedPath(tool: "read" | "edit" | "write", inputPath: string, cwd: 
   const root = resolve(cwd);
   const target = resolve(cwd, inputPath.replace(/^@/, ""));
   const rel = relative(root, target);
-  if (rel === ".." || rel.startsWith(`..${sep}`) || (isAbsolute(rel) && rel !== "")) return "path outside project root";
+  if (!getConfig().allowOutsideProject && (rel === ".." || rel.startsWith(`..${sep}`) || (isAbsolute(rel) && rel !== ""))) return "path outside project root";
   const normalized = rel.split(sep).join("/");
   return getConfig().protectedPaths[tool].find((entry) => {
     const candidate = entry.replace(/^\.\//, "").replace(/\/$/, "");

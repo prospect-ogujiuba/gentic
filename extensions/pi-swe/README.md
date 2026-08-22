@@ -11,7 +11,7 @@ The extension may read optional peer capabilities such as `pi-todo` when they ar
 - **Public entry:** `index.ts`
 - **Layers:** `config`, `domain`, `app`, `pi`, `resources`
 - **Resources:** `docs/`, `skills/`, `references/`, `pi-swe.schema.json`
-- **Machine declaration:** `extension.anatomy.json`
+- **Machine declaration:** optional handwritten `extension.anatomy.json` (not currently present)
 - **Reference role:** targeted behavior-preserving declaration; `index.ts` is already a thin adapter.
 - **Mismatch notes:** config is folderized under `src/config/`, canonical implementations live under `src/domain/`, `src/app/`, and `src/pi/`, and flat `src/*.ts` compatibility shims remain for existing imports. Top-level docs/skills/references/schema files remain package resources.
 

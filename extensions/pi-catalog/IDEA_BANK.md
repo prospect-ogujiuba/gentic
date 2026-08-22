@@ -13,10 +13,7 @@ Purpose: durable, non-ephemeral idea bank for future Pi/Gentic quality-of-life e
 ## Existing command surface
 
 - `/gentic`
-- `/catalog`, `/catalog surfaces`, `/catalog surface <id>`, `/catalog events`
-- `/surfaces`
-- `/surface`
-- `/events`
+- `/catalog`, `/catalog surfaces [id]`, `/catalog events`, `/catalog <capability-group>`
 - `/clear`
 - `/gate`
 - `/pi-git`
@@ -142,39 +139,9 @@ Expose decision in HUD/status, not repeated prompt text.
 
 ---
 
-# Idea: package surface scaffolder
+# Implemented: package surface scaffolder
 
-## Pitch
-
-Use pi-catalog knowledge to scaffold new skills, prompts, primitives, commands, themes, or extensions consistently.
-
-## Candidate location
-
-Extend `pi-catalog` and `pi-commands`.
-
-## Commands
-
-- `/scaffold skill <name>`
-- `/scaffold prompt <name>`
-- `/scaffold command <name>`
-- `/scaffold primitive <name>`
-- `/scaffold extension <name>`
-- `/scaffold check`: validate package manifest discovery entries.
-
-## Shortcuts / aliases
-
-- `/new-skill`
-- `/new-prompt`
-- `/new-command`
-
-## Event-driven behavior
-
-- `resources_discover`: validate discoverable resources.
-- `tool_result`: after scaffold writes, remind to update package metadata if needed.
-
-## Anti-bloat rule
-
-Use templates on disk; command output is only created paths and next command.
+`/scaffold` now previews and atomically applies project-aware native Pi templates. It covers extensions, registrations, UI surfaces, package resources, and retained primitives; see `extensions/pi-commands/README.md`.
 
 ---
 

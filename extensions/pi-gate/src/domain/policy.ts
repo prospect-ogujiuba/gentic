@@ -32,7 +32,7 @@ export function normalizeCommand(command: string): string {
   return command.trim().replace(/[ \t]+/g, " ");
 }
 
-/** Shell control syntax is never authorized by a broad allow/remember rule. */
+/** Shell control syntax is never authorized by a broad glob rule. */
 export function hasShellControlSyntax(command: string): boolean {
   return /[\n\r;|<>`]|&&|\|\||\$\(|\$\{|[<>]\(/.test(command);
 }
@@ -78,8 +78,9 @@ export function rulesFromPermissions(permissions: Permissions, prefix = "config"
 export function decideWithConfig(req: Request, config: PolicyConfig, remembered?: Action): Decision {
   if (!config.enabled) return { action: "allow", ruleId: "disabled", reason: "pi-gate disabled" };
 
+  const literalRules = rulesFromPermissions(config.literalPermissions || {}, "literal", "literal");
   const rules = [
-    ...rulesFromPermissions(config.literalPermissions || {}, "literal", "literal"),
+    ...literalRules,
     ...rulesFromPermissions(config.permissions),
     ...rulesFromPermissions(BUILTIN_PERMISSIONS, "builtin"),
   ];
@@ -87,8 +88,10 @@ export function decideWithConfig(req: Request, config: PolicyConfig, remembered?
   const deny = firstHit(rules, req, "deny");
   if (deny) return { action: "deny", ruleId: deny.id, reason: deny.reason || deny.id };
   if (config.mode === "strict") return { action: "deny", ruleId: "mode", reason: "strict mode" };
-  if (hasShellControlSyntax(req.command)) return { action: "ask", ruleId: "shell:control-syntax", reason: "compound shell syntax requires explicit confirmation" };
+  const literal = firstHit(literalRules, req, "ask") || firstHit(literalRules, req, "allow");
+  if (literal) return { action: literal.action, ruleId: literal.id, reason: literal.reason || literal.id };
   if (remembered) return { action: remembered, ruleId: "remember:session:literal", reason: "remembered exact command decision" };
+  if (hasShellControlSyntax(req.command)) return { action: "ask", ruleId: "shell:control-syntax", reason: "compound shell syntax requires explicit confirmation" };
   const rule = firstHit(rules, req, "ask") || firstHit(rules, req, "allow");
   if (rule) return { action: rule.action, ruleId: rule.id, reason: rule.reason || rule.id };
   if (config.mode === "permissive") return { action: "allow", ruleId: "mode", reason: "permissive fallback" };

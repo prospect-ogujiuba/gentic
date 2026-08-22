@@ -5,9 +5,11 @@ import test from "node:test";
 import {
   PI_CONTRACT_SCHEMA_VERSION,
   PI_CONTRACT_SCHEMA_VERSION_DETAIL_KEY,
+  PI_CONTRACT_SOURCE,
   PI_EXTENSION_EVENT_GROUPS,
   PI_EXTENSION_EVENTS,
   PI_EXTENSION_RESOURCE_DISCOVERY_EVENT,
+  PI_NATIVE_CAPABILITY_GROUPS,
   PI_PACKAGE_MANIFEST_KEY,
   PI_PACKAGE_RESOURCE_KEYS,
   PI_PACKAGE_RESOURCE_VOCABULARY,
@@ -23,6 +25,10 @@ test("pi contract names the package surface and resource vocabulary", () => {
   assert.equal(SCHEMA_VERSION, PI_CONTRACT_SCHEMA_VERSION);
   assert.equal(PI_CONTRACT_SCHEMA_VERSION_DETAIL_KEY, "schemaVersion");
   assert.equal(PI_PACKAGE_MANIFEST_KEY, "pi");
+  assert.equal(PI_CONTRACT_SOURCE.version, packageJson.dependencies["@earendil-works/pi-coding-agent"]);
+  assert.deepEqual(Object.keys(PI_NATIVE_CAPABILITY_GROUPS), [
+    "commands", "tools", "events", "shortcuts", "flags", "providers", "renderers", "markdown-transformers", "ui-surfaces",
+  ]);
 
   assert.deepEqual(PI_PACKAGE_SURFACES.map((surface) => surface.id), [...PI_PACKAGE_SURFACE_IDS]);
   assert.equal(new Set(PI_PACKAGE_SURFACES.map((surface) => surface.id)).size, PI_PACKAGE_SURFACES.length);
