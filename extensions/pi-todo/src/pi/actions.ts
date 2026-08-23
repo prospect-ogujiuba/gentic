@@ -34,7 +34,7 @@ function sessionOwner(ctx: ExtensionContext): string | null {
 }
 
 function renderTodo(todo: Todo): string {
-  return `${todo.id} ${todo.title} - [${todo.status}]`;
+  return `${todo.title} (${todo.id}) - [${todo.status}]`;
 }
 
 function normalizeEvidence(raw: unknown): EvidenceRef[] {
@@ -245,15 +245,56 @@ function toolCallTarget(input: unknown): string | undefined {
   return undefined;
 }
 
+function messageText(message: unknown): string | undefined {
+  if (!message || typeof message !== "object") return undefined;
+  const content = (message as { content?: unknown }).content;
+  if (typeof content === "string") return content.trim() || undefined;
+  if (!Array.isArray(content)) return undefined;
+  const text = content
+    .filter((part): part is { type: "text"; text: string } => Boolean(part) && typeof part === "object" && (part as { type?: unknown }).type === "text" && typeof (part as { text?: unknown }).text === "string")
+    .map((part) => part.text)
+    .join("\n")
+    .trim();
+  return text || undefined;
+}
+
+function semanticTitle(text: string): string | undefined {
+  const cleaned = text
+    .replace(/<skill\b[^>]*>[\s\S]*?<\/skill>/gi, " ")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/^\s*(?:#{1,6}|[-*>])\s*/gm, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^(?:please\s+|can you\s+|could you\s+|would you\s+|will you\s+|i(?:'d| would) like you to\s+|how do (?:we|i|you)\s+)/i, "")
+    .replace(/[?.!,;:]+$/, "")
+    .trim();
+  if (!cleaned) return undefined;
+  const limit = 96;
+  const shortened = cleaned.length <= limit ? cleaned : `${cleaned.slice(0, limit - 1).replace(/\s+\S*$/, "")}…`;
+  return shortened.charAt(0).toUpperCase() + shortened.slice(1);
+}
+
+function latestUserRequestTitle(ctx: ExtensionContext): string | undefined {
+  const branch = ctx.sessionManager.getBranch();
+  for (let index = branch.length - 1; index >= 0; index -= 1) {
+    const entry = branch[index] as { type?: unknown; message?: { role?: unknown } };
+    if (entry?.type !== "message" || entry.message?.role !== "user") continue;
+    const text = messageText(entry.message);
+    if (text) return semanticTitle(text);
+  }
+  return undefined;
+}
+
 export async function ensureActiveTodoForToolCall(pi: ExtensionAPI, ctx: ExtensionContext, toolName: string, input: unknown): Promise<Todo> {
   const svc = service(pi, ctx);
   const owner = sessionOwner(ctx);
   const existing = await svc.active(owner);
   if (existing) return existing;
-  const title = [`use ${toolName}`, toolCallTarget(input)].filter(Boolean).join(" on ");
+  const fallbackTitle = [`use ${toolName}`, toolCallTarget(input)].filter(Boolean).join(" on ");
+  const title = latestUserRequestTitle(ctx) ?? fallbackTitle;
   const todo = await svc.create({
     title,
-    description: "Auto-created by pi-todo before a requireTodo tool guard blocked execution, so the agent can retry the original tool without todo backtracking.",
+    description: "Auto-created from the latest user request before a requireTodo tool guard blocked execution, so the agent can retry the original tool without todo backtracking.",
     tags: ["pi-todo:auto-tool-guard"],
   });
   return svc.start(todo.id, [], undefined, owner, { splitOverrideReason: "auto-created atomic tool guard task" });

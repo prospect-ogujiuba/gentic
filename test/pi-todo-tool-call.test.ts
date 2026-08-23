@@ -26,7 +26,7 @@ async function withTempProject(run: (cwd: string) => Promise<void>): Promise<voi
 function setupPiTodo(cwd: string) {
   const handlers = new Map<string, Function>();
   const tools = new Map<string, RegisteredTool>();
-  const entries: Array<{ type: string; customType: string; data: unknown }> = [];
+  const entries: unknown[] = [];
   const uiCalls: Array<{ method: string; key: string; value: unknown }> = [];
 
   const pi = {
@@ -127,6 +127,64 @@ test("tool_call hook creates an active todo before blocking require-todo tools",
     const active = await tools.get("todo")?.execute("list", { action: "list" }, new AbortController().signal, () => {}, ctx);
     assert.match(String((active as { content?: Array<{ text: string }> }).content?.[0]?.text), /use bash on rm/);
     assert.match(String((active as { content?: Array<{ text: string }> }).content?.[0]?.text), /in progress/);
+  });
+});
+
+test("tool_call hook derives the guard todo title from the latest user request", async () => {
+  await withTempProject(async (cwd) => {
+    await writeProjectConfig(cwd, {
+      enforcement: {
+        defaultAction: "allow",
+        rules: [{ pattern: "bash", action: "requireTodo" }],
+      },
+    });
+    const { handlers, tools, ctx } = setupPiTodo(cwd);
+    (ctx.sessionManager.getBranch() as unknown[]).push({
+      type: "message",
+      message: {
+        role: "user",
+        content: [{ type: "text", text: "How do we get pi-todo to create actual titles?" }],
+      },
+    });
+
+    const result = await (handlers.get("tool_call") as ToolCallHandler)({ type: "tool_call", toolName: "bash", input: { command: "rm -rf tmp" } }, ctx);
+
+    assert.equal(typeof result, "object");
+    assert.match(String((result as { reason?: unknown }).reason), /created and started 'Get pi-todo to create actual titles'/);
+    assert.doesNotMatch(String((result as { reason?: unknown }).reason), /use bash on rm/);
+
+    const active = await tools.get("todo")?.execute("list", { action: "list" }, new AbortController().signal, () => {}, ctx);
+    assert.match(String((active as { content?: Array<{ text: string }> }).content?.[0]?.text), /Get pi-todo to create actual titles/);
+  });
+});
+
+test("tool_call hook removes injected skill content and caps semantic titles", async () => {
+  await withTempProject(async (cwd) => {
+    const { handlers, ctx } = setupPiTodo(cwd);
+    (ctx.sessionManager.getBranch() as unknown[]).push({
+      type: "message",
+      message: {
+        role: "user",
+        content: `<skill name="workflow">${"implementation guidance ".repeat(20)}</skill> Please fix semantic todo titles and verify the behavior`,
+      },
+    });
+
+    const result = await (handlers.get("tool_call") as ToolCallHandler)({ type: "tool_call", toolName: "write", input: { path: "output.txt" } }, ctx);
+    const reason = String((result as { reason?: unknown }).reason);
+
+    assert.match(reason, /created and started 'Fix semantic todo titles and verify the behavior'/);
+    assert.doesNotMatch(reason, /implementation guidance|use write/);
+  });
+});
+
+test("todo mutation output presents the semantic title before its id", async () => {
+  await withTempProject(async (cwd) => {
+    const { tools, ctx } = setupPiTodo(cwd);
+    const result = await tools.get("todo")?.execute("create", { action: "create", title: "Align helpdesk systems" }, new AbortController().signal, () => {}, ctx);
+    const text = String((result as { content?: Array<{ text: string }> }).content?.[0]?.text);
+
+    assert.match(text, /^Created Align helpdesk systems \(todo_[^)]+\) - \[ready\]$/);
+    assert.doesNotMatch(text, /^Created todo_/);
   });
 });
 
