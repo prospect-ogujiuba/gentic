@@ -220,14 +220,14 @@ function conciseTitle(todo: Todo): string {
 
 export function todoStatusText(state: TodoState): string | undefined {
   const active = activeTodo(state);
-  if (active) return `todo active ${active.id}: ${conciseTitle(active)} · finish/block`;
+  if (active) return `todo active ${conciseTitle(active)} · finish/block`;
   const todos = Object.values(state.todos).sort((a, b) => a.id.localeCompare(b.id));
   const ready = todos.find((todo) => todo.status === "ready");
-  if (ready) return `todo next ${ready.id}: ${conciseTitle(ready)} · start`;
+  if (ready) return `todo next ${conciseTitle(ready)} · start`;
   const blocked = todos.find((todo) => todo.status === "external_blocked");
-  if (blocked) return `todo blocked ${blocked.id}: ${conciseTitle(blocked)} · unblock/cancel`;
+  if (blocked) return `todo blocked ${conciseTitle(blocked)} · unblock/cancel`;
   const completed = todos.find((todo) => todo.status === "completed");
-  if (completed) return `todo completed ${completed.id}: ${conciseTitle(completed)} · verify`;
+  if (completed) return `todo completed ${conciseTitle(completed)} · verify`;
   return undefined;
 }
 

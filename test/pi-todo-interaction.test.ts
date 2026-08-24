@@ -45,23 +45,23 @@ function lastCall(h: ReturnType<typeof harness>, method: string) {
   return h.uiCalls.filter((call) => call.method === method).at(-1);
 }
 
-test("todo status identifies exact ready, active, blocked, and completed actions", async () => {
+test("todo status shows semantic titles without internal ids", async () => {
   const readyHarness = harness("tui");
   const ready = await executeTodoAction(readyHarness.pi as never, readyHarness.ctx as never, { action: "create", title: "Implement exact reminder" });
-  assert.match(todoStatusText(await todoState(readyHarness.pi as never, readyHarness.ctx as never))!, new RegExp(`todo next ${ready.details.todo.id}:.*start`));
+  assert.equal(todoStatusText(await todoState(readyHarness.pi as never, readyHarness.ctx as never)), "todo next Implement exact reminder · start");
 
   await executeTodoAction(readyHarness.pi as never, readyHarness.ctx as never, { action: "start", todoId: ready.details.todo.id, reason: "atomic" });
-  assert.match(todoStatusText(await todoState(readyHarness.pi as never, readyHarness.ctx as never))!, new RegExp(`todo active ${ready.details.todo.id}:.*finish/block`));
+  assert.equal(todoStatusText(await todoState(readyHarness.pi as never, readyHarness.ctx as never)), "todo active Implement exact reminder · finish/block");
 
   const blockedHarness = harness("tui");
   const blocked = await executeTodoAction(blockedHarness.pi as never, blockedHarness.ctx as never, { action: "create", title: "Wait for external approval" });
   await executeTodoAction(blockedHarness.pi as never, blockedHarness.ctx as never, { action: "block", todoId: blocked.details.todo.id, reason: "external approval" });
-  assert.match(todoStatusText(await todoState(blockedHarness.pi as never, blockedHarness.ctx as never))!, new RegExp(`todo blocked ${blocked.details.todo.id}:.*unblock/cancel`));
+  assert.equal(todoStatusText(await todoState(blockedHarness.pi as never, blockedHarness.ctx as never)), "todo blocked Wait for external approval · unblock/cancel");
 
   const completedHarness = harness("tui");
   const completed = await executeTodoAction(completedHarness.pi as never, completedHarness.ctx as never, { action: "create", title: "Finish interaction policy" });
   await executeTodoAction(completedHarness.pi as never, completedHarness.ctx as never, { action: "complete", todoId: completed.details.todo.id, evidence: [{ type: "manual_note", note: "done" }] });
-  assert.match(todoStatusText(await todoState(completedHarness.pi as never, completedHarness.ctx as never))!, new RegExp(`todo completed ${completed.details.todo.id}:.*verify`));
+  assert.equal(todoStatusText(await todoState(completedHarness.pi as never, completedHarness.ctx as never)), "todo completed Finish interaction policy · verify");
 });
 
 test("todo display policy uses TUI factories, RPC string widgets, and no UI in JSON or print", async () => {
