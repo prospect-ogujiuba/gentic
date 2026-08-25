@@ -1,7 +1,7 @@
 export type Action = "allow" | "deny" | "ask";
 export type Source = "agent" | "user";
 export type Remember = false | "session" | "project" | "global";
-export type PermissionChoice = { k: string; label: string; action: Action; remember: Remember };
+export type PermissionChoice = { label: string; action: Action; remember: Remember; /** @deprecated Native prompts no longer use shortcut keys. */ k?: string };
 export type Permissions = Partial<Record<Action, string[]>>;
 export type Rule = { id: string; pattern: string; action: Action; reason?: string; match?: "glob" | "literal" };
 export type Request = { source: Source; command: string; cwd: string };

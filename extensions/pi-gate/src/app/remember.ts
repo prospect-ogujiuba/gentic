@@ -51,7 +51,7 @@ export function persistRule(ctx: ExtensionContext, path: string, pattern: string
   const temp = `${path}.${process.pid}.${Date.now()}.tmp`;
   writeFileSync(temp, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
   renameSync(temp, path);
-  loadConfig(ctx.cwd);
+  loadConfig(ctx.cwd, { includeProject: ctx.isProjectTrusted?.() ?? true });
   ctx.ui.notify(`pi-gate saved exact ${action} rule to ${path}`, "info");
 }
 

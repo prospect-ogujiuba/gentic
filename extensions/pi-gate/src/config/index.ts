@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
+import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent";
 
 import { mergePermissions, type Action, type Permissions } from "../domain/policy.ts";
 
@@ -65,11 +67,13 @@ export function readConfigJson(path: string): Partial<Config> | undefined {
 }
 
 export function globalConfigPath(): string {
-  return join(process.env.HOME || "", ".pi/pi-gate/pi-gate.json");
+  if (process.env.PI_GATE_CONFIG) return process.env.PI_GATE_CONFIG;
+  if (process.env.PI_CODING_AGENT_DIR) return join(process.env.PI_CODING_AGENT_DIR, "pi-gate/pi-gate.json");
+  return join(process.env.HOME || homedir(), CONFIG_DIR_NAME, "pi-gate/pi-gate.json");
 }
 
 export function projectConfigPathForCwd(cwd: string): string {
-  return join(cwd, ".pi/pi-gate/pi-gate.json");
+  return join(cwd, CONFIG_DIR_NAME, "pi-gate/pi-gate.json");
 }
 
 function stringArray(value: unknown, field: string, errors: string[]): string[] | undefined {
@@ -128,7 +132,7 @@ function merge(base: LoadedConfig, raw: Partial<Config>): LoadedConfig {
 
 export function loadConfig(cwd: string, options: { includeProject?: boolean } = {}): LoadedConfig {
   const includeProject = options.includeProject !== false;
-  configPaths = [process.env.PI_GATE_CONFIG, globalConfigPath(), includeProject ? projectConfigPathForCwd(cwd) : undefined].filter(Boolean) as string[];
+  configPaths = [globalConfigPath(), includeProject ? projectConfigPathForCwd(cwd) : undefined].filter(Boolean) as string[];
   diagnostics = [];
   let candidate = defaultConfig();
   for (const path of configPaths) {

@@ -3,7 +3,13 @@ import { appendFileSync, existsSync, mkdirSync, renameSync, statSync } from "nod
 import { dirname, resolve } from "node:path";
 
 import type { LoadedConfig } from "../config/index.ts";
-import type { Decision, Request } from "../domain/policy.ts";
+import type { Decision, Remember, Request } from "../domain/policy.ts";
+
+export type AuditPrompt = {
+  outcome: "allow" | "deny" | "cancel" | "timeout" | "unavailable" | "error";
+  remember: Remember;
+  error?: string;
+};
 
 function redactedCommand(command: string): string {
   return command
@@ -11,11 +17,11 @@ function redactedCommand(command: string): string {
     .slice(0, 8192);
 }
 
-export function appendAudit(ctx: ExtensionContext, req: Request, d: Decision, config: LoadedConfig): void {
+export function appendAudit(ctx: ExtensionContext, req: Request, d: Decision, config: LoadedConfig, prompt?: AuditPrompt): void {
   if (!config.audit.enabled || !config.audit.path) return;
   const path = resolve(ctx.cwd, config.audit.path);
   mkdirSync(dirname(path), { recursive: true });
-  const line = JSON.stringify({ ts: new Date().toISOString(), ...req, command: redactedCommand(req.command), decision: d }) + "\n";
+  const line = JSON.stringify({ ts: new Date().toISOString(), ...req, command: redactedCommand(req.command), decision: d, ...(prompt ? { prompt } : {}) }) + "\n";
   if (existsSync(path) && statSync(path).size + Buffer.byteLength(line) > config.audit.maxBytes) {
     const rotated = `${path}.1`;
     try { renameSync(path, rotated); } catch { /* a concurrent writer may already have rotated it */ }

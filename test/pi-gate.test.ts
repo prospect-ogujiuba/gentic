@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { cancelPendingGatePrompts, clearSessionDecisions, DEFAULT_AUDIT_PATH, decide, getConfig, getConfigDiagnostics, loadConfig, patternRegex, persistRule, promptPermission, promptPermissionOutcome, registerPiGate, rememberSessionDecision } from "../extensions/pi-gate/index.ts";
+import { cancelPendingGatePrompts, clearSessionDecisions, DEFAULT_AUDIT_PATH, decide, gate, getConfig, getConfigDiagnostics, globalConfigPath, loadConfig, patternRegex, persistRule, projectConfigPathForCwd, promptPermission, promptPermissionOutcome, registerPiGate, rememberSessionDecision } from "../extensions/pi-gate/index.ts";
 
 function writeGateConfig(cwd: string, config: Record<string, unknown>): string {
   const path = join(cwd, ".pi/pi-gate/pi-gate.json");
@@ -12,6 +12,22 @@ function writeGateConfig(cwd: string, config: Record<string, unknown>): string {
   writeFileSync(path, JSON.stringify(config));
   return path;
 }
+
+const originalHome = process.env.HOME;
+const originalOverride = process.env.PI_GATE_CONFIG;
+const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+
+test.beforeEach(() => {
+  process.env.HOME = mkdtempSync(join(tmpdir(), "pi-gate-test-home-"));
+  delete process.env.PI_GATE_CONFIG;
+  delete process.env.PI_CODING_AGENT_DIR;
+});
+
+test.after(() => {
+  if (originalHome === undefined) delete process.env.HOME; else process.env.HOME = originalHome;
+  if (originalOverride === undefined) delete process.env.PI_GATE_CONFIG; else process.env.PI_GATE_CONFIG = originalOverride;
+  if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = originalAgentDir;
+});
 
 test("pi-gate wildcard patterns treat * and ? as globs", () => {
   assert.equal(patternRegex("git status*").test("git status --short"), true);
@@ -205,6 +221,48 @@ test("pi-gate rewrites remembered rules with canonical audit path", () => {
   assert.equal(saved.audit.path, DEFAULT_AUDIT_PATH);
 });
 
+test("pi-gate resolves explicit and Pi global config directory overrides", () => {
+  const explicit = join(tmpdir(), "pi-gate-explicit.json");
+  process.env.PI_GATE_CONFIG = explicit;
+  assert.equal(globalConfigPath(), explicit);
+
+  delete process.env.PI_GATE_CONFIG;
+  const agentDir = mkdtempSync(join(tmpdir(), "pi-gate-agent-dir-"));
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  assert.equal(globalConfigPath(), join(agentDir, "pi-gate/pi-gate.json"));
+});
+
+test("pi-gate writes remembered global rules to configured override targets", async () => {
+  for (const override of ["explicit", "agent-dir"] as const) {
+    delete process.env.PI_GATE_CONFIG;
+    delete process.env.PI_CODING_AGENT_DIR;
+    const cwd = mkdtempSync(join(tmpdir(), `pi-gate-${override}-write-`));
+    const target = override === "explicit"
+      ? join(mkdtempSync(join(tmpdir(), "pi-gate-explicit-dir-")), "custom.json")
+      : join(mkdtempSync(join(tmpdir(), "pi-gate-agent-dir-")), "pi-gate/pi-gate.json");
+    if (override === "explicit") process.env.PI_GATE_CONFIG = target;
+    else process.env.PI_CODING_AGENT_DIR = target.slice(0, -"/pi-gate/pi-gate.json".length);
+    const command = `echo ${override} override`;
+    const ctx = {
+      cwd,
+      mode: "tui",
+      hasUI: true,
+      isProjectTrusted: () => true,
+      ui: {
+        select(_title: string, labels: string[]) { return labels.find((label) => label.includes("globally")); },
+        notify() {},
+      },
+    } as any;
+
+    const result = await promptPermissionOutcome(ctx, { source: "agent", command, cwd }, { action: "ask", ruleId: "x", reason: "test" });
+
+    assert.equal(result.remember, "global");
+    assert.deepEqual(JSON.parse(readFileSync(target, "utf8")).literalPermissions.allow, [command]);
+    assert.equal(existsSync(join(process.env.HOME!, ".pi/pi-gate/pi-gate.json")), false);
+    assert.equal(existsSync(projectConfigPathForCwd(cwd)), false);
+  }
+});
+
 test("pi-gate no-UI prompt falls back safely", async () => {
   const req = { source: "agent", command: "sudo true", cwd: process.cwd() } as const;
   for (const mode of ["json", "print"] as const) {
@@ -242,6 +300,76 @@ test("pi-gate TUI and RPC prompt matrix resolves allow, deny, cancel, timeout, a
       assert.equal(customCalls, 0);
     }
   }
+});
+
+test("pi-gate prompt persists global and project selections only to their selected scopes", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-gate-scope-"));
+  const notices: string[] = [];
+  let selection = "allow and remember globally";
+  const ctx = {
+    cwd,
+    mode: "tui",
+    hasUI: true,
+    ui: {
+      select(_title: string, labels: string[]) {
+        assert.ok(labels.includes(selection));
+        assert.ok(labels.every((label) => !/^[ysgpn] — /.test(label)));
+        return selection;
+      },
+      notify(message: string) { notices.push(message); },
+    },
+  } as any;
+  const decision = { action: "ask", ruleId: "x", reason: "test" } as const;
+
+  const globalCommand = "echo remember global";
+  const globalResult = await promptPermissionOutcome(ctx, { source: "agent", command: globalCommand, cwd }, decision);
+  const globalPath = globalConfigPath();
+  const projectPath = projectConfigPathForCwd(cwd);
+  assert.equal(globalResult.remember, "global");
+  assert.deepEqual(JSON.parse(readFileSync(globalPath, "utf8")).literalPermissions.allow, [globalCommand]);
+  assert.equal(existsSync(projectPath), false);
+  assert.ok(notices.at(-1)?.includes(globalPath));
+
+  selection = "allow and remember for this project";
+  const projectCommand = "echo remember project";
+  const projectResult = await promptPermissionOutcome(ctx, { source: "agent", command: projectCommand, cwd }, decision);
+  assert.equal(projectResult.remember, "project");
+  assert.deepEqual(JSON.parse(readFileSync(projectPath, "utf8")).literalPermissions.allow, [projectCommand]);
+  assert.deepEqual(JSON.parse(readFileSync(globalPath, "utf8")).literalPermissions.allow, [globalCommand]);
+  assert.ok(notices.at(-1)?.includes(projectPath));
+});
+
+test("pi-gate audit records prompt scope and surfaces persistence errors", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-gate-audit-prompt-"));
+  writeGateConfig(cwd, { version: 3, audit: { enabled: true, path: DEFAULT_AUDIT_PATH } });
+  loadConfig(cwd);
+  const ctx = {
+    cwd,
+    mode: "tui",
+    hasUI: true,
+    ui: {
+      select(_title: string, labels: string[]) { return labels.find((label) => label.includes("globally")); },
+      notify() {},
+      setStatus() {},
+    },
+  } as any;
+
+  assert.equal((await gate(ctx, { source: "agent", command: "sudo echo audited", cwd })).block, false);
+  const auditPath = join(cwd, DEFAULT_AUDIT_PATH);
+  const first = JSON.parse(readFileSync(auditPath, "utf8").trim());
+  assert.deepEqual(first.prompt, { outcome: "allow", remember: "global" });
+
+  const sensitiveCommand = "sudo echo token=secret";
+  ctx.ui.select = () => { throw new Error(`dialog failed for ${sensitiveCommand}`); };
+  const denied = await gate(ctx, { source: "agent", command: sensitiveCommand, cwd });
+  assert.equal(denied.block, true);
+  assert.equal(denied.reason?.includes("secret"), false);
+  assert.equal(denied.reason?.includes(sensitiveCommand), false);
+  const lastLine = readFileSync(auditPath, "utf8").trim().split("\n").at(-1)!;
+  assert.equal(lastLine.includes("secret"), false);
+  assert.equal(lastLine.includes(sensitiveCommand), false);
+  const last = JSON.parse(lastLine);
+  assert.deepEqual(last.prompt, { outcome: "error", remember: false, error: "prompt operation failed" });
 });
 
 test("pi-gate lifecycle cancellation closes a pending prompt with deny", async () => {
@@ -309,6 +437,28 @@ test("pi-gate can exclude untrusted project policy", () => {
   loadConfig(cwd, { includeProject: false });
   const decision = decide({ source: "agent", command: "project-only command", cwd });
   assert.notEqual(decision.ruleId, "config:allow:project-only*");
+});
+
+test("pi-gate global persistence keeps untrusted project policy excluded", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-gate-untrusted-persist-"));
+  writeGateConfig(cwd, { version: 3, enabled: false, mode: "permissive", permissions: { allow: ["project-only*"] } });
+  loadConfig(cwd, { includeProject: false });
+  const ctx = {
+    cwd,
+    mode: "tui",
+    hasUI: true,
+    isProjectTrusted: () => false,
+    ui: {
+      select(_title: string, labels: string[]) { return labels.find((label) => label.includes("globally")); },
+      notify() {},
+    },
+  } as any;
+
+  const result = await promptPermissionOutcome(ctx, { source: "agent", command: "echo remember safely", cwd }, { action: "ask", ruleId: "x", reason: "test" });
+
+  assert.equal(result.remember, "global");
+  assert.equal(getConfig().enabled, true);
+  assert.notEqual(decide({ source: "agent", command: "project-only command", cwd }).ruleId, "config:allow:project-only*");
 });
 
 test("pi-gate loads global extension config and project config with project-specific permissions", () => {

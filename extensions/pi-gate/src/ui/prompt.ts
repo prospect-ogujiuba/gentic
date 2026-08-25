@@ -21,11 +21,11 @@ export interface GatePromptOptions {
 const DEFAULT_PROMPT_TIMEOUT_MS = 30_000;
 const activePromptControllers = new Set<AbortController>();
 const CHOICES: readonly PermissionChoice[] = [
-  { k: "y", label: "allow once", action: "allow", remember: false },
-  { k: "s", label: "allow and remember for this session", action: "allow", remember: "session" },
-  { k: "g", label: "allow and remember globally", action: "allow", remember: "global" },
-  { k: "p", label: "allow and remember for this project", action: "allow", remember: "project" },
-  { k: "n", label: "deny", action: "deny", remember: false },
+  { label: "allow once", action: "allow", remember: false },
+  { label: "allow and remember for this session", action: "allow", remember: "session" },
+  { label: "allow and remember globally", action: "allow", remember: "global" },
+  { label: "allow and remember for this project", action: "allow", remember: "project" },
+  { label: "deny", action: "deny", remember: false },
 ];
 
 export function cancelPendingGatePrompts(): void {
@@ -38,7 +38,7 @@ function safeOutcome(outcome: GatePromptOutcomeKind, error?: unknown): GatePromp
     action: "deny",
     outcome,
     remember: false,
-    error: error instanceof Error ? error.message.slice(0, 200) : error === undefined ? undefined : String(error).slice(0, 200),
+    error: error === undefined ? undefined : "prompt operation failed",
   };
 }
 
@@ -64,7 +64,7 @@ export async function promptPermissionOutcome(
   timer.unref?.();
 
   try {
-    const labels = CHOICES.map((choice) => `${choice.k} — ${choice.label}`);
+    const labels = CHOICES.map((choice) => choice.label);
     const selected = await ctx.ui.select(`pi-gate: ${d.reason}\n${req.command}`, labels, { signal: controller.signal, timeout: timeoutMs });
     if (selected === undefined) return safeOutcome(timedOut ? "timeout" : "cancel");
     const choice = CHOICES[labels.indexOf(selected)];

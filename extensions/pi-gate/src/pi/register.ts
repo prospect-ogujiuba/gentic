@@ -1,11 +1,11 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { isToolCallEventType, type ExtensionAPI, type ExtensionContext, type ProjectTrustContext, type ProjectTrustEventResult } from "@earendil-works/pi-coding-agent";
 
-import { appendAudit } from "../app/audit.ts";
+import { appendAudit, type AuditPrompt } from "../app/audit.ts";
 import { clearSessionDecisions, getSessionDecision } from "../app/remember.ts";
 import { getConfig, getConfigDiagnostics, getConfigPaths, loadConfig, type Config } from "../config/index.ts";
 import { BUILTIN_PERMISSIONS, decideWithConfig, rulesFromPermissions, type Request } from "../domain/policy.ts";
-import { cancelPendingGatePrompts, promptPermissionOutcome, type GatePromptOutcomeKind } from "../ui/prompt.ts";
+import { cancelPendingGatePrompts, promptPermissionOutcome } from "../ui/prompt.ts";
 
 const EXT = "pi-gate";
 let stats = { allowed: 0, denied: 0, asked: 0 };
@@ -17,17 +17,18 @@ export function decide(req: Request) {
 export async function gate(ctx: ExtensionContext, req: Request): Promise<{ block: boolean; reason?: string }> {
   const d = decide(req);
   let action = d.action;
-  let promptOutcome: GatePromptOutcomeKind | undefined;
+  let prompt: AuditPrompt | undefined;
   if (action === "ask") {
     stats.asked++;
     const result = await promptPermissionOutcome(ctx, req, d);
     action = result.action;
-    promptOutcome = result.outcome;
+    prompt = { outcome: result.outcome, remember: result.remember, ...(result.error ? { error: result.error } : {}) };
   }
   if (action === "allow") stats.allowed++; else stats.denied++;
-  appendAudit(ctx, req, { ...d, action }, getConfig());
+  appendAudit(ctx, req, { ...d, action }, getConfig(), prompt);
   if (ctx.hasUI) ctx.ui.setStatus(EXT, `gate a:${stats.allowed} d:${stats.denied} ?:${stats.asked}`);
-  return action === "deny" ? { block: true, reason: `pi-gate: ${d.reason}${promptOutcome ? ` (${promptOutcome})` : ""}` } : { block: false };
+  const promptDetail = prompt ? ` (${prompt.outcome})` : "";
+  return action === "deny" ? { block: true, reason: `pi-gate: ${d.reason}${promptDetail}` } : { block: false };
 }
 
 function protectedPath(tool: "read" | "edit" | "write", inputPath: string, cwd: string): string | undefined {
