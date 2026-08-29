@@ -177,14 +177,14 @@ test("tool_call hook removes injected skill content and caps semantic titles", a
   });
 });
 
-test("todo mutation output presents the semantic title before its id", async () => {
+test("todo mutation output omits internal ids", async () => {
   await withTempProject(async (cwd) => {
     const { tools, ctx } = setupPiTodo(cwd);
     const result = await tools.get("todo")?.execute("create", { action: "create", title: "Align helpdesk systems" }, new AbortController().signal, () => {}, ctx);
     const text = String((result as { content?: Array<{ text: string }> }).content?.[0]?.text);
 
-    assert.match(text, /^Created Align helpdesk systems \(todo_[^)]+\) - \[ready\]$/);
-    assert.doesNotMatch(text, /^Created todo_/);
+    assert.equal(text, "Created Align helpdesk systems - [ready]");
+    assert.doesNotMatch(text, /todo_[a-z0-9_]+/i);
   });
 });
 

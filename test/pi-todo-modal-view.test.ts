@@ -64,6 +64,7 @@ test("todo modal supports navigation and expansion by default", () => {
   assert.match(initial, /all tasks/);
   assert.doesNotMatch(initial, /i live|i interactive/);
   assert.match(initial, /› \[ \] First task/);
+  assert.doesNotMatch(initial, /todo_[a-z0-9_]+/i);
   assert.doesNotMatch(initial, /First task ready \| normal/);
   component.handleInput("j");
   const selectedSecond = component.render(100).join("\n");

@@ -133,7 +133,7 @@ function summaryTitle(state: TodoState, options: Pick<TodoDocketRenderOptions, "
     : focus.status === "completed" ? "verify"
     : "inspect";
   const title = formatTodoTitleForTui(focus.title, { commonPrefix: prefix, maxWidth: 56 });
-  return `${focus.id} ${title} · ${action}`;
+  return `${title} · ${action}`;
 }
 
 function expandedTodoDetailLines(todo: Todo, state: TodoState, theme: TodoTheme, width: number): string[] {

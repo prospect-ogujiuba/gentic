@@ -208,6 +208,18 @@ test("todo docket omits zero-count status stats", () => {
   assert.doesNotMatch(output, /Active 0|Done 0|History 0|Blocked external 0/);
 });
 
+test("todo docket summary hides internal ids for completed focus", () => {
+  const at = "2026-05-11T00:00:00.000Z";
+  const base = { description: undefined, priority: "normal" as const, createdAt: at, updatedAt: at, dependsOn: [], tags: [], acceptanceCriteria: [], evidence: [], notes: [], revision: 0 };
+  const state = reduceTodoState([
+    { id: "e1", type: "todo.created", at, todo: { ...base, id: "todo_mte9ibge_mim8c9", title: "Report peer session activity", status: "completed" } },
+  ] satisfies TodoEvent[]);
+
+  const output = renderTodoDocketLines(state, plainTodoTheme, { width: 100 }).join("\n");
+  assert.match(output, /Report peer session activity · verify/);
+  assert.doesNotMatch(output, /todo_mte9ibge_mim8c9/);
+});
+
 test("todo docket emits legacy ANSI colors", () => {
   const at = "2026-05-11T00:00:00.000Z";
   const base = { description: undefined, priority: "normal" as const, createdAt: at, updatedAt: at, dependsOn: [], tags: [], acceptanceCriteria: [], evidence: [], notes: [], revision: 0 };
@@ -218,7 +230,8 @@ test("todo docket emits legacy ANSI colors", () => {
   ] satisfies TodoEvent[]);
 
   const output = renderTodoDocketLines(state, ansiTodoTheme, { width: 100 }).join("\n");
-  assert.match(output, /\x1b\[48;5;108m\x1b\[30m todo_1 Active task · finish\/block /);
+  assert.match(output, /\x1b\[48;5;108m\x1b\[30m Active task · finish\/block /);
+  assert.doesNotMatch(output, /todo_1 Active task · finish\/block/);
   assert.match(output, /\x1b\[38;2;189;180;124m▶\x1b\[0m/);
   assert.match(output, /\x1b\[38;2;111;125;115m■\x1b\[0m/);
   assert.match(output, /\x1b\[48;2;32;45;37m\x1b\[38;2;201;133;120m History 2 /);

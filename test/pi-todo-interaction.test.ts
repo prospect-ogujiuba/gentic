@@ -4,6 +4,7 @@ import test from "node:test";
 import piTodo from "../extensions/pi-todo/index.ts";
 import { checkTodoDocketAtAgentEnd, checkTodoDocketAtMessageStart, checkTodoDocketBeforeFinalMessage, executeTodoAction, todoState, todoStatusText, updateTodoWidget } from "../extensions/pi-todo/src/pi/actions.ts";
 import { openTodoModal } from "../extensions/pi-todo/src/ui/modal.ts";
+import { plainTodoTheme } from "../extensions/pi-todo/src/ui/theme.ts";
 
 function harness(mode: "tui" | "rpc" | "json" | "print") {
   const handlers = new Map<string, Array<(event: any, ctx: any) => unknown>>();
@@ -30,11 +31,12 @@ function harness(mode: "tui" | "rpc" | "json" | "print") {
     ui: {
       setStatus(_key: string, value: unknown) { uiCalls.push({ method: "setStatus", value }); },
       setWidget(_key: string, value: unknown) { uiCalls.push({ method: "setWidget", value }); },
+      setTitle(value: string) { uiCalls.push({ method: "setTitle", value }); },
       notify(message: string) { notifications.push(message); },
       custom() { uiCalls.push({ method: "custom" }); },
     },
   };
-  return { pi, ctx, handlers, entries, uiCalls, notifications, sentMessages };
+  return { pi, ctx, handlers, entries, uiCalls, notifications, sentMessages, getSessionName: () => sessionName };
 }
 
 async function emit(h: ReturnType<typeof harness>, event: string, payload: Record<string, unknown> = {}): Promise<void> {
@@ -64,6 +66,19 @@ test("todo status shows semantic titles without internal ids", async () => {
   assert.equal(todoStatusText(await todoState(completedHarness.pi as never, completedHarness.ctx as never)), "todo completed Finish interaction policy · verify");
 });
 
+test("todo graph text uses titles while structured details retain operational ids", async () => {
+  const h = harness("tui");
+  const first = await executeTodoAction(h.pi as never, h.ctx as never, { action: "create", title: "Prepare report" });
+  await executeTodoAction(h.pi as never, h.ctx as never, { action: "create", title: "Publish report", dependsOn: [first.details.todo.id] });
+
+  const result = await executeTodoAction(h.pi as never, h.ctx as never, { action: "graph" });
+  const text = result.content.map((item: { text: string }) => item.text).join("\n");
+  assert.match(text, /Prepare report/);
+  assert.match(text, /Publish report/);
+  assert.doesNotMatch(text, /todo_[a-z0-9_]+/i);
+  assert.equal(result.details.graph.nodes.every((node: { id: string }) => node.id.startsWith("todo_")), true);
+});
+
 test("todo display policy uses TUI factories, RPC string widgets, and no UI in JSON or print", async () => {
   for (const mode of ["tui", "rpc", "json", "print"] as const) {
     const h = harness(mode);
@@ -76,9 +91,20 @@ test("todo display policy uses TUI factories, RPC string widgets, and no UI in J
     }
 
     await executeTodoAction(h.pi as never, h.ctx as never, { action: "create", title: `${mode} actionable task` });
-    if (mode === "tui") assert.equal(typeof lastCall(h, "setWidget")?.value, "function");
-    else if (mode === "rpc") assert.equal(Array.isArray(lastCall(h, "setWidget")?.value), true);
-    else assert.deepEqual(h.uiCalls, []);
+    if (mode === "tui") {
+      const widgetFactory = lastCall(h, "setWidget")?.value as ((tui: object, theme: typeof plainTodoTheme) => { render: (width: number) => string[] });
+      assert.equal(typeof widgetFactory, "function");
+      assert.doesNotMatch(widgetFactory({}, plainTodoTheme).render(100).join("\n"), /todo_[a-z0-9_]+/i);
+    } else if (mode === "rpc") {
+      const widget = lastCall(h, "setWidget")?.value as string[];
+      assert.equal(Array.isArray(widget), true);
+      assert.doesNotMatch(widget.join("\n"), /todo_[a-z0-9_]+/i);
+    } else assert.deepEqual(h.uiCalls, []);
+    if (mode === "tui" || mode === "rpc") {
+      assert.doesNotMatch(String(lastCall(h, "setStatus")?.value), /todo_[a-z0-9_]+/i);
+      assert.doesNotMatch(String(lastCall(h, "setTitle")?.value), /todo_[a-z0-9_]+/i);
+      assert.doesNotMatch(h.getSessionName(), /todo_[a-z0-9_]+/i);
+    }
     assert.equal(h.uiCalls.some((call) => call.method === "custom"), false);
   }
 });
@@ -104,8 +130,9 @@ test("display-only reminders never mutate todo state or enqueue duplicate turns 
   await checkTodoDocketAtAgentEnd(h.pi as never, h.ctx as never);
   await checkTodoDocketAtAgentEnd(h.pi as never, h.ctx as never);
   assert.equal(h.notifications.length, 1);
-  assert.match(h.notifications[0], new RegExp(created.details.todo.id));
-  assert.match(h.notifications[0], /next_call: todo\(/);
+  assert.doesNotMatch(h.notifications[0], /todo_[a-z0-9_]+/i);
+  assert.match(h.notifications[0], /pi-todo: \[in_progress\] Close active reminder task/);
+  assert.match(h.notifications[0], /next_call: todo\(\{"action":"list"\}\)/);
   assert.equal(h.sentMessages.length, 0);
   assert.equal(h.entries.length, eventCount);
 

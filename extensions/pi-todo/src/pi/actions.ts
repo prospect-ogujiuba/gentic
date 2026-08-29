@@ -34,7 +34,7 @@ function sessionOwner(ctx: ExtensionContext): string | null {
 }
 
 function renderTodo(todo: Todo): string {
-  return `${todo.title} (${todo.id}) - [${todo.status}]`;
+  return `${todo.title} - [${todo.status}]`;
 }
 
 function normalizeEvidence(raw: unknown): EvidenceRef[] {
@@ -132,7 +132,7 @@ function artifactInput(params: Record<string, unknown>): CreateArtifactInput {
 
 function splitCheckText(todo: Todo, result: Awaited<ReturnType<TodoService["splitCheck"]>>): string {
   const lines = [
-    `task: ${todo.id}`,
+    `task: ${todo.title}`,
     `assessment: ${result.assessment}`,
     `confidence: ${result.confidence}`,
     `policy decision: ${result.policyDecision}`,
@@ -187,18 +187,6 @@ function unresolvedSplitDocketItems(state: Awaited<ReturnType<TodoService["state
   ));
 }
 
-function reminderRepair(todo: Todo): Record<string, unknown> {
-  if (todo.tags.includes(SPLIT_SCAFFOLD_TAG) && todo.status === "ready") return { action: "cancel", todoId: todo.id, reason: "stale split scaffold" };
-  if (todo.status === "claimed" || todo.status === "in_progress") {
-    return todo.evidence.length > 0
-      ? { action: "finish", todoId: todo.id, summary: "describe completed work" }
-      : { action: "attach_evidence", todoId: todo.id, evidence: [{ type: "manual_note", note: "describe completed or verified work" }] };
-  }
-  if (todo.status === "external_blocked") return { action: "unblock", todoId: todo.id };
-  if (todo.status === "completed") return { action: "verify", todoId: todo.id };
-  return { action: "start", todoId: todo.id };
-}
-
 export function todoReminderMessage(state: TodoState): { key: string; content: string } | undefined {
   const active = activeTodo(state);
   const splitItems = unresolvedSplitDocketItems(state);
@@ -207,8 +195,8 @@ export function todoReminderMessage(state: TodoState): { key: string; content: s
   const target = items[0]!;
   const key = items.map((todo) => `${todo.id}:${todo.status}:${todo.revision}`).sort().join("|");
   const lines = [
-    `pi-todo: ${target.id} [${target.status}] ${target.title}`,
-    `next_call: todo(${JSON.stringify(reminderRepair(target))})`,
+    `pi-todo: [${target.status}] ${target.title}`,
+    `next_call: todo({"action":"list"})`,
   ];
   if (items.length > 1) lines.push(`additional open entries: ${items.length - 1}; inspect with todo({"action":"list"})`);
   return { key, content: lines.join("\n") };
@@ -415,7 +403,12 @@ async function executeTodoActionUnsafe(pi: ExtensionAPI, ctx: ExtensionContext, 
   }
   if (params.action === "graph") {
     const graph = await svc.graph(params.todoId as string | undefined);
-    return { content: [{ type: "text" as const, text: JSON.stringify(graph) }], details: { graph } };
+    const titles = new Map(graph.nodes.map((node) => [node.id, node.title]));
+    const text = [
+      ...graph.nodes.map((node) => `- ${node.title} [${node.status}]`),
+      ...graph.edges.map((edge) => `- ${titles.get(edge.from) ?? "Unknown task"} → ${titles.get(edge.to) ?? "Unknown task"} (${edge.kind})`),
+    ].join("\n");
+    return { content: [{ type: "text" as const, text }], details: { graph } };
   }
   const todoIdParam = params.todoId as string | undefined;
   if (!todoIdParam) throw new Error("todoId is required for this action");
@@ -451,7 +444,7 @@ async function executeTodoActionUnsafe(pi: ExtensionAPI, ctx: ExtensionContext, 
     }
     const created = await svc.split(todoId, children, reason);
     await updateTodoWidget(pi, ctx);
-    return { content: [{ type: "text" as const, text: `split ${todoId} into ${created.length} children\n${created.map(renderTodo).join("\n")}` }], details: { parent, children: created, splitCheck } };
+    return { content: [{ type: "text" as const, text: `split ${parent.title} into ${created.length} children\n${created.map(renderTodo).join("\n")}` }], details: { parent, children: created, splitCheck } };
   }
   if (params.action === "create_artifact") {
     const result = await svc.createArtifact(todoId, artifactInput(params));
