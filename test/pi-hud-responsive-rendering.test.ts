@@ -107,6 +107,28 @@ test("pi-hud render lines stay ANSI-aware and bounded for empty, clean, dirty, e
   }
 });
 
+test("native footer hides legacy internal todo ids", () => {
+  const renderTodoStatus = (status: string) => renderNativeFooterLine({
+    getGitBranch: () => undefined,
+    getExtensionStatuses: () => new Map([["todo", status]]),
+    getAvailableProviderCount: () => 1,
+    onBranchChange: () => () => {},
+  }, plainTheme, 120);
+
+  assert.equal(
+    renderTodoStatus("todo_mte8xdgi_gqe31y Find bulk container startup workflow · verify"),
+    "Find bulk container startup workflow · verify",
+  );
+  assert.equal(
+    renderTodoStatus("todo completed todo_mte8xdgi_gqe31y: Find bulk container startup workflow · verify"),
+    "todo completed Find bulk container startup workflow · verify",
+  );
+  assert.equal(
+    renderTodoStatus("todo completed Find bulk container startup workflow · verify"),
+    "todo completed Find bulk container startup workflow · verify",
+  );
+});
+
 test("native footer line deterministically compacts long branches, many statuses, Unicode, and ANSI", () => {
   const statuses = new Map([
     ["build", "\x1b[31m⚠ build failed\x1b[0m"],

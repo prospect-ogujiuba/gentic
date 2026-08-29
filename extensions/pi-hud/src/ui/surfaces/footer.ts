@@ -50,11 +50,18 @@ function compactStatuses(statuses: string[], count: number): string {
   return omitted > 0 ? `${kept} +${omitted}` : kept;
 }
 
+function normalizeExtensionStatus(key: string, value: string): string {
+  if (key !== "todo") return value;
+  return value.replace(/(^todo\s+(?:active|next|blocked|completed)\s+|^)todo_[a-z0-9]+(?:_[a-z0-9]+)*:?\s*/i, "$1");
+}
+
 export function renderNativeFooterLine(footerData: ReadonlyFooterDataProvider, theme: Theme, width: number): string {
   if (width <= 0) return "";
   const branch = footerData.getGitBranch();
   const branchText = branch ? theme.fg("dim", `branch ${branch}`) : "";
-  const statuses = [...footerData.getExtensionStatuses().values()].filter((value) => value.trim().length > 0);
+  const statuses = [...footerData.getExtensionStatuses().entries()]
+    .map(([key, value]) => normalizeExtensionStatus(key, value))
+    .filter((value) => value.trim().length > 0);
 
   if (width < 24) return cleanTruncate(statuses[0] || branchText, width);
   for (let count = statuses.length; count > 0; count -= 1) {
