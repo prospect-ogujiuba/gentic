@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 
 import { evaluateAutonomousRunnerStep, PI_SWE_BLOCKED_CASE_HUMAN_REQUESTS, PI_SWE_LIFECYCLE_STATES, PI_SWE_LIFECYCLE_TRANSITIONS, reconstructAutonomousWorkState, validateLifecycleTransition, type PiSweBlockedCase, type PiSweLifecycleState } from "../extensions/pi-swe/src/lifecycle.ts";
 import { inspectOrchestrationArtifacts, recommendOrchestrationTransition } from "../extensions/pi-swe/src/orchestrate.ts";
+import { inspectCanonicalInitiative } from "../extensions/pi-swe/src/planning.ts";
+import { CORE_SPECIALIST_IDS } from "../extensions/pi-swe/src/domain/readiness.ts";
 
 test("pi-swe lifecycle allows every defined transition and blocks undefined transitions deterministically", () => {
   for (const [state, nextStates] of Object.entries(PI_SWE_LIFECYCLE_TRANSITIONS) as Array<[PiSweLifecycleState, readonly PiSweLifecycleState[]]>) {
@@ -92,6 +95,100 @@ test("pi-swe inspects missing, partial, and complete orchestration artifact cont
     artifacts: { workOrder: partialWorkOrder, ...completePaths },
     missingRequired: [],
   });
+});
+
+test("pi-swe canonical inspector resolves an exact manifest and bounded contract index", () => {
+  const fixture = writeCanonicalFixture();
+  const result = inspectCanonicalInitiative({ cwd: fixture.cwd, topic: "demo" });
+
+  assert.equal(result.sourceMode, "canonical");
+  assert.equal(result.manifestPath, ".model-artifacts/specs/demo/manifest.json");
+  assert.deepEqual(result.contracts.map((contract) => contract.id), ["01"]);
+  assert.deepEqual(result.readyIds, ["01"]);
+  assert.deepEqual(result.diagnostics, []);
+  assert.equal(result.gates.find((gate) => gate.id === "plan-approved")?.ready, true);
+});
+
+test("pi-swe canonical inspector never falls through from an invalid manifest to a legacy phase tree", () => {
+  const fixture = writeCanonicalFixture();
+  writeFixtureFile(fixture.cwd, ".model-artifacts/plans/demo/phases/99-valid-looking.md", "# legacy fallback bait\n");
+  fixture.manifest.schemaVersion = 2;
+  fixture.writeManifest();
+
+  const result = inspectCanonicalInitiative({ cwd: fixture.cwd, topic: "demo" });
+  assert.deepEqual(result.contracts, []);
+  assert.deepEqual(result.readyIds, []);
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.code === "unsupported_version" && diagnostic.path === fixture.manifestPath));
+});
+
+test("pi-swe canonical inspector reports missing links and exact topic mismatches", () => {
+  const missing = writeCanonicalFixture();
+  missing.manifest.activeSpec.path = ".model-artifacts/specs/demo/missing.md";
+  missing.writeManifest();
+  const missingResult = inspectCanonicalInitiative({ cwd: missing.cwd, topic: "demo" });
+  assert.ok(missingResult.diagnostics.some((diagnostic) => diagnostic.code === "artifact_missing" && diagnostic.path.endsWith("missing.md")));
+  assert.ok(missingResult.blockers.some((blocker) => blocker.code === "spec-artifact-missing"));
+
+  const mismatch = writeCanonicalFixture();
+  mismatch.manifest.topic = "other";
+  mismatch.manifest.initiativeId = "other";
+  mismatch.manifest.activeSpec.path = ".model-artifacts/specs/other/spec.md";
+  mismatch.manifest.activePlan.path = ".model-artifacts/plans/other/plan.md";
+  mismatch.manifest.activePlan.contractRoot = ".model-artifacts/plans/other/revisions/r1";
+  mismatch.manifest.approval.planPath = mismatch.manifest.activePlan.path;
+  mismatch.manifest.approval.reviewPath = ".model-artifacts/findings/other/review.md";
+  mismatch.writeManifest();
+  const mismatchResult = inspectCanonicalInitiative({ cwd: mismatch.cwd, topic: "demo" });
+  assert.ok(mismatchResult.diagnostics.some((diagnostic) => diagnostic.code === "manifest_invalid" && diagnostic.field === "topic"));
+  assert.deepEqual(mismatchResult.readyIds, []);
+});
+
+test("pi-swe canonical inspector exposes stale approval and wrong plan revision outcomes", () => {
+  const stale = writeCanonicalFixture();
+  stale.manifest.approval.planContentHash = `sha256:${"0".repeat(64)}`;
+  stale.writeManifest();
+  const staleResult = inspectCanonicalInitiative({ cwd: stale.cwd, topic: "demo" });
+  assert.ok(staleResult.diagnostics.some((diagnostic) => diagnostic.code === "manifest_invalid" && diagnostic.field === "approval.planContentHash"));
+
+  const wrongRevision = writeCanonicalFixture({ contractPlanRevision: 2 });
+  const revisionResult = inspectCanonicalInitiative({ cwd: wrongRevision.cwd, topic: "demo" });
+  assert.ok(revisionResult.blockers.some((blocker) => blocker.code === "contract-revision-stale" && blocker.contractId === "01"));
+  assert.deepEqual(revisionResult.readyIds, []);
+});
+
+test("pi-swe canonical inspector rejects malformed deferral metadata without a ready result", () => {
+  const fixture = writeCanonicalFixture({ deferral: { approved: "yes", evidencePath: "../escape" } });
+  const result = inspectCanonicalInitiative({ cwd: fixture.cwd, topic: "demo" });
+
+  assert.deepEqual(result.readyIds, []);
+  assert.ok(result.diagnostics.some((diagnostic) =>
+    diagnostic.code === "contract_index_invalid"
+    && diagnostic.field === "contractFacts.01.deferral",
+  ));
+});
+
+test("pi-swe canonical inspector accepts a symlinked cwd and diagnoses an unavailable cwd", () => {
+  const fixture = writeCanonicalFixture();
+  const symlinkCwd = `${fixture.cwd}-link`;
+  symlinkSync(fixture.cwd, symlinkCwd, "dir");
+
+  const result = inspectCanonicalInitiative({ cwd: symlinkCwd, topic: "demo" });
+  assert.deepEqual(result.diagnostics, []);
+  assert.deepEqual(result.readyIds, ["01"]);
+
+  const missingCwd = `${fixture.cwd}-missing`;
+  const unavailable = inspectCanonicalInitiative({ cwd: missingCwd, topic: "demo" });
+  assert.deepEqual(unavailable.readyIds, []);
+  assert.ok(unavailable.diagnostics.some((diagnostic) => diagnostic.code === "read_error" && diagnostic.path === missingCwd));
+});
+
+test("pi-swe orchestration retains its legacy API through an injectable inspector", () => {
+  const expected = { topic: "demo", readiness: "complete", artifacts: { plan: "canonical" }, missingRequired: [] } as const;
+  const result = inspectOrchestrationArtifacts(
+    { cwd: "/unused", topic: "demo" },
+    { inspect: () => ({ ...expected, missingRequired: [...expected.missingRequired] }) },
+  );
+  assert.deepEqual(result, expected);
 });
 
 test("pi-swe recommends deterministic orchestration transitions for feature, bug, DSA, and finalize gates", () => {
@@ -315,6 +412,63 @@ test("pi-swe reconstructs a next action for every non-terminal lifecycle state",
   const planFixture = writeAutonomousFixture("plan");
   assert.equal(reconstructAutonomousWorkState({ cwd: planFixture.cwd, statePath: planFixture.statePath }).nextAction.writePath, planFixture.paths.phaseIndex);
 });
+
+function writeCanonicalFixture(options: { contractPlanRevision?: number; deferral?: unknown } = {}) {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-canonical-inspector-"));
+  const manifestPath = ".model-artifacts/specs/demo/manifest.json";
+  const specPath = ".model-artifacts/specs/demo/spec.md";
+  const planPath = ".model-artifacts/plans/demo/plan.md";
+  const contractRoot = ".model-artifacts/plans/demo/revisions/r1";
+  const contractPath = `${contractRoot}/contracts/01.md`;
+  const indexPath = `${contractRoot}/contracts.json`;
+  const reviewPath = ".model-artifacts/findings/demo/review.md";
+  const spec = "# exact canonical spec\n";
+  const plan = "# exact canonical plan\n";
+  const contract = "# phase 01\n";
+  writeFixtureFile(cwd, specPath, spec);
+  writeFixtureFile(cwd, planPath, plan);
+  writeFixtureFile(cwd, contractPath, contract);
+  writeFixtureFile(cwd, reviewPath, "# approved review\n");
+
+  const specialists = Object.fromEntries(CORE_SPECIALIST_IDS.map((id) => [id, { status: "not-required", rationale: `${id} has no consequential work.` }]));
+  const manifest: any = {
+    schemaVersion: 1,
+    initiativeId: "demo",
+    topic: "demo",
+    initiativeState: "approved",
+    activeSpec: { revision: 1, path: specPath, contentHash: sha256(spec) },
+    activePlan: { revision: 1, path: planPath, contractRoot, contentHash: sha256(plan) },
+    specialists,
+    approval: {
+      decision: "approved",
+      planRevision: 1,
+      planPath,
+      planContentHash: sha256(plan),
+      reviewPath,
+      approvedAt: "2026-08-30T12:00:00.000Z",
+      blockingFindings: 0,
+    },
+    updatedAt: "2026-08-30T12:00:00.000Z",
+  };
+  writeFixtureFile(cwd, indexPath, JSON.stringify({
+    schemaVersion: 1,
+    contracts: [{ kind: "phase", id: "01", dependsOn: [], planRevision: options.contractPlanRevision ?? 1, path: contractPath, status: "pending", contentHash: sha256(contract) }],
+    contractFacts: { "01": { entryInputsAvailable: true, capabilitiesAvailable: true, applicability: "applicable", acceptanceDefined: true, verificationDefined: true, ...(options.deferral !== undefined ? { deferral: options.deferral } : {}) } },
+    consequentialSpecialists: [],
+  }));
+  const writeManifest = () => writeFixtureFile(cwd, manifestPath, JSON.stringify(manifest));
+  writeManifest();
+  return { cwd, manifestPath, manifest, writeManifest };
+}
+
+function writeFixtureFile(cwd: string, relativePath: string, content: string): void {
+  mkdirSync(dirname(join(cwd, relativePath)), { recursive: true });
+  writeFileSync(join(cwd, relativePath), content, "utf8");
+}
+
+function sha256(content: string): string {
+  return `sha256:${createHash("sha256").update(content, "utf8").digest("hex")}`;
+}
 
 function writeAutonomousFixture(state: PiSweLifecycleState) {
   const cwd = mkdtempSync(join(tmpdir(), "pi-swe-work-docs-"));

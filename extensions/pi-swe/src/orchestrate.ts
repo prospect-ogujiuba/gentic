@@ -19,6 +19,10 @@ export type InspectOrchestrationArtifactsResult = {
   missingRequired: OrchestrationArtifactKey[];
 };
 
+export type OrchestrationInspector<Result = InspectOrchestrationArtifactsResult> = {
+  inspect(request: InspectOrchestrationArtifactsRequest): Result;
+};
+
 export type OrchestrationPath = "feature" | "bug" | "dsa" | "finalize";
 
 export type RecommendOrchestrationTransitionRequest = {
@@ -47,20 +51,29 @@ const ARTIFACT_LOCATORS: ReadonlyArray<{ key: OrchestrationArtifactKey; roots: s
   { key: "finalHandoff", roots: [".model-artifacts/reports"], patterns: [/handoff|final/i] },
 ]);
 
-export function inspectOrchestrationArtifacts(request: InspectOrchestrationArtifactsRequest): InspectOrchestrationArtifactsResult {
-  const topic = normalizeTopic(request.topic);
-  const artifacts: OrchestrationArtifacts = {};
+const LEGACY_FILESYSTEM_INSPECTOR: OrchestrationInspector = {
+  inspect(request) {
+    const topic = normalizeTopic(request.topic);
+    const artifacts: OrchestrationArtifacts = {};
 
-  for (const locator of ARTIFACT_LOCATORS) {
-    const located = locateFirstArtifact(request.cwd, topic, locator.roots, locator.patterns);
-    if (located) artifacts[locator.key] = located;
-  }
+    for (const locator of ARTIFACT_LOCATORS) {
+      const located = locateFirstArtifact(request.cwd, topic, locator.roots, locator.patterns);
+      if (located) artifacts[locator.key] = located;
+    }
 
-  const missingRequired = REQUIRED_ARTIFACTS.filter((key) => !artifacts[key]);
-  const presentRequired = REQUIRED_ARTIFACTS.length - missingRequired.length;
-  const readiness: OrchestrationReadiness = presentRequired === 0 ? "missing" : missingRequired.length === 0 ? "complete" : "partial";
+    const missingRequired = REQUIRED_ARTIFACTS.filter((key) => !artifacts[key]);
+    const presentRequired = REQUIRED_ARTIFACTS.length - missingRequired.length;
+    const readiness: OrchestrationReadiness = presentRequired === 0 ? "missing" : missingRequired.length === 0 ? "complete" : "partial";
 
-  return { topic, readiness, artifacts, missingRequired };
+    return { topic, readiness, artifacts, missingRequired };
+  },
+};
+
+export function inspectOrchestrationArtifacts(
+  request: InspectOrchestrationArtifactsRequest,
+  inspector: OrchestrationInspector = LEGACY_FILESYSTEM_INSPECTOR,
+): InspectOrchestrationArtifactsResult {
+  return inspector.inspect(request);
 }
 
 export function recommendOrchestrationTransition(request: RecommendOrchestrationTransitionRequest): OrchestrationTransitionRecommendation {
