@@ -6,8 +6,8 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 
 import { evaluateAutonomousRunnerStep, PI_SWE_BLOCKED_CASE_HUMAN_REQUESTS, PI_SWE_LIFECYCLE_STATES, PI_SWE_LIFECYCLE_TRANSITIONS, reconstructAutonomousWorkState, validateLifecycleTransition, type PiSweBlockedCase, type PiSweLifecycleState } from "../extensions/pi-swe/src/lifecycle.ts";
-import { inspectOrchestrationArtifacts, recommendOrchestrationTransition } from "../extensions/pi-swe/src/orchestrate.ts";
-import { inspectCanonicalInitiative } from "../extensions/pi-swe/src/planning.ts";
+import { inspectOrchestrationArtifacts, LegacyPlanInspector, recommendOrchestrationTransition } from "../extensions/pi-swe/src/orchestrate.ts";
+import { inspectCanonicalInitiative, resolveInitiative } from "../extensions/pi-swe/src/planning.ts";
 import { CORE_SPECIALIST_IDS } from "../extensions/pi-swe/src/domain/readiness.ts";
 
 test("pi-swe lifecycle allows every defined transition and blocks undefined transitions deterministically", () => {
@@ -189,6 +189,105 @@ test("pi-swe orchestration retains its legacy API through an injectable inspecto
     { inspect: () => ({ ...expected, missingRequired: [...expected.missingRequired] }) },
   );
   assert.deepEqual(result, expected);
+});
+
+test("pi-swe legacy adapter detects todo-phase plans only as legacy-unverified", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-legacy-inspector-"));
+  writeFixtureFile(cwd, ".model-artifacts/todo/demo/phases/00-phase-index.md", "# legacy phase index\n");
+
+  const result = new LegacyPlanInspector().inspect({ cwd, topic: "demo" });
+  assert.equal(result.sourceMode, "legacy");
+  assert.equal(result.status, "legacy-unverified");
+  if (result.status !== "legacy-unverified") return;
+  assert.equal(result.planPath, ".model-artifacts/todo/demo/phases/00-phase-index.md");
+  assert.equal(result.nextAction, "adopt-legacy-plan");
+  assert.deepEqual(result.adoptionRequirements, [
+    "create a schema-v1 canonical manifest",
+    "normalize the legacy plan into canonical plan revision r1",
+    "validate the contract DAG and applicability",
+    "complete plan review",
+    "approve the reviewed canonical plan",
+  ]);
+  assert.equal("gates" in result, false);
+
+  const nestedCwd = mkdtempSync(join(tmpdir(), "pi-swe-nested-legacy-inspector-"));
+  writeFixtureFile(nestedCwd, ".model-artifacts/todo/team/demo/phases/00-phase-index.md", "# nested legacy phase index\n");
+  const nested = resolveInitiative({ cwd: nestedCwd });
+  assert.equal(nested.sourceMode, "legacy");
+  assert.equal("topic" in nested ? nested.topic : undefined, "team/demo");
+});
+
+test("pi-swe initiative resolver honors selection, reports ambiguity, and never falls through malformed canonical state", () => {
+  const fixture = writeCanonicalFixture();
+  writeFixtureFile(fixture.cwd, ".model-artifacts/todo/demo/phases/00-phase-index.md", "# legacy plan\n");
+  writeFixtureFile(fixture.cwd, ".model-artifacts/specs/other/manifest.json", "{}");
+
+  const ambiguous = resolveInitiative({ cwd: fixture.cwd });
+  assert.equal(ambiguous.status, "ambiguous");
+  assert.deepEqual(ambiguous.candidateTopics, ["demo", "other"]);
+  assert.ok("remediation" in ambiguous && ambiguous.remediation.includes("select one"));
+
+  const persisted = resolveInitiative({ cwd: fixture.cwd, persistedTopic: "demo" });
+  assert.equal(persisted.sourceMode, "canonical");
+  assert.equal(persisted.sourceMode === "canonical" ? persisted.selectionSource : undefined, "persisted");
+
+  const selected = resolveInitiative({ cwd: fixture.cwd, explicitTopic: "demo" });
+  assert.equal(selected.sourceMode, "canonical");
+  assert.equal(selected.status, "canonical");
+  if (selected.sourceMode !== "canonical") return;
+  assert.equal(selected.selectionSource, "explicit");
+  assert.equal(selected.inspection.gates.find((gate) => gate.id === "plan-approved")?.ready, true);
+
+  fixture.manifest.schemaVersion = 2;
+  fixture.writeManifest();
+  const malformed = resolveInitiative({ cwd: fixture.cwd, explicitTopic: "demo" });
+  assert.equal(malformed.sourceMode, "canonical");
+  if (malformed.sourceMode !== "canonical") return;
+  assert.ok(malformed.inspection.diagnostics.some((diagnostic) => diagnostic.code === "unsupported_version"));
+});
+
+test("pi-swe todo canonical link enriches resolution without granting approval and no peer remains valid", () => {
+  const completed = writeCanonicalFixture();
+  completed.manifest.initiativeState = "complete";
+  completed.writeManifest();
+  const todoSelected = resolveInitiative({ cwd: completed.cwd, activeTodo: { canonicalInitiative: { topic: "demo" } } });
+  assert.equal(todoSelected.sourceMode, "canonical");
+  assert.equal(todoSelected.sourceMode === "canonical" ? todoSelected.selectionSource : undefined, "todo");
+
+  const fixture = writeCanonicalFixture();
+  fixture.manifest.initiativeState = "planning";
+  delete fixture.manifest.approval;
+  fixture.writeManifest();
+
+  const noPeer = resolveInitiative({ cwd: fixture.cwd });
+  assert.equal(noPeer.sourceMode, "canonical");
+  assert.deepEqual("warnings" in noPeer ? noPeer.warnings : [], []);
+
+  const linked = resolveInitiative({
+    cwd: fixture.cwd,
+    activeTodo: {
+      id: "todo-1",
+      canonicalInitiative: {
+        topic: "demo",
+        contractId: "01",
+        contractPath: ".model-artifacts/plans/demo/revisions/r1/contracts/01.md",
+        planRevision: 1,
+        dependencies: [],
+      },
+    },
+  });
+  assert.equal(linked.sourceMode, "canonical");
+  if (linked.sourceMode !== "canonical") return;
+  assert.equal(linked.todoLink?.contractId, "01");
+  assert.equal(linked.inspection.gates.find((gate) => gate.id === "plan-approved")?.ready, false);
+
+  const conflictingPeer = resolveInitiative({ cwd: fixture.cwd, activeTodo: { canonicalInitiative: { topic: "other" } } });
+  assert.equal(conflictingPeer.status, "ambiguous");
+  assert.deepEqual(conflictingPeer.candidateTopics, ["demo", "other"]);
+
+  const malformedPeer = resolveInitiative({ cwd: fixture.cwd, activeTodo: { canonicalInitiative: { topic: "../bad" } } });
+  assert.equal(malformedPeer.sourceMode, "canonical");
+  assert.ok("warnings" in malformedPeer && malformedPeer.warnings.some((warning) => warning.includes("malformed")));
 });
 
 test("pi-swe recommends deterministic orchestration transitions for feature, bug, DSA, and finalize gates", () => {

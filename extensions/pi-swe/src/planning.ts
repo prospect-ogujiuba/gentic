@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
 import { analyzeContractGraph, CONTRACT_STATUSES, type ContractNode, type ContractStatus } from "./domain/contract-graph.ts";
+import type { SweCanonicalInitiativeLink } from "./domain/capabilities.ts";
+import { LegacyPlanInspector, type LegacyPlanInspectionResult } from "./orchestrate.ts";
 import {
   isValidTopic,
   parseInitiativeManifest,
@@ -20,6 +22,7 @@ import {
 const MAX_JSON_BYTES = 256 * 1024;
 const MAX_LINKED_ARTIFACT_BYTES = 2 * 1024 * 1024;
 const MAX_DIAGNOSTICS = 50;
+const MAX_CANONICAL_MANIFESTS = 100;
 const CONTRACT_INDEX_SCHEMA_VERSION = 1 as const;
 
 export type CanonicalInspectionDiagnosticCode =
@@ -66,6 +69,35 @@ export type InspectCanonicalInitiativeRequest = {
   readonly cwd: string;
   readonly topic: string;
 };
+
+export type ResolveInitiativeRequest = {
+  readonly cwd: string;
+  readonly explicitTopic?: string;
+  readonly persistedTopic?: string;
+  readonly activeTodo?: unknown;
+  readonly legacyInspector?: LegacyPlanInspector;
+};
+
+export type CanonicalInitiativeResolution = {
+  readonly sourceMode: "canonical";
+  readonly status: "canonical";
+  readonly selectionSource: "explicit" | "persisted" | "manifest" | "todo";
+  readonly topic: string;
+  readonly candidateTopics: readonly string[];
+  readonly inspection: CanonicalInspectorResult;
+  readonly todoLink?: SweCanonicalInitiativeLink;
+  readonly warnings: readonly string[];
+};
+
+export type InitiativeResolutionFailure = {
+  readonly sourceMode: "resolution";
+  readonly status: "ambiguous" | "not-found";
+  readonly candidateTopics: readonly string[];
+  readonly remediation: string;
+  readonly warnings: readonly string[];
+};
+
+export type InitiativeResolution = CanonicalInitiativeResolution | LegacyPlanInspectionResult | InitiativeResolutionFailure;
 
 type MutableInspection = CanonicalInspectionDiagnostic[];
 type UnknownRecord = Record<string, unknown>;
@@ -146,6 +178,189 @@ export function inspectCanonicalInitiative(request: InspectCanonicalInitiativeRe
     blockers: gateEvaluation.blockingReasons,
     diagnostics,
   };
+}
+
+export function resolveInitiative(request: ResolveInitiativeRequest): InitiativeResolution {
+  const warnings: string[] = [];
+  const explicitTopic = normalizeResolutionTopic(request.explicitTopic, "explicit topic", warnings);
+  if (request.explicitTopic !== undefined && !explicitTopic) {
+    return resolutionFailure("not-found", [], "provide one valid canonical or legacy topic", warnings);
+  }
+  const persistedTopic = normalizeResolutionTopic(request.persistedTopic, "persisted topic", warnings);
+  const todoLink = readTodoCanonicalLink(request.activeTodo, warnings);
+  const canonicalDiscovery = discoverActiveCanonicalTopics(request.cwd, warnings);
+  const activeCanonicalTopics = canonicalDiscovery.topics;
+  const candidateTopics = sortedUnique([explicitTopic, persistedTopic, todoLink?.topic, ...activeCanonicalTopics]);
+
+  const selectorTopics = sortedUnique([explicitTopic, persistedTopic, todoLink?.topic]);
+  if (selectorTopics.length > 1) {
+    return resolutionFailure("ambiguous", candidateTopics, "select one topic explicitly and repair conflicting persisted or todo links", warnings);
+  }
+
+  const selectedTopic = explicitTopic ?? persistedTopic;
+  if (selectedTopic) {
+    const manifestPath = `.model-artifacts/specs/${selectedTopic}/manifest.json`;
+    if (persistedTopic || existsSync(resolve(request.cwd, manifestPath))) {
+      return canonicalResolution(request.cwd, selectedTopic, explicitTopic ? "explicit" : "persisted", candidateTopics, todoLink, warnings);
+    }
+    if (activeCanonicalTopics.length || canonicalDiscovery.incomplete) {
+      return resolutionFailure("ambiguous", candidateTopics, "create or select the requested canonical manifest, or repair the incomplete canonical initiative scan", warnings);
+    }
+    const legacy = (request.legacyInspector ?? new LegacyPlanInspector()).inspect({ cwd: request.cwd, topic: selectedTopic });
+    return legacy.status === "legacy-unverified"
+      ? { ...legacy, candidateTopics, warnings }
+      : resolutionFailure("not-found", candidateTopics, "create a canonical manifest or provide a legacy todo-phase plan", warnings);
+  }
+
+  if (canonicalDiscovery.incomplete) {
+    return resolutionFailure("ambiguous", candidateTopics, "select one topic explicitly after repairing or narrowing the canonical initiative scan", warnings);
+  }
+  if (activeCanonicalTopics.length > 1) {
+    return resolutionFailure("ambiguous", candidateTopics, "select one candidate topic explicitly or persist one active initiative marker", warnings);
+  }
+  if (activeCanonicalTopics.length === 1) {
+    if (todoLink && todoLink.topic !== activeCanonicalTopics[0]) {
+      return resolutionFailure("ambiguous", candidateTopics, "select one topic explicitly or repair the conflicting todo canonical initiative link", warnings);
+    }
+    return canonicalResolution(request.cwd, activeCanonicalTopics[0], "manifest", candidateTopics, todoLink, warnings);
+  }
+
+  if (todoLink) {
+    const manifestPath = `.model-artifacts/specs/${todoLink.topic}/manifest.json`;
+    if (existsSync(resolve(request.cwd, manifestPath))) {
+      return canonicalResolution(request.cwd, todoLink.topic, "todo", candidateTopics, todoLink, warnings);
+    }
+    warnings.push(`todo canonical initiative link points to missing manifest ${manifestPath}`);
+  }
+
+  const legacyInspector = request.legacyInspector ?? new LegacyPlanInspector();
+  const legacyTopics = legacyInspector.listCandidateTopics(request.cwd);
+  const allCandidates = sortedUnique([...candidateTopics, ...legacyTopics]);
+  if (legacyTopics.length > 1) {
+    return resolutionFailure("ambiguous", allCandidates, "select one legacy topic explicitly, then adopt it into canonical plan r1", warnings);
+  }
+  if (legacyTopics.length === 1) {
+    const legacy = legacyInspector.inspect({ cwd: request.cwd, topic: legacyTopics[0] });
+    return { ...legacy, candidateTopics: allCandidates, warnings };
+  }
+  return resolutionFailure("not-found", allCandidates, "create a canonical manifest or provide a legacy todo-phase plan", warnings);
+}
+
+function canonicalResolution(
+  cwd: string,
+  topic: string,
+  selectionSource: CanonicalInitiativeResolution["selectionSource"],
+  candidateTopics: readonly string[],
+  todoLink: SweCanonicalInitiativeLink | undefined,
+  warnings: readonly string[],
+): CanonicalInitiativeResolution {
+  return {
+    sourceMode: "canonical",
+    status: "canonical",
+    selectionSource,
+    topic,
+    candidateTopics,
+    inspection: inspectCanonicalInitiative({ cwd, topic }),
+    ...(todoLink?.topic === topic ? { todoLink } : {}),
+    warnings,
+  };
+}
+
+function resolutionFailure(
+  status: InitiativeResolutionFailure["status"],
+  candidateTopics: readonly string[],
+  remediation: string,
+  warnings: readonly string[],
+): InitiativeResolutionFailure {
+  return { sourceMode: "resolution", status, candidateTopics, remediation, warnings };
+}
+
+function normalizeResolutionTopic(value: string | undefined, source: string, warnings: string[]): string | undefined {
+  if (value === undefined) return undefined;
+  const normalized = value.trim().replace(/^\/+|\/+$/g, "");
+  if (isValidTopic(normalized)) return normalized;
+  warnings.push(`${source} is malformed`);
+  return undefined;
+}
+
+function readTodoCanonicalLink(activeTodo: unknown, warnings: string[]): SweCanonicalInitiativeLink | undefined {
+  if (activeTodo === undefined || activeTodo === null) return undefined;
+  if (!isRecord(activeTodo)) {
+    warnings.push("active todo peer data is malformed and was ignored");
+    return undefined;
+  }
+  const value = activeTodo.canonicalInitiative;
+  if (value === undefined) return undefined;
+  if (!isRecord(value) || typeof value.topic !== "string" || !isValidTopic(value.topic)) {
+    warnings.push("active todo canonical initiative link is malformed and was ignored");
+    return undefined;
+  }
+  if (value.contractId !== undefined && (typeof value.contractId !== "string" || !value.contractId.trim())) return malformedTodoLink(warnings);
+  if (value.contractPath !== undefined && (typeof value.contractPath !== "string" || !value.contractPath.startsWith(`.model-artifacts/plans/${value.topic}/`))) return malformedTodoLink(warnings);
+  if (value.planRevision !== undefined && (!Number.isInteger(value.planRevision) || (value.planRevision as number) < 1)) return malformedTodoLink(warnings);
+  if (value.dependencies !== undefined && (!Array.isArray(value.dependencies) || value.dependencies.some((dependency) => typeof dependency !== "string" || !dependency))) return malformedTodoLink(warnings);
+  return {
+    topic: value.topic,
+    ...(typeof value.contractId === "string" ? { contractId: value.contractId } : {}),
+    ...(typeof value.contractPath === "string" ? { contractPath: value.contractPath } : {}),
+    ...(typeof value.planRevision === "number" ? { planRevision: value.planRevision } : {}),
+    ...(Array.isArray(value.dependencies) ? { dependencies: [...value.dependencies] as string[] } : {}),
+  };
+}
+
+function malformedTodoLink(warnings: string[]): undefined {
+  warnings.push("active todo canonical initiative link is malformed and was ignored");
+  return undefined;
+}
+
+function discoverActiveCanonicalTopics(cwd: string, warnings: string[]): { topics: string[]; incomplete: boolean } {
+  const specsRoot = resolve(cwd, ".model-artifacts/specs");
+  if (!existsSync(specsRoot)) return { topics: [], incomplete: false };
+  const manifests: string[] = [];
+  const scan = { incomplete: false };
+  collectCanonicalManifests(specsRoot, "", manifests, scan);
+  if (scan.incomplete) warnings.push(`canonical manifest scan was incomplete after ${MAX_CANONICAL_MANIFESTS} candidates or a filesystem read error`);
+  const topics: string[] = [];
+  for (const relativeManifest of manifests.slice(0, MAX_CANONICAL_MANIFESTS)) {
+    const topic = relativeManifest.slice(0, -"/manifest.json".length);
+    try {
+      const content = readFileSync(resolve(specsRoot, relativeManifest), "utf8");
+      if (Buffer.byteLength(content, "utf8") > MAX_JSON_BYTES) {
+        topics.push(topic);
+        continue;
+      }
+      const parsed = parseInitiativeManifest(JSON.parse(content));
+      if (!parsed.ok || parsed.manifest.topic !== topic || parsed.manifest.initiativeState !== "complete") topics.push(topic);
+    } catch {
+      topics.push(topic);
+    }
+  }
+  return { topics: sortedUnique(topics), incomplete: scan.incomplete };
+}
+
+function collectCanonicalManifests(absoluteDir: string, relativeDir: string, manifests: string[], scan: { incomplete: boolean }): void {
+  if (manifests.length > MAX_CANONICAL_MANIFESTS) {
+    scan.incomplete = true;
+    return;
+  }
+  try {
+    for (const entry of readdirSync(absoluteDir, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
+      if (entry.isSymbolicLink()) continue;
+      const relativePath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) collectCanonicalManifests(resolve(absoluteDir, entry.name), relativePath, manifests, scan);
+      else if (entry.isFile() && entry.name === "manifest.json" && relativeDir) manifests.push(relativePath);
+      if (manifests.length > MAX_CANONICAL_MANIFESTS) {
+        scan.incomplete = true;
+        return;
+      }
+    }
+  } catch {
+    scan.incomplete = true;
+  }
+}
+
+function sortedUnique(values: readonly (string | undefined)[]): string[] {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))].sort();
 }
 
 function parseContractIndex(

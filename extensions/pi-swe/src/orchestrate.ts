@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { join, posix } from "node:path";
 
 export type OrchestrationArtifactKey = "workOrder" | "plan" | "diagnosis" | "dsaDecision" | "implementation" | "verification" | "review" | "finalHandoff";
@@ -39,6 +39,8 @@ export type OrchestrationTransitionRecommendation = {
 };
 
 const REQUIRED_ARTIFACTS: OrchestrationArtifactKey[] = ["workOrder", "plan", "implementation", "verification", "finalHandoff"];
+const MAX_LEGACY_FILES = 1_000;
+const MAX_LEGACY_TOPICS = 100;
 
 const ARTIFACT_LOCATORS: ReadonlyArray<{ key: OrchestrationArtifactKey; roots: string[]; patterns: RegExp[] }> = Object.freeze([
   { key: "workOrder", roots: [".model-artifacts/specs"], patterns: [/work-order|spec|contract/i] },
@@ -51,22 +53,90 @@ const ARTIFACT_LOCATORS: ReadonlyArray<{ key: OrchestrationArtifactKey; roots: s
   { key: "finalHandoff", roots: [".model-artifacts/reports"], patterns: [/handoff|final/i] },
 ]);
 
-const LEGACY_FILESYSTEM_INSPECTOR: OrchestrationInspector = {
-  inspect(request) {
+export const LEGACY_ADOPTION_REQUIREMENTS = Object.freeze([
+  "create a schema-v1 canonical manifest",
+  "normalize the legacy plan into canonical plan revision r1",
+  "validate the contract DAG and applicability",
+  "complete plan review",
+  "approve the reviewed canonical plan",
+] as const);
+
+export type LegacyPlanInspectionResult =
+  | {
+      readonly sourceMode: "legacy";
+      readonly status: "legacy-unverified";
+      readonly topic: string;
+      readonly planPath: string;
+      readonly candidatePaths: readonly string[];
+      readonly candidateTopics: readonly string[];
+      readonly adoptionRequirements: typeof LEGACY_ADOPTION_REQUIREMENTS;
+      readonly nextAction: "adopt-legacy-plan";
+      readonly warnings: readonly string[];
+    }
+  | {
+      readonly sourceMode: "legacy";
+      readonly status: "not-found";
+      readonly topic: string;
+      readonly candidatePaths: readonly [];
+      readonly candidateTopics: readonly string[];
+      readonly warnings: readonly string[];
+    };
+
+export class LegacyPlanInspector {
+  inspect(request: InspectOrchestrationArtifactsRequest): LegacyPlanInspectionResult {
+    const topic = normalizeTopic(request.topic);
+    const candidates = this.collectMatchingArtifacts(request.cwd, topic, [".model-artifacts/todo"], [/plan|phase-index|phase|todo/i], "phases");
+    if (!candidates.length) return { sourceMode: "legacy", status: "not-found", topic, candidatePaths: [], candidateTopics: [], warnings: [] };
+    return {
+      sourceMode: "legacy",
+      status: "legacy-unverified",
+      topic,
+      planPath: candidates[0],
+      candidatePaths: candidates,
+      candidateTopics: [topic],
+      adoptionRequirements: LEGACY_ADOPTION_REQUIREMENTS,
+      nextAction: "adopt-legacy-plan",
+      warnings: [],
+    };
+  }
+
+  listCandidateTopics(cwd: string): string[] {
+    const todoRoot = join(cwd, ".model-artifacts/todo");
+    const topics: string[] = [];
+    collectLegacyTopics(todoRoot, "", topics);
+    return topics
+      .filter((topic) => this.inspect({ cwd, topic }).status === "legacy-unverified")
+      .sort();
+  }
+
+  inspectArtifacts(request: InspectOrchestrationArtifactsRequest): InspectOrchestrationArtifactsResult {
     const topic = normalizeTopic(request.topic);
     const artifacts: OrchestrationArtifacts = {};
-
     for (const locator of ARTIFACT_LOCATORS) {
-      const located = locateFirstArtifact(request.cwd, topic, locator.roots, locator.patterns);
-      if (located) artifacts[locator.key] = located;
+      const candidates = this.collectMatchingArtifacts(request.cwd, topic, locator.roots, locator.patterns);
+      if (candidates[0]) artifacts[locator.key] = candidates[0];
     }
-
     const missingRequired = REQUIRED_ARTIFACTS.filter((key) => !artifacts[key]);
     const presentRequired = REQUIRED_ARTIFACTS.length - missingRequired.length;
     const readiness: OrchestrationReadiness = presentRequired === 0 ? "missing" : missingRequired.length === 0 ? "complete" : "partial";
-
     return { topic, readiness, artifacts, missingRequired };
-  },
+  }
+
+  private collectMatchingArtifacts(cwd: string, topic: string, roots: string[], patterns: RegExp[], requiredSegment?: string): string[] {
+    const candidates: string[] = [];
+    for (const root of roots) {
+      const relativeRoot = requiredSegment ? posix.join(root, topic, requiredSegment) : posix.join(root, topic);
+      const topicRoot = join(cwd, relativeRoot);
+      if (existsSync(topicRoot)) collectFiles(topicRoot, relativeRoot, candidates);
+    }
+    candidates.sort();
+    return candidates.filter((candidate) => patterns.some((pattern) => pattern.test(candidate)));
+  }
+}
+
+const LEGACY_PLAN_INSPECTOR = new LegacyPlanInspector();
+const LEGACY_FILESYSTEM_INSPECTOR: OrchestrationInspector = {
+  inspect: (request) => LEGACY_PLAN_INSPECTOR.inspectArtifacts(request),
 };
 
 export function inspectOrchestrationArtifacts(
@@ -158,23 +228,34 @@ export function recommendOrchestrationTransition(request: RecommendOrchestration
   };
 }
 
-function locateFirstArtifact(cwd: string, topic: string, roots: string[], patterns: RegExp[]): string | undefined {
-  const candidates: string[] = [];
-  for (const root of roots) {
-    const topicRoot = join(cwd, root, topic);
-    if (existsSync(topicRoot)) collectFiles(topicRoot, posix.join(root, topic), candidates);
+function collectLegacyTopics(absoluteDir: string, relativeDir: string, topics: string[]): void {
+  if (topics.length >= MAX_LEGACY_TOPICS) return;
+  try {
+    for (const entry of readdirSync(absoluteDir, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
+      if (entry.isSymbolicLink() || !entry.isDirectory()) continue;
+      if (entry.name === "phases" && relativeDir) topics.push(relativeDir);
+      else collectLegacyTopics(join(absoluteDir, entry.name), relativeDir ? posix.join(relativeDir, entry.name) : entry.name, topics);
+      if (topics.length >= MAX_LEGACY_TOPICS) return;
+    }
+  } catch {
+    return;
   }
-  candidates.sort();
-  return candidates.find((candidate) => patterns.some((pattern) => pattern.test(candidate)));
 }
 
 function collectFiles(absoluteDir: string, relativeDir: string, files: string[]): void {
-  for (const entry of readdirSync(absoluteDir).sort()) {
-    const absolutePath = join(absoluteDir, entry);
-    const relativePath = posix.join(relativeDir, entry);
-    const stat = statSync(absolutePath);
-    if (stat.isDirectory()) collectFiles(absolutePath, relativePath, files);
-    else if (stat.isFile() && /\.(md|json)$/i.test(entry)) files.push(relativePath);
+  if (files.length >= MAX_LEGACY_FILES) return;
+  try {
+    for (const entry of readdirSync(absoluteDir).sort()) {
+      const absolutePath = join(absoluteDir, entry);
+      const relativePath = posix.join(relativeDir, entry);
+      const stat = lstatSync(absolutePath);
+      if (stat.isSymbolicLink()) continue;
+      if (stat.isDirectory()) collectFiles(absolutePath, relativePath, files);
+      else if (stat.isFile() && /\.(md|json)$/i.test(entry)) files.push(relativePath);
+      if (files.length >= MAX_LEGACY_FILES) return;
+    }
+  } catch {
+    return;
   }
 }
 

@@ -1,8 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import type { SweCapabilityAdapter, SweCapabilityWarning, SweExternalTodo, SweTodoEvidence, SweTodoScope } from "./domain/capabilities.ts";
+import type { SweCanonicalInitiativeLink, SweCapabilityAdapter, SweCapabilityWarning, SweExternalTodo, SweTodoEvidence, SweTodoScope } from "./domain/capabilities.ts";
 
-export type { SweCapabilityAdapter, SweCapabilityWarning, SweExternalCapabilities, SweExternalTodo, SweTodoEvidence, SweTodoScope } from "./domain/capabilities.ts";
+export type { SweCanonicalInitiativeLink, SweCapabilityAdapter, SweCapabilityWarning, SweExternalCapabilities, SweExternalTodo, SweTodoEvidence, SweTodoScope } from "./domain/capabilities.ts";
 
 type UnknownRecord = Record<string, unknown>;
 type ProviderLookup = {
@@ -19,7 +19,7 @@ export function createSweExternalCapabilities(pi: ExtensionAPI): SweCapabilityAd
   const readWarnings: SweCapabilityWarning[] = [];
 
   const adapter: SweCapabilityAdapter = {
-    getActiveTodo: () => readProviderMethod(lookup.provider, "getActiveTodo", normalizeTodo, readWarnings),
+    getActiveTodo: () => readProviderMethod(lookup.provider, "getActiveTodo", (value) => normalizeTodo(value, readWarnings), readWarnings),
     getTodoScope: () => readProviderMethod(lookup.provider, "getTodoScope", normalizeScope, readWarnings),
     getTodoEvidence: () => readProviderMethod(lookup.provider, "getTodoEvidence", normalizeEvidence, readWarnings) ?? [],
     listDetectedExtensions: () => listDetectedExtensions(pi, lookup.providerNames),
@@ -131,7 +131,7 @@ function readProviderMethod<T>(provider: UnknownRecord | undefined, methodName: 
   }
 }
 
-function normalizeTodo(value: unknown): SweExternalTodo | undefined {
+function normalizeTodo(value: unknown, warnings: SweCapabilityWarning[]): SweExternalTodo | undefined {
   if (value === undefined || value === null) return undefined;
   if (!isPlainObject(value)) return undefined;
 
@@ -141,8 +141,33 @@ function normalizeTodo(value: unknown): SweExternalTodo | undefined {
   if (typeof value.status === "string") todo.status = value.status;
   if (isStringArray(value.acceptanceCriteria)) todo.acceptanceCriteria = [...value.acceptanceCriteria];
   if (isStringArray(value.definitionOfDone)) todo.definitionOfDone = [...value.definitionOfDone];
+  if (value.canonicalInitiative !== undefined) {
+    const canonicalInitiative = normalizeCanonicalInitiative(value.canonicalInitiative);
+    if (canonicalInitiative) todo.canonicalInitiative = canonicalInitiative;
+    else if (Object.keys(todo).length) warnings.push({ source: "pi-todo", message: "getActiveTodo returned malformed canonicalInitiative link; link ignored" });
+    else return undefined;
+  }
 
   return Object.keys(todo).length ? todo : undefined;
+}
+
+function normalizeCanonicalInitiative(value: unknown): SweCanonicalInitiativeLink | undefined {
+  if (!isPlainObject(value) || typeof value.topic !== "string" || !isSafeTopic(value.topic)) return undefined;
+  if (value.contractId !== undefined && (typeof value.contractId !== "string" || !value.contractId.trim())) return undefined;
+  if (value.contractPath !== undefined && (typeof value.contractPath !== "string" || !value.contractPath.startsWith(`.model-artifacts/plans/${value.topic}/`))) return undefined;
+  if (value.planRevision !== undefined && (!Number.isInteger(value.planRevision) || (value.planRevision as number) < 1)) return undefined;
+  if (value.dependencies !== undefined && !isStringArray(value.dependencies)) return undefined;
+  return {
+    topic: value.topic,
+    ...(typeof value.contractId === "string" ? { contractId: value.contractId } : {}),
+    ...(typeof value.contractPath === "string" ? { contractPath: value.contractPath } : {}),
+    ...(typeof value.planRevision === "number" ? { planRevision: value.planRevision } : {}),
+    ...(Array.isArray(value.dependencies) ? { dependencies: [...value.dependencies] as string[] } : {}),
+  };
+}
+
+function isSafeTopic(value: string): boolean {
+  return value.split("/").every((segment) => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(segment));
 }
 
 function normalizeScope(value: unknown): SweTodoScope | undefined {

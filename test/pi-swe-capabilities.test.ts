@@ -15,7 +15,20 @@ test("pi-swe capability adapter treats absent peers as normal", () => {
 
 test("pi-swe capability adapter reads valid todo peer context", () => {
   const provider = {
-    getActiveTodo: () => ({ id: "todo-1", title: "Implement adapter", status: "in_progress", acceptanceCriteria: ["peer context"], definitionOfDone: ["tests pass"] }),
+    getActiveTodo: () => ({
+      id: "todo-1",
+      title: "Implement adapter",
+      status: "in_progress",
+      acceptanceCriteria: ["peer context"],
+      definitionOfDone: ["tests pass"],
+      canonicalInitiative: {
+        topic: "demo",
+        contractId: "01",
+        contractPath: ".model-artifacts/plans/demo/revisions/r1/contracts/01.md",
+        planRevision: 1,
+        dependencies: [],
+      },
+    }),
     getTodoScope: () => ({ files: ["extensions/pi-swe/index.ts"], component: "pi-swe" }),
     getTodoEvidence: () => [{ type: "command", command: "npm test", exitCode: 0 }],
   };
@@ -27,6 +40,13 @@ test("pi-swe capability adapter reads valid todo peer context", () => {
     status: "in_progress",
     acceptanceCriteria: ["peer context"],
     definitionOfDone: ["tests pass"],
+    canonicalInitiative: {
+      topic: "demo",
+      contractId: "01",
+      contractPath: ".model-artifacts/plans/demo/revisions/r1/contracts/01.md",
+      planRevision: 1,
+      dependencies: [],
+    },
   });
   assert.deepEqual(capabilities.getTodoScope?.(), { files: ["extensions/pi-swe/index.ts"], component: "pi-swe" });
   assert.deepEqual(capabilities.getTodoEvidence?.(), [{ type: "command", command: "npm test", exitCode: 0 }]);
@@ -49,6 +69,24 @@ test("pi-swe capability adapter reports malformed peer responses as warnings", (
     capabilities.getWarnings().map((warning) => warning.message),
     ["getActiveTodo returned malformed data", "getTodoScope returned malformed data", "getTodoEvidence returned malformed data"],
   );
+});
+
+test("pi-swe capability adapter ignores malformed or async todo links with warnings", () => {
+  const malformed = createSweExternalCapabilities({
+    capabilities: new Map([["pi-todo", { getActiveTodo: () => ({ id: "todo-1", canonicalInitiative: { topic: "../bad" } }) }]]),
+    getCommands: () => [],
+    getAllTools: () => [],
+  } as never);
+  assert.deepEqual(malformed.getActiveTodo?.(), { id: "todo-1" });
+  assert.deepEqual(malformed.getWarnings().map((warning) => warning.message), ["getActiveTodo returned malformed canonicalInitiative link; link ignored"]);
+
+  const asyncPeer = createSweExternalCapabilities({
+    capabilities: new Map([["pi-todo", { getActiveTodo: async () => ({ id: "todo-1" }) }]]),
+    getCommands: () => [],
+    getAllTools: () => [],
+  } as never);
+  assert.equal(asyncPeer.getActiveTodo?.(), undefined);
+  assert.deepEqual(asyncPeer.getWarnings().map((warning) => warning.message), ["getActiveTodo returned a Promise; async capability reads are ignored"]);
 });
 
 test("pi-swe capability adapter detects peers from command and tool provenance", () => {

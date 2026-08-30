@@ -1,9 +1,18 @@
+export type SweCanonicalInitiativeLink = {
+  topic: string;
+  contractId?: string;
+  contractPath?: string;
+  planRevision?: number;
+  dependencies?: string[];
+};
+
 export type SweExternalTodo = {
   id?: string;
   title?: string;
   status?: string;
   acceptanceCriteria?: string[];
   definitionOfDone?: string[];
+  canonicalInitiative?: SweCanonicalInitiativeLink;
 };
 
 export type SweTodoScope = Record<string, unknown>;
