@@ -9,7 +9,8 @@
   },
   "manifest": {
     "extensions": [
-      "./extensions"
+      "./extensions",
+      "./node_modules/@gotgenes/pi-permission-system/src/index.ts"
     ],
     "skills": [
       "./skills",
@@ -34,12 +35,13 @@
       "extensions/pi-catalog/index.ts",
       "extensions/pi-commands/index.ts",
       "extensions/pi-context/index.ts",
-      "extensions/pi-gate/index.ts",
       "extensions/pi-git/index.ts",
       "extensions/pi-hud/index.ts",
+      "extensions/pi-permission-bridge/index.ts",
       "extensions/pi-primitives/index.ts",
       "extensions/pi-swe/index.ts",
-      "extensions/pi-todo/index.ts"
+      "extensions/pi-todo/index.ts",
+      "node_modules/@gotgenes/pi-permission-system/src/index.ts"
     ],
     "skills": [
       "extensions/pi-swe/skills/swe-diagnose/SKILL.md",
@@ -221,41 +223,6 @@
       }
     },
     {
-      "owner": "pi-gate",
-      "entrypoint": "extensions/pi-gate/index.ts",
-      "sourceFiles": [
-        "extensions/pi-gate/index.ts",
-        "extensions/pi-gate/src/app/audit.ts",
-        "extensions/pi-gate/src/app/remember.ts",
-        "extensions/pi-gate/src/config/index.ts",
-        "extensions/pi-gate/src/domain/policy.ts",
-        "extensions/pi-gate/src/pi/register.ts",
-        "extensions/pi-gate/src/ui/prompt.ts"
-      ],
-      "registrations": {
-        "commands": [
-          "gate"
-        ],
-        "tools": [],
-        "events": [
-          "project_trust",
-          "session_shutdown",
-          "session_start",
-          "tool_call",
-          "user_bash"
-        ],
-        "shortcuts": [],
-        "flags": [],
-        "providers": [],
-        "renderers": [],
-        "markdownTransformers": 0,
-        "uiSurfaces": [
-          "notify",
-          "setStatus"
-        ]
-      }
-    },
-    {
       "owner": "pi-git",
       "entrypoint": "extensions/pi-git/index.ts",
       "sourceFiles": [
@@ -336,6 +303,27 @@
           "setStatus",
           "setWidget"
         ]
+      }
+    },
+    {
+      "owner": "pi-permission-bridge",
+      "entrypoint": "extensions/pi-permission-bridge/index.ts",
+      "sourceFiles": [
+        "extensions/pi-permission-bridge/index.ts"
+      ],
+      "registrations": {
+        "commands": [],
+        "tools": [],
+        "events": [
+          "session_shutdown",
+          "user_bash"
+        ],
+        "shortcuts": [],
+        "flags": [],
+        "providers": [],
+        "renderers": [],
+        "markdownTransformers": 0,
+        "uiSurfaces": []
       }
     },
     {
@@ -480,6 +468,31 @@
           "setWidget"
         ]
       }
+    },
+    {
+      "owner": "pi-permission-system",
+      "entrypoint": "node_modules/@gotgenes/pi-permission-system/src/index.ts",
+      "sourceFiles": [
+        "node_modules/@gotgenes/pi-permission-system/src/index.ts"
+      ],
+      "registrations": {
+        "commands": [],
+        "tools": [],
+        "events": [
+          "before_agent_start",
+          "input",
+          "resources_discover",
+          "session_shutdown",
+          "session_start",
+          "tool_call"
+        ],
+        "shortcuts": [],
+        "flags": [],
+        "providers": [],
+        "renderers": [],
+        "markdownTransformers": 0,
+        "uiSurfaces": []
+      }
     }
   ],
   "profiles": [
@@ -490,7 +503,8 @@
         "+extensions/gentic/index.ts",
         "+extensions/pi-catalog/index.ts",
         "+extensions/pi-commands/index.ts",
-        "+extensions/pi-gate/index.ts",
+        "+node_modules/@gotgenes/pi-permission-system/src/index.ts",
+        "+extensions/pi-permission-bridge/index.ts",
         "+extensions/pi-git/index.ts",
         "+extensions/pi-primitives/index.ts"
       ]
@@ -503,7 +517,8 @@
         "+extensions/pi-catalog/index.ts",
         "+extensions/pi-commands/index.ts",
         "+extensions/pi-context/index.ts",
-        "+extensions/pi-gate/index.ts",
+        "+node_modules/@gotgenes/pi-permission-system/src/index.ts",
+        "+extensions/pi-permission-bridge/index.ts",
         "+extensions/pi-git/index.ts",
         "+extensions/pi-hud/index.ts",
         "+extensions/pi-primitives/index.ts",

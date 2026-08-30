@@ -24,12 +24,17 @@
     "@earendil-works/pi-ai": "0.84.2",
     "@earendil-works/pi-coding-agent": "0.84.2",
     "@earendil-works/pi-tui": "0.84.2",
+    "@gotgenes/pi-permission-system": "27.1.3",
     "typebox": "1.3.7"
   },
   "devDependencies": {
     "@types/node": "22.19.0",
+    "tsx": "4.23.13",
     "typescript": "5.9.3"
   },
+  "bundledDependencies": [
+    "@gotgenes/pi-permission-system"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "check": "npm run check:pi-api && npm run check:catalog && npm run check:inventory && npm run check:anatomy && npm run check:resources",
@@ -47,12 +52,13 @@
     "test": "node --experimental-strip-types --test test/**/*.test.ts",
     "test:todo": "node --experimental-strip-types --test test/pi-todo*.test.ts",
     "test:swe": "node --experimental-strip-types --test test/pi-swe*.test.ts",
-    "test:gate": "node --experimental-strip-types --test test/pi-gate.test.ts",
+    "test:permissions": "node --experimental-strip-types --test test/pi-permission*.test.ts",
     "test:primitives": "node --experimental-strip-types --test test/pi-primitives.test.ts"
   },
   "pi": {
     "extensions": [
-      "./extensions"
+      "./extensions",
+      "./node_modules/@gotgenes/pi-permission-system/src/index.ts"
     ],
     "skills": [
       "./skills",
@@ -70,5 +76,8 @@
       "./themes/**/*.json",
       "./extensions/**/themes/**/*.json"
     ]
-  }
+  },
+  "bundleDependencies": [
+    "@gotgenes/pi-permission-system"
+  ]
 }

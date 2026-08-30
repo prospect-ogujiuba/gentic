@@ -20,4 +20,4 @@
 - **State/config files it reads/writes:** reads the top-level `package.json` for package name, version, and Pi resource declarations; keeps last-session status in memory; writes no suite-owned state files.
 - **Internal module map:** `index.ts` remains the extension entrypoint; `src/pi/register.ts` registers Pi events/tools/commands; `src/package-summary.ts` reads/formats package resource summaries; `src/command-catalog.ts` groups, finds, and formats extension command catalog entries.
 - **Tests to run:** `npm test -- test/gentic-demo.test.ts` or the full `npm test` suite.
-- **Known boundaries/non-goals:** this extension is an orchestrator/index surface only; feature ownership stays with extensions such as `pi-gate`, `pi-todo`, `pi-swe`, `pi-catalog`, and others.
+- **Known boundaries/non-goals:** this extension is an orchestrator/index surface only; feature ownership stays with extensions such as `pi-permission-system`, `pi-todo`, `pi-swe`, `pi-catalog`, and others.

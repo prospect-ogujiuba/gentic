@@ -178,7 +178,7 @@ function normalizePeerName(value: unknown): string | undefined {
   const normalized = value.trim().replace(/^\//, "");
   if (!normalized) return undefined;
   if (normalized === "todo") return "pi-todo";
-  if (normalized === "gate") return "pi-gate";
+  if (normalized === "permission-system") return "pi-permission-system";
   if (normalized.startsWith("pi-")) return normalized;
   return undefined;
 }

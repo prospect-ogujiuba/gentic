@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 
 export const APPROVED_ARTIFACT_KINDS = ["reports", "plans", "findings", "logs", "specs", "todo"] as const;
@@ -17,12 +17,13 @@ export interface PackageResourceInventory {
   themes: string[];
 }
 
-function walkFiles(directory: string): string[] {
+function walkFiles(directory: string, excludedDirectories: ReadonlySet<string> = new Set()): string[] {
   if (!existsSync(directory)) return [];
   const files: string[] = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (entry.isDirectory() && excludedDirectories.has(entry.name)) continue;
     const path = join(directory, entry.name);
-    if (entry.isDirectory()) files.push(...walkFiles(path));
+    if (entry.isDirectory()) files.push(...walkFiles(path, excludedDirectories));
     else if (entry.isFile()) files.push(path);
   }
   return files;
@@ -71,13 +72,26 @@ function selectedByPatterns(path: string, patterns: readonly string[]): boolean 
   return included && !excluded;
 }
 
+function explicitBundledResourceFiles(root: string, manifest: Record<string, string[]>): string[] {
+  const files: string[] = [];
+  for (const pattern of Object.values(manifest).flat()) {
+    const normalized = pattern.replace(/^\.\//, "");
+    if (pattern.startsWith("!") || !normalized.startsWith("node_modules/") || /[?*]/.test(normalized)) continue;
+    const target = join(root, normalized);
+    if (!existsSync(target)) continue;
+    files.push(...(statSync(target).isDirectory() ? walkFiles(target) : [target]));
+  }
+  return files;
+}
+
 export function discoverPackageResources(root: string, manifest: Record<string, string[]>): PackageResourceInventory {
-  const files = walkFiles(root)
+  const files = [...new Set([...walkFiles(root, new Set(["node_modules", ".git", ".model-artifacts"])), ...explicitBundledResourceFiles(root, manifest)])]
     .map((path) => normalizeRelative(root, path))
-    .filter((path) => !path.startsWith("node_modules/") && !path.startsWith(".git/") && !path.startsWith(".model-artifacts/"));
+    .filter((path) => (!path.startsWith("node_modules/") || selectedByPatterns(path, Object.values(manifest).flat())) && !path.startsWith(".git/") && !path.startsWith(".model-artifacts/"));
 
   const candidates = {
-    extensions: files.filter((path) => /^extensions\/(?:[^/]+\/index|[^/]+)\.(?:ts|js)$/.test(path)),
+    extensions: files.filter((path) => /^extensions\/(?:[^/]+\/index|[^/]+)\.(?:ts|js)$/.test(path)
+      || (/\.(?:ts|js)$/.test(path) && path.startsWith("node_modules/") && selectedByPatterns(path, manifest.extensions ?? []))),
     skills: files.filter((path) => /(^|\/)SKILL\.md$/.test(path) || /(^|\/)skills\/[^/]+\.md$/.test(path)),
     prompts: files.filter((path) => extname(path) === ".md"),
     themes: files.filter((path) => extname(path) === ".json"),

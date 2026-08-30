@@ -37,7 +37,10 @@ npm test
 ```json
 {
   "pi": {
-    "extensions": ["./extensions"],
+    "extensions": [
+      "./extensions",
+      "./node_modules/@gotgenes/pi-permission-system/src/index.ts"
+    ],
     "skills": [
       "./skills",
       "./extensions/**/skills",
@@ -54,6 +57,15 @@ npm test
   }
 }
 ```
+
+Gentic bundles `@gotgenes/pi-permission-system` as its permission extension. The migrated baseline policy is tracked at [`config/pi-permission-system.json`](config/pi-permission-system.json). Copy it to the global extension config path before first use:
+
+```bash
+mkdir -p ~/.pi/agent/extensions/pi-permission-system
+cp config/pi-permission-system.json ~/.pi/agent/extensions/pi-permission-system/config.json
+```
+
+The replacement uses command decomposition and most-restrictive resolution, keeps permission review logging enabled, allows external directories like the previous local setup, denies writes to `.env` and `.git`, and asks for bash commands outside the migrated allowlist. The small `pi-permission-bridge` extension applies the same policy to Pi's separate `user_bash` path and fails closed when the permission service or confirmation UI is unavailable. Use `/permission-system` for runtime settings. Project-scoped overrides remain subject to Pi project trust.
 
 This keeps authoring simple while allowing complex bundled resources:
 

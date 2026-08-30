@@ -164,7 +164,7 @@ These scenarios are executable by a new contributor from a fresh Pi session and 
 
 - With no peers installed, stage skills work from the user-provided context. `/swe status` may report `detected peers: none`, `active plan: none`, `todo scope: none`, and `todo evidence count: 0`.
 - With `pi-todo` installed, `pi-swe` may summarize the active todo, todo scope, and todo evidence through public capability surfaces. This context enriches status and policy hints; it does not replace read-before-edit, narrow scope, or verification requirements.
-- Other peers such as `pi-gate` may be detected for status only unless they expose explicit public capabilities.
+- Other peers such as `pi-permission-system` may be detected for status only unless they expose explicit public capabilities.
 
 ## Configuration
 

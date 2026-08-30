@@ -54,8 +54,8 @@ test("pi-swe capability adapter reports malformed peer responses as warnings", (
 test("pi-swe capability adapter detects peers from command and tool provenance", () => {
   const capabilities = createSweExternalCapabilities({
     getCommands: () => [{ name: "todo", sourceInfo: { path: "/repo/extensions/pi-todo/index.ts" } }],
-    getAllTools: () => [{ name: "gate", sourceInfo: { path: "/repo/extensions/pi-gate/index.ts" } }],
+    getAllTools: () => [{ name: "permission-system", sourceInfo: { path: "/repo/node_modules/@gotgenes/pi-permission-system/src/index.ts" } }],
   } as never);
 
-  assert.deepEqual(capabilities.listDetectedExtensions?.(), ["pi-gate", "pi-todo"]);
+  assert.deepEqual(capabilities.listDetectedExtensions?.(), ["pi-permission-system", "pi-todo"]);
 });

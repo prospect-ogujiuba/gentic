@@ -9,7 +9,7 @@ const root = new URL("..", import.meta.url).pathname;
 
 test("package discovery sees pi-swe extension", () => {
   const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-  assert.deepEqual(packageJson.pi?.extensions, ["./extensions"]);
+  assert.deepEqual(packageJson.pi?.extensions, ["./extensions", "./node_modules/@gotgenes/pi-permission-system/src/index.ts"]);
   assert.ok(readdirSync(join(root, "extensions"), { withFileTypes: true }).some((entry) => entry.isDirectory() && entry.name === "pi-swe"));
   assert.equal(existsSync(join(root, "extensions/pi-swe/index.ts")), true);
   assert.equal(existsSync(join(root, "extensions/pi-swe/src/pi/commands.ts")), true);
@@ -41,7 +41,7 @@ test("pi-swe registers runtime event wiring and /swe command", async () => {
       return [{ name: "todo" }];
     },
     getAllTools() {
-      return [{ name: "gate", sourceInfo: { path: `${root}/extensions/pi-gate/index.ts` } }];
+      return [{ name: "permission-system", sourceInfo: { path: `${root}/node_modules/@gotgenes/pi-permission-system/src/index.ts` } }];
     },
   };
   const ctx = { cwd: root, sessionId: "test", hasUI: true, ui: { notify: (message: string, type?: string) => notifications.push({ message, type }) } };
@@ -60,7 +60,7 @@ test("pi-swe registers runtime event wiring and /swe command", async () => {
   await commands.get("swe")?.handler("config", ctx);
 
   assert.ok(notifications.some((entry) => entry.message.includes("enabled: true")));
-  assert.ok(notifications.some((entry) => entry.message.includes("detected peers: pi-gate, pi-todo")));
+  assert.ok(notifications.some((entry) => entry.message.includes("detected peers: pi-permission-system, pi-todo")));
   assert.ok(notifications.some((entry) => entry.message.includes("active plan: todo:todo-1 Implement adapter (AC:1, DoD:1)")));
   assert.ok(notifications.some((entry) => entry.message.includes("todo scope: files:extensions/pi-swe/index.ts")));
   assert.ok(notifications.some((entry) => entry.message.includes("inspected paths: 1")));
@@ -150,7 +150,7 @@ test("pi-swe rollout resources use one canonical skill surface", () => {
   const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const extensionRoot = join(root, "extensions/pi-swe");
 
-  assert.deepEqual(packageJson.pi?.extensions, ["./extensions"]);
+  assert.deepEqual(packageJson.pi?.extensions, ["./extensions", "./node_modules/@gotgenes/pi-permission-system/src/index.ts"]);
   assert.ok(packageJson.pi?.skills?.includes("./extensions/**/skills"));
   assert.equal(existsSync(join(extensionRoot, "index.ts")), true, "public entrypoint should stay top-level discoverable");
   assert.equal(existsSync(join(extensionRoot, "prompts")), false, "mirrored SWE prompts should stay removed");

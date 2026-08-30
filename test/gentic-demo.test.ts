@@ -7,8 +7,8 @@ import test from "node:test";
 import gentic from "../extensions/gentic/index.ts";
 import piCatalog from "../extensions/pi-catalog/index.ts";
 import piCommands from "../extensions/pi-commands/index.ts";
-import piGate from "../extensions/pi-gate/index.ts";
 import piGit from "../extensions/pi-git/index.ts";
+import piPermissionBridge from "../extensions/pi-permission-bridge/index.ts";
 import piHud from "../extensions/pi-hud/index.ts";
 import piPrimitives from "../extensions/pi-primitives/index.ts";
 import piSwe from "../extensions/pi-swe/index.ts";
@@ -109,6 +109,11 @@ function createPiHarness() {
   let sessionName = "";
 
   const pi = {
+    events: {
+      on(event: string, handler: Handler) {
+        handlers.set(event, [...(handlers.get(event) || []), handler]);
+      },
+    },
     capabilities: new Map([
       [
         "pi-todo",
@@ -175,20 +180,20 @@ function createPiHarness() {
   return { pi, ctx, handlers, commands, tools, entries, sentUserMessages, execCalls, activate, emit };
 }
 
-test("demo activates every Gentic extension and exercises shared runtime paths", async () => {
+test("demo activates every Gentic-owned extension and exercises shared runtime paths", async () => {
   const harness = createPiHarness();
 
   await harness.activate("gentic", gentic as never);
   await harness.activate("pi-catalog", piCatalog as never);
   await harness.activate("pi-commands", piCommands as never);
-  await harness.activate("pi-gate", piGate as never);
   await harness.activate("pi-git", piGit as never);
+  await harness.activate("pi-permission-bridge", piPermissionBridge as never);
   await harness.activate("pi-hud", piHud as never);
   await harness.activate("pi-primitives", piPrimitives as never);
   await harness.activate("pi-swe", piSwe as never);
   await harness.activate("pi-todo", piTodo as never);
 
-  for (const command of ["gentic", "catalog", "clear", "scaffold", "gate", "pi-git", "pi-hud", "swe", "todo"]) {
+  for (const command of ["gentic", "catalog", "clear", "scaffold", "pi-git", "pi-hud", "swe", "todo"]) {
     assert.equal(harness.commands.has(command), true, `missing /${command}`);
   }
 

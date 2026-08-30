@@ -46,7 +46,7 @@ for (const path of [contractPath, packageJsonPath]) {
 }
 
 const expectedManifest = {
-  extensions: ["./extensions"],
+  extensions: ["./extensions", "./node_modules/@gotgenes/pi-permission-system/src/index.ts"],
   skills: ["./skills", "./extensions/**/skills", "!./skills/**/README.md", "!./extensions/**/skills/**/README.md"],
   prompts: ["./prompts/**/*.md", "./extensions/**/prompts/**/*.md", "!./prompts/**/README.md", "!./extensions/**/prompts/**/README.md"],
   themes: ["./themes/**/*.json", "./extensions/**/themes/**/*.json"],

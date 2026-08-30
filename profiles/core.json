@@ -7,7 +7,8 @@
       "+extensions/gentic/index.ts",
       "+extensions/pi-catalog/index.ts",
       "+extensions/pi-commands/index.ts",
-      "+extensions/pi-gate/index.ts",
+      "+node_modules/@gotgenes/pi-permission-system/src/index.ts",
+      "+extensions/pi-permission-bridge/index.ts",
       "+extensions/pi-git/index.ts",
       "+extensions/pi-primitives/index.ts"
     ],

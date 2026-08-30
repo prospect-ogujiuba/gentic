@@ -6,8 +6,8 @@ import gentic from "../extensions/gentic/index.ts";
 import piCatalog from "../extensions/pi-catalog/index.ts";
 import piCommands from "../extensions/pi-commands/index.ts";
 import piContext from "../extensions/pi-context/index.ts";
-import piGate from "../extensions/pi-gate/index.ts";
 import piGit from "../extensions/pi-git/index.ts";
+import piPermissionBridge from "../extensions/pi-permission-bridge/index.ts";
 import piHud from "../extensions/pi-hud/index.ts";
 import piPrimitives from "../extensions/pi-primitives/index.ts";
 import piSwe from "../extensions/pi-swe/index.ts";
@@ -28,6 +28,7 @@ test("generated source/manifest inventory matches runtime registration smoke out
     get(target, key) {
       if (key in target) return target[key as keyof typeof target];
       if (key === "on") return (event: string) => runtime.events.add(event);
+      if (key === "events") return { on() {} };
       if (key === "registerCommand") return (name: string) => runtime.commands.add(name);
       if (key === "registerTool") return (tool: { name: string }) => runtime.tools.add(tool.name);
       if (typeof key === "string" && key.startsWith("register")) return () => undefined;
@@ -35,14 +36,15 @@ test("generated source/manifest inventory matches runtime registration smoke out
       return () => undefined;
     },
   });
-  for (const extension of [gentic, piCatalog, piCommands, piContext, piGate, piGit, piHud, piPrimitives, piSwe, piTodo]) {
+  for (const extension of [gentic, piCatalog, piCommands, piContext, piGit, piPermissionBridge, piHud, piPrimitives, piSwe, piTodo]) {
     await extension(pi as never);
   }
 
+  const ownedExtensions = inventory.extensions.filter((extension) => !extension.entrypoint.startsWith("node_modules/"));
   const declared = {
-    commands: sorted(inventory.extensions.flatMap((extension) => extension.registrations.commands)),
-    tools: sorted(inventory.extensions.flatMap((extension) => extension.registrations.tools)),
-    events: sorted(inventory.extensions.flatMap((extension) => extension.registrations.events)),
+    commands: sorted(ownedExtensions.flatMap((extension) => extension.registrations.commands)),
+    tools: sorted(ownedExtensions.flatMap((extension) => extension.registrations.tools)),
+    events: sorted(ownedExtensions.flatMap((extension) => extension.registrations.events)),
   };
   assert.deepEqual(sorted(runtime.commands), declared.commands);
   assert.deepEqual(sorted(runtime.tools), declared.tools);

@@ -52,6 +52,23 @@ test("manifest discovery covers inclusions and exclusions", () => {
   }
 });
 
+test("manifest discovery includes explicitly bundled node_modules extensions", () => {
+  const directory = fixture();
+  try {
+    const extension = "node_modules/@example/permission-system/src/index.ts";
+    write(join(directory, extension), "export default function extension() {}\n");
+    const inventory = discoverPackageResources(directory, {
+      extensions: [`./${extension}`],
+      skills: [],
+      prompts: [],
+      themes: [],
+    });
+    assert.deepEqual(inventory.extensions, [extension]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("resource validation rejects a skill name that differs from its parent directory", () => {
   const directory = fixture();
   try {

@@ -73,6 +73,7 @@ function registrations(source: string): RegistrationInventory {
 
 function extensionOwner(entrypoint: string): string {
   const parts = entrypoint.split("/");
+  if (parts[0] === "node_modules") return (parts[1]?.startsWith("@") ? parts[2] : parts[1]) ?? "external";
   return parts.length === 2 ? parts[1].replace(/\.(?:ts|js)$/, "") : parts[1];
 }
 
@@ -108,7 +109,8 @@ export function generateGenticInventory(rootPath: string): GenticInventory {
   const resources = discoverPackageResources(root, manifest);
   const extensions = resources.extensions.map((entrypoint) => {
     const absoluteEntrypoint = join(root, entrypoint);
-    const sourceRoot = entrypoint.endsWith("/index.ts") || entrypoint.endsWith("/index.js") ? dirname(absoluteEntrypoint) : absoluteEntrypoint;
+    const external = entrypoint.startsWith("node_modules/");
+    const sourceRoot = !external && (entrypoint.endsWith("/index.ts") || entrypoint.endsWith("/index.js")) ? dirname(absoluteEntrypoint) : absoluteEntrypoint;
     const sourceFiles = sourceRoot === absoluteEntrypoint ? [absoluteEntrypoint] : walkSource(sourceRoot);
     const source = sourceFiles.map((path) => readFileSync(path, "utf8")).join("\n");
     return {
