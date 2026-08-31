@@ -54,6 +54,12 @@ Include:
 
 Skip the artifact only for a tiny implementation review with no residual risk or durable decision. When todo is available, record the artifact; review must still work without it.
 
+For an approved canonical implementation intended for `/swe complete`, include exactly one single-line closed JSON envelope in the review (substitute exact values; no extra keys):
+
+`Pi-SWE-Evidence: {"schemaVersion":1,"mode":"implementation-review","topic":"<topic>","contractId":"<id>","contractPath":"<stable-path>","planRevision":<n>,"contractContentHash":"sha256:<hex>","decision":"approve","blockingFindings":0,"verification":{"path":"<verification-report>","contentHash":"sha256:<hex>"}}`
+
+Never emit that approval envelope for plan-review mode, request-changes, return-to-plan, stale verification, nonzero blockers, or a partial/gapped verification outcome.
+
 ## Output
 
 Return only decision, artifact path when created, blockers/highest-severity findings, and next edit/review action.

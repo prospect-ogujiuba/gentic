@@ -19,7 +19,7 @@ Use primitives only for small, reusable Pi runtime building blocks that apply ac
 ## Included primitives
 
 - `concise-output`: always-on system prompt guidance that keeps agent output short and file-oriented.
-- `implementation-file-completion`: conditional guidance for marking completed implementation files.
+- `implementation-file-completion`: stable machine-state completion for canonical contracts, with `[COMPLETE]` markers limited to legacy/non-canonical files during migration.
 - `model-artifacts`: conditional guidance for durable generated artifacts under `.model-artifacts/`.
 
 ## Add a primitive

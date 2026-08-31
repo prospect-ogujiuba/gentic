@@ -16,7 +16,7 @@ export type PiSweExtensionMetadata = {
 export const metadata: PiSweExtensionMetadata = {
   id: PI_SWE_EXTENSION_ID,
   name: PI_SWE_EXTENSION_NAME,
-  description: "Runtime SWE workflow guidance for planning, inspection, scope, and verification.",
+  description: "Runtime SWE workflow guidance plus guarded canonical contract completion.",
 };
 
 export default function piSwe(pi: ExtensionAPI, initialCtx?: ExtensionContext): void {

@@ -36,6 +36,7 @@ export type CanonicalInspectionDiagnosticCode =
   | "manifest_invalid"
   | "unsupported_version"
   | "contract_index_invalid"
+  | "completion_transaction_pending"
   | "stale_link";
 
 export type CanonicalInspectionDiagnostic = {
@@ -45,11 +46,47 @@ export type CanonicalInspectionDiagnostic = {
   readonly field?: string;
 };
 
+export type CanonicalCompletionRecord = {
+  readonly schemaVersion: 1;
+  readonly requestId: string;
+  readonly planRevision: number;
+  readonly contractPath: string;
+  readonly preCompletionContentHash: string;
+  readonly verification: { readonly path: string; readonly contentHash: string };
+  readonly review: { readonly path: string; readonly contentHash: string; readonly decision: "approve" };
+  readonly completedAt: string;
+  readonly nextState: {
+    readonly initiativeState: "executing" | "finalizing";
+    readonly activeContractId: string | null;
+    readonly readyContractIds: readonly string[];
+  };
+};
+
+export type CanonicalCompletionIdentity = Pick<CanonicalCompletionRecord,
+  "planRevision" | "contractPath" | "preCompletionContentHash" | "verification" | "review"> & {
+  readonly topic: string;
+  readonly contractId: string;
+};
+
+export function deriveCanonicalCompletionRequestId(identity: CanonicalCompletionIdentity): string {
+  const canonical = {
+    topic: identity.topic,
+    contractId: identity.contractId,
+    planRevision: identity.planRevision,
+    contractPath: identity.contractPath,
+    preCompletionContentHash: identity.preCompletionContentHash,
+    verification: identity.verification,
+    review: identity.review,
+  };
+  return `sha256:${createHash("sha256").update(JSON.stringify(canonical), "utf8").digest("hex")}`;
+}
+
 export type CanonicalContractIndex = {
   readonly schemaVersion: typeof CONTRACT_INDEX_SCHEMA_VERSION;
   readonly contracts: readonly ContractNode[];
   readonly contractFacts: Readonly<Record<string, ContractReadinessFacts | undefined>>;
   readonly consequentialSpecialists: readonly string[];
+  readonly completionRecords: Readonly<Record<string, CanonicalCompletionRecord | undefined>>;
 };
 
 export type CanonicalInspectorResult = {
@@ -58,6 +95,7 @@ export type CanonicalInspectorResult = {
   readonly manifestPath: string;
   readonly manifest?: InitiativeManifest;
   readonly contracts: readonly ContractNode[];
+  readonly completionRecords: Readonly<Record<string, CanonicalCompletionRecord | undefined>>;
   readonly gateEvaluation?: ReduceReadinessResult;
   readonly gates: readonly ReadinessGateResult[];
   readonly readyIds: readonly string[];
@@ -68,6 +106,8 @@ export type CanonicalInspectorResult = {
 export type InspectCanonicalInitiativeRequest = {
   readonly cwd: string;
   readonly topic: string;
+  /** Reserved for the completion recovery service while a durable journal blocks ordinary readers. */
+  readonly recoveryMode?: boolean;
 };
 
 export type ResolveInitiativeRequest = {
@@ -102,6 +142,12 @@ export type InitiativeResolution = CanonicalInitiativeResolution | LegacyPlanIns
 type MutableInspection = CanonicalInspectionDiagnostic[];
 type UnknownRecord = Record<string, unknown>;
 type IndexedContract = ContractNode & { readonly contentHash?: string };
+type ParsedContractIndex = {
+  readonly contracts: readonly IndexedContract[];
+  readonly contractFacts: Readonly<Record<string, ContractReadinessFacts | undefined>>;
+  readonly consequentialSpecialists: readonly string[];
+  readonly completionRecords: Readonly<Record<string, CanonicalCompletionRecord | undefined>>;
+};
 
 export function inspectCanonicalInitiative(request: InspectCanonicalInitiativeRequest): CanonicalInspectorResult {
   const topic = normalizeTopic(request.topic);
@@ -114,6 +160,11 @@ export function inspectCanonicalInitiative(request: InspectCanonicalInitiativeRe
 
   const repositoryRoot = resolveRepositoryRoot(request.cwd, diagnostics);
   if (!repositoryRoot) return emptyResult(topic, manifestPath, diagnostics);
+  const transactionPath = `.model-artifacts/logs/${topic}/completion-transaction.json`;
+  if (!request.recoveryMode && existsSync(resolve(repositoryRoot, transactionPath))) {
+    addDiagnostic(diagnostics, "completion_transaction_pending", transactionPath, `unfinished completion transaction blocks canonical inspection for ${topic}`);
+    return emptyResult(topic, manifestPath, diagnostics);
+  }
   const manifestValue = readJson(repositoryRoot, manifestPath, diagnostics, "manifest_missing");
   if (manifestValue === undefined) return emptyResult(topic, manifestPath, diagnostics);
 
@@ -149,6 +200,11 @@ export function inspectCanonicalInitiative(request: InspectCanonicalInitiativeRe
   for (const facts of Object.values(parsedIndex.contractFacts)) {
     if (facts?.deferral?.evidencePath) verifyLinkedArtifact(repositoryRoot, facts.deferral.evidencePath, undefined, diagnostics, artifacts);
   }
+  for (const record of Object.values(parsedIndex.completionRecords)) {
+    if (!record) continue;
+    verifyLinkedArtifact(repositoryRoot, record.verification.path, record.verification.contentHash, diagnostics, artifacts);
+    verifyLinkedArtifact(repositoryRoot, record.review.path, record.review.contentHash, diagnostics, artifacts);
+  }
   if ("activeContract" in manifest && manifest.activeContract) {
     verifyLinkedArtifact(repositoryRoot, manifest.activeContract.path, undefined, diagnostics, artifacts);
     if (!contracts.some((contract) => contract.id === manifest.activeContract?.id && contract.path === manifest.activeContract.path)) {
@@ -172,6 +228,7 @@ export function inspectCanonicalInitiative(request: InspectCanonicalInitiativeRe
     manifestPath,
     manifest,
     contracts,
+    completionRecords: parsedIndex.completionRecords,
     gateEvaluation,
     gates: gateEvaluation.gates,
     readyIds: gateEvaluation.readyContracts,
@@ -369,7 +426,7 @@ function parseContractIndex(
   topic: string,
   manifest: InitiativeManifest,
   diagnostics: MutableInspection,
-): { contracts: readonly IndexedContract[]; contractFacts: Readonly<Record<string, ContractReadinessFacts | undefined>>; consequentialSpecialists: readonly string[] } {
+): ParsedContractIndex {
   const diagnosticCount = diagnostics.length;
   const value = readJson(repositoryRoot, indexPath, diagnostics, "artifact_missing");
   if (!isRecord(value)) {
@@ -392,7 +449,8 @@ function parseContractIndex(
   }
   const contractFacts = parseContractFacts(value.contractFacts, indexPath, topic, diagnostics);
   const consequentialSpecialists = parseStringArray(value.consequentialSpecialists, indexPath, "consequentialSpecialists", diagnostics);
-  return diagnostics.length === diagnosticCount ? { contracts, contractFacts, consequentialSpecialists } : emptyContractIndex();
+  const completionRecords = parseCompletionRecords(value.completionRecords, contracts, indexPath, topic, manifest, diagnostics);
+  return diagnostics.length === diagnosticCount ? { contracts, contractFacts, consequentialSpecialists, completionRecords } : emptyContractIndex();
 }
 
 function parseIndexedContract(
@@ -428,6 +486,130 @@ function parseIndexedContract(
 
   const base = { id, dependsOn: dependsOn as string[], planRevision: planRevision as number, path, status: status as ContractStatus, ...(contentHash ? { contentHash } : {}) };
   return kind === "phase" ? { kind, ...base } : { kind, parentId: parentId as string, ...base };
+}
+
+function parseCompletionRecords(
+  value: unknown,
+  contracts: readonly IndexedContract[],
+  path: string,
+  topic: string,
+  manifest: InitiativeManifest,
+  diagnostics: MutableInspection,
+): Readonly<Record<string, CanonicalCompletionRecord | undefined>> {
+  if (value === undefined) return {};
+  if (!isRecord(value) || Object.keys(value).length > 500) {
+    addDiagnostic(diagnostics, "contract_index_invalid", path, "completionRecords must be a bounded object", "completionRecords");
+    return {};
+  }
+  const byId = new Map(contracts.map((contract) => [contract.id, contract]));
+  const records: Record<string, CanonicalCompletionRecord> = {};
+  const recordKeys = new Set(["schemaVersion", "requestId", "planRevision", "contractPath", "preCompletionContentHash", "verification", "review", "completedAt", "nextState"]);
+  for (const [id, candidate] of Object.entries(value)) {
+    const field = `completionRecords.${id}`;
+    const contract = byId.get(id);
+    if (!contract || contract.status !== "complete") {
+      addDiagnostic(diagnostics, "contract_index_invalid", path, `completion record ${id} requires an indexed complete contract`, field);
+      continue;
+    }
+    if (!isRecord(candidate) || !hasExactKeys(candidate, recordKeys)) {
+      addDiagnostic(diagnostics, "contract_index_invalid", path, `completion record ${id} has unknown or missing fields`, field);
+      continue;
+    }
+    const verification = readCompletionEvidence(candidate.verification, path, topic, `${field}.verification`, diagnostics, false);
+    const review = readCompletionEvidence(candidate.review, path, topic, `${field}.review`, diagnostics, true);
+    const nextState = readCompletionNextState(candidate.nextState, path, `${field}.nextState`, byId, diagnostics);
+    const valid = candidate.schemaVersion === 1
+      && isSha256(candidate.requestId)
+      && candidate.requestId === deriveCanonicalCompletionRequestId({
+        topic,
+        contractId: id,
+        planRevision: candidate.planRevision as number,
+        contractPath: candidate.contractPath as string,
+        preCompletionContentHash: candidate.preCompletionContentHash as string,
+        verification: verification ?? { path: "", contentHash: "" },
+        review: review ? { ...review, decision: "approve" } : { path: "", contentHash: "", decision: "approve" },
+      })
+      && Number.isSafeInteger(candidate.planRevision)
+      && (candidate.planRevision as number) > 0
+      && candidate.planRevision === manifest.activePlan?.revision
+      && candidate.planRevision === contract.planRevision
+      && candidate.contractPath === contract.path
+      && isSha256(candidate.preCompletionContentHash)
+      && candidate.preCompletionContentHash === contract.contentHash
+      && typeof candidate.completedAt === "string"
+      && !Number.isNaN(Date.parse(candidate.completedAt));
+    if (!valid || !verification || !review || !nextState) {
+      addDiagnostic(diagnostics, "contract_index_invalid", path, `completion record ${id} does not match its contract, plan, or evidence schema`, field);
+      continue;
+    }
+    records[id] = {
+      schemaVersion: 1,
+      requestId: candidate.requestId as string,
+      planRevision: candidate.planRevision as number,
+      contractPath: candidate.contractPath as string,
+      preCompletionContentHash: candidate.preCompletionContentHash as string,
+      verification,
+      review: { ...review, decision: "approve" },
+      completedAt: candidate.completedAt as string,
+      nextState,
+    };
+  }
+  return records;
+}
+
+function readCompletionEvidence(
+  value: unknown,
+  path: string,
+  topic: string,
+  field: string,
+  diagnostics: MutableInspection,
+  review: boolean,
+): { path: string; contentHash: string; decision?: "approve" } | undefined {
+  const expected = new Set(review ? ["path", "contentHash", "decision"] : ["path", "contentHash"]);
+  if (!isRecord(value) || !hasExactKeys(value, expected)
+    || typeof value.path !== "string"
+    || !isTopicArtifactPath(value.path, "reports", topic)
+    || !isSha256(value.contentHash)
+    || (review && value.decision !== "approve")) {
+    addDiagnostic(diagnostics, "contract_index_invalid", path, `${field} must be closed, path-confined, and hash-addressed`, field);
+    return undefined;
+  }
+  return { path: value.path, contentHash: value.contentHash, ...(review ? { decision: "approve" as const } : {}) };
+}
+
+function readCompletionNextState(
+  value: unknown,
+  path: string,
+  field: string,
+  contracts: ReadonlyMap<string, IndexedContract>,
+  diagnostics: MutableInspection,
+): CanonicalCompletionRecord["nextState"] | undefined {
+  const expected = new Set(["initiativeState", "activeContractId", "readyContractIds"]);
+  if (!isRecord(value) || !hasExactKeys(value, expected)
+    || (value.initiativeState !== "executing" && value.initiativeState !== "finalizing")
+    || (value.activeContractId !== null && (typeof value.activeContractId !== "string" || !contracts.has(value.activeContractId)))
+    || !Array.isArray(value.readyContractIds)) {
+    addDiagnostic(diagnostics, "contract_index_invalid", path, `${field} must be a bounded historical snapshot of indexed IDs`, field);
+    return undefined;
+  }
+  const readyContractIds = value.readyContractIds;
+  if (readyContractIds.length > 500
+    || readyContractIds.some((id) => typeof id !== "string" || !contracts.has(id))
+    || new Set(readyContractIds).size !== readyContractIds.length
+    || [...readyContractIds].sort().some((id, index) => id !== readyContractIds[index])) {
+    addDiagnostic(diagnostics, "contract_index_invalid", path, `${field} must be a bounded historical snapshot of indexed IDs`, field);
+    return undefined;
+  }
+  return {
+    initiativeState: value.initiativeState,
+    activeContractId: value.activeContractId as string | null,
+    readyContractIds: [...readyContractIds] as string[],
+  };
+}
+
+function hasExactKeys(value: UnknownRecord, expected: ReadonlySet<string>): boolean {
+  const keys = Object.keys(value);
+  return keys.length === expected.size && keys.every((key) => expected.has(key));
 }
 
 function parseContractFacts(value: unknown, path: string, topic: string, diagnostics: MutableInspection): Readonly<Record<string, ContractReadinessFacts | undefined>> {
@@ -614,8 +796,8 @@ function isSha256(value: unknown): value is string {
   return typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value);
 }
 
-function emptyContractIndex(): { contracts: readonly IndexedContract[]; contractFacts: Readonly<Record<string, ContractReadinessFacts | undefined>>; consequentialSpecialists: readonly string[] } {
-  return { contracts: [], contractFacts: {}, consequentialSpecialists: [] };
+function emptyContractIndex(): ParsedContractIndex {
+  return { contracts: [], contractFacts: {}, consequentialSpecialists: [], completionRecords: {} };
 }
 
 function emptyResult(
@@ -624,7 +806,7 @@ function emptyResult(
   diagnostics: readonly CanonicalInspectionDiagnostic[],
   manifest?: InitiativeManifest,
 ): CanonicalInspectorResult {
-  return { sourceMode: "canonical", topic, manifestPath, ...(manifest ? { manifest } : {}), contracts: [], gates: [], readyIds: [], blockers: [], diagnostics };
+  return { sourceMode: "canonical", topic, manifestPath, ...(manifest ? { manifest } : {}), contracts: [], completionRecords: {}, gates: [], readyIds: [], blockers: [], diagnostics };
 }
 
 function invalidIndex(diagnostics: MutableInspection, path: string, field: string, message: string): undefined {

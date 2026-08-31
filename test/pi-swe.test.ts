@@ -99,6 +99,7 @@ test("/swe orchestrate is guidance-only and preserves existing command behavior"
     { value: "status", label: "status" },
     { value: "config", label: "config" },
     { value: "orchestrate", label: "orchestrate" },
+    { value: "complete", label: "complete" },
   ]);
 
   await swe.handler("orchestrate", ctx);
@@ -138,6 +139,7 @@ test("/swe status and orchestrate expose canonical topic, revision, gates, contr
     "specialists:",
     "gates:",
     "active contract:",
+    "contract progress:",
     "ready contracts: 01",
     "blockers:",
     "todo linkage:",
@@ -394,6 +396,9 @@ test("execution lifecycle skills enforce approved contracts and evidence reconci
   assert.match(skills.verify, /acceptance[^.]*evidence/i);
   assert.match(skills.review, /exact contract[^.]*revision/i);
   assert.match(skills.review, /approve[^.]*request changes[^.]*return to plan/i);
+  assert.match(skills.verify, /Pi-SWE-Evidence:[^\n]*"mode":"verification"[^\n]*"gaps":"none"/i);
+  assert.match(skills.review, /Pi-SWE-Evidence:[^\n]*"mode":"implementation-review"[^\n]*"blockingFindings":0[^\n]*"verification"/i);
+  assert.match(skills.review, /Never emit[^.]*plan-review mode[^.]*request-changes/i);
   assert.match(skills.finalize, /contract dispositions/i);
   assert.match(skills.finalize, /approved deferrals/i);
   assert.match(skills.orchestrate, /required read paths/i);
@@ -494,7 +499,7 @@ test("pi-swe end-to-end docs cover scenarios, migration, and omitted legacy surf
   const scenarios = readFileSync(scenariosPath, "utf8");
   const docs = `${readme}\n${scenarios}`;
 
-  for (const command of ["/skill:swe-plan", "/skill:swe-diagnose", "/skill:swe-implement", "/skill:swe-verify", "/skill:swe-review", "/skill:swe-finalize", "/skill:swe-tdd", "/skill:swe-dsa", "/swe orchestrate"]) {
+  for (const command of ["/skill:swe-plan", "/skill:swe-diagnose", "/skill:swe-implement", "/skill:swe-verify", "/skill:swe-review", "/skill:swe-finalize", "/skill:swe-tdd", "/skill:swe-dsa", "/swe orchestrate", "/swe complete"]) {
     assert.match(readme, new RegExp(command.replace("/", "\\/")));
   }
 
@@ -517,6 +522,7 @@ test("pi-swe end-to-end docs cover scenarios, migration, and omitted legacy surf
     "Exception orchestration path",
     "Resume orchestration path",
     "Finalize gate orchestration path",
+    "Reviewed canonical contract completion and recovery",
   ]) {
     assert.match(docs, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
   }

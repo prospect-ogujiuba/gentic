@@ -221,6 +221,18 @@ Goal: prove finalization is gated by verification and review evidence.
 
 Expected result: missing verification routes to `/skill:swe-verify`; risky unreviewed changes route to `/skill:swe-review`; `/skill:swe-finalize` is recommended only after required gates pass.
 
+## Scenario 12: Reviewed canonical contract completion and recovery
+
+Goal: prove completion uses stable machine state, exact evidence identity, and recoverable persistence.
+
+1. Start one canonical ready contract so `manifest.activeContract` names it and the index status is `in_progress`.
+2. Produce a passing verification report and an approving implementation-review report. Each contains one closed `Pi-SWE-Evidence: {...}` JSON line for the exact topic, contract ID/path/hash, and plan revision; verification declares `outcome: pass`/`gaps: none`, while implementation review declares `decision: approve`, zero blockers, and the exact verification path/hash. Compute whole-report sha256 identities plus the unchanged contract-content hash.
+3. Run the explicit `/swe complete ... approve advance` action with exact plan revision, stable contract path, hashes, and report paths.
+4. Run `/swe status`, then repeat the identical completion action after reload.
+5. In a disposable fixture, interrupt each journal stage and run recovery; corrupt a required pre-validation backup in one case. Also race separate local processes and simulate incomplete, aged-live, dead-owner, and replaced claim-token files; claim files are never auto-reaped.
+
+Expected result: the contract becomes `complete` in `contracts.json`, its stable filename is unchanged, the completion record survives journal cleanup, status shows phase/next-contract progress, and the exact repeat returns `already-complete` without writes. Stage recovery either restores verified preimages, finishes committed cleanup, or retains the journal as `blocked-recovery`; it never guesses state or reports false success.
+
 ## Complete-version checklist
 
 - [x] Standalone `/swe status` and `/swe config` commands are documented.
@@ -229,6 +241,7 @@ Expected result: missing verification routes to `/skill:swe-verify`; risky unrev
 - [x] No-`pi-todo` and with-`pi-todo` scenarios are documented.
 - [x] Feature, bug, DSA, exception, resume, and finalize-gate orchestration scenarios are documented.
 - [x] `/swe orchestrate [status|start|resume|handoff]` is documented as guidance-only orchestration inside the existing `/swe` namespace.
+- [x] Explicit `/swe complete` machine-state disposition, reload idempotency, stable canonical filenames, and staged recovery are documented.
 - [x] Legacy Programming SOP, TDD RGR, and DSA Advisor migration paths are documented in `extensions/pi-swe/README.md`.
 - [x] Omitted legacy namespaces and model-callable advisor tools are documented as intentional omissions.
 - [x] Remaining core-completion gaps: none known from Phase 12 plus orchestration validation; further changes should be tracked as enhancements.

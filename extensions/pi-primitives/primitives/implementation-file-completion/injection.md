@@ -1,7 +1,8 @@
 # Implementation file completion convention
 
-- When an assigned implementation, plan, phase, or todo file is fully complete, rename it by inserting ` [COMPLETE]` immediately before the file extension.
-- Example: `phase-1.md` → `phase-1 [COMPLETE].md`.
-- For extensionless files, append ` [COMPLETE]` to the filename.
+- Canonical lifecycle contracts beneath an active manifest's `activePlan.contractRoot` use stable filenames. Complete them only through the canonical machine-state transition in `contracts.json`; never add, remove, or normalize a `[COMPLETE]` filename marker for those contracts.
+- For legacy or non-canonical assigned implementation, plan, phase, or todo files, a fully complete file may still be renamed by inserting ` [COMPLETE]` immediately before the extension during migration.
+- Legacy example: `phase-1.md` → `phase-1 [COMPLETE].md`.
+- For extensionless legacy files, append ` [COMPLETE]` to the filename.
 - Do not mark partially complete files.
-- If a clearly completed in-scope implementation file is encountered without the marker, normalize it.
+- If canonical identity is ambiguous, inspect the manifest and contract index before any rename; do not infer status from the filename.

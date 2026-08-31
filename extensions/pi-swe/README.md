@@ -18,7 +18,7 @@ The extension may read optional peer capabilities such as `pi-todo` when they ar
 ## Orientation block
 
 - **What it does:** observes planning/inspection/change/verification signals, maintains per-turn SWE state, issues advisory workflow warnings, exposes SWE status/config, and provides staged SWE skills.
-- **Commands/tools it registers:** `/swe status`, `/swe config`, and guidance-only `/swe orchestrate`; no model-callable tool is registered by `pi-swe`. Stage guidance is discovered natively from `skills/` and invoked as `/skill:swe-*`.
+- **Commands/tools it registers:** `/swe status`, `/swe config`, guidance-only `/swe orchestrate`, and explicit guarded `/swe complete`; no model-callable tool is registered by `pi-swe`. Stage guidance is discovered natively from `skills/` and invoked as `/skill:swe-*`.
 - **Pi events it listens to:** `session_start` loads config and reconstructs active-branch state; `session_tree` reconstructs after navigation; `turn_start` resets turn-local state; `tool_call` classifies inspection/code-change/todo-completion facts; `tool_result` classifies verification facts; `agent_settled` persists required cross-turn state; `session_shutdown` clears runtime state.
 - **State/config files it reads/writes:** reads project `.pi/pi-swe.json`, global `~/.pi/agent/pi-swe.json`, defaults, and `pi-swe.schema.json`; persists only active plan/stage in versioned `gentic.swe.state` custom entries and reconstructs them from `sessionManager.getBranch()`; inspected/changed paths, warnings, peer context, and verification evidence remain turn-local.
 - **Internal module map:** `index.ts` wires events and `/swe`; `src/config/` loads config; `src/domain/classify.ts` extracts workflow facts; `src/domain/state.ts` tracks active plan, inspected/changed paths, and verification; `src/domain/policy.ts` evaluates advisory warnings; `src/capabilities.ts` reads optional peer capability surfaces; `src/domain/evidence.ts`, `src/domain/tdd.ts`, and `src/domain/dsa.ts` hold focused helpers; `docs/`, `skills/`, and `references/` provide resource guidance.
@@ -46,11 +46,13 @@ Unknown future state-envelope versions are ignored. Failed commands, notes/manua
 /swe status
 /swe config
 /swe orchestrate [status|start|resume|handoff]
+/swe complete <topic> <contract-id> <plan-revision> <contract-path> <contract-hash> <verification-path> <verification-hash> <review-path> <review-hash> approve [clear|advance]
 ```
 
-- `/swe status` reports enablement, mode, config source, detected optional peers, active plan, todo scope/evidence when available, inspected/changed path counts, verification count, and current warnings.
+- `/swe status` reports canonical disposition, phase progress, active/ready contracts, blockers, runtime context, and current warnings.
 - `/swe config` reports the effective project/global/default configuration and config diagnostics.
 - `/swe orchestrate` is guidance-only: it reports artifact readiness, recommends the next lifecycle step, routes missing verification/review/finalize gates, and emits deterministic exception handoffs without running hidden multi-step work.
+- `/swe complete` is the sole mutation action. It validates the exact active plan/contract hash plus passing verification and approving implementation-review identities, then runs the recoverable journaled state transition. Each report must contain one closed `Pi-SWE-Evidence: {...}` JSON line binding topic, contract ID/path/hash, plan revision, and overall decision; the review line also binds the verification path/hash and zero blocking findings. An owner-token-bound exclusive local claim prevents concurrent writers and every journal/target mutation revalidates it. Claim files are never auto-reaped; after a process crash, recovery reports the exact lock path for explicit removal only after the operator confirms its owner is gone. Exact repeats return `already-complete`; mismatches and unfinished/corrupt recovery state do not write or report success. Canonical filenames stay unchanged.
 
 ## Stage skills
 
@@ -184,7 +186,7 @@ Config is loaded from project, global, then defaults. The schema is `extensions/
 
 ## Resource invocation migration
 
-The mirrored `/swe-*` prompt templates were removed. Use the canonical skill commands `/skill:swe-*`; arguments after the command are appended to the loaded skill. The runtime `/swe status`, `/swe config`, and `/swe orchestrate` commands are unchanged.
+The mirrored `/swe-*` prompt templates were removed. Use the canonical skill commands `/skill:swe-*`; arguments after the command are appended to the loaded skill. Runtime `/swe status`, `/swe config`, and guidance-only `/swe orchestrate` remain; `/swe complete` is a narrowly guarded canonical disposition action, not a prompt alias or autonomous runner.
 
 ### Programming SOP → pi-swe stages
 

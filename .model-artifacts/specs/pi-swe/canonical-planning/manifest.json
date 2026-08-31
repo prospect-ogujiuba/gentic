@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "initiativeId": "pi-swe/canonical-planning",
   "topic": "pi-swe/canonical-planning",
-  "initiativeState": "approved",
+  "initiativeState": "executing",
   "activeSpec": {
     "revision": 2,
     "path": ".model-artifacts/specs/pi-swe/canonical-planning/2026-08-30_0331-initiative-spec-r2.md",
@@ -23,16 +23,47 @@
     "approvedAt": "2026-08-31T22:15:00.000Z",
     "blockingFindings": 0
   },
-  "specialists": {
-    "diagnosis": { "status": "not-required", "rationale": "No failing runtime behavior requires diagnosis." },
-    "dsa": { "status": "complete", "findingPath": ".model-artifacts/findings/pi-swe/canonical-planning/2026-08-31_2112-completion-transition-specialist-review.md" },
-    "tdd": { "status": "complete", "findingPath": ".model-artifacts/findings/pi-swe/canonical-planning/2026-08-31_2112-completion-transition-specialist-review.md" },
-    "security": { "status": "not-required", "rationale": "No authentication boundary changes; closed schemas, path confinement, and exact identity are correctness requirements." },
-    "migration": { "status": "complete", "findingPath": ".model-artifacts/findings/pi-swe/canonical-planning/2026-08-31_2112-completion-transition-specialist-review.md" },
-    "performance": { "status": "not-required", "rationale": "Bounded local records and files have no consequential scale change." },
-    "accessibility-ux": { "status": "not-required", "rationale": "Existing text output reports progress and recovery blockers." },
-    "operations": { "status": "complete", "findingPath": ".model-artifacts/findings/pi-swe/canonical-planning/2026-08-31_2112-completion-transition-specialist-review.md" },
-    "compatibility": { "status": "complete", "findingPath": ".model-artifacts/findings/pi-swe/canonical-planning/2026-08-31_2112-completion-transition-specialist-review.md" }
+  "activeContract": {
+    "id": "04.04",
+    "path": ".model-artifacts/plans/pi-swe/canonical-planning/revisions/r6/phases/04-workflow-rollout/04.04-migration-scenarios-final-verification.md"
   },
-  "updatedAt": "2026-08-31T22:15:00.000Z"
+  "specialists": {
+    "diagnosis": {
+      "status": "not-required",
+      "rationale": "No failing runtime behavior requires diagnosis."
+    },
+    "dsa": {
+      "status": "complete",
+      "findingPath": ".model-artifacts/findings/pi-swe/canonical-planning/2026-08-31_2112-completion-transition-specialist-review.md"
+    },
+    "tdd": {
+      "status": "complete",
+      "findingPath": ".model-artifacts/findings/pi-swe/canonical-planning/2026-08-31_2112-completion-transition-specialist-review.md"
+    },
+    "security": {
+      "status": "not-required",
+      "rationale": "No authentication boundary changes; closed schemas, path confinement, and exact identity are correctness requirements."
+    },
+    "migration": {
+      "status": "complete",
+      "findingPath": ".model-artifacts/findings/pi-swe/canonical-planning/2026-08-31_2112-completion-transition-specialist-review.md"
+    },
+    "performance": {
+      "status": "not-required",
+      "rationale": "Bounded local records and files have no consequential scale change."
+    },
+    "accessibility-ux": {
+      "status": "not-required",
+      "rationale": "Existing text output reports progress and recovery blockers."
+    },
+    "operations": {
+      "status": "complete",
+      "findingPath": ".model-artifacts/findings/pi-swe/canonical-planning/2026-08-31_2112-completion-transition-specialist-review.md"
+    },
+    "compatibility": {
+      "status": "complete",
+      "findingPath": ".model-artifacts/findings/pi-swe/canonical-planning/2026-08-31_2112-completion-transition-specialist-review.md"
+    }
+  },
+  "updatedAt": "2026-08-31T23:31:00.000Z"
 }

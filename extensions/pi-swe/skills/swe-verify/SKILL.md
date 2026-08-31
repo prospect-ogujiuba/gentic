@@ -64,6 +64,12 @@ Scope: <exact contract ID/revision, files, behavior, or scenario verified>
 
 Failures and partial verification must be represented honestly. If a command fails, record the failure, relevant error summary, scope affected, and next action instead of presenting the work as fully verified.
 
+For a canonical contract intended for `/swe complete`, include exactly one single-line closed JSON envelope in the report (substitute exact values; no extra keys):
+
+`Pi-SWE-Evidence: {"schemaVersion":1,"mode":"verification","topic":"<topic>","contractId":"<id>","contractPath":"<stable-path>","planRevision":<n>,"contractContentHash":"sha256:<hex>","outcome":"pass","gaps":"none"}`
+
+Emit `outcome: pass` and `gaps: none` only when the complete acceptance map passes. A partial/failing/gapped report must not use a completion-eligible envelope.
+
 ## Chat output
 
 - For artifact-backed verification, report only the artifact path plus a concise pass/fail/gap summary.

@@ -48,6 +48,9 @@ test("implementation-file-completion primitive matches expanded user prompt", as
   });
 
   assert.match(result?.systemPrompt || "", /\[COMPLETE\]/);
+  assert.match(result?.systemPrompt || "", /Canonical lifecycle contracts.*stable filenames/s);
+  assert.match(result?.systemPrompt || "", /contracts\.json/);
+  assert.match(result?.systemPrompt || "", /never add, remove, or normalize a `\[COMPLETE\]` filename marker/);
 });
 
 test("implementation-file-completion primitive skips unrelated prompts", async () => {

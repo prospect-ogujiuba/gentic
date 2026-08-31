@@ -1,20 +1,22 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { refreshPeerContext, type PiSweRuntime } from "../app/runtime.ts";
+import { completeCanonicalContract, type CompleteCanonicalContractRequest, type CompleteCanonicalContractResult } from "../completion.ts";
 import { recommendGateAwareOrchestration, type GateAwareOrchestrationRecommendation } from "../orchestrate.ts";
 import { resolveInitiative, type InitiativeResolution } from "../planning.ts";
 
-const SUBCOMMANDS = ["status", "config", "orchestrate"] as const;
+const SUBCOMMANDS = ["status", "config", "orchestrate", "complete"] as const;
 const ORCHESTRATE_ACTIONS = ["status", "start", "resume", "handoff"] as const;
 const STATUS_USAGE = "Usage: /swe status [topic]";
 const ORCHESTRATE_USAGE = "Usage: /swe orchestrate <status|start|resume|handoff> [topic]";
+const COMPLETE_USAGE = "Usage: /swe complete <topic> <contract-id> <plan-revision> <contract-path> <contract-hash> <verification-path> <verification-hash> <review-path> <review-hash> approve [clear|advance]";
 const MAX_SUMMARY_ITEMS = 8;
 
 type OrchestrateAction = (typeof ORCHESTRATE_ACTIONS)[number];
 
 export function registerSweCommands(pi: ExtensionAPI, runtime: PiSweRuntime): void {
   pi.registerCommand("swe", {
-    description: "Inspect pi-swe status, config, or guidance: /swe status [topic] | /swe config | /swe orchestrate <status|start|resume|handoff> [topic]",
+    description: "Inspect pi-swe status/guidance or explicitly complete an evidenced canonical contract",
     getArgumentCompletions: completeSweArgument,
     handler: async (args, ctx) => {
       const parsed = parseSweArguments(args);
@@ -42,7 +44,18 @@ export function registerSweCommands(pi: ExtensionAPI, runtime: PiSweRuntime): vo
         ctx.ui.notify(formatOrchestrate(parsed.action, resolution, recommendation), orchestrationNotificationType(resolution, recommendation));
         return;
       }
-      ctx.ui.notify(`${STATUS_USAGE}\nUsage: /swe config\n${ORCHESTRATE_USAGE}`, "warning");
+      if (parsed.subcommand === "complete") {
+        const cwd = typeof ctx.cwd === "string" ? ctx.cwd : undefined;
+        const request = cwd ? parseCompleteRequest(cwd, parsed.completeTokens ?? []) : undefined;
+        if (!request) {
+          ctx.ui.notify(COMPLETE_USAGE, "warning");
+          return;
+        }
+        const result = completeCanonicalContract(request);
+        ctx.ui.notify(formatCompletion(result), result.status === "completed" || result.status === "already-complete" ? "info" : "warning");
+        return;
+      }
+      ctx.ui.notify(`${STATUS_USAGE}\nUsage: /swe config\n${ORCHESTRATE_USAGE}\n${COMPLETE_USAGE}`, "warning");
     },
   });
 }
@@ -66,6 +79,7 @@ export function formatStatus(runtime: PiSweRuntime, resolution?: InitiativeResol
     `specialists: ${manifest ? summarizeSpecialists(manifest.specialists) : "none"}`,
     `gates: ${canonical ? bounded(canonical.inspection.gates.map((gate) => `${gate.id}:${gate.ready ? "ready" : "blocked"}`)) : "none"}`,
     `active contract: ${manifest && "activeContract" in manifest && manifest.activeContract ? `${manifest.activeContract.id} ${manifest.activeContract.path}` : "none"}`,
+    `contract progress: ${canonical ? `${canonical.inspection.contracts.filter((contract) => contract.status === "complete").length}/${canonical.inspection.contracts.length} complete` : "none"}`,
     `ready contracts: ${canonical ? bounded(canonical.inspection.readyIds) : "none"}`,
     `blockers: ${canonical ? bounded(canonical.inspection.blockers.map((blocker) => `${blocker.code}: ${blocker.remediation}`)) : "none"}`,
     `todo linkage: ${canonical?.todoLink ? summarizeRecord(canonical.todoLink) : "none"}`,
@@ -121,19 +135,72 @@ function completeSweArgument(prefix: string): Array<{ value: string; label: stri
   if (actionMatch) {
     return ORCHESTRATE_ACTIONS.filter((action) => action.startsWith(actionMatch[1] ?? "")).map((action) => ({ value: `orchestrate ${action}`, label: action }));
   }
-  if (/^orchestrate\s+\S+\s+/.test(normalized) || /^status\s+/.test(normalized)) return [];
+  if (/^orchestrate\s+\S+\s+/.test(normalized) || /^status\s+/.test(normalized) || /^complete\s+/.test(normalized)) return [];
   return SUBCOMMANDS.filter((value) => value.startsWith(normalized)).map((value) => ({ value, label: value }));
 }
 
-function parseSweArguments(args: string): { subcommand?: string; action?: OrchestrateAction; topic?: string } {
+function parseSweArguments(args: string): { subcommand?: string; action?: OrchestrateAction; topic?: string; completeTokens?: string[] } {
   const tokens = args.trim().split(/\s+/).filter(Boolean);
   const subcommand = tokens[0] ?? "status";
   if (subcommand === "status") return { subcommand, topic: tokens.slice(1).join(" ") || undefined };
   if (subcommand === "config") return { subcommand, topic: tokens.slice(1).join(" ") || undefined };
+  if (subcommand === "complete") return { subcommand, completeTokens: tokens.slice(1) };
   if (subcommand !== "orchestrate") return { subcommand };
   const actionToken = tokens[1];
   const action = actionToken === undefined ? "status" : ORCHESTRATE_ACTIONS.find((candidate) => candidate === actionToken);
   return { subcommand, action, topic: action ? tokens.slice(actionToken === undefined ? 1 : 2).join(" ") || undefined : undefined };
+}
+
+function parseCompleteRequest(cwd: string, tokens: readonly string[]): CompleteCanonicalContractRequest | undefined {
+  if (tokens.length < 10 || tokens.length > 11) return undefined;
+  const [topic, contractId, revisionText, contractPath, contractHash, verificationPath, verificationHash, reviewPath, reviewHash, decision, next = "advance"] = tokens;
+  const expectedPlanRevision = Number(revisionText);
+  if (!topic || !contractId || !contractPath || !contractHash || !verificationPath || !verificationHash || !reviewPath || !reviewHash
+    || decision !== "approve" || (next !== "clear" && next !== "advance") || !Number.isSafeInteger(expectedPlanRevision)) return undefined;
+  return {
+    cwd,
+    topic,
+    contractId,
+    expectedPlanRevision,
+    expectedContractPath: contractPath,
+    expectedPreCompletionContentHash: contractHash,
+    verification: { path: verificationPath, contentHash: verificationHash },
+    review: { path: reviewPath, contentHash: reviewHash, decision },
+    nextActiveContract: next,
+  };
+}
+
+export function formatCompletion(result: CompleteCanonicalContractResult): string {
+  if (result.status === "completed") {
+    return [
+      "pi-swe completion",
+      `status: ${result.status}`,
+      `contract: ${result.contractId}`,
+      `request: ${result.requestId}`,
+      `phase progress: ${result.phaseProgress}`,
+      `active contract: ${result.activeContractId ?? "none"}`,
+      `ready contracts: ${bounded(result.readyContractIds)}`,
+      "next skill/stage: /skill:swe-orchestrate",
+    ].join("\n");
+  }
+  if (result.status === "already-complete") {
+    return [
+      "pi-swe completion",
+      `status: ${result.status}`,
+      `contract: ${result.contractId}`,
+      `request: ${result.requestId}`,
+      `recorded next contracts: ${bounded(result.recordedNextState.readyContractIds)}`,
+      `current active contract: ${result.currentActiveContractId ?? "none"}`,
+      `current ready contracts: ${bounded(result.currentReadyContractIds)}`,
+    ].join("\n");
+  }
+  return [
+    "pi-swe completion",
+    `status: ${result.status}`,
+    `contract: ${result.contractId ?? "none"}`,
+    `reason: ${result.message}`,
+    `recovery artifact: ${result.artifact ?? "none"}`,
+  ].join("\n");
 }
 
 function resolveForCommand(runtime: PiSweRuntime, cwd: string | undefined, explicitTopic: string | undefined): InitiativeResolution {
