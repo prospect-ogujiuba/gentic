@@ -13,6 +13,10 @@ Compact references:
 - [TDD architecture](../../references/tdd-rgr/tdd-architecture.md)
 - [Red, Green, Refactor](../../references/tdd-rgr/red-green-refactor.md)
 
+## Planning handoff
+
+During `swe-plan`, record TDD applicability and choose observable behaviors, test levels, characterization needs, Red ordering, and risk-scaled verification. Incorporate accepted TDD findings into the relevant phase or subphase contract before plan approval. Plan-time TDD does not claim Red evidence: Red evidence is recorded only after the named test has actually run and failed during implementation.
+
 ## Workflow
 
 1. **Next Observable Behavior** — state the smallest behavior a user, caller, or system boundary can observe.

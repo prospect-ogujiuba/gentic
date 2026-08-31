@@ -309,6 +309,55 @@ test("all base pi-swe skills are discoverable", () => {
   }
 });
 
+test("planning and plan-review skills define the canonical approval workflow", () => {
+  const plan = readFileSync(join(root, "extensions/pi-swe/skills/swe-plan/SKILL.md"), "utf8");
+  const review = readFileSync(join(root, "extensions/pi-swe/skills/swe-review/SKILL.md"), "utf8");
+  const planningResources = [
+    plan,
+    review,
+    readFileSync(join(root, "extensions/pi-swe/skills/swe-orchestrate/SKILL.md"), "utf8"),
+    readFileSync(join(root, "extensions/pi-swe/skills/swe-dsa/SKILL.md"), "utf8"),
+    readFileSync(join(root, "extensions/pi-swe/skills/swe-tdd/SKILL.md"), "utf8"),
+    readFileSync(join(root, "extensions/pi-swe/skills/swe-diagnose/SKILL.md"), "utf8"),
+  ].join("\n");
+
+  for (const required of [
+    ".model-artifacts/specs/<topic>/",
+    ".model-artifacts/plans/<topic>/",
+    ".model-artifacts/specs/<topic>/manifest.json",
+    "contracts.json",
+    "contractRoot",
+    "contentHash",
+    "contract readiness facts",
+    "phases and subphases",
+    "applicability matrix",
+    "plan review",
+    "revision",
+    "approval",
+    "traceability table",
+    "verification matrix",
+    "open blockers",
+  ]) assert.match(plan, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+
+  assert.match(review, /plan-review mode/i);
+  assert.match(review, /implementation-review mode/i);
+  for (const required of ["architecture", "dependencies", "DSA", "TDD", "migration", "rollback", "developer executability", "return to spec"]) {
+    assert.match(review, new RegExp(required, "i"));
+  }
+  assert.match(planningResources, /accepted specialist findings[^.]*incorporat/i);
+  assert.match(plan, /required[^.]*complete[^.]*finding path/i);
+  assert.match(plan, /\*\*Trivial\*\*:[^\n]*applicability[^\n]*acceptance[^\n]*verification[^\n]*approval/i);
+  assert.match(plan, /specialist findings[^.]*\.model-artifacts\/findings\/<topic>/i);
+  assert.match(plan, /plan reviews[^.]*\.model-artifacts\/reports\/<topic>/i);
+  assert.match(review, /plan reviews[^.]*\.model-artifacts\/reports\/<topic>/i);
+  assert.match(planningResources, /plan-time[^.]*does not[^.]*Red evidence/i);
+  assert.match(plan, /do not implement|never implement/i);
+  assert.match(plan, /without (?:a )?todo/i);
+  assert.match(plan, /do not mirror[^.]*\.model-artifacts\/todo\/<topic>\/phases/i);
+  assert.doesNotMatch(plan, /create[^.]*\.model-artifacts\/todo\/<topic>\/phases/i);
+  assert.doesNotMatch(planningResources, /\/swe-auto|swe-auto/i);
+});
+
 test("swe-dsa resources are discoverable and resource-only", () => {
   const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   assert.ok(packageJson.pi?.skills?.includes("./extensions/**/skills"));

@@ -40,7 +40,7 @@ A DSA decision artifact should include:
 - Validation plan: tests, benchmarks, instrumentation, or “measure first” criteria.
 - Confidence: high/medium/low with the evidence basis.
 
-When a DSA recommendation is accepted for implementation, update or create the relevant phase file before implementation so the approved representation, algorithm, validation target, and migration constraints become part of the implementation contract.
+During planning, record whether DSA is required in the specialist applicability matrix and link the decision to the exact spec and plan revisions reviewed. When a DSA recommendation is accepted, incorporate the representation, algorithm, complexity/memory tradeoff, validation target, and migration/rollback constraints into a new plan revision and relevant phase or subphase contract before plan approval and implementation. Accepted specialist findings must be incorporated, not merely linked.
 After writing an artifact, keep chat output concise and path-oriented. When a todo is active, record the DSA decision artifact in the todo ledger.
 
 ## Required output

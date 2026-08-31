@@ -38,7 +38,7 @@ Keep the artifact concise and structured with these sections:
 After writing the artifact, keep chat output to a summary: artifact path, top finding, and next action.
 When a todo is active, record the diagnosis artifact in the todo ledger.
 
-When the candidate fix-slice is ready for implementation, feed it into a phase file or implementation contract before `/skill:swe-implement` starts. Use the durable artifact as evidence and context, not as expanded implementation scope.
+During non-trivial planning, classify diagnosis in the specialist applicability matrix and link required diagnosis evidence to the exact spec and plan revisions. When an accepted candidate fix-slice affects the plan, incorporate it into a new plan revision and phase or subphase implementation contract before plan approval and `/skill:swe-implement`. Use the durable artifact as evidence and context, not as expanded implementation scope; accepted specialist findings must be incorporated, not merely linked.
 
 ## Success criteria
 
