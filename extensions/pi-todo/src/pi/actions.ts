@@ -273,11 +273,16 @@ function latestUserRequestTitle(ctx: ExtensionContext): string | undefined {
   return undefined;
 }
 
-export async function ensureActiveTodoForToolCall(pi: ExtensionAPI, ctx: ExtensionContext, toolName: string, input: unknown): Promise<Todo> {
+export async function ensureActiveTodoForToolCall(pi: ExtensionAPI, ctx: ExtensionContext, toolName: string, input: unknown): Promise<{ todo: Todo; created: boolean }> {
   const svc = service(pi, ctx);
   const owner = sessionOwner(ctx);
   const existing = await svc.active(owner);
-  if (existing) return existing;
+  if (existing) return { todo: existing, created: false };
+  try {
+    return { todo: await svc.begin([], undefined, owner), created: false };
+  } catch (error) {
+    if (!(error instanceof TodoWorkflowError) || error.code !== "NO_READY_TODO") throw error;
+  }
   const fallbackTitle = [`use ${toolName}`, toolCallTarget(input)].filter(Boolean).join(" on ");
   const title = latestUserRequestTitle(ctx) ?? fallbackTitle;
   const todo = await svc.create({
@@ -285,7 +290,7 @@ export async function ensureActiveTodoForToolCall(pi: ExtensionAPI, ctx: Extensi
     description: "Auto-created from the latest user request before a requireTodo tool guard blocked execution, so the agent can retry the original tool without todo backtracking.",
     tags: ["pi-todo:auto-tool-guard"],
   });
-  return svc.start(todo.id, [], undefined, owner, { splitOverrideReason: "auto-created atomic tool guard task" });
+  return { todo: await svc.start(todo.id, [], undefined, owner, { splitOverrideReason: "auto-created atomic tool guard task" }), created: true };
 }
 
 export async function reconcileTodoDocket(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {

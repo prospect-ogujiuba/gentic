@@ -130,6 +130,28 @@ test("tool_call hook creates an active todo before blocking require-todo tools",
   });
 });
 
+test("tool_call hook starts an existing ready todo instead of creating a duplicate", async () => {
+  await withTempProject(async (cwd) => {
+    await writeProjectConfig(cwd, {
+      enforcement: {
+        defaultAction: "allow",
+        rules: [{ pattern: "bash", action: "requireTodo" }],
+      },
+    });
+    const { handlers, tools, ctx } = setupPiTodo(cwd);
+    const todo = tools.get("todo")!;
+    await todo.execute("create", { action: "create", title: "Fix the requested behavior" }, new AbortController().signal, () => {}, ctx);
+
+    const result = await (handlers.get("tool_call") as ToolCallHandler)({ type: "tool_call", toolName: "bash", input: { command: "rm -rf tmp" } }, ctx);
+
+    assert.match(String((result as { reason?: unknown }).reason), /started existing ready todo 'Fix the requested behavior'/);
+    const listed = await todo.execute("list", { action: "list" }, new AbortController().signal, () => {}, ctx) as { details: { state: { todos: Record<string, { status: string; title: string }> } } };
+    const todos = Object.values(listed.details.state.todos);
+    assert.equal(todos.length, 1);
+    assert.deepEqual(todos.map(({ status, title }) => ({ status, title })), [{ status: "in_progress", title: "Fix the requested behavior" }]);
+  });
+});
+
 test("tool_call hook derives the guard todo title from the latest user request", async () => {
   await withTempProject(async (cwd) => {
     await writeProjectConfig(cwd, {

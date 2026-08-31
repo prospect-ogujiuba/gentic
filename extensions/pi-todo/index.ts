@@ -51,11 +51,14 @@ export default function piTodo(pi: ExtensionAPI): void {
       ? ` Config diagnostics: ${diagnostics.map((diagnostic) => `${diagnostic.path}: ${diagnostic.message}`).join("; ")}.`
       : "";
 
-    const started = await ensureActiveTodoForToolCall(pi, ctx, event.toolName, event.input);
+    const ensured = await ensureActiveTodoForToolCall(pi, ctx, event.toolName, event.input);
     await updateTodoWidget(pi, ctx);
+    const activation = ensured.created
+      ? `created and started '${ensured.todo.title}' (${ensured.todo.id})`
+      : `started existing ready todo '${ensured.todo.title}' (${ensured.todo.id})`;
     return {
       block: true,
-      reason: `pi-todo enforcement: ${policySource}; no active todo existed, so pi-todo created and started '${started.title}' (${started.id}) before blocking. Retry the original ${event.toolName} call now; do not call todo begin/list/split first.${diagnosticNote}`,
+      reason: `pi-todo enforcement: ${policySource}; no active todo existed, so pi-todo ${activation} before blocking. Retry the original ${event.toolName} call now; do not call todo begin/list/split first.${diagnosticNote}`,
     };
   });
 
