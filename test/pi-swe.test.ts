@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import test from "node:test";
 
 import piSwe, { metadata } from "../extensions/pi-swe/index.ts";
@@ -101,10 +103,82 @@ test("/swe orchestrate is guidance-only and preserves existing command behavior"
   await swe.handler("status", ctx);
   await swe.handler("config", ctx);
 
-  assert.ok(notifications.some((entry) => entry.message.includes("Usage: /swe orchestrate [status|start|resume|handoff]")));
+  assert.ok(notifications.some((entry) => entry.message.includes("Usage: /swe orchestrate <status|start|resume|handoff> [topic]")));
   assert.ok(notifications.some((entry) => entry.message.includes("guidance-only")));
   assert.ok(notifications.some((entry) => entry.message.includes("pi-swe status")));
   assert.ok(notifications.some((entry) => entry.message.includes("pi-swe config")));
+});
+
+test("/swe status and orchestrate expose canonical topic, revision, gates, contracts, and paths", async () => {
+  const cwd = writeCommandCanonicalFixture("team/demo");
+  const { swe, notifications } = registerSweForCommandTest(cwd);
+
+  assert.deepEqual(swe.getArgumentCompletions?.("orchestrate "), [
+    { value: "orchestrate status", label: "status" },
+    { value: "orchestrate start", label: "start" },
+    { value: "orchestrate resume", label: "resume" },
+    { value: "orchestrate handoff", label: "handoff" },
+  ]);
+
+  await swe.handler("  status   team/demo  ", { cwd, ui: { notify: (message: string, type?: string) => notifications.push({ message, type }) } });
+  await swe.handler(" orchestrate   start   team/demo ", { cwd, ui: { notify: (message: string, type?: string) => notifications.push({ message, type }) } });
+
+  const status = notifications[0];
+  assert.equal(status?.type, "info", status?.message);
+  for (const field of [
+    "source mode: canonical",
+    "initiative/topic: team/demo",
+    "schema: 1",
+    "initiative state: approved",
+    "active spec: r1",
+    "active plan: r1",
+    "approval decision: approved",
+    "specialists:",
+    "gates:",
+    "active contract:",
+    "ready contracts: 01",
+    "blockers:",
+    "todo linkage:",
+    "inspected paths:",
+  ]) assert.match(status?.message ?? "", new RegExp(field));
+
+  const orchestrate = notifications[1];
+  assert.equal(orchestrate?.type, "info");
+  for (const field of ["mode: guidance-only", "readiness:", "next skill/stage:", "reason:", "required read paths:", "intended write path:", "exception handoff:"]) {
+    assert.match(orchestrate?.message ?? "", new RegExp(field));
+  }
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test("/swe command warns with actionable topic selection for none, ambiguity, legacy, and invalid actions", async () => {
+  const empty = mkdtempSync(join(tmpdir(), "pi-swe-command-empty-"));
+  const emptyHarness = registerSweForCommandTest(empty);
+  await emptyHarness.swe.handler("status", { cwd: empty, ui: { notify: (message: string, type?: string) => emptyHarness.notifications.push({ message, type }) } });
+  assert.equal(emptyHarness.notifications[0]?.type, "warning");
+  assert.match(emptyHarness.notifications[0]?.message ?? "", /next command:/);
+
+  const ambiguous = mkdtempSync(join(tmpdir(), "pi-swe-command-ambiguous-"));
+  writeCommandCanonicalFixture("one", ambiguous);
+  writeCommandCanonicalFixture("two", ambiguous);
+  const ambiguousHarness = registerSweForCommandTest(ambiguous);
+  await ambiguousHarness.swe.handler("status", { cwd: ambiguous, ui: { notify: (message: string, type?: string) => ambiguousHarness.notifications.push({ message, type }) } });
+  assert.equal(ambiguousHarness.notifications[0]?.type, "warning");
+  assert.match(ambiguousHarness.notifications[0]?.message ?? "", /candidates: one, two/);
+  assert.match(ambiguousHarness.notifications[0]?.message ?? "", /\/swe status <topic>/);
+
+  const legacy = mkdtempSync(join(tmpdir(), "pi-swe-command-legacy-"));
+  writeCommandFile(legacy, ".model-artifacts/todo/old-flow/phases/01.md", "# legacy\n");
+  const legacyHarness = registerSweForCommandTest(legacy);
+  await legacyHarness.swe.handler("orchestrate resume old-flow", { cwd: legacy, ui: { notify: (message: string, type?: string) => legacyHarness.notifications.push({ message, type }) } });
+  assert.equal(legacyHarness.notifications[0]?.type, "warning");
+  assert.match(legacyHarness.notifications[0]?.message ?? "", /source mode: legacy/);
+  assert.match(legacyHarness.notifications[0]?.message ?? "", /canonical adoption/);
+
+  await legacyHarness.swe.handler("orchestrate launch old-flow", { cwd: legacy, ui: { notify: (message: string, type?: string) => legacyHarness.notifications.push({ message, type }) } });
+  assert.equal(legacyHarness.notifications.at(-1)?.type, "warning");
+  assert.match(legacyHarness.notifications.at(-1)?.message ?? "", /Usage: \/swe orchestrate <status\|start\|resume\|handoff> \[topic\]/);
+
+  for (const cwd of [empty, ambiguous, legacy]) rmSync(cwd, { recursive: true, force: true });
 });
 
 test("/swe orchestrate subcommands provide deterministic guidance-only handoffs", async () => {
@@ -138,8 +212,58 @@ test("/swe orchestrate subcommands provide deterministic guidance-only handoffs"
   assert.ok(notifications.some((entry) => entry.message.includes("next recommended lifecycle step")));
   assert.ok(notifications.some((entry) => entry.message.includes("resume from model artifacts")));
   assert.ok(notifications.some((entry) => entry.message.includes("exception handoff")));
-  assert.ok(notifications.every((entry) => entry.type === "info"));
+  assert.ok(notifications.every((entry) => entry.type === "warning"));
 });
+
+function registerSweForCommandTest(cwd: string) {
+  const commands = new Map<string, { handler: Function; getArgumentCompletions?: Function }>();
+  const notifications: Array<{ message: string; type?: string }> = [];
+  const pi = {
+    capabilities: new Map(), on() {},
+    registerCommand(name: string, command: { handler: Function; getArgumentCompletions?: Function }) { commands.set(name, command); },
+    getCommands() { return []; }, getAllTools() { return []; },
+  };
+  piSwe(pi as never, { cwd, sessionId: "test", hasUI: true, ui: { notify() {} } } as never);
+  return { swe: commands.get("swe")!, notifications };
+}
+
+function writeCommandCanonicalFixture(topic: string, cwd = mkdtempSync(join(tmpdir(), "pi-swe-command-canonical-"))): string {
+  const specPath = `.model-artifacts/specs/${topic}/spec.md`;
+  const manifestPath = `.model-artifacts/specs/${topic}/manifest.json`;
+  const planPath = `.model-artifacts/plans/${topic}/plan.md`;
+  const contractRoot = `.model-artifacts/plans/${topic}/revisions/r1`;
+  const contractPath = `${contractRoot}/contracts/01.md`;
+  const reviewPath = `.model-artifacts/findings/${topic}/review.md`;
+  const spec = "# spec\n", plan = "# plan\n", contract = "# contract\n";
+  writeCommandFile(cwd, specPath, spec);
+  writeCommandFile(cwd, planPath, plan);
+  writeCommandFile(cwd, contractPath, contract);
+  writeCommandFile(cwd, reviewPath, "# review\n");
+  writeCommandFile(cwd, `${contractRoot}/contracts.json`, JSON.stringify({
+    schemaVersion: 1,
+    contracts: [{ kind: "phase", id: "01", dependsOn: [], planRevision: 1, path: contractPath, status: "pending", contentHash: commandSha256(contract) }],
+    contractFacts: { "01": { entryInputsAvailable: true, capabilitiesAvailable: true, applicability: "applicable", acceptanceDefined: true, verificationDefined: true } },
+    consequentialSpecialists: [],
+  }));
+  writeCommandFile(cwd, manifestPath, JSON.stringify({
+    schemaVersion: 1, initiativeId: topic, topic, initiativeState: "approved",
+    activeSpec: { revision: 1, path: specPath, contentHash: commandSha256(spec) },
+    activePlan: { revision: 1, path: planPath, contractRoot, contentHash: commandSha256(plan) },
+    specialists: Object.fromEntries(["diagnosis", "dsa", "tdd", "security", "migration", "performance", "accessibility-ux", "operations", "compatibility"].map((id) => [id, { status: "not-required", rationale: `${id} has no consequential work.` }])),
+    approval: { decision: "approved", planRevision: 1, planPath, planContentHash: commandSha256(plan), reviewPath, approvedAt: "2026-08-30T12:00:00.000Z", blockingFindings: 0 },
+    updatedAt: "2026-08-30T12:00:00.000Z",
+  }));
+  return cwd;
+}
+
+function writeCommandFile(cwd: string, relativePath: string, content: string): void {
+  mkdirSync(dirname(join(cwd, relativePath)), { recursive: true });
+  writeFileSync(join(cwd, relativePath), content, "utf8");
+}
+
+function commandSha256(content: string): string {
+  return `sha256:${createHash("sha256").update(content, "utf8").digest("hex")}`;
+}
 
 const baseStages = ["plan", "diagnose", "implement", "verify", "review", "finalize"] as const;
 const lifecycleResourceStages = [...baseStages, "tdd", "dsa", "orchestrate"] as const;

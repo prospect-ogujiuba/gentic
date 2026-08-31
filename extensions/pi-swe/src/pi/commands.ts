@@ -1,44 +1,78 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { refreshPeerContext, type PiSweRuntime } from "../app/runtime.ts";
-import { inspectOrchestrationArtifacts, recommendOrchestrationTransition } from "../orchestrate.ts";
+import { recommendGateAwareOrchestration, type GateAwareOrchestrationRecommendation } from "../orchestrate.ts";
+import { resolveInitiative, type InitiativeResolution } from "../planning.ts";
+
+const SUBCOMMANDS = ["status", "config", "orchestrate"] as const;
+const ORCHESTRATE_ACTIONS = ["status", "start", "resume", "handoff"] as const;
+const STATUS_USAGE = "Usage: /swe status [topic]";
+const ORCHESTRATE_USAGE = "Usage: /swe orchestrate <status|start|resume|handoff> [topic]";
+const MAX_SUMMARY_ITEMS = 8;
+
+type OrchestrateAction = (typeof ORCHESTRATE_ACTIONS)[number];
 
 export function registerSweCommands(pi: ExtensionAPI, runtime: PiSweRuntime): void {
   pi.registerCommand("swe", {
-    description: "Inspect pi-swe runtime status, config, or orchestration guidance: /swe status | /swe config | /swe orchestrate",
-    getArgumentCompletions: (prefix) => ["status", "config", "orchestrate"].filter((value) => value.startsWith(prefix)).map((value) => ({ value, label: value })),
+    description: "Inspect pi-swe status, config, or guidance: /swe status [topic] | /swe config | /swe orchestrate <status|start|resume|handoff> [topic]",
+    getArgumentCompletions: completeSweArgument,
     handler: async (args, ctx) => {
-      const subcommand = args.trim().split(/\s+/, 1)[0] || "status";
-      if (subcommand === "status") {
+      const parsed = parseSweArguments(args);
+      if (parsed.subcommand === "status") {
         refreshPeerContext(runtime);
-        ctx.ui.notify(formatStatus(runtime), runtime.warnings.length || runtime.capabilityWarnings.length ? "warning" : "info");
+        const resolution = resolveForCommand(runtime, typeof ctx.cwd === "string" ? ctx.cwd : undefined, parsed.topic);
+        ctx.ui.notify(formatStatus(runtime, resolution), statusNotificationType(runtime, resolution));
         return;
       }
-      if (subcommand === "config") {
+      if (parsed.subcommand === "config") {
+        if (parsed.topic) {
+          ctx.ui.notify(`${STATUS_USAGE}\n${ORCHESTRATE_USAGE}`, "warning");
+          return;
+        }
         ctx.ui.notify(formatConfig(runtime), runtime.configDiagnostics.length ? "warning" : "info");
         return;
       }
-      if (subcommand === "orchestrate") {
-        const action = args.trim().split(/\s+/, 2)[1] || "usage";
-        ctx.ui.notify(formatOrchestrate(action, typeof ctx.cwd === "string" ? ctx.cwd : undefined), "info");
+      if (parsed.subcommand === "orchestrate") {
+        if (!parsed.action) {
+          ctx.ui.notify(ORCHESTRATE_USAGE, "warning");
+          return;
+        }
+        const resolution = resolveForCommand(runtime, typeof ctx.cwd === "string" ? ctx.cwd : undefined, parsed.topic);
+        const recommendation = recommendGateAwareOrchestration({ resolution });
+        ctx.ui.notify(formatOrchestrate(parsed.action, resolution, recommendation), orchestrationNotificationType(resolution, recommendation));
         return;
       }
-      ctx.ui.notify("Usage: /swe status | /swe config | /swe orchestrate [status|start|resume|handoff]", "warning");
+      ctx.ui.notify(`${STATUS_USAGE}\nUsage: /swe config\n${ORCHESTRATE_USAGE}`, "warning");
     },
   });
 }
 
-export function formatStatus(runtime: PiSweRuntime): string {
+export function formatStatus(runtime: PiSweRuntime, resolution?: InitiativeResolution): string {
   const state = runtime.state;
   const warnings = runtime.warnings.length ? runtime.warnings.map((warning) => `${warning.code}: ${warning.message}`).join("; ") : "none";
   const capabilityWarnings = runtime.capabilityWarnings.length ? runtime.capabilityWarnings.map((warning) => `${warning.source}: ${warning.message}`).join("; ") : "none";
+  const canonical = resolution?.sourceMode === "canonical" ? resolution : undefined;
+  const manifest = canonical?.inspection.manifest;
+  const resolutionLines = resolution ? formatResolutionSummary(resolution) : ["source mode: unavailable", "initiative/topic: none", "next command: run from a repository cwd"];
   return [
-    `pi-swe status`,
+    "pi-swe status",
+    STATUS_USAGE,
+    ...resolutionLines,
+    `schema: ${manifest?.schemaVersion ?? "none"}`,
+    `initiative state: ${manifest?.initiativeState ?? resolution?.status ?? "none"}`,
+    `active spec: ${manifest ? `r${manifest.activeSpec.revision} ${manifest.activeSpec.path}` : "none"}`,
+    `active plan: ${manifest?.activePlan ? `r${manifest.activePlan.revision} ${manifest.activePlan.path}` : state.activePlan ? `${state.activePlan.source}:${state.activePlan.marker}` : "none"}`,
+    `approval decision: ${manifest && "approval" in manifest && manifest.approval ? manifest.approval.decision : "none"}`,
+    `specialists: ${manifest ? summarizeSpecialists(manifest.specialists) : "none"}`,
+    `gates: ${canonical ? bounded(canonical.inspection.gates.map((gate) => `${gate.id}:${gate.ready ? "ready" : "blocked"}`)) : "none"}`,
+    `active contract: ${manifest && "activeContract" in manifest && manifest.activeContract ? `${manifest.activeContract.id} ${manifest.activeContract.path}` : "none"}`,
+    `ready contracts: ${canonical ? bounded(canonical.inspection.readyIds) : "none"}`,
+    `blockers: ${canonical ? bounded(canonical.inspection.blockers.map((blocker) => `${blocker.code}: ${blocker.remediation}`)) : "none"}`,
+    `todo linkage: ${canonical?.todoLink ? summarizeRecord(canonical.todoLink) : "none"}`,
     `enabled: ${runtime.config.enabled && runtime.config.mode !== "off"}`,
     `mode: ${runtime.config.mode}`,
     `config source: ${runtime.configSource}`,
     `detected peers: ${runtime.detectedPeers.length ? runtime.detectedPeers.join(", ") : "none"}`,
-    `active plan: ${state.activePlan ? `${state.activePlan.source}:${state.activePlan.marker}` : "none"}`,
     `todo scope: ${summarizeTodoScope(runtime.todoScope)}`,
     `inspected paths: ${state.inspectedPaths.length}`,
     `changed paths: ${state.changedPaths.length}`,
@@ -54,50 +88,121 @@ export function formatConfig(runtime: PiSweRuntime): string {
   return `pi-swe config\nsource: ${runtime.configSource}\n${JSON.stringify(runtime.config, null, 2)}${diagnostics}`;
 }
 
-export function formatOrchestrate(action: string, cwd?: string): string {
-  const normalizedAction = ["status", "start", "resume", "handoff"].includes(action) ? action : "usage";
-  const topic = "autonomous-pi-swe-lifecycle";
-  const inspection = cwd ? inspectOrchestrationArtifacts({ cwd, topic }) : undefined;
-  const recommendation = recommendOrchestrationTransition({ path: normalizedAction === "handoff" ? "finalize" : "feature", artifacts: inspection?.artifacts ?? {} });
-  const header = ["pi-swe orchestrate", "Usage: /swe orchestrate [status|start|resume|handoff]", `action: ${normalizedAction}`, "mode: guidance-only"];
-  const readiness = inspection ? `${inspection.readiness}; missing: ${inspection.missingRequired.length ? inspection.missingRequired.join(", ") : "none"}` : "unknown; no cwd available";
-
-  if (normalizedAction === "status" || normalizedAction === "usage") {
-    return [
-      ...header,
-      `artifact readiness: ${readiness}`,
-      `next recommended lifecycle step: ${recommendation.prompt ?? recommendation.stage} (${recommendation.reason}).`,
-    ].join("\n");
-  }
-
-  if (normalizedAction === "start") {
-    return [
-      ...header,
-      `next recommended lifecycle step: ${recommendation.prompt ?? recommendation.stage}`,
-      `required artifact contract: ${recommendation.requiredArtifacts.length ? recommendation.requiredArtifacts.join(", ") : "none"}`,
-      "allowed stages: swe-plan, swe-diagnose, swe-tdd, swe-dsa, swe-implement, swe-verify, swe-review, swe-finalize.",
-    ].join("\n");
-  }
-
-  if (normalizedAction === "resume") {
-    return [
-      ...header,
-      "resume from model artifacts: read stable artifacts under .model-artifacts before trusting chat memory.",
-      `artifact readiness: ${readiness}`,
-      `next recommended lifecycle step: ${recommendation.prompt ?? recommendation.stage}`,
-    ].join("\n");
-  }
-
+export function formatOrchestrate(action: OrchestrateAction, resolution: InitiativeResolution, recommendation: GateAwareOrchestrationRecommendation): string {
+  const readiness = resolution.sourceMode === "canonical"
+    ? resolution.inspection.diagnostics.length ? "invalid" : resolution.inspection.blockers.length ? "blocked" : "ready"
+    : resolution.status;
+  const next = recommendation.skill ? `/skill:${recommendation.skill} (${recommendation.stage})` : recommendation.stage;
   return [
-    ...header,
-    "exception handoff: stop hidden work and produce a deterministic handoff when orchestration cannot safely continue.",
-    "next recommended lifecycle step: use swe-finalize only after verification/review gates pass; otherwise hand off the blocked reason and artifact path.",
+    "pi-swe orchestrate",
+    ORCHESTRATE_USAGE,
+    `action: ${action}`,
+    "mode: guidance-only",
+    ...formatResolutionSummary(resolution),
+    `readiness: ${readiness}`,
+    `artifact readiness: ${readiness}`,
+    `next skill/stage: ${next}`,
+    `next recommended lifecycle step: ${next}`,
+    `reason: ${recommendation.reason}`,
+    `required read paths: ${bounded(recommendation.requiredReadPaths)}`,
+    `intended write path: ${recommendation.intendedWriteArtifact ?? "none"}`,
+    `active contract: ${recommendation.activeContract ? `${recommendation.activeContract.id} ${recommendation.activeContract.path}` : "none"}`,
+    `ready contracts: ${recommendation.readyContracts ? bounded([recommendation.readyContracts.selected, ...recommendation.readyContracts.others]) : "none"}`,
+    `blockers: ${bounded(recommendation.blockingReasons)}`,
+    ...(action === "resume" ? ["resume from model artifacts: read required paths before trusting chat memory."] : []),
+    ...(action === "handoff" ? ["handoff guidance: stop hidden work and report the bounded exception evidence."] : []),
+    `exception handoff: ${recommendation.stage === "blocked-handoff" || action === "handoff" ? bounded(recommendation.blockingReasons) : "none"}`,
   ].join("\n");
+}
+
+function completeSweArgument(prefix: string): Array<{ value: string; label: string }> {
+  const normalized = prefix.trimStart();
+  const actionMatch = normalized.match(/^orchestrate\s+(\S*)$/);
+  if (actionMatch) {
+    return ORCHESTRATE_ACTIONS.filter((action) => action.startsWith(actionMatch[1] ?? "")).map((action) => ({ value: `orchestrate ${action}`, label: action }));
+  }
+  if (/^orchestrate\s+\S+\s+/.test(normalized) || /^status\s+/.test(normalized)) return [];
+  return SUBCOMMANDS.filter((value) => value.startsWith(normalized)).map((value) => ({ value, label: value }));
+}
+
+function parseSweArguments(args: string): { subcommand?: string; action?: OrchestrateAction; topic?: string } {
+  const tokens = args.trim().split(/\s+/).filter(Boolean);
+  const subcommand = tokens[0] ?? "status";
+  if (subcommand === "status") return { subcommand, topic: tokens.slice(1).join(" ") || undefined };
+  if (subcommand === "config") return { subcommand, topic: tokens.slice(1).join(" ") || undefined };
+  if (subcommand !== "orchestrate") return { subcommand };
+  const actionToken = tokens[1];
+  const action = actionToken === undefined ? "status" : ORCHESTRATE_ACTIONS.find((candidate) => candidate === actionToken);
+  return { subcommand, action, topic: action ? tokens.slice(actionToken === undefined ? 1 : 2).join(" ") || undefined : undefined };
+}
+
+function resolveForCommand(runtime: PiSweRuntime, cwd: string | undefined, explicitTopic: string | undefined): InitiativeResolution {
+  if (!cwd) return { sourceMode: "resolution", status: "not-found", candidateTopics: [], remediation: "run the command from a repository cwd", warnings: [] };
+  return resolveInitiative({
+    cwd,
+    explicitTopic,
+    persistedTopic: explicitTopic ? undefined : runtime.state.activeInitiative?.topic,
+    activeTodo: runtime.externalCapabilities.getActiveTodo?.(),
+  });
+}
+
+function formatResolutionSummary(resolution: InitiativeResolution): string[] {
+  if (resolution.sourceMode === "canonical") {
+    return [
+      "source mode: canonical",
+      `initiative/topic: ${resolution.topic}`,
+      `selection: ${resolution.selectionSource}`,
+      `candidates: ${bounded(resolution.candidateTopics)}`,
+      ...(resolution.warnings.length ? [`resolution warnings: ${bounded(resolution.warnings)}`] : []),
+    ];
+  }
+  if (resolution.sourceMode === "legacy") {
+    return [
+      "source mode: legacy",
+      `initiative/topic: ${resolution.topic}`,
+      `candidates: ${bounded(resolution.candidateTopics)}`,
+      `legacy plan: ${resolution.status === "legacy-unverified" ? resolution.planPath : "none"}`,
+      `next command: /swe orchestrate resume ${resolution.topic} after canonical adoption`,
+    ];
+  }
+  return [
+    `source mode: ${resolution.status}`,
+    "initiative/topic: none",
+    `candidates: ${bounded(resolution.candidateTopics)}`,
+    `reason: ${resolution.remediation}`,
+    `next command: ${resolution.status === "ambiguous" ? "/swe status <topic>" : "/skill:swe-plan"}`,
+  ];
+}
+
+function statusNotificationType(runtime: PiSweRuntime, resolution: InitiativeResolution | undefined): "info" | "warning" {
+  if (!resolution || resolution.sourceMode !== "canonical") return "warning";
+  const isBlocking = resolution.inspection.manifest?.initiativeState === "blocked"
+    || (resolution.inspection.readyIds.length === 0 && resolution.inspection.blockers.length > 0);
+  if (resolution.inspection.diagnostics.length || isBlocking || runtime.warnings.length) return "warning";
+  return "info";
+}
+
+function orchestrationNotificationType(resolution: InitiativeResolution, recommendation: GateAwareOrchestrationRecommendation): "info" | "warning" {
+  return resolution.sourceMode === "canonical" && recommendation.stage !== "blocked-handoff" ? "info" : "warning";
+}
+
+function summarizeSpecialists(specialists: Readonly<Record<string, { status: string }>>): string {
+  return bounded(Object.entries(specialists).sort(([left], [right]) => left.localeCompare(right)).map(([id, entry]) => `${id}:${entry.status}`));
+}
+
+function bounded(items: readonly string[]): string {
+  if (!items.length) return "none";
+  const visible = items.slice(0, MAX_SUMMARY_ITEMS);
+  return `${visible.join(", ")}${items.length > visible.length ? `, +${items.length - visible.length} more` : ""}`;
+}
+
+function summarizeRecord(value: Record<string, unknown>): string {
+  return bounded(Object.entries(value).map(([key, item]) => `${key}:${Array.isArray(item) ? item.join(",") : String(item)}`));
 }
 
 function summarizeTodoScope(scope: PiSweRuntime["todoScope"]): string {
   if (!scope) return "none";
   const entries = Object.entries(scope).filter(([, value]) => value !== undefined && value !== null && !(Array.isArray(value) && value.length === 0));
   if (entries.length === 0) return "empty";
-  return entries.map(([key, value]) => `${key}:${Array.isArray(value) ? value.join(",") : String(value)}`).join("; ");
+  return bounded(entries.map(([key, value]) => `${key}:${Array.isArray(value) ? value.join(",") : String(value)}`));
 }
