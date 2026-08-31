@@ -6,7 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 
 import { deriveOrchestrationLifecycle, evaluateAutonomousRunnerStep, mapFlatLifecycleState, mapLegacyOrchestrationPath, PI_SWE_BLOCKED_CASE_HUMAN_REQUESTS, PI_SWE_CONTRACT_TRANSITIONS, PI_SWE_LIFECYCLE_STATES, PI_SWE_LIFECYCLE_TRANSITIONS, reconstructAutonomousWorkState, validateContractTransition, validateInitiativeTransition, validateLifecycleTransition, type PiSweBlockedCase, type PiSweLifecycleState } from "../extensions/pi-swe/src/lifecycle.ts";
-import { inspectOrchestrationArtifacts, LegacyPlanInspector, recommendOrchestrationTransition } from "../extensions/pi-swe/src/orchestrate.ts";
+import { inspectOrchestrationArtifacts, LegacyPlanInspector, recommendGateAwareOrchestration, recommendOrchestrationTransition } from "../extensions/pi-swe/src/orchestrate.ts";
 import { inspectCanonicalInitiative, resolveInitiative } from "../extensions/pi-swe/src/planning.ts";
 import { createRuntime, persistRepositoryRuntime, PI_SWE_STATE_DIAGNOSTIC_PATH_MAX_LENGTH, readRepositoryRuntime, reloadBranchRuntime, repositoryStatePath, validateActiveInitiative } from "../extensions/pi-swe/src/app/runtime.ts";
 import { CORE_SPECIALIST_IDS } from "../extensions/pi-swe/src/domain/readiness.ts";
@@ -457,6 +457,235 @@ test("pi-swe recommends deterministic orchestration transitions for feature, bug
     reason: "required orchestration artifacts are present",
     requiredArtifacts: [],
   });
+});
+
+test("pi-swe recommends canonical gates before implementation and remains deterministic", () => {
+  const fixture = writeCanonicalFixture();
+  fixture.manifest.initiativeState = "planning";
+  delete fixture.manifest.approval;
+  fixture.writeManifest();
+  const resolution = resolveInitiative({ cwd: fixture.cwd, explicitTopic: "demo" });
+
+  const first = recommendGateAwareOrchestration({ resolution });
+  const second = recommendGateAwareOrchestration({ resolution });
+
+  assert.deepEqual(first, second);
+  assert.equal(first.stage, "plan-review");
+  assert.equal(first.skill, "swe-review");
+  assert.ok(first.requiredReadPaths.includes(fixture.manifestPath));
+  assert.ok(first.requiredReadPaths.includes(".model-artifacts/specs/demo/spec.md"));
+  assert.ok(first.requiredReadPaths.includes(".model-artifacts/plans/demo/plan.md"));
+  assert.equal(first.intendedWriteArtifact, ".model-artifacts/findings/demo/<timestamp>-plan-review.md");
+  assert.ok(first.blockingReasons.some((reason) => reason.includes("review and approve")));
+});
+
+test("pi-swe returns blocked handoff for blocked initiatives and plan revision for non-review-ready plans", () => {
+  const blockedFixture = writeCanonicalFixture();
+  blockedFixture.manifest.initiativeState = "blocked";
+  delete blockedFixture.manifest.approval;
+  blockedFixture.writeManifest();
+  const blocked = recommendGateAwareOrchestration({
+    resolution: resolveInitiative({ cwd: blockedFixture.cwd, explicitTopic: "demo" }),
+    initiativeBlocker: { statePath: ".model-artifacts/logs/demo/state.json", evidencePaths: [".model-artifacts/findings/demo/blocker.md"], remediation: "resolve the recorded dependency blocker" },
+  });
+  assert.equal(blocked.stage, "blocked-handoff");
+  assert.equal(blocked.reason, "the canonical initiative is blocked");
+  assert.deepEqual(blocked.blockingReasons, ["resolve the recorded dependency blocker"]);
+  assert.ok(blocked.requiredReadPaths.includes(".model-artifacts/findings/demo/blocker.md"));
+
+  const blockedWithoutPlanFixture = writeCanonicalFixture();
+  blockedWithoutPlanFixture.manifest.initiativeState = "blocked";
+  delete blockedWithoutPlanFixture.manifest.activePlan;
+  delete blockedWithoutPlanFixture.manifest.approval;
+  blockedWithoutPlanFixture.writeManifest();
+  const blockedWithoutPlan = recommendGateAwareOrchestration({
+    resolution: resolveInitiative({ cwd: blockedWithoutPlanFixture.cwd, explicitTopic: "demo" }),
+    initiativeBlocker: { statePath: ".model-artifacts/logs/demo/state.json", remediation: "resolve intake blocker" },
+  });
+  assert.equal(blockedWithoutPlan.stage, "blocked-handoff");
+  assert.deepEqual(blockedWithoutPlan.blockingReasons, ["resolve intake blocker"]);
+
+  const revisionFixture = writeCanonicalFixture();
+  revisionFixture.manifest.initiativeState = "planning";
+  delete revisionFixture.manifest.approval;
+  revisionFixture.manifest.specialists.dsa = { status: "not-required" };
+  revisionFixture.writeManifest();
+  const revision = recommendGateAwareOrchestration({ resolution: resolveInitiative({ cwd: revisionFixture.cwd, explicitTopic: "demo" }) });
+  assert.equal(revision.stage, "plan-revise");
+  assert.equal(revision.skill, "swe-plan");
+  assert.ok(revision.blockingReasons.some((reason) => reason.includes("non-empty not-required rationale")));
+});
+
+test("pi-swe selects the lowest ready contract and reports other ready IDs without implying parallel work", () => {
+  const fixture = writeCanonicalFixture();
+  const resolution = resolveInitiative({ cwd: fixture.cwd, explicitTopic: "demo" });
+  assert.equal(resolution.sourceMode, "canonical");
+  if (resolution.sourceMode !== "canonical") throw new Error("expected canonical resolution");
+  const contract = resolution.inspection.contracts[0]!;
+  const multiReady = {
+    ...resolution,
+    inspection: {
+      ...resolution.inspection,
+      contracts: [
+        { ...contract, id: "02", path: contract.path.replace("01.md", "02.md") },
+        contract,
+      ],
+      readyIds: ["02", "01"],
+    },
+  };
+
+  const recommendation = recommendGateAwareOrchestration({ resolution: multiReady });
+
+  assert.equal(recommendation.stage, "implement");
+  assert.deepEqual(recommendation.activeContract, { id: "01", path: contract.path });
+  assert.deepEqual(recommendation.readyContracts, { selected: "01", others: ["02"] });
+  assert.ok(!recommendation.reason.includes("parallel"));
+
+  for (const initiativeState of ["finalizing", "complete"] as const) {
+    const terminalWithReady = recommendGateAwareOrchestration({
+      resolution: {
+        ...multiReady,
+        inspection: { ...multiReady.inspection, manifest: { ...multiReady.inspection.manifest!, initiativeState } },
+      },
+    });
+    assert.equal(terminalWithReady.stage, "blocked-handoff");
+    assert.equal(terminalWithReady.reason, "terminal initiative state has incomplete contract dispositions");
+    assert.ok(terminalWithReady.blockingReasons.some((reason) => reason.includes("contract 01")));
+  }
+
+  const conflictingActive = recommendGateAwareOrchestration({
+    resolution: {
+      ...multiReady,
+      inspection: {
+        ...multiReady.inspection,
+        manifest: { ...multiReady.inspection.manifest!, activeContract: { id: "02", path: contract.path.replace("01.md", "02.md") } },
+      },
+    },
+  });
+  assert.equal(conflictingActive.stage, "blocked-handoff");
+  assert.deepEqual(conflictingActive.readyContracts, { selected: "01", others: ["02"] });
+  assert.ok(conflictingActive.blockingReasons.some((reason) => reason.includes("lowest ready contract 01")));
+});
+
+test("pi-swe maps specialist, verification, review, and finalization gates to existing skills", () => {
+  for (const [specialist, stage, skill] of [
+    ["diagnosis", "diagnose", "swe-diagnose"],
+    ["dsa", "dsa-assess", "swe-dsa"],
+    ["tdd", "tdd-plan", "swe-tdd"],
+  ] as const) {
+    const fixture = writeCanonicalFixture();
+    fixture.manifest.initiativeState = "planning";
+    delete fixture.manifest.approval;
+    fixture.manifest.specialists[specialist] = { status: "required" };
+    fixture.writeManifest();
+    const recommendation = recommendGateAwareOrchestration({ resolution: resolveInitiative({ cwd: fixture.cwd, explicitTopic: "demo" }) });
+    assert.equal(recommendation.stage, stage);
+    assert.equal(recommendation.skill, skill);
+  }
+
+  const fixture = writeCanonicalFixture();
+  const resolution = resolveInitiative({ cwd: fixture.cwd, explicitTopic: "demo" });
+  const statePath = ".model-artifacts/logs/demo/state.json";
+  const verifying = recommendGateAwareOrchestration({ resolution, contractExecution: { "01": { state: "verifying", statePath, verifierAvailable: true, implementationPath: ".model-artifacts/logs/demo/implementation.md" } } });
+  assert.equal(verifying.stage, "verify");
+  assert.equal(verifying.skill, "swe-verify");
+  assert.ok(verifying.requiredReadPaths.includes(statePath));
+
+  const reviewing = recommendGateAwareOrchestration({ resolution, contractExecution: { "01": { state: "reviewing", statePath, verificationPath: ".model-artifacts/reports/demo/verification.md" } } });
+  assert.equal(reviewing.stage, "implementation-review");
+  assert.equal(reviewing.skill, "swe-review");
+
+  assert.equal(resolution.sourceMode, "canonical");
+  if (resolution.sourceMode !== "canonical") throw new Error("expected canonical resolution");
+  const finalizing = recommendGateAwareOrchestration({
+    resolution: {
+      ...resolution,
+      inspection: {
+        ...resolution.inspection,
+        contracts: resolution.inspection.contracts.map((contract) => ({ ...contract, status: "complete" as const })),
+        readyIds: [],
+        gateEvaluation: { ...resolution.inspection.gateEvaluation!, readyContracts: [], contractReady: false, finalizeReady: true },
+      },
+    },
+  });
+  assert.equal(finalizing.stage, "finalize");
+  assert.equal(finalizing.skill, "swe-finalize");
+
+  const terminalResolution = {
+    ...resolution,
+    inspection: {
+      ...resolution.inspection,
+      manifest: { ...resolution.inspection.manifest!, initiativeState: "complete" as const },
+      contracts: resolution.inspection.contracts.map((contract) => ({ ...contract, status: "complete" as const })),
+      readyIds: [],
+      gateEvaluation: { ...resolution.inspection.gateEvaluation!, readyContracts: [], contractReady: false, finalizeReady: true },
+    },
+  };
+  const missingHandoff = recommendGateAwareOrchestration({ resolution: terminalResolution });
+  assert.equal(missingHandoff.stage, "blocked-handoff");
+  assert.ok(missingHandoff.blockingReasons.some((reason) => reason.includes("create and validate final-handoff evidence")));
+
+  const unavailableHandoff = recommendGateAwareOrchestration({
+    resolution: { ...terminalResolution, inspection: { ...terminalResolution.inspection, manifest: { ...terminalResolution.inspection.manifest!, initiativeState: "finalizing" as const } } },
+    finalHandoffEvidence: { path: ".model-artifacts/reports/demo/final-handoff.md", statePath, available: false, valid: false },
+  });
+  assert.equal(unavailableHandoff.stage, "blocked-handoff");
+  assert.ok(unavailableHandoff.requiredReadPaths.includes(statePath));
+
+  const invalidPathHandoff = recommendGateAwareOrchestration({ resolution: terminalResolution, finalHandoffEvidence: { path: "outside/final-handoff.md", available: true, valid: true } });
+  assert.equal(invalidPathHandoff.stage, "blocked-handoff");
+
+  const complete = recommendGateAwareOrchestration({ resolution: terminalResolution, finalHandoffEvidence: { path: ".model-artifacts/reports/demo/final-handoff.md", statePath, available: true, valid: true } });
+  assert.equal(complete.stage, "complete");
+  assert.ok(complete.requiredReadPaths.includes(".model-artifacts/reports/demo/final-handoff.md"));
+});
+
+test("pi-swe returns actionable handoffs for legacy, ambiguity, stale contracts, no-verifier, and repeat-failure states", () => {
+  const legacy = recommendGateAwareOrchestration({
+    resolution: {
+      sourceMode: "legacy",
+      status: "legacy-unverified",
+      topic: "demo",
+      planPath: ".model-artifacts/todo/demo/phases/00-phase-index.md",
+      candidatePaths: [".model-artifacts/todo/demo/phases/00-phase-index.md"],
+      candidateTopics: ["demo"],
+      adoptionRequirements: ["create a schema-v1 canonical manifest", "normalize the legacy plan into canonical plan revision r1", "validate the contract DAG and applicability", "complete plan review", "approve the reviewed canonical plan"],
+      nextAction: "adopt-legacy-plan",
+      warnings: [],
+    },
+  });
+  assert.equal(legacy.stage, "plan-review");
+  assert.equal(legacy.skill, "swe-review");
+
+  const ambiguous = recommendGateAwareOrchestration({ resolution: { sourceMode: "resolution", status: "ambiguous", candidateTopics: ["a", "b"], remediation: "select one topic", warnings: [] } });
+  assert.equal(ambiguous.stage, "blocked-handoff");
+  assert.deepEqual(ambiguous.blockingReasons, ["select one topic"]);
+
+  const staleFixture = writeCanonicalFixture({ contractPlanRevision: 2 });
+  const stale = recommendGateAwareOrchestration({ resolution: resolveInitiative({ cwd: staleFixture.cwd, explicitTopic: "demo" }) });
+  assert.equal(stale.stage, "blocked-handoff");
+  assert.ok(stale.blockingReasons.some((reason) => reason.includes("active plan revision")));
+
+  const fixture = writeCanonicalFixture();
+  const resolution = resolveInitiative({ cwd: fixture.cwd, explicitTopic: "demo" });
+  const statePath = ".model-artifacts/logs/demo/state.json";
+  const traversal = recommendGateAwareOrchestration({ resolution, contractExecution: { "01": { state: "verifying", statePath: "../secret.json", verifierAvailable: false } } });
+  assert.equal(traversal.stage, "blocked-handoff");
+  assert.ok(traversal.blockingReasons.some((reason) => reason.includes("../secret.json")));
+  assert.ok(!traversal.requiredReadPaths.includes("../secret.json"));
+
+  const wrongTopic = recommendGateAwareOrchestration({ resolution, finalHandoffEvidence: { path: ".model-artifacts/reports/other/final-handoff.md", available: true, valid: true } });
+  assert.equal(wrongTopic.stage, "blocked-handoff");
+  assert.ok(wrongTopic.blockingReasons.some((reason) => reason.includes("reports/other")));
+
+  const noVerifier = recommendGateAwareOrchestration({ resolution, contractExecution: { "01": { state: "verifying", statePath, verifierAvailable: false } } });
+  assert.equal(noVerifier.stage, "blocked-handoff");
+  assert.ok(noVerifier.blockingReasons.some((reason) => reason.includes("provide a verifier")));
+  assert.ok(noVerifier.requiredReadPaths.includes(statePath));
+
+  const repeated = recommendGateAwareOrchestration({ resolution, contractExecution: { "01": { state: "reviewing", statePath, retryCount: 2, retryBudget: 2, verificationPath: ".model-artifacts/reports/demo/verification.md" } } });
+  assert.equal(repeated.stage, "blocked-handoff");
+  assert.ok(repeated.blockingReasons.some((reason) => reason.includes("repeated failure")));
 });
 
 test("pi-swe accepts executing initiative with a verifying contract and derives bounded actions", () => {
