@@ -127,13 +127,7 @@ function summaryTitle(state: TodoState, options: Pick<TodoDocketRenderOptions, "
   const prefix = commonColonPrefix(rows);
   const focus = active || next || rows[0] || (options.showCompletedFocus ?? true ? latestTerminalTodo(state) : undefined);
   if (!focus) return undefined;
-  const action = focus.status === "claimed" || focus.status === "in_progress" ? "finish/block"
-    : focus.status === "ready" ? "start"
-    : focus.status === "external_blocked" ? "unblock/cancel"
-    : focus.status === "completed" ? "verify"
-    : "inspect";
-  const title = formatTodoTitleForTui(focus.title, { commonPrefix: prefix, maxWidth: 56 });
-  return `${title} · ${action}`;
+  return formatTodoTitleForTui(focus.title, { commonPrefix: prefix, maxWidth: 56 });
 }
 
 function expandedTodoDetailLines(todo: Todo, state: TodoState, theme: TodoTheme, width: number): string[] {
