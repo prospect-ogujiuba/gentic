@@ -4,7 +4,7 @@ import { test } from "node:test";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { DEFAULT_PI_SWE_CONFIG } from "../extensions/pi-swe/src/config/index.ts";
-import { emitWarnings, formatAdvisoryChips, resetTurnRuntime, SWE_ADVISORY_WIDGET_KEY, type PiSweRuntime } from "../extensions/pi-swe/src/app/runtime.ts";
+import { decodeSweStateEnvelope, emitWarnings, formatAdvisoryChips, persistSessionRuntime, refreshPeerContext, resetTurnRuntime, SWE_ADVISORY_WIDGET_KEY, type PiSweRuntime } from "../extensions/pi-swe/src/app/runtime.ts";
 import { createSweState } from "../extensions/pi-swe/src/app/state.ts";
 
 function mockContext() {
@@ -33,10 +33,56 @@ function runtime(): PiSweRuntime {
     detectedPeers: [],
     externalCapabilities: { getWarnings: () => [] },
     state: createSweState(),
+    stateDiagnostics: [],
     todoEvidence: [],
     warnings: [],
   };
 }
+
+test("pi-swe active todo is fallback context and cannot replace a canonical cursor", () => {
+  const state = runtime();
+  state.state.activeInitiative = {
+    topic: "demo",
+    manifestPath: ".model-artifacts/specs/demo/manifest.json",
+    manifestSchemaVersion: 1,
+    planRevision: 1,
+    planPath: ".model-artifacts/plans/demo/plan.md",
+    lifecycle: { initiativeState: "approved" },
+    gates: { readyIds: [], blockerCodes: [] },
+  };
+  state.externalCapabilities = {
+    getActiveTodo: () => ({ id: "todo-1", title: "legacy marker" }),
+    getWarnings: () => [],
+  };
+
+  refreshPeerContext(state);
+
+  assert.equal(state.state.activePlan, undefined);
+  assert.equal(state.state.activeInitiative?.topic, "demo");
+});
+
+test("pi-swe bounds session cursor summaries and markers before append", () => {
+  const state = runtime();
+  state.state.activePlan = { source: "prompt", marker: "m".repeat(5000) };
+  state.state.activeInitiative = {
+    topic: "demo",
+    manifestPath: ".model-artifacts/specs/demo/manifest.json",
+    manifestSchemaVersion: 1,
+    planRevision: 1,
+    planPath: ".model-artifacts/plans/demo/plan.md",
+    lifecycle: { initiativeState: "approved" },
+    gates: { readyIds: Array.from({ length: 20_000 }, (_, index) => `id-${index}`), blockerCodes: [] },
+  };
+  let appended: unknown;
+
+  persistSessionRuntime(state, { appendEntry: (_type: string, data: unknown) => { appended = data; } } as never);
+
+  const decoded = decodeSweStateEnvelope(appended);
+  assert.ok(decoded);
+  assert.equal(decoded.activePlan?.marker.length, 1024);
+  assert.equal(decoded.activeInitiative?.gates.readyIds.length, 25);
+  assert.deepEqual(state.stateDiagnostics, []);
+});
 
 test("pi-swe advisory chips use neutral background with warning-colored codes", () => {
   const { ctx } = mockContext();

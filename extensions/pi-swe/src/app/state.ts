@@ -4,7 +4,9 @@ import {
   recordInspectedPath,
   recordVerification,
   resetTurnState,
+  setActiveInitiative,
   setActivePlan,
+  type ActiveInitiative,
   type ActivePlan,
   type CreateSweStateOptions,
   type SweState,
@@ -23,6 +25,7 @@ export type SweStateService = {
   createState(options?: CreateSweStateOptions): SweState;
   resetTurn(state: SweState, turnStartedAt?: string): SweState;
   setActivePlan(state: SweState, activePlan: ActivePlan | undefined): SweState;
+  setActiveInitiative(state: SweState, activeInitiative: ActiveInitiative | undefined): SweState;
   recordInspectedPath(state: SweState, filePath: string): SweState;
   recordChangedPath(state: SweState, filePath: string): SweState;
   recordVerification(state: SweState, evidence: VerificationEvidence): SweState;
@@ -40,6 +43,9 @@ export function createSweStateService(dependencies: SweStateServiceDependencies 
     },
     setActivePlan(state, activePlan) {
       return setActivePlan(state, activePlan);
+    },
+    setActiveInitiative(state, activeInitiative) {
+      return setActiveInitiative(state, activeInitiative);
     },
     recordInspectedPath(state, filePath) {
       return recordInspectedPath(state, filePath);

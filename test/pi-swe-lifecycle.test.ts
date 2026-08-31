@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 
 import { evaluateAutonomousRunnerStep, PI_SWE_BLOCKED_CASE_HUMAN_REQUESTS, PI_SWE_LIFECYCLE_STATES, PI_SWE_LIFECYCLE_TRANSITIONS, reconstructAutonomousWorkState, validateLifecycleTransition, type PiSweBlockedCase, type PiSweLifecycleState } from "../extensions/pi-swe/src/lifecycle.ts";
 import { inspectOrchestrationArtifacts, LegacyPlanInspector, recommendOrchestrationTransition } from "../extensions/pi-swe/src/orchestrate.ts";
 import { inspectCanonicalInitiative, resolveInitiative } from "../extensions/pi-swe/src/planning.ts";
+import { createRuntime, persistRepositoryRuntime, PI_SWE_STATE_DIAGNOSTIC_PATH_MAX_LENGTH, readRepositoryRuntime, reloadBranchRuntime, repositoryStatePath, validateActiveInitiative } from "../extensions/pi-swe/src/app/runtime.ts";
 import { CORE_SPECIALIST_IDS } from "../extensions/pi-swe/src/domain/readiness.ts";
 
 test("pi-swe lifecycle allows every defined transition and blocks undefined transitions deterministically", () => {
@@ -107,6 +108,142 @@ test("pi-swe canonical inspector resolves an exact manifest and bounded contract
   assert.deepEqual(result.readyIds, ["01"]);
   assert.deepEqual(result.diagnostics, []);
   assert.equal(result.gates.find((gate) => gate.id === "plan-approved")?.ready, true);
+});
+
+test("pi-swe validates and atomically persists canonical runtime cursors", () => {
+  const fixture = writeCanonicalFixture();
+  const contractPath = ".model-artifacts/plans/demo/revisions/r1/contracts/01.md";
+  fixture.manifest.activeContract = { id: "01", path: contractPath };
+  fixture.writeManifest();
+  const active = {
+    topic: "demo",
+    manifestPath: fixture.manifestPath,
+    manifestSchemaVersion: 1,
+    planRevision: 1,
+    planPath: fixture.manifest.activePlan.path,
+    contractId: "01",
+    contractPath,
+    lifecycle: { initiativeState: "approved" as const, contractStatus: "pending" as const },
+    gates: { readyIds: ["stale-cache"], blockerCodes: ["stale-cache"] },
+  };
+
+  const valid = validateActiveInitiative(fixture.cwd, active);
+  assert.deepEqual(valid.diagnostics, []);
+  assert.deepEqual(valid.activeInitiative?.gates.readyIds, ["01"]);
+  assert.deepEqual(persistRepositoryRuntime(fixture.cwd, valid.activeInitiative!), []);
+  assert.equal(existsSync(join(fixture.cwd, repositoryStatePath("demo"))), true);
+  const recovered = readRepositoryRuntime(fixture.cwd);
+  assert.equal(recovered.state.activeInitiative?.topic, "demo");
+  assert.equal(recovered.state.activeInitiative?.contractId, "01");
+  assert.deepEqual(recovered.diagnostics, []);
+
+  const escapingTopic = "../../../pi-swe-review-escape";
+  const escapedPath = resolve(fixture.cwd, repositoryStatePath(escapingTopic));
+  const escaped = persistRepositoryRuntime(fixture.cwd, { ...active, topic: escapingTopic });
+  assert.equal(escaped[0]?.code, "invalid_state");
+  assert.equal(existsSync(escapedPath), false);
+  const oversizedTopic = persistRepositoryRuntime(fixture.cwd, { ...active, topic: "a".repeat(10_000) });
+  assert.ok((oversizedTopic[0]?.path.length ?? 0) <= PI_SWE_STATE_DIAGNOSTIC_PATH_MAX_LENGTH);
+
+  const symlinkCwd = mkdtempSync(join(tmpdir(), "pi-swe-state-symlink-"));
+  const symlinkTarget = mkdtempSync(join(tmpdir(), "pi-swe-state-outside-"));
+  mkdirSync(join(symlinkCwd, ".model-artifacts"));
+  symlinkSync(symlinkTarget, join(symlinkCwd, ".model-artifacts/logs"), "dir");
+  assert.equal(persistRepositoryRuntime(symlinkCwd, active)[0]?.code, "invalid_state");
+  assert.equal(existsSync(join(symlinkTarget, "demo/state.json")), false);
+  writeFixtureFile(symlinkTarget, "demo/state.json", "{}\n");
+  const symlinkRead = readRepositoryRuntime(symlinkCwd);
+  assert.equal(symlinkRead.diagnostics[0]?.code, "state_read_error");
+  assert.equal(symlinkRead.diagnostics[0]?.path, ".model-artifacts/logs");
+
+  const blockedCwd = mkdtempSync(join(tmpdir(), "pi-swe-state-write-failure-"));
+  writeFileSync(join(blockedCwd, ".model-artifacts"), "not a directory", "utf8");
+  assert.equal(persistRepositoryRuntime(blockedCwd, active)[0]?.code, "state_write_error");
+
+  const stale = validateActiveInitiative(fixture.cwd, { ...active, planRevision: 2 });
+  assert.equal(stale.activeInitiative, undefined);
+  assert.equal(stale.diagnostics[0]?.code, "stale_plan_revision");
+
+  const mismatchedContract = validateActiveInitiative(fixture.cwd, { ...active, contractPath: `${contractPath}.wrong` });
+  assert.equal(mismatchedContract.activeInitiative?.contractId, undefined);
+  assert.equal(mismatchedContract.diagnostics[0]?.code, "mismatched_contract_path");
+
+  const omittedContract = validateActiveInitiative(fixture.cwd, { ...active, contractId: undefined, contractPath: undefined });
+  assert.equal(omittedContract.activeInitiative?.contractId, undefined);
+  assert.equal(omittedContract.diagnostics[0]?.code, "missing_contract");
+
+  rmSync(join(fixture.cwd, contractPath));
+  const missingContract = validateActiveInitiative(fixture.cwd, active);
+  assert.equal(missingContract.activeInitiative?.contractId, undefined);
+  assert.equal(missingContract.diagnostics[0]?.code, "missing_contract");
+
+  rmSync(join(fixture.cwd, fixture.manifestPath));
+  const missing = validateActiveInitiative(fixture.cwd, active);
+  assert.equal(missing.activeInitiative, undefined);
+  assert.equal(missing.diagnostics[0]?.code, "missing_manifest");
+});
+
+test("pi-swe invalidates cursors for stale plan and contract artifacts", () => {
+  const stalePlan = writeCanonicalFixture();
+  const stalePlanActive = activateCanonicalContract(stalePlan);
+  writeFixtureFile(stalePlan.cwd, stalePlanActive.planPath, "# changed approved plan\n");
+  const planResult = validateActiveInitiative(stalePlan.cwd, stalePlanActive);
+  assert.equal(planResult.activeInitiative, undefined);
+  assert.equal(planResult.diagnostics[0]?.code, "missing_plan");
+
+  const staleContract = writeCanonicalFixture();
+  const staleContractActive = activateCanonicalContract(staleContract);
+  writeFixtureFile(staleContract.cwd, staleContractActive.contractPath, "# changed contract\n");
+  const contractResult = validateActiveInitiative(staleContract.cwd, staleContractActive);
+  assert.equal(contractResult.activeInitiative?.contractId, undefined);
+  assert.equal(contractResult.diagnostics[0]?.code, "missing_contract");
+
+  const staleRevision = writeCanonicalFixture({ contractPlanRevision: 2 });
+  const staleRevisionActive = activateCanonicalContract(staleRevision);
+  const revisionResult = validateActiveInitiative(staleRevision.cwd, staleRevisionActive);
+  assert.equal(revisionResult.activeInitiative?.contractId, undefined);
+  assert.equal(revisionResult.diagnostics[0]?.code, "missing_contract");
+});
+
+test("pi-swe clears a stale session stage before repository initiative fallback", () => {
+  const fixture = writeCanonicalFixture();
+  const active = activateCanonicalContract(fixture);
+  assert.deepEqual(persistRepositoryRuntime(fixture.cwd, active), []);
+  const staleSession = {
+    ...active,
+    topic: "missing",
+    manifestPath: ".model-artifacts/specs/missing/manifest.json",
+    planPath: ".model-artifacts/plans/missing/plan.md",
+    contractPath: ".model-artifacts/plans/missing/revisions/r1/contracts/01.md",
+  };
+  const branch = [{
+    type: "custom",
+    customType: "gentic.swe.state",
+    data: { version: 2, state: { activeInitiative: staleSession, activeStage: "implement" } },
+  }];
+  const ctx = {
+    cwd: fixture.cwd,
+    sessionManager: { getBranch: () => branch },
+    ui: { setWidget() {}, theme: { fg: (_color: string, text: string) => text, bg: (_color: string, text: string) => text } },
+  };
+  const runtime = createRuntime(ctx as never);
+
+  reloadBranchRuntime(runtime, ctx as never);
+
+  assert.equal(runtime.state.activeInitiative?.topic, "demo");
+  assert.equal(runtime.state.activeStage, undefined);
+});
+
+test("pi-swe reports bounded repository state discovery truncation", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-state-scan-limit-"));
+  for (let index = 0; index < 100; index += 1) {
+    writeFixtureFile(cwd, `.model-artifacts/logs/topic-${index}/state.json`, "{}\n");
+  }
+
+  const result = readRepositoryRuntime(cwd);
+
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.code === "state_scan_limit"));
+  assert.ok(result.diagnostics.length <= 20);
 });
 
 test("pi-swe canonical inspector never falls through from an invalid manifest to a legacy phase tree", () => {
@@ -558,6 +695,23 @@ function writeCanonicalFixture(options: { contractPlanRevision?: number; deferra
   const writeManifest = () => writeFixtureFile(cwd, manifestPath, JSON.stringify(manifest));
   writeManifest();
   return { cwd, manifestPath, manifest, writeManifest };
+}
+
+function activateCanonicalContract(fixture: ReturnType<typeof writeCanonicalFixture>) {
+  const contractPath = ".model-artifacts/plans/demo/revisions/r1/contracts/01.md";
+  fixture.manifest.activeContract = { id: "01", path: contractPath };
+  fixture.writeManifest();
+  return {
+    topic: "demo",
+    manifestPath: fixture.manifestPath,
+    manifestSchemaVersion: 1,
+    planRevision: 1,
+    planPath: fixture.manifest.activePlan.path as string,
+    contractId: "01",
+    contractPath,
+    lifecycle: { initiativeState: "approved" as const, contractStatus: "pending" as const },
+    gates: { readyIds: ["01"], blockerCodes: [] },
+  };
 }
 
 function writeFixtureFile(cwd: string, relativePath: string, content: string): void {

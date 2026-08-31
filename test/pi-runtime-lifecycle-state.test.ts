@@ -9,8 +9,10 @@ import {
 } from "../extensions/pi-todo/src/pi/store.ts";
 import {
   PI_SWE_STATE_CUSTOM_TYPE,
+  PI_SWE_STATE_TOPIC_MAX_LENGTH,
   decodeSweStateEnvelope,
   reconstructPersistedSweState,
+  reconstructPersistedSweStateWithDiagnostics,
 } from "../extensions/pi-swe/src/app/runtime.ts";
 import { createSweState, recordVerification } from "../extensions/pi-swe/src/domain/state.ts";
 import { createVerificationEvidence } from "../extensions/pi-swe/src/domain/evidence.ts";
@@ -48,19 +50,39 @@ test("pi-todo appends a versioned event envelope", async () => {
   assert.deepEqual(appended, [{ customType: PI_TODO_EVENT_CUSTOM_TYPE, data: { version: PI_TODO_EVENT_VERSION, event } }]);
 });
 
-test("pi-swe reconstructs required state from the active branch and ignores future versions", () => {
-  const active = { version: 1, state: { activePlan: { source: "artifact", marker: " .model-artifacts/todo/demo/phases/03.md " }, activeStage: "implement" } };
-  const future = { version: 2, state: { activePlan: { source: "prompt", marker: "abandoned" }, activeStage: "finalize" } };
-  const branch = [
-    { type: "custom", customType: PI_SWE_STATE_CUSTOM_TYPE, data: active },
-    { type: "custom", customType: PI_SWE_STATE_CUSTOM_TYPE, data: future },
-  ];
+test("pi-swe decodes schema-v2 canonical pointers, preserves v1 as legacy, and ignores future versions", () => {
+  const legacy = { version: 1, state: { activePlan: { source: "artifact", marker: " .model-artifacts/todo/demo/phases/03.md " }, activeStage: "implement" } };
+  const activeInitiative = {
+    topic: "demo",
+    manifestPath: ".model-artifacts/specs/demo/manifest.json",
+    manifestSchemaVersion: 1,
+    planRevision: 1,
+    planPath: ".model-artifacts/plans/demo/plan.md",
+    contractId: "01",
+    contractPath: ".model-artifacts/plans/demo/revisions/r1/contracts/01.md",
+    lifecycle: { initiativeState: "approved", contractStatus: "pending" },
+    gates: { readyIds: ["01"], blockerCodes: [] },
+  };
+  const canonical = { version: 2, state: { activeInitiative, activeStage: "implement" } };
+  const future = { version: 3, state: { activePlan: { source: "prompt", marker: "abandoned" }, activeStage: "finalize" } };
 
-  assert.deepEqual(reconstructPersistedSweState(branch), {
+  assert.deepEqual(decodeSweStateEnvelope(legacy), {
     activePlan: { source: "artifact", marker: ".model-artifacts/todo/demo/phases/03.md" },
     activeStage: "implement",
   });
+  assert.deepEqual(reconstructPersistedSweState([
+    { type: "custom", customType: PI_SWE_STATE_CUSTOM_TYPE, data: legacy },
+    { type: "custom", customType: PI_SWE_STATE_CUSTOM_TYPE, data: canonical },
+    { type: "custom", customType: PI_SWE_STATE_CUSTOM_TYPE, data: future },
+  ]), { activeInitiative, activeStage: "implement" });
   assert.equal(decodeSweStateEnvelope(future), undefined);
+  assert.equal(decodeSweStateEnvelope({
+    version: 2,
+    state: { activeInitiative: { ...activeInitiative, topic: "a".repeat(PI_SWE_STATE_TOPIC_MAX_LENGTH + 1) } },
+  }), undefined);
+  assert.equal(reconstructPersistedSweStateWithDiagnostics([
+    { type: "custom", customType: PI_SWE_STATE_CUSTOM_TYPE, data: future },
+  ]).diagnostics[0]?.code, "future_version");
 });
 
 test("pi-context assigns pending input to the next turn, preserves tool paths, and throttles updates", () => {

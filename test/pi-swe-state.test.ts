@@ -10,6 +10,7 @@ import {
   recordInspectedPath,
   recordVerification,
   resetTurnState,
+  setActiveInitiative,
   setActivePlan,
 } from "../extensions/pi-swe/src/app/state.ts";
 
@@ -51,6 +52,26 @@ test("pi-swe verification evidence represents command and manual scopes", () => 
   assert.deepEqual(state.verification.map((evidence) => evidence.scope), ["focused", "nearby", "broad", "manual"]);
   assert.equal(state.verification[0].exitCode, 1);
   assert.equal(state.verification[1].note, "reviewed adjacent renderer manually");
+});
+
+test("pi-swe turn reset preserves the durable canonical initiative cursor", () => {
+  const activeInitiative = {
+    topic: "demo",
+    manifestPath: ".model-artifacts/specs/demo/manifest.json",
+    manifestSchemaVersion: 1,
+    planRevision: 1,
+    planPath: ".model-artifacts/plans/demo/plan.md",
+    contractId: "01",
+    contractPath: ".model-artifacts/plans/demo/revisions/r1/contracts/01.md",
+    lifecycle: { initiativeState: "executing" as const, contractStatus: "in-progress" as const },
+    gates: { readyIds: ["02", "02"], blockerCodes: [] },
+  };
+  const state = setActiveInitiative(createSweState(), activeInitiative);
+  const reset = resetTurnState(recordInspectedPath(state, "src/a.ts"), "t2");
+
+  assert.deepEqual(reset.activeInitiative?.gates.readyIds, ["02"]);
+  assert.equal(reset.activeInitiative?.contractId, "01");
+  assert.deepEqual(reset.inspectedPaths, []);
 });
 
 test("pi-swe active plan markers support todo artifact and prompt sources", () => {
