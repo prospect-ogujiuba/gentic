@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 
-import { evaluateAutonomousRunnerStep, PI_SWE_BLOCKED_CASE_HUMAN_REQUESTS, PI_SWE_LIFECYCLE_STATES, PI_SWE_LIFECYCLE_TRANSITIONS, reconstructAutonomousWorkState, validateLifecycleTransition, type PiSweBlockedCase, type PiSweLifecycleState } from "../extensions/pi-swe/src/lifecycle.ts";
+import { deriveOrchestrationLifecycle, evaluateAutonomousRunnerStep, mapFlatLifecycleState, mapLegacyOrchestrationPath, PI_SWE_BLOCKED_CASE_HUMAN_REQUESTS, PI_SWE_CONTRACT_TRANSITIONS, PI_SWE_LIFECYCLE_STATES, PI_SWE_LIFECYCLE_TRANSITIONS, reconstructAutonomousWorkState, validateContractTransition, validateInitiativeTransition, validateLifecycleTransition, type PiSweBlockedCase, type PiSweLifecycleState } from "../extensions/pi-swe/src/lifecycle.ts";
 import { inspectOrchestrationArtifacts, LegacyPlanInspector, recommendOrchestrationTransition } from "../extensions/pi-swe/src/orchestrate.ts";
 import { inspectCanonicalInitiative, resolveInitiative } from "../extensions/pi-swe/src/planning.ts";
 import { createRuntime, persistRepositoryRuntime, PI_SWE_STATE_DIAGNOSTIC_PATH_MAX_LENGTH, readRepositoryRuntime, reloadBranchRuntime, repositoryStatePath, validateActiveInitiative } from "../extensions/pi-swe/src/app/runtime.ts";
@@ -459,6 +459,241 @@ test("pi-swe recommends deterministic orchestration transitions for feature, bug
   });
 });
 
+test("pi-swe accepts executing initiative with a verifying contract and derives bounded actions", () => {
+  assert.deepEqual(validateInitiativeTransition({ state: "executing", nextState: "executing" }), {
+    allowed: true,
+    state: "executing",
+    nextState: "executing",
+  });
+  assert.deepEqual(validateContractTransition({ state: "verifying", nextState: "reviewing" }), {
+    allowed: true,
+    state: "verifying",
+    nextState: "reviewing",
+  });
+
+  const lifecycle = deriveOrchestrationLifecycle({
+    initiativeState: "executing",
+    planRevision: 2,
+    activeContract: { id: "03.01", planRevision: 2, state: "verifying" },
+    contracts: [{ id: "03.01", planRevision: 2, state: "verifying" }],
+    gates: { manifestValid: true, initiativeUnambiguous: true },
+  });
+
+  assert.deepEqual(lifecycle.allowedActions, ["verify-contract", "return-to-implement"]);
+  assert.deepEqual(lifecycle.blockedCases, []);
+});
+
+test("pi-swe invalidates a stale active contract and returns the initiative to planning", () => {
+  const lifecycle = deriveOrchestrationLifecycle({
+    initiativeState: "executing",
+    planRevision: 3,
+    activeContract: { id: "03.01", planRevision: 2, state: "implementing" },
+    contracts: [{ id: "03.01", planRevision: 2, state: "implementing" }],
+    gates: { manifestValid: true, initiativeUnambiguous: true },
+  });
+
+  assert.equal(lifecycle.initiativeState, "planning");
+  assert.equal(lifecycle.activeContract, undefined);
+  assert.equal(lifecycle.invalidatedActiveContract, true);
+  assert.deepEqual(lifecycle.allowedActions, ["revise-plan"]);
+  assert.deepEqual(lifecycle.blockedCases, ["stale-plan"]);
+});
+
+test("pi-swe derives phase progression, approved deferral, next contract, and guarded finalization", () => {
+  const next = deriveOrchestrationLifecycle({
+    initiativeState: "executing",
+    planRevision: 1,
+    activeContract: { id: "01", planRevision: 1, state: "complete" },
+    contracts: [
+      { id: "01", planRevision: 1, state: "complete" },
+      { id: "02", planRevision: 1, state: "pending" },
+    ],
+    gates: { manifestValid: true, initiativeUnambiguous: true, readyContractIds: ["02"] },
+  });
+  assert.deepEqual(next.allowedActions, ["start-next-contract"]);
+  assert.equal(next.activeContract, undefined);
+  assert.equal(next.nextContractId, "02");
+
+  assert.equal(validateContractTransition({
+    state: "blocked",
+    nextState: "deferred",
+    gate: { ready: true, reason: "approved deferral is evidenced" },
+  }).allowed, true);
+
+  const finalizing = deriveOrchestrationLifecycle({
+    initiativeState: "finalizing",
+    planRevision: 1,
+    contracts: [
+      { id: "01", planRevision: 1, state: "complete" },
+      { id: "02", planRevision: 1, state: "deferred" },
+    ],
+    gates: { manifestValid: true, initiativeUnambiguous: true, finalizeReady: true, finalHandoffReady: false },
+  });
+  assert.deepEqual(finalizing.allowedActions, ["finalize-handoff"]);
+  assert.deepEqual(finalizing.blockedCases, ["final-handoff-missing"]);
+
+  const complete = deriveOrchestrationLifecycle({
+    initiativeState: "finalizing",
+    planRevision: 1,
+    contracts: [
+      { id: "01", planRevision: 1, state: "complete" },
+      { id: "02", planRevision: 1, state: "deferred" },
+    ],
+    gates: { manifestValid: true, initiativeUnambiguous: true, finalizeReady: true, finalHandoffReady: true },
+  });
+  assert.deepEqual(complete.allowedActions, ["complete-initiative"]);
+});
+
+test("pi-swe transition guards report allowed states and gate reasons", () => {
+  assert.deepEqual(validateInitiativeTransition({ state: "reviewing", nextState: "planning" }), {
+    allowed: true,
+    state: "reviewing",
+    nextState: "planning",
+  });
+  assert.deepEqual(validateContractTransition({
+    state: "reviewing",
+    nextState: "complete",
+    gate: { ready: false, reason: "acceptance evidence is incomplete" },
+  }), {
+    allowed: false,
+    state: "reviewing",
+    reason: "gate-blocked",
+    gateReason: "acceptance evidence is incomplete",
+    allowedNextStates: [...PI_SWE_CONTRACT_TRANSITIONS.reviewing],
+  });
+});
+
+test("pi-swe flat and feature/bug/DSA compatibility are explicit and never grant readiness", () => {
+  for (const state of ["plan", "diagnose", "dsa-assess", "implement", "verify", "review"] as const) {
+    const mapped = mapFlatLifecycleState(state);
+    assert.equal(mapped.compatibilityOnly, true);
+    assert.equal(mapped.planApproved, false);
+    assert.equal(mapped.contractReady, false);
+  }
+  assert.deepEqual(mapFlatLifecycleState("verify"), {
+    initiativeState: "executing",
+    contractState: "verifying",
+    compatibilityOnly: true,
+    planApproved: false,
+    contractReady: false,
+  });
+  assert.deepEqual(
+    ["feature", "bug", "dsa"].map((path) => mapLegacyOrchestrationPath(path as "feature" | "bug" | "dsa")),
+    [
+      { flatState: "plan", initiativeState: "planning", compatibilityOnly: true, planApproved: false, contractReady: false },
+      { flatState: "diagnose", initiativeState: "planning", compatibilityOnly: true, planApproved: false, contractReady: false },
+      { flatState: "dsa-assess", initiativeState: "planning", compatibilityOnly: true, planApproved: false, contractReady: false },
+    ],
+  );
+});
+
+test("pi-swe derives completion and deferral actions only from affirmative gates", () => {
+  const reviewing = {
+    initiativeState: "executing" as const,
+    planRevision: 1,
+    activeContract: { id: "01", planRevision: 1, state: "reviewing" as const },
+    contracts: [{ id: "01", planRevision: 1, state: "reviewing" as const }],
+  };
+  assert.deepEqual(deriveOrchestrationLifecycle({
+    ...reviewing,
+    gates: { manifestValid: true, initiativeUnambiguous: true },
+  }).allowedActions, ["review-contract", "return-to-implement"]);
+  assert.deepEqual(deriveOrchestrationLifecycle({
+    ...reviewing,
+    gates: {
+      manifestValid: true,
+      initiativeUnambiguous: true,
+      activeContractCompletion: { ready: true, reason: "acceptance verified" },
+    },
+  }).allowedActions, ["review-contract", "complete-contract", "return-to-implement"]);
+
+  const blocked = {
+    initiativeState: "executing" as const,
+    planRevision: 1,
+    activeContract: { id: "01", planRevision: 1, state: "blocked" as const },
+    contracts: [{ id: "01", planRevision: 1, state: "blocked" as const }],
+  };
+  assert.deepEqual(deriveOrchestrationLifecycle({
+    ...blocked,
+    gates: { manifestValid: true, initiativeUnambiguous: true },
+  }).allowedActions, ["resolve-contract-block"]);
+  assert.deepEqual(deriveOrchestrationLifecycle({
+    ...blocked,
+    gates: {
+      manifestValid: true,
+      initiativeUnambiguous: true,
+      activeContractDeferral: { ready: true, reason: "approved and evidenced" },
+    },
+  }).allowedActions, ["resolve-contract-block", "defer-contract"]);
+});
+
+test("pi-swe terminal and blocked-resume transitions remain guarded", () => {
+  assert.equal(validateContractTransition({ state: "complete", nextState: "complete" }).allowed, false);
+  assert.equal(validateContractTransition({ state: "deferred", nextState: "deferred" }).allowed, false);
+  const resumed = validateInitiativeTransition({ state: "blocked", nextState: "executing" });
+  assert.equal(resumed.allowed, false);
+  assert.equal(resumed.allowed ? "" : resumed.reason, "gate-blocked");
+});
+
+test("pi-swe rejects an active contract inconsistent with the contract index", () => {
+  const result = deriveOrchestrationLifecycle({
+    initiativeState: "executing",
+    planRevision: 1,
+    activeContract: { id: "02", planRevision: 1, state: "implementing" },
+    contracts: [{ id: "01", planRevision: 1, state: "pending" }],
+    gates: { manifestValid: true, initiativeUnambiguous: true, readyContractIds: ["01"] },
+  });
+  assert.deepEqual(result.allowedActions, []);
+  assert.deepEqual(result.blockedCases, ["invalid-manifest"]);
+
+  const invalidRevision = deriveOrchestrationLifecycle({
+    initiativeState: "executing",
+    planRevision: 0,
+    contracts: [],
+    gates: { manifestValid: true, initiativeUnambiguous: true },
+  });
+  assert.deepEqual(invalidRevision.blockedCases, ["invalid-manifest"]);
+});
+
+test("pi-swe runner rejects stale event sources and incomplete canonical retry identity", () => {
+  const evidencePath = ".model-artifacts/reports/demo/verification.md";
+  assert.deepEqual(evaluateAutonomousRunnerStep({
+    state: { topic: "demo", state: "verify" },
+    event: {
+      kind: "stage-failed",
+      from: "review",
+      requestedNextState: "implement",
+      failureSignature: "stale-event",
+      evidencePath,
+    },
+  }), {
+    terminal: true,
+    terminalState: "blocked:unknown-transition",
+    state: "blocked",
+    blockedCase: "unknown-transition",
+    humanRequest: "fix runner/workflow definition",
+    artifactPath: evidencePath,
+  });
+
+  assert.deepEqual(evaluateAutonomousRunnerStep({
+    state: { topic: "demo", state: "verify", planRevision: 2 },
+    event: {
+      kind: "stage-failed",
+      from: "verify",
+      requestedNextState: "implement",
+      failureSignature: "missing-contract-id",
+      evidencePath,
+    },
+  }), {
+    terminal: true,
+    terminalState: "blocked:invalid-manifest",
+    state: "blocked",
+    blockedCase: "invalid-manifest",
+    humanRequest: "repair the canonical initiative manifest",
+    artifactPath: evidencePath,
+  });
+});
+
 test("pi-swe runner stops repeated verify failures with an actionable blocked handoff", () => {
   const fixture = writeAutonomousFixture("verify");
 
@@ -467,7 +702,9 @@ test("pi-swe runner stops repeated verify failures with an actionable blocked ha
       topic: "demo",
       state: "verify",
       activePhase: fixture.paths.activePhase,
-      retryCounts: { "verify->implement:assertion-still-failing": 2 },
+      planRevision: 4,
+      activeContractId: "03.01",
+      retryCounts: { "r4/03.01:verify->implement:assertion-still-failing": 2 },
       artifacts: {
         workOrder: fixture.paths.workOrder,
         phaseIndex: fixture.paths.phaseIndex,
@@ -490,7 +727,7 @@ test("pi-swe runner stops repeated verify failures with an actionable blocked ha
     blockedCase: "repeat-failure",
     humanRequest: "inspect failure and decide",
     artifactPath: fixture.paths.verificationReport,
-    retryKey: "verify->implement:assertion-still-failing",
+    retryKey: "r4/03.01:verify->implement:assertion-still-failing",
     retryCount: 2,
     retryBudget: 2,
   });
@@ -515,7 +752,15 @@ test("pi-swe runner advances the success path until terminal complete", () => {
         state: from,
         artifacts: { finalHandoff: fixture.paths.finalHandoff },
       },
-      event: { kind: "stage-completed", from, nextState },
+      event: {
+        kind: "stage-completed",
+        from,
+        nextState,
+        ...(nextState === "complete" ? {
+          gate: { ready: true, reason: "final handoff verified" },
+          allRequiredContractsDisposed: true,
+        } : {}),
+      },
     }),
   );
 
@@ -542,6 +787,8 @@ test("pi-swe runner reaches terminal complete with a stable handoff artifact", (
       kind: "stage-completed",
       from: "finalize",
       nextState: "complete",
+      gate: { ready: true, reason: "final handoff verified" },
+      allRequiredContractsDisposed: true,
     },
   });
 
@@ -552,6 +799,17 @@ test("pi-swe runner reaches terminal complete with a stable handoff artifact", (
     humanRequest: "review completed handoff",
     artifactPath: fixture.paths.finalHandoff,
   });
+});
+
+test("pi-swe flat runner cannot complete without canonical disposition and handoff gates", () => {
+  const fixture = writeAutonomousFixture("finalize");
+  const decision = evaluateAutonomousRunnerStep({
+    state: { topic: "demo", state: "finalize", artifacts: { finalHandoff: fixture.paths.finalHandoff } },
+    event: { kind: "stage-completed", from: "finalize", nextState: "complete" },
+  });
+
+  assert.equal(decision.terminal, true);
+  assert.equal(decision.terminal ? decision.terminalState : "", "blocked:contract-disposition-incomplete");
 });
 
 test("pi-swe runner emits every covered blocked case with an actionable human request", () => {
@@ -587,7 +845,9 @@ test("pi-swe runner keeps bounded retries below budget and blocks scope drift", 
       state: {
         topic: "demo",
         state: "verify",
-        retryCounts: { "verify->implement:one-focused-failure": 1 },
+        planRevision: 4,
+        activeContractId: "03.01",
+        retryCounts: { "r4/03.01:verify->implement:one-focused-failure": 1 },
       },
       event: {
         kind: "stage-failed",
@@ -602,7 +862,7 @@ test("pi-swe runner keeps bounded retries below budget and blocks scope drift", 
       terminal: false,
       state: "verify",
       nextState: "implement",
-      retryKey: "verify->implement:one-focused-failure",
+      retryKey: "r4/03.01:verify->implement:one-focused-failure",
       retryCount: 1,
       retryBudget: 2,
     },
@@ -629,6 +889,28 @@ test("pi-swe runner keeps bounded retries below budget and blocks scope drift", 
       artifactPath: fixture.paths.verificationReport,
     },
   );
+});
+
+test("pi-swe retry budgets are isolated by plan revision and contract ID", () => {
+  const event = {
+    kind: "stage-failed" as const,
+    from: "review" as const,
+    requestedNextState: "implement" as const,
+    failureSignature: "same-review-failure",
+    evidencePath: ".model-artifacts/reports/demo/review.md",
+  };
+  const first = evaluateAutonomousRunnerStep({
+    state: { topic: "demo", state: "review", planRevision: 4, activeContractId: "03.01" },
+    event,
+  });
+  const second = evaluateAutonomousRunnerStep({
+    state: { topic: "demo", state: "review", planRevision: 4, activeContractId: "03.02" },
+    event,
+  });
+
+  assert.equal(first.terminal, false);
+  assert.equal(second.terminal, false);
+  assert.notEqual(first.terminal ? undefined : first.retryKey, second.terminal ? undefined : second.retryKey);
 });
 
 test("pi-swe reconstructs a next action for every non-terminal lifecycle state", () => {

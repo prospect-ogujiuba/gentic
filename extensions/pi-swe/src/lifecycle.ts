@@ -11,7 +11,7 @@ import {
   type StableWorkDocumentKey,
 } from "./domain/lifecycle.ts";
 
-// Compatibility shim: domain extraction moved pure lifecycle rules to ./domain/lifecycle.ts.
+// Public boundary for both legacy flat-state compatibility and canonical two-level lifecycle APIs.
 export * from "./domain/lifecycle.ts";
 
 export function reconstructAutonomousWorkState(request: ReconstructAutonomousWorkStateRequest): ReconstructedAutonomousWorkState {
