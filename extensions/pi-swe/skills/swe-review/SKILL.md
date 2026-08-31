@@ -24,14 +24,17 @@ Plan review never implements and never claims plan-time Red evidence. Changes re
 
 ## Implementation-review mode
 
-Use after implementation and verification for one approved contract.
+Use after implementation and verification for one exact contract/revision from the active approved plan.
 
-1. Compare the diff with the approved contract, incorporated findings, implementation notes, and verification artifacts.
-2. Check correctness, edge cases, state transitions, compatibility, and contract acceptance criteria.
-3. Check error handling, input validation, security, data, performance, migration, rollback, operations, and UX where applicable.
-4. Remove only in-scope accidental complexity, debug artifacts, dead code, or broad churn; do not add adjacent features.
-5. Confirm verification evidence is current and covers the reviewed risk.
-6. Decide `approve`, `request changes`, or `return to plan`.
+1. Read `.model-artifacts/specs/<topic>/manifest.json`, the active spec and active approved plan, `<activePlan.contractRoot>/contracts.json`, the exact contract, incorporated findings, implementation notes/diff, and verification artifact. Validate revision, approval, `contentHash`, dependency, blocker, and active-contract state before judging the diff.
+2. Compare the diff and evidence only with that exact contract/revision, its scope/non-goals, acceptance criteria, and planned verification.
+3. Check correctness, edge cases, state transitions, compatibility, and applicable error, validation, security, data, performance, migration, rollback, operations, and UX risks.
+4. Reject unrelated churn; do not add adjacent features or silently edit the approved contract.
+5. Confirm the acceptance-to-evidence map is current and labels every criterion/check `pass`, `fail`, `partial`, or `gap`.
+6. Decide `approve`, `request changes`, or `return to plan`. Approve only when the in-scope diff satisfies the exact contract with current evidence. Request changes for in-contract defects. Return to plan for a stale revision, scope/material-design drift, missing verifier, incompatible dependency/blocker state, or conflicting changes.
+7. Use bounded review/fix retries; repeated unresolved findings stop with a durable handoff.
+
+Implementation review works standalone. Todo may record the decision but neither todo nor a filename is approval.
 
 ## Review artifact
 

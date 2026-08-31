@@ -23,6 +23,7 @@ test("package discovery sees pi-swe extension", () => {
 });
 
 test("pi-swe registers runtime event wiring and /swe command", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-runtime-wiring-"));
   const handlers = new Map<string, Function>();
   const commands = new Map<string, { handler: Function; getArgumentCompletions?: Function }>();
   const notifications: Array<{ message: string; type?: string }> = [];
@@ -46,7 +47,7 @@ test("pi-swe registers runtime event wiring and /swe command", async () => {
       return [{ name: "permission-system", sourceInfo: { path: `${root}/node_modules/@gotgenes/pi-permission-system/src/index.ts` } }];
     },
   };
-  const ctx = { cwd: root, sessionId: "test", hasUI: true, ui: { notify: (message: string, type?: string) => notifications.push({ message, type }) } };
+  const ctx = { cwd, sessionId: "test", hasUI: true, ui: { notify: (message: string, type?: string) => notifications.push({ message, type }) } };
 
   assert.equal(piSwe(pi as never, ctx as never), undefined);
   assert.deepEqual([...handlers.keys()], ["session_start", "session_tree", "session_info_changed", "session_shutdown", "turn_start", "agent_settled", "tool_call", "tool_result"]);
@@ -70,6 +71,7 @@ test("pi-swe registers runtime event wiring and /swe command", async () => {
   assert.ok(notifications.some((entry) => entry.message.includes("verification count: 1")));
   assert.ok(notifications.some((entry) => entry.message.includes("todo evidence count: 1")));
   assert.ok(notifications.some((entry) => entry.message.includes("pi-swe config")));
+  rmSync(cwd, { recursive: true, force: true });
 });
 
 test("/swe orchestrate is guidance-only and preserves existing command behavior", async () => {
@@ -182,6 +184,7 @@ test("/swe command warns with actionable topic selection for none, ambiguity, le
 });
 
 test("/swe orchestrate subcommands provide deterministic guidance-only handoffs", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-orchestrate-empty-"));
   const commands = new Map<string, { handler: Function; getArgumentCompletions?: Function }>();
   const notifications: Array<{ message: string; type?: string }> = [];
   const pi = {
@@ -197,7 +200,7 @@ test("/swe orchestrate subcommands provide deterministic guidance-only handoffs"
       return [];
     },
   };
-  const ctx = { cwd: root, sessionId: "test", hasUI: true, ui: { notify: (message: string, type?: string) => notifications.push({ message, type }) } };
+  const ctx = { cwd, sessionId: "test", hasUI: true, ui: { notify: (message: string, type?: string) => notifications.push({ message, type }) } };
 
   piSwe(pi as never, ctx as never);
   const swe = commands.get("swe");
@@ -213,6 +216,7 @@ test("/swe orchestrate subcommands provide deterministic guidance-only handoffs"
   assert.ok(notifications.some((entry) => entry.message.includes("resume from model artifacts")));
   assert.ok(notifications.some((entry) => entry.message.includes("exception handoff")));
   assert.ok(notifications.every((entry) => entry.type === "warning"));
+  rmSync(cwd, { recursive: true, force: true });
 });
 
 function registerSweForCommandTest(cwd: string) {
@@ -356,6 +360,49 @@ test("planning and plan-review skills define the canonical approval workflow", (
   assert.match(plan, /do not mirror[^.]*\.model-artifacts\/todo\/<topic>\/phases/i);
   assert.doesNotMatch(plan, /create[^.]*\.model-artifacts\/todo\/<topic>\/phases/i);
   assert.doesNotMatch(planningResources, /\/swe-auto|swe-auto/i);
+});
+
+test("execution lifecycle skills enforce approved contracts and evidence reconciliation", () => {
+  const skills = Object.fromEntries(lifecycleResourceStages.map((stage) => [
+    stage,
+    readFileSync(join(root, `extensions/pi-swe/skills/swe-${stage}/SKILL.md`), "utf8"),
+  ]));
+  const executionResources = ["implement", "verify", "review", "finalize", "tdd", "dsa", "diagnose", "orchestrate"]
+    .map((stage) => skills[stage])
+    .join("\n");
+
+  for (const required of [
+    ".model-artifacts/specs/<topic>/manifest.json",
+    "contracts.json",
+    "active approved plan",
+    "exact contract",
+    "contentHash",
+    "acceptance criteria",
+    "planned verification",
+    "return to plan",
+    "standalone",
+  ]) assert.match(executionResources, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+
+  assert.match(skills.implement, /todo[^.]*not[^.]*approval|not sufficient approval/i);
+  assert.match(skills.implement, /original contract[^.]*canonical contract[^.]*ID[^.]*path[^.]*revision[^.]*contentHash/i);
+  assert.match(skills.implement, /todo[^.]*optional link/i);
+  assert.doesNotMatch(skills.implement, /original contract[^\n]*assigned[^\n]*todo/i);
+  assert.match(skills.implement, /stale revision[^.]*dependency[^.]*blocker/i);
+  assert.match(skills.tdd, /runtime Red[^.]*Green[^.]*Refactor evidence/i);
+  assert.match(skills.dsa, /material design change[^.]*return to plan/i);
+  assert.match(skills.verify, /pass[^/]*fail[^/]*partial[^/]*gap/i);
+  assert.match(skills.verify, /acceptance[^.]*evidence/i);
+  assert.match(skills.review, /exact contract[^.]*revision/i);
+  assert.match(skills.review, /approve[^.]*request changes[^.]*return to plan/i);
+  assert.match(skills.finalize, /contract dispositions/i);
+  assert.match(skills.finalize, /approved deferrals/i);
+  assert.match(skills.orchestrate, /required read paths/i);
+  assert.match(skills.orchestrate, /intended write path/i);
+  assert.match(skills.orchestrate, /specs\/<topic>[^\n]*manifest[^\n]*immutable initiative spec revisions/i);
+  assert.match(skills.orchestrate, /plans\/<topic>[^\n]*plan indexes[^\n]*contracts\.json[^\n]*phase and subphase contracts/i);
+  assert.doesNotMatch(skills.orchestrate, /specs\/<topic>[^\n]*slice contracts/i);
+  assert.match(executionResources, /missing verifier/i);
+  assert.doesNotMatch(executionResources, /\/swe-auto|swe-auto/i);
 });
 
 test("swe-dsa resources are discoverable and resource-only", () => {

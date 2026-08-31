@@ -5,7 +5,9 @@ description: Diagnose bugs, failures, and regressions with reproduce-minimize-hy
 
 # SWE Diagnose
 
-Use this when behavior is broken, failing, or regressing.
+Use this when behavior is broken, failing, or regressing. Diagnosis may produce evidence or a candidate fix, but never grants implementation approval.
+
+For an approved execution contract, first read `.model-artifacts/specs/<topic>/manifest.json`, the active approved plan, `<activePlan.contractRoot>/contracts.json`, and the exact contract/revision plus linked findings/current state. Validate `contentHash`, dependencies, blockers, acceptance criteria, and planned verification. A todo, filename, or diagnosis artifact is not approval. Stale state, a missing verifier, scope drift, or conflicting changes yields a deterministic return to plan with exact paths. Diagnosis remains standalone.
 
 ## Workflow
 

@@ -5,18 +5,25 @@ description: Verify SWE changes by compiling, running, testing, and recording ev
 
 # SWE Verify
 
-Use this before claiming work is complete.
+Use this before claiming an exact contract is complete.
+
+## Contract and evidence gate
+
+Read `.model-artifacts/specs/<topic>/manifest.json`, the active approved plan, `<activePlan.contractRoot>/contracts.json`, the exact contract/revision, its incorporated findings, implementation notes/diff, and existing evidence before running checks. Confirm revision and `contentHash` links are current. A todo or filename does not prove approval.
+
+Build an acceptance-to-evidence map: give every contract acceptance criterion and every planned verification item a check, evidence location, and result of `pass`, `fail`, `partial`, or `gap`. A missing verifier, stale revision, contradictory planned check, or change outside the exact contract is a deterministic `return to plan` handoff; name the artifact/path and required correction rather than inventing coverage.
 
 ## Workflow
 
-1. Compile or typecheck when the stack supports it.
-2. Run the changed path or a representative manual scenario.
-3. Test focused behavior first; expand to nearby or broad checks based on risk.
-4. Record evidence proportional to the work:
-   - For trivial one-command verification, an inline concise command/result/scope/timestamp note is enough.
-   - Write a durable verification artifact when verification has multiple checks, handoff-sensitive work, broad scope, manual checks, failures, partial coverage, or known gaps.
-5. Use context-mode guidance for long test/build output: summarize results, preserve relevant failure details, and do not duplicate full command output into chat.
-6. State gaps honestly when checks cannot run or only partially cover the change.
+1. Compile or typecheck when the contract plans it or the stack supports it.
+2. Run the changed path or representative manual scenario named by planned verification.
+3. Test focused behavior first; expand to nearby or broad checks only where contract risk justifies it.
+4. Record command/manual check, criterion IDs, result, evidence summary, scope, timestamp, and gaps. For trivial one-command verification an inline record is enough; otherwise write a durable artifact.
+5. Use context-mode guidance for long output: summarize results and preserve only relevant failure details.
+6. Use bounded retries. Retry only when the failure is understood and the rerun can change the observation; otherwise record it and stop.
+7. Mark the contract verification outcome only from the complete map. Any `fail`, unapproved `partial`, or `gap` blocks or qualifies completion.
+
+Verification remains standalone without todo or peer extensions.
 
 ## Durable verification artifacts
 
@@ -32,7 +39,13 @@ Include these sections or equivalent fields:
 # Verification evidence: <topic>
 
 Timestamp: YYYY-MM-DD HH:MM <timezone>
-Scope: <files, behavior, slice, or scenario verified>
+Scope: <exact contract ID/revision, files, behavior, or scenario verified>
+
+## Acceptance-to-evidence map
+
+- Criterion/planned verification: <ID or exact text>
+  - Check/evidence: <command, manual scenario, or artifact link>
+  - Result: <pass/fail/partial/gap>
 
 ## Checks
 

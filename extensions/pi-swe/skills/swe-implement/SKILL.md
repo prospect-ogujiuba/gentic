@@ -5,24 +5,33 @@ description: Implement the smallest honest vertical SWE slice while preserving r
 
 # SWE Implement
 
-Use this after a plan or diagnosis identifies a concrete slice.
+Use this only for one execution-ready contract from an active approved plan. A todo, chat instruction, plan filename, or contract filename may locate work but is not sufficient approval.
 
-When the slice is an assigned plan, phase, implementation, or todo file, treat that file as the implementation contract for the work. Chat can clarify that contract, but it must not become the only durable source for changing scope.
+## Execution gate
+
+Before editing, read in order:
+
+1. `.model-artifacts/specs/<topic>/manifest.json` and its active spec and active approved plan paths.
+2. `<activePlan.contractRoot>/contracts.json`, then the exact contract selected as ready.
+3. The contract's dependencies, incorporated specialist findings, prior implementation/verification notes, and current repository and todo state when available.
+
+Validate every `contentHash`, revision, and pointer. The manifest approval must match the active plan revision/path/hash; `contracts.json` must match the exact contract path/hash and mark it dependency- and gate-satisfied; predecessors must be complete; readiness facts, planned verifier, approved deferrals, and open blockers must agree. If `activeContract` exists it must name this contract; otherwise record execution start in current canonical state before editing.
+
+Reject a stale revision, unsatisfied dependency, open blocker, missing verifier, mismatched hash/pointer, or conflicting change. Stop deterministically with the affected artifact/path, observed versus required state, and next action: refresh or revise via `/skill:swe-plan`, complete the named predecessor, resolve the blocker/verifier, or reconcile the conflicting path. Do not guess from chat or silently repair canonical state.
 
 ## Workflow
 
-1. Confirm the assigned slice is concrete; if a required file path is missing, stop and ask for it.
-2. If a file is assigned, read that file first and reflect its context and terminology in the work.
-3. Read only dependencies, background plans, umbrella plans, or target files that the assigned slice names or the implementation directly requires.
-4. Use umbrella plans only as background context, not as expanded implementation scope.
-5. Restate the intended behavior, file scope, acceptance criteria, and verification target.
-6. Build the smallest honest vertical slice through the relevant layers.
-7. Implement only the assigned slice's acceptance criteria / definition of done.
-8. Avoid opportunistic refactors, broad formatting, adjacent features, later phases, or next-slice work.
-9. Update tests/docs only when needed for the slice.
-10. If implementation reveals scope drift, a blocked follow-up, an accepted deviation, a needed phase-contract update, or an important implementation discovery, record it before proceeding or handing off.
-11. Do not silently implement drift beyond the assigned contract; either stop for confirmation or make the drift user-visible with a follow-up slice.
-12. Stop at a verifiable boundary and move to verification.
+1. Restate the exact contract/revision, intended behavior, file scope and non-goals, acceptance criteria, and planned verification.
+2. Read only target files and dependencies the exact contract requires; umbrella plans remain background, not expanded scope.
+3. Build the smallest honest vertical slice through the relevant layers.
+4. Implement only the contract's acceptance criteria; preserve read-before-edit and surgical scope.
+5. Avoid opportunistic refactors, broad formatting, adjacent features, later contracts, or next-slice work.
+6. Update tests/docs only when required by this contract.
+7. Use bounded retries: after one repeated unexplained failure, stop, preserve the evidence, and hand off instead of thrashing.
+8. If implementation reveals scope drift, a material design change, a blocked follow-up, or a needed contract change, stop and return to plan revision; do not edit the approved contract in place.
+9. Stop at a verifiable boundary and hand the exact contract, diff scope, and acceptance criteria to `swe-verify`.
+
+This workflow remains standalone when todo or peer extensions are unavailable.
 
 ## Scope drift notes
 
@@ -32,7 +41,8 @@ Trivial implementation that stays within the assigned contract does not require 
 
 Keep the note short and include at least:
 
-- Original contract: assigned file/todo and the promised behavior.
+- Original contract: exact canonical contract ID, path, revision, and `contentHash`, plus the promised behavior.
+- Todo: optional link only, when available; it is not contract authority.
 - Discovered drift: what changed, expanded, contradicted, or became blocked.
 - Decision taken: stopped, implemented with confirmation, deferred, or narrowed.
 - Follow-up slice: what should go back to `/skill:swe-plan`, a phase file update, or a new todo.

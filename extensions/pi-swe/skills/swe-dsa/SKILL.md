@@ -7,6 +7,12 @@ description: Assess data-structure and algorithm choices during SWE planning, im
 
 Use this for implementation-aware data-structure and algorithm advice inside the SWE workflow.
 
+## Execution boundary
+
+When invoked during execution, first read `.model-artifacts/specs/<topic>/manifest.json`, the active approved plan, `<activePlan.contractRoot>/contracts.json`, and the exact contract/revision plus incorporated DSA finding. Validate `contentHash`, dependency/blocker state, acceptance criteria, and planned verification. Todo or a filename is not approval; stale state or a missing verifier yields a deterministic return to plan. The skill remains standalone.
+
+A material design change to representation, algorithm, persistence, complexity/memory guarantees, migration, or rollback must return to plan for a new revision and approval. Record the evidence and affected paths; never silently edit or expand the active contract. Non-material implementation detail may proceed only within the approved contract.
+
 ## Workflow
 
 1. Define the problem behavior and distinguish semantic requirements from optimization wishes.

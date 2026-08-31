@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "initiativeId": "pi-swe/canonical-planning",
+  "topic": "pi-swe/canonical-planning",
+  "initiativeState": "executing",
+  "activeSpec": {
+    "revision": 2,
+    "path": ".model-artifacts/specs/pi-swe/canonical-planning/2026-08-30_0331-initiative-spec-r2.md",
+    "contentHash": "sha256:b1549ab826889f2851e120490b545a250bb53c169eb27c02c9233981adf32e2a"
+  },
+  "activePlan": {
+    "revision": 1,
+    "path": ".model-artifacts/plans/pi-swe/canonical-planning/2026-08-30_0333-plan-index-r1.md",
+    "contractRoot": ".model-artifacts/plans/pi-swe/canonical-planning/revisions/r1",
+    "contentHash": "sha256:ce48bab185258972b70f7289d54964fd66c4575049eb6bef7f2a6119ea1e770c"
+  },
+  "approval": {
+    "decision": "approved",
+    "planRevision": 1,
+    "planPath": ".model-artifacts/plans/pi-swe/canonical-planning/2026-08-30_0333-plan-index-r1.md",
+    "planContentHash": "sha256:ce48bab185258972b70f7289d54964fd66c4575049eb6bef7f2a6119ea1e770c",
+    "reviewPath": ".model-artifacts/reports/pi-swe/canonical-planning/2026-08-31_2000-plan-review-r1-adoption.md",
+    "approvedAt": "2026-08-31T20:00:00.000Z",
+    "blockingFindings": 0
+  },
+  "specialists": {
+    "diagnosis": { "status": "not-required", "rationale": "Enhancement work has no failing runtime behavior to diagnose." },
+    "dsa": { "status": "complete", "findingPath": ".model-artifacts/findings/pi-swe/canonical-planning/2026-08-31_1957-specialist-incorporation.md" },
+    "tdd": { "status": "complete", "findingPath": ".model-artifacts/findings/pi-swe/canonical-planning/2026-08-31_1957-specialist-incorporation.md" },
+    "security": { "status": "not-required", "rationale": "No authentication or privilege boundary is changed." },
+    "migration": { "status": "complete", "findingPath": ".model-artifacts/findings/pi-swe/canonical-planning/2026-08-31_1957-specialist-incorporation.md" },
+    "performance": { "status": "not-required", "rationale": "The bounded local contract graph uses linear inspection and validation." },
+    "accessibility-ux": { "status": "not-required", "rationale": "The initiative exposes concise text output only." },
+    "operations": { "status": "complete", "findingPath": ".model-artifacts/findings/pi-swe/canonical-planning/2026-08-31_1957-specialist-incorporation.md" },
+    "compatibility": { "status": "complete", "findingPath": ".model-artifacts/findings/pi-swe/canonical-planning/2026-08-31_1957-specialist-incorporation.md" }
+  },
+  "updatedAt": "2026-08-31T20:30:00.000Z"
+}

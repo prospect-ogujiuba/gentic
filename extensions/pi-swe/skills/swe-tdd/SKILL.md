@@ -17,14 +17,21 @@ Compact references:
 
 During `swe-plan`, record TDD applicability and choose observable behaviors, test levels, characterization needs, Red ordering, and risk-scaled verification. Incorporate accepted TDD findings into the relevant phase or subphase contract before plan approval. Plan-time TDD does not claim Red evidence: Red evidence is recorded only after the named test has actually run and failed during implementation.
 
+## Execution gate
+
+During implementation, read `.model-artifacts/specs/<topic>/manifest.json`, the active approved plan, `<activePlan.contractRoot>/contracts.json`, and the exact contract/revision before production changes. Validate approval, `contentHash`, ready/dependency/blocker state, the next observable behavior, acceptance criterion, test level, and planned verification. A todo or filename is not approval. Stale state, a missing verifier, or behavior outside the contract returns to plan with the affected paths. This gate remains standalone.
+
 ## Workflow
 
-1. **Next Observable Behavior** — state the smallest behavior a user, caller, or system boundary can observe.
-2. **Test Level** — choose unit, integration, end-to-end, or characterization. Prefer the lowest level that proves the behavior without mocking away the risk.
-3. **Red** — write or identify one failing test first. For legacy or unclear behavior, add a characterization test before changing production code.
-4. **Green** — make the smallest production change that passes that test. Do not broaden scope to adjacent behaviors.
-5. **Refactor** — only after green, improve names, duplication, seams, or structure while preserving behavior and keeping tests green.
-6. **Verification** — run the focused test, nearby tests for touched code, and broader checks when integration risk justifies them.
+Capture runtime Red, Green, and Refactor evidence for each executed behavior.
+
+1. **Next Observable Behavior** — select the smallest contract behavior a user, caller, or system boundary can observe and name its acceptance criterion.
+2. **Test Level** — use the contract's planned unit, integration, end-to-end, or characterization level unless runtime evidence requires a return to plan.
+3. **Red** — write or identify one failing test first and record runtime Red evidence: test, command, expected contract failure, and observed failure before production changes.
+4. **Green** — make the smallest production change that passes that test and record runtime Green evidence. Do not broaden scope.
+5. **Refactor** — only after green, improve structure while preserving behavior; record runtime Refactor evidence or `none` and rerun the focused test.
+6. **Verification** — map the cycle to its acceptance criterion and planned verification, then run focused and risk-justified nearby checks.
+7. Use bounded retries. If Red fails for the wrong reason or Green remains unexplained after one corrective attempt, preserve evidence and stop rather than thrash.
 
 ## Optional TDD cycle artifact
 
