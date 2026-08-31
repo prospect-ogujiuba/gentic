@@ -9,17 +9,20 @@ function json(path: string): any {
   return JSON.parse(readFileSync(`${root}/${path}`, "utf8"));
 }
 
-test("Gentic bundles pi-permission-system as its permission extension", () => {
+test("Gentic leaves pi-permission-system to a separate npm Pi package", () => {
   const pkg = json("package.json");
-  assert.equal(typeof pkg.dependencies["@gotgenes/pi-permission-system"], "string");
-  assert.ok(pkg.bundledDependencies.includes("@gotgenes/pi-permission-system"));
-  assert.ok(pkg.pi.extensions.includes(extensionPath));
+  const lock = json("package-lock.json");
+  assert.equal(pkg.dependencies["@gotgenes/pi-permission-system"], undefined);
+  assert.equal(pkg.bundledDependencies, undefined);
+  assert.equal(pkg.bundleDependencies, undefined);
+  assert.equal(lock.packages[""].dependencies["@gotgenes/pi-permission-system"], undefined);
+  assert.equal(lock.packages["node_modules/@gotgenes/pi-permission-system"], undefined);
+  assert.equal(pkg.pi.extensions.includes(extensionPath), false);
   assert.equal(pkg.pi.extensions.includes("./extensions/pi-gate/index.ts"), false);
 
   for (const profileName of ["core", "full"]) {
     const profile = json(`profiles/${profileName}.json`);
-    assert.ok(profile.package.extensions.includes(`+${extensionPath.slice(2)}`));
-    assert.ok(profile.package.extensions.includes("+extensions/pi-permission-bridge/index.ts"));
+    assert.equal(profile.package.extensions.includes(`+${extensionPath.slice(2)}`), false);
     assert.equal(profile.package.extensions.includes("+extensions/pi-gate/index.ts"), false);
   }
 });

@@ -6,7 +6,6 @@ import piCatalog from "../extensions/pi-catalog/index.ts";
 import piCommands from "../extensions/pi-commands/index.ts";
 import piContext from "../extensions/pi-context/index.ts";
 import piGit from "../extensions/pi-git/index.ts";
-import piPermissionBridge from "../extensions/pi-permission-bridge/index.ts";
 import piHud from "../extensions/pi-hud/index.ts";
 import piPrimitives from "../extensions/pi-primitives/index.ts";
 import piSwe from "../extensions/pi-swe/index.ts";
@@ -67,7 +66,7 @@ const pi = new Proxy({ capabilities }, {
     return () => undefined;
   },
 });
-const extensions = [gentic, piCatalog, piCommands, piContext, piGit, piPermissionBridge, piHud, piPrimitives, piSwe, piTodo];
+const extensions = [gentic, piCatalog, piCommands, piContext, piGit, piHud, piPrimitives, piSwe, piTodo];
 const startupStarted = performance.now();
 for (const extension of extensions) await extension(pi as never);
 const startupMs = performance.now() - startupStarted;

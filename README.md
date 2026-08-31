@@ -4,14 +4,15 @@
 
 ## Install
 
-Gentic 0.x is distributed as a private Git/local Pi package. Install a pinned Git tag or trusted checkout:
+Install the permission system from npm, then install Gentic 0.x from a pinned Git tag or trusted checkout:
 
 ```bash
+pi install npm:@gotgenes/pi-permission-system
 pi install git:github.com/prospect-ogujiuba/gentic@v0.1.0
-pi install /absolute/path/to/gentic
+# Or: pi install /absolute/path/to/gentic
 ```
 
-For a project-local install, add `-l`. It writes the package reference to `.pi/settings.json` instead of global settings. After local source changes, run `/reload` inside Pi.
+For project-local installs, add `-l` to both commands. It writes the package reference to `.pi/settings.json` instead of global settings. After local source changes, run `/reload` inside Pi.
 
 The `npm:gentic` name is not supported while `package.json#private` is true. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for clean-checkout development.
 
@@ -38,8 +39,7 @@ npm test
 {
   "pi": {
     "extensions": [
-      "./extensions",
-      "./node_modules/@gotgenes/pi-permission-system/src/index.ts"
+      "./extensions"
     ],
     "skills": [
       "./skills",
@@ -58,14 +58,14 @@ npm test
 }
 ```
 
-Gentic bundles `@gotgenes/pi-permission-system` as its permission extension. The migrated baseline policy is tracked at [`config/pi-permission-system.json`](config/pi-permission-system.json). Copy it to the global extension config path before first use:
+`@gotgenes/pi-permission-system` is installed as its own npm Pi package rather than bundled with Gentic. The migrated baseline policy is tracked at [`config/pi-permission-system.json`](config/pi-permission-system.json). Copy it to the global extension config path before first use:
 
 ```bash
 mkdir -p ~/.pi/agent/extensions/pi-permission-system
 cp config/pi-permission-system.json ~/.pi/agent/extensions/pi-permission-system/config.json
 ```
 
-The replacement uses command decomposition and most-restrictive resolution, keeps permission review logging enabled, allows external directories like the previous local setup, denies writes to `.env` and `.git`, and asks for bash commands outside the migrated allowlist. The small `pi-permission-bridge` extension applies the same policy to Pi's separate `user_bash` path and fails closed when the permission service or confirmation UI is unavailable. Use `/permission-system` for runtime settings. Project-scoped overrides remain subject to Pi project trust.
+The replacement uses command decomposition and most-restrictive resolution, keeps permission review logging enabled, allows external directories like the previous local setup, denies writes to `.env` and `.git`, and asks for bash commands outside the migrated allowlist. It protects model-callable tools; commands explicitly entered through Pi's separate `user_bash` path are trusted as direct user actions. Use `/permission-system` for runtime settings. Project-scoped overrides remain subject to Pi project trust.
 
 This keeps authoring simple while allowing complex bundled resources:
 

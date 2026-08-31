@@ -7,7 +7,6 @@ import piCatalog from "../extensions/pi-catalog/index.ts";
 import piCommands from "../extensions/pi-commands/index.ts";
 import piContext from "../extensions/pi-context/index.ts";
 import piGit from "../extensions/pi-git/index.ts";
-import piPermissionBridge from "../extensions/pi-permission-bridge/index.ts";
 import piHud from "../extensions/pi-hud/index.ts";
 import piPrimitives from "../extensions/pi-primitives/index.ts";
 import piSwe from "../extensions/pi-swe/index.ts";
@@ -36,7 +35,7 @@ test("generated source/manifest inventory matches runtime registration smoke out
       return () => undefined;
     },
   });
-  for (const extension of [gentic, piCatalog, piCommands, piContext, piGit, piPermissionBridge, piHud, piPrimitives, piSwe, piTodo]) {
+  for (const extension of [gentic, piCatalog, piCommands, piContext, piGit, piHud, piPrimitives, piSwe, piTodo]) {
     await extension(pi as never);
   }
 

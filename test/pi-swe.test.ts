@@ -11,7 +11,7 @@ const root = new URL("..", import.meta.url).pathname;
 
 test("package discovery sees pi-swe extension", () => {
   const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-  assert.deepEqual(packageJson.pi?.extensions, ["./extensions", "./node_modules/@gotgenes/pi-permission-system/src/index.ts"]);
+  assert.deepEqual(packageJson.pi?.extensions, ["./extensions"]);
   assert.ok(readdirSync(join(root, "extensions"), { withFileTypes: true }).some((entry) => entry.isDirectory() && entry.name === "pi-swe"));
   assert.equal(existsSync(join(root, "extensions/pi-swe/index.ts")), true);
   assert.equal(existsSync(join(root, "extensions/pi-swe/src/pi/commands.ts")), true);
@@ -274,7 +274,7 @@ test("pi-swe rollout resources use one canonical skill surface", () => {
   const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const extensionRoot = join(root, "extensions/pi-swe");
 
-  assert.deepEqual(packageJson.pi?.extensions, ["./extensions", "./node_modules/@gotgenes/pi-permission-system/src/index.ts"]);
+  assert.deepEqual(packageJson.pi?.extensions, ["./extensions"]);
   assert.ok(packageJson.pi?.skills?.includes("./extensions/**/skills"));
   assert.equal(existsSync(join(extensionRoot, "index.ts")), true, "public entrypoint should stay top-level discoverable");
   assert.equal(existsSync(join(extensionRoot, "prompts")), false, "mirrored SWE prompts should stay removed");

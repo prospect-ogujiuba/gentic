@@ -9,8 +9,7 @@
   },
   "manifest": {
     "extensions": [
-      "./extensions",
-      "./node_modules/@gotgenes/pi-permission-system/src/index.ts"
+      "./extensions"
     ],
     "skills": [
       "./skills",
@@ -37,11 +36,9 @@
       "extensions/pi-context/index.ts",
       "extensions/pi-git/index.ts",
       "extensions/pi-hud/index.ts",
-      "extensions/pi-permission-bridge/index.ts",
       "extensions/pi-primitives/index.ts",
       "extensions/pi-swe/index.ts",
-      "extensions/pi-todo/index.ts",
-      "node_modules/@gotgenes/pi-permission-system/src/index.ts"
+      "extensions/pi-todo/index.ts"
     ],
     "skills": [
       "extensions/pi-swe/skills/swe-diagnose/SKILL.md",
@@ -306,27 +303,6 @@
       }
     },
     {
-      "owner": "pi-permission-bridge",
-      "entrypoint": "extensions/pi-permission-bridge/index.ts",
-      "sourceFiles": [
-        "extensions/pi-permission-bridge/index.ts"
-      ],
-      "registrations": {
-        "commands": [],
-        "tools": [],
-        "events": [
-          "session_shutdown",
-          "user_bash"
-        ],
-        "shortcuts": [],
-        "flags": [],
-        "providers": [],
-        "renderers": [],
-        "markdownTransformers": 0,
-        "uiSurfaces": []
-      }
-    },
-    {
       "owner": "pi-primitives",
       "entrypoint": "extensions/pi-primitives/index.ts",
       "sourceFiles": [
@@ -468,31 +444,6 @@
           "setWidget"
         ]
       }
-    },
-    {
-      "owner": "pi-permission-system",
-      "entrypoint": "node_modules/@gotgenes/pi-permission-system/src/index.ts",
-      "sourceFiles": [
-        "node_modules/@gotgenes/pi-permission-system/src/index.ts"
-      ],
-      "registrations": {
-        "commands": [],
-        "tools": [],
-        "events": [
-          "before_agent_start",
-          "input",
-          "resources_discover",
-          "session_shutdown",
-          "session_start",
-          "tool_call"
-        ],
-        "shortcuts": [],
-        "flags": [],
-        "providers": [],
-        "renderers": [],
-        "markdownTransformers": 0,
-        "uiSurfaces": []
-      }
     }
   ],
   "profiles": [
@@ -503,8 +454,6 @@
         "+extensions/gentic/index.ts",
         "+extensions/pi-catalog/index.ts",
         "+extensions/pi-commands/index.ts",
-        "+node_modules/@gotgenes/pi-permission-system/src/index.ts",
-        "+extensions/pi-permission-bridge/index.ts",
         "+extensions/pi-git/index.ts",
         "+extensions/pi-primitives/index.ts"
       ]
@@ -517,8 +466,6 @@
         "+extensions/pi-catalog/index.ts",
         "+extensions/pi-commands/index.ts",
         "+extensions/pi-context/index.ts",
-        "+node_modules/@gotgenes/pi-permission-system/src/index.ts",
-        "+extensions/pi-permission-bridge/index.ts",
         "+extensions/pi-git/index.ts",
         "+extensions/pi-hud/index.ts",
         "+extensions/pi-primitives/index.ts",

@@ -8,7 +8,6 @@ import gentic from "../extensions/gentic/index.ts";
 import piCatalog from "../extensions/pi-catalog/index.ts";
 import piCommands from "../extensions/pi-commands/index.ts";
 import piGit from "../extensions/pi-git/index.ts";
-import piPermissionBridge from "../extensions/pi-permission-bridge/index.ts";
 import piHud from "../extensions/pi-hud/index.ts";
 import piPrimitives from "../extensions/pi-primitives/index.ts";
 import piSwe from "../extensions/pi-swe/index.ts";
@@ -187,7 +186,6 @@ test("demo activates every Gentic-owned extension and exercises shared runtime p
   await harness.activate("pi-catalog", piCatalog as never);
   await harness.activate("pi-commands", piCommands as never);
   await harness.activate("pi-git", piGit as never);
-  await harness.activate("pi-permission-bridge", piPermissionBridge as never);
   await harness.activate("pi-hud", piHud as never);
   await harness.activate("pi-primitives", piPrimitives as never);
   await harness.activate("pi-swe", piSwe as never);
