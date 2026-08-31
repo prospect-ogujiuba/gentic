@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "contracts": [
+    { "kind": "subphase", "id": "01.01", "parentId": "01", "dependsOn": [], "planRevision": 3, "path": ".model-artifacts/plans/pi-swe/canonical-planning/revisions/r3/phases/01-domain-model/01.01-initiative-manifest-schema.md", "status": "complete", "contentHash": "sha256:799da5ffc901f52bb76f0dcd8e01042b0f16490642950c3f29d1837cdb913fe8" },
+    { "kind": "subphase", "id": "01.02", "parentId": "01", "dependsOn": ["01.01"], "planRevision": 3, "path": ".model-artifacts/plans/pi-swe/canonical-planning/revisions/r3/phases/01-domain-model/01.02-contract-dependency-graph.md", "status": "complete", "contentHash": "sha256:8a4a9b6805007bcbccdd1c229d9b0fdf6ada9116717ec3ba129547cea4414f0f" },
+    { "kind": "subphase", "id": "01.03", "parentId": "01", "dependsOn": ["01.02"], "planRevision": 3, "path": ".model-artifacts/plans/pi-swe/canonical-planning/revisions/r3/phases/01-domain-model/01.03-readiness-and-approval-gates.md", "status": "complete", "contentHash": "sha256:57c89cc6932078531436251ea3cd538c85677753364b2f689f902bd7973ecdd6" },
+    { "kind": "subphase", "id": "02.01", "parentId": "02", "dependsOn": ["01.03"], "planRevision": 3, "path": ".model-artifacts/plans/pi-swe/canonical-planning/revisions/r3/phases/02-inspection-state/02.01-canonical-filesystem-inspector.md", "status": "complete", "contentHash": "sha256:6136674c8534667a8aa06d31e06b534011bf2449cefa81986408964be6aad0db" },
+    { "kind": "subphase", "id": "02.02", "parentId": "02", "dependsOn": ["02.01"], "planRevision": 3, "path": ".model-artifacts/plans/pi-swe/canonical-planning/revisions/r3/phases/02-inspection-state/02.02-legacy-adapter-and-resolver.md", "status": "complete", "contentHash": "sha256:f1c9254ff3ed85f9bc147f4fd39df6cc5ad0674085d2e70a7a77dd85fec682f0" },
+    { "kind": "subphase", "id": "02.03", "parentId": "02", "dependsOn": ["02.02"], "planRevision": 3, "path": ".model-artifacts/plans/pi-swe/canonical-planning/revisions/r3/phases/02-inspection-state/02.03-runtime-persistence-and-active-contract.md", "status": "complete", "contentHash": "sha256:6f0c8922c0cc59efb6716158a0e3a61baeeb30d56382b19c340a151e028bbb27" },
+    { "kind": "subphase", "id": "03.01", "parentId": "03", "dependsOn": ["02.03"], "planRevision": 3, "path": ".model-artifacts/plans/pi-swe/canonical-planning/revisions/r3/phases/03-orchestration-commands/03.01-two-level-lifecycle.md", "status": "complete", "contentHash": "sha256:e3fcdd27eecb0a329eeaa34d6bc5272c0c7d54b32d1a931cc3ba277446be07bd" },
+    { "kind": "subphase", "id": "03.02", "parentId": "03", "dependsOn": ["03.01"], "planRevision": 3, "path": ".model-artifacts/plans/pi-swe/canonical-planning/revisions/r3/phases/03-orchestration-commands/03.02-gate-aware-orchestration.md", "status": "complete", "contentHash": "sha256:bb7fcae7e076f0423b030489565c0252d38d75b21d97c4375ba073027f754bf4" },
+    { "kind": "subphase", "id": "03.03", "parentId": "03", "dependsOn": ["03.02"], "planRevision": 3, "path": ".model-artifacts/plans/pi-swe/canonical-planning/revisions/r3/phases/03-orchestration-commands/03.03-command-ux.md", "status": "complete", "contentHash": "sha256:7aa5868f4c8d3cfc3c5fc9ea33b33d1b663b2a44eb3ceeb75a3727dceeb665b2" },
+    { "kind": "subphase", "id": "04.01", "parentId": "04", "dependsOn": ["03.03"], "planRevision": 3, "path": ".model-artifacts/plans/pi-swe/canonical-planning/revisions/r3/phases/04-workflow-rollout/04.01-planning-review-skills.md", "status": "complete", "contentHash": "sha256:1d5952a1dda9e167d0aae6502a9e4da5849686499410f25884ead7ce59ac056f" },
+    { "kind": "subphase", "id": "04.02", "parentId": "04", "dependsOn": ["04.01"], "planRevision": 3, "path": ".model-artifacts/plans/pi-swe/canonical-planning/revisions/r3/phases/04-workflow-rollout/04.02-execution-lifecycle-skills.md", "status": "complete", "contentHash": "sha256:744b38a1e17645cbdf63227b1976e7bf9ccbab604ca19cd52df53439f93980d9" },
+    { "kind": "subphase", "id": "04.03", "parentId": "04", "dependsOn": ["04.02"], "planRevision": 3, "path": ".model-artifacts/plans/pi-swe/canonical-planning/revisions/r3/phases/04-workflow-rollout/04.03-atomic-completion-transition.md", "status": "pending", "contentHash": "sha256:72ff1e618631d12d4ce4cc1b5a680f3034812d27da0e5fb9e9f6f9e7923ad5f8" },
+    { "kind": "subphase", "id": "04.04", "parentId": "04", "dependsOn": ["04.03"], "planRevision": 3, "path": ".model-artifacts/plans/pi-swe/canonical-planning/revisions/r3/phases/04-workflow-rollout/04.04-migration-scenarios-final-verification.md", "status": "pending", "contentHash": "sha256:774b6718466cdd488b43230746b01bc2a33618a81d86edc06bd084e9eb81e5e7" }
+  ],
+  "contractFacts": {
+    "01.01": { "entryInputsAvailable": true, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true },
+    "01.02": { "entryInputsAvailable": true, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true },
+    "01.03": { "entryInputsAvailable": true, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true },
+    "02.01": { "entryInputsAvailable": true, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true },
+    "02.02": { "entryInputsAvailable": true, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true },
+    "02.03": { "entryInputsAvailable": true, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true },
+    "03.01": { "entryInputsAvailable": true, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true },
+    "03.02": { "entryInputsAvailable": true, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true },
+    "03.03": { "entryInputsAvailable": true, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true },
+    "04.01": { "entryInputsAvailable": true, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true },
+    "04.02": { "entryInputsAvailable": true, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true },
+    "04.03": { "entryInputsAvailable": true, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true },
+    "04.04": { "entryInputsAvailable": false, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true }
+  },
+  "consequentialSpecialists": ["dsa", "tdd", "migration", "operations", "compatibility"]
+}

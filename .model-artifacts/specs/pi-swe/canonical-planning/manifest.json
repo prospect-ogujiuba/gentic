@@ -9,30 +9,30 @@
     "contentHash": "sha256:b1549ab826889f2851e120490b545a250bb53c169eb27c02c9233981adf32e2a"
   },
   "activePlan": {
-    "revision": 2,
-    "path": ".model-artifacts/plans/pi-swe/canonical-planning/2026-08-31_2110-plan-index-r2.md",
-    "contractRoot": ".model-artifacts/plans/pi-swe/canonical-planning/revisions/r2",
-    "contentHash": "sha256:53bb9ff9edf345320a274597a0eb25a31f86522ec2b870d655865a7ecb9f0b05"
+    "revision": 3,
+    "path": ".model-artifacts/plans/pi-swe/canonical-planning/2026-08-31_2135-plan-index-r3.md",
+    "contractRoot": ".model-artifacts/plans/pi-swe/canonical-planning/revisions/r3",
+    "contentHash": "sha256:d4a8d0ce8860282a2dcc318def34fe509910120aa34af7edebdd174c1459f554"
   },
   "approval": {
     "decision": "approved",
-    "planRevision": 2,
-    "planPath": ".model-artifacts/plans/pi-swe/canonical-planning/2026-08-31_2110-plan-index-r2.md",
-    "planContentHash": "sha256:53bb9ff9edf345320a274597a0eb25a31f86522ec2b870d655865a7ecb9f0b05",
-    "reviewPath": ".model-artifacts/reports/pi-swe/canonical-planning/2026-08-31_2113-plan-r2-review.md",
-    "approvedAt": "2026-08-31T21:15:00.000Z",
+    "planRevision": 3,
+    "planPath": ".model-artifacts/plans/pi-swe/canonical-planning/2026-08-31_2135-plan-index-r3.md",
+    "planContentHash": "sha256:d4a8d0ce8860282a2dcc318def34fe509910120aa34af7edebdd174c1459f554",
+    "reviewPath": ".model-artifacts/reports/pi-swe/canonical-planning/2026-08-31_2136-plan-r3-review.md",
+    "approvedAt": "2026-08-31T21:37:00.000Z",
     "blockingFindings": 0
   },
   "specialists": {
     "diagnosis": { "status": "not-required", "rationale": "No failing runtime behavior requires diagnosis." },
     "dsa": { "status": "complete", "findingPath": ".model-artifacts/findings/pi-swe/canonical-planning/2026-08-31_2112-completion-transition-specialist-review.md" },
     "tdd": { "status": "complete", "findingPath": ".model-artifacts/findings/pi-swe/canonical-planning/2026-08-31_2112-completion-transition-specialist-review.md" },
-    "security": { "status": "not-required", "rationale": "No authentication or privilege boundary changes; path confinement is a correctness requirement." },
+    "security": { "status": "not-required", "rationale": "No authentication or privilege boundary changes; path confinement and exact identity are correctness requirements." },
     "migration": { "status": "complete", "findingPath": ".model-artifacts/findings/pi-swe/canonical-planning/2026-08-31_2112-completion-transition-specialist-review.md" },
-    "performance": { "status": "not-required", "rationale": "The bounded two-document local transaction has no consequential scale change." },
+    "performance": { "status": "not-required", "rationale": "The bounded transaction journal has no consequential scale change." },
     "accessibility-ux": { "status": "not-required", "rationale": "Text-only status output uses existing command surfaces." },
     "operations": { "status": "complete", "findingPath": ".model-artifacts/findings/pi-swe/canonical-planning/2026-08-31_2112-completion-transition-specialist-review.md" },
     "compatibility": { "status": "complete", "findingPath": ".model-artifacts/findings/pi-swe/canonical-planning/2026-08-31_2112-completion-transition-specialist-review.md" }
   },
-  "updatedAt": "2026-08-31T21:15:00.000Z"
+  "updatedAt": "2026-08-31T21:37:00.000Z"
 }
