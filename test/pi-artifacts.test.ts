@@ -312,6 +312,24 @@ test("/artifacts command audits, plans, applies, and rolls back without an LLM",
   assert.match(notifications.at(-1)!.message, /Usage: \/artifacts/);
 });
 
+test("/artifacts plan reports a clean zero-move inventory as up-to-date", async () => {
+  const root = fixture();
+  const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
+  registerPiArtifacts({ registerCommand(name: string, command: never) { commands.set(name, command); } } as never);
+  const notifications: Array<{ message: string; type: string }> = [];
+  const ctx = { cwd: root, ui: { notify(message: string, type: string) { notifications.push({ message, type }); } } };
+
+  await commands.get("artifacts")!.handler("plan", ctx);
+
+  assert.equal(notifications.at(-1)!.type, "info");
+  assert.match(notifications.at(-1)!.message, /status: up-to-date/);
+  assert.match(notifications.at(-1)!.message, /eligible: not-applicable/);
+  assert.match(notifications.at(-1)!.message, /blockers: 0/);
+  assert.match(notifications.at(-1)!.message, /next: no migration needed/);
+  const reportPath = notifications.at(-1)!.message.match(/report: (\.model-artifacts\/\S+-plan-report\.md)/)![1]!;
+  assert.match(readFileSync(join(root, reportPath), "utf8"), /No migration is needed/);
+});
+
 test("pi-artifacts README documents dry-run adoption, protected authority, and recovery", () => {
   const readme = readFileSync(join(process.cwd(), "extensions/pi-artifacts/README.md"), "utf8");
   for (const required of ["/artifacts audit", "/artifacts plan", "/artifacts apply", "/artifacts rollback", "Protected authority", "Claims are never auto-reaped", ".pi/model-artifacts-migration.json"]) assert.match(readme, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));

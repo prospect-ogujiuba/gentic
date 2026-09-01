@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { auditArtifacts } from "../domain/inventory.ts";
+import { isNoopMigrationPlan } from "../domain/plan.ts";
 import { planMigration } from "../app/service.ts";
 import { applyMigration, rollbackMigration } from "../app/transaction.ts";
 
@@ -32,17 +33,22 @@ export function registerArtifactsCommand(pi: ExtensionAPI): void {
         }
         if (action === "plan") {
           const result = planMigration({ cwd: ctx.cwd });
+          const noWork = isNoopMigrationPlan(result.plan);
           ctx.ui.notify([
             "model-artifact migration plan",
-            `status: ${result.plan.eligible ? "planned" : "blocked"}`,
-            `eligible: ${result.plan.eligible ? "yes" : "no"}`,
+            `status: ${result.plan.eligible ? "planned" : noWork ? "up-to-date" : "blocked"}`,
+            `eligible: ${result.plan.eligible ? "yes" : noWork ? "not-applicable" : "no"}`,
             `moves: ${result.plan.moves.length}`,
-            `blockers: ${result.plan.blockers.length}`,
+            `blockers: ${noWork ? 0 : result.plan.blockers.length}`,
             `plan: ${result.planPath}`,
             `report: ${result.reportPath}`,
             `fingerprint: ${result.plan.fingerprint}`,
-            result.plan.eligible ? `next: /artifacts apply ${result.planPath}` : "next: resolve blockers and run /artifacts plan again",
-          ].join("\n"), result.plan.eligible ? "info" : "warning");
+            result.plan.eligible
+              ? `next: /artifacts apply ${result.planPath}`
+              : noWork
+                ? "next: no migration needed"
+                : "next: resolve blockers and run /artifacts plan again",
+          ].join("\n"), result.plan.eligible || noWork ? "info" : "warning");
           return;
         }
         if (action === "apply") {

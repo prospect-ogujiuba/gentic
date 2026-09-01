@@ -94,6 +94,10 @@ export function createMigrationPlan(inventory: ArtifactInventory, options: Creat
   };
 }
 
+export function isNoopMigrationPlan(plan: MigrationPlan): boolean {
+  return plan.moves.length === 0 && plan.blockers.length === 1 && plan.blockers[0]?.code === "no-moves";
+}
+
 export function fingerprint(value: unknown): string {
   return `sha256:${createHash("sha256").update(stableJson(value)).digest("hex")}`;
 }

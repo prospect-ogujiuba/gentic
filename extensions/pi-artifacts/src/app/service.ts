@@ -2,7 +2,7 @@ import { existsSync, lstatSync, mkdirSync, realpathSync, unlinkSync, writeFileSy
 import { join, resolve } from "node:path";
 
 import { auditArtifacts, loadMigrationConfig } from "../domain/inventory.ts";
-import { createMigrationPlan, fingerprint, type MigrationPlan } from "../domain/plan.ts";
+import { createMigrationPlan, fingerprint, isNoopMigrationPlan, type MigrationPlan } from "../domain/plan.ts";
 import { projectRelative, toPosix } from "../domain/normalize.ts";
 import type { ArtifactInventory } from "../domain/types.ts";
 
@@ -72,7 +72,11 @@ export function renderPlanReport(plan: MigrationPlan, planPath: string): string 
     "",
     "## Next action",
     "",
-    plan.eligible ? `Review the JSON plan, then run \`/artifacts apply ${planPath}\`.` : "Resolve every blocker and generate a new plan. This plan cannot be applied.",
+    plan.eligible
+      ? `Review the JSON plan, then run \`/artifacts apply ${planPath}\`.`
+      : isNoopMigrationPlan(plan)
+        ? "No migration is needed; all discovered artifacts are already canonical or protected."
+        : "Resolve every blocker and generate a new plan. This plan cannot be applied.",
     "",
   ].join("\n");
 }
