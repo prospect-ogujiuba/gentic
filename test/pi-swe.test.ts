@@ -364,6 +364,27 @@ test("planning and plan-review skills define the canonical approval workflow", (
   assert.doesNotMatch(planningResources, /\/swe-auto|swe-auto/i);
 });
 
+test("planning, orchestration, and finalization reconcile the LLM todo ledger", () => {
+  const plan = readFileSync(join(root, "extensions/pi-swe/skills/swe-plan/SKILL.md"), "utf8");
+  const orchestrate = readFileSync(join(root, "extensions/pi-swe/skills/swe-orchestrate/SKILL.md"), "utf8");
+  const finalize = readFileSync(join(root, "extensions/pi-swe/skills/swe-finalize/SKILL.md"), "utf8");
+
+  assert.match(plan, /one bounded planning todo/i);
+  assert.match(plan, /attach[^.]*plan\/review artifacts[^.]*evidence[^.]*finish[^.]*before the final response/i);
+  assert.match(plan, /do not mirror[^.]*planning stages[^.]*future contract tree[^.]*todo/i);
+  assert.match(plan, /reconcile only[^.]*bounded current-work todo[^.]*proven duplicate\/scaffold descendants/i);
+  assert.match(plan, /preserve unrelated legitimate ledger entries unchanged/i);
+  assert.match(orchestrate, /LLM's bounded work ledger[^.]*not[^.]*second copy of the canonical plan/i);
+  assert.match(orchestrate, /among those workflow-owned entries[^.]*at most one nonterminal handoff/i);
+  assert.match(orchestrate, /preserve unrelated legitimate ledger entries unchanged/i);
+  assert.match(orchestrate, /never finish, cancel, supersede, or block them merely to make the docket look clean/i);
+  assert.match(orchestrate, /contracts\.json[^.]*queue for later work/i);
+  assert.match(finalize, /reconcile the LLM work ledger before final chat/i);
+  assert.match(finalize, /descendants proven to be duplicate\/scaffold entries created for the same workflow/i);
+  assert.match(finalize, /preserve unrelated legitimate ledger entries unchanged/i);
+  assert.match(finalize, /never close real deferred or unimplemented work as completed/i);
+});
+
 test("execution lifecycle skills enforce approved contracts and evidence reconciliation", () => {
   const skills = Object.fromEntries(lifecycleResourceStages.map((stage) => [
     stage,
@@ -523,10 +544,29 @@ test("pi-swe end-to-end docs cover scenarios, migration, and omitted legacy surf
     "Resume orchestration path",
     "Finalize gate orchestration path",
     "Reviewed canonical contract completion and recovery",
+    "Plan review and revision",
+    "Stale approval rejection",
+    "Legacy adoption",
+    "Two initiatives and ambiguity",
+    "Blocked handoff",
+    "Approved deferral",
+    "Stable filename status projection",
   ]) {
     assert.match(docs, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
   }
 
+  for (const required of [
+    ".model-artifacts/specs/<topic>/manifest.json",
+    "activePlan",
+    "contracts.json",
+    "activeContract",
+    "manifest-approved active revision",
+    "lowest dependency-satisfied pending contract",
+    "normal contract completion does not create a plan revision",
+    "material plan change",
+  ]) assert.match(readme, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+
+  assert.doesNotMatch(docs, /canonical[^.\n]*\.model-artifacts\/todo\/<topic>\/phases|\.model-artifacts\/todo\/<topic>\/phases[^.\n]*canonical/i);
   assert.match(readme, /\/sop|\/programming-sop|programming_sop/);
   assert.match(readme, /\/tdd-rgr|tdd_rgr/);
   assert.match(readme, /\/dsa-advisor|dsa_advisor/);

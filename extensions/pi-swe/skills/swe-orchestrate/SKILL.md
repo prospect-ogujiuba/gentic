@@ -16,8 +16,9 @@ Use this when a SWE flow needs a next-stage recommendation, resume decision, or 
 5. **Enforce execution gates** — route only one dependency-satisfied exact contract from the active approved plan. Required specialist findings must be incorporated, not merely linked.
 6. **Require mapped evidence and review** — route to `swe-verify` for acceptance-to-evidence mapping, then implementation review before contract disposition or finalization.
 7. **Reconcile before finalization** — use `swe-finalize` only when contract dispositions, approved deferrals, evidence, reviews, blockers, and residual risks can be reconciled.
-8. **Emit a deterministic exception handoff** — stale revision, dependency, blocker, missing verifier, scope drift, or conflicting changes stop work. Report observed/required state, exact paths, and the next skill/human decision; return to plan where the approved contract must change.
-9. **Bound retries** — after one unchanged readiness failure, stop and hand off rather than repeatedly rereading or mutating state.
+8. **Reconcile stage-boundary todo state** — when todo is available, treat it as the LLM's bounded work ledger, not as a second copy of the canonical plan. Use one active todo for the exact current planning outcome or implementation contract. Before final chat or routing onward, attach durable evidence and finish completed work; never leave it `ready`, `claimed`, or `in_progress`. Do not create nested stage scaffolds or pre-populate future contracts. Reconcile only the bounded current-work todo and proven duplicate/scaffold descendants created for this workflow. Among those workflow-owned entries, leave no stale completed-work state and at most one nonterminal handoff: the exact active item, or a truthfully external-blocked item with its reason. Preserve unrelated legitimate ledger entries unchanged; never finish, cancel, supersede, or block them merely to make the docket look clean. Canonical `contracts.json` remains the queue for later work.
+9. **Emit a deterministic exception handoff** — stale revision, dependency, blocker, missing verifier, scope drift, or conflicting changes stop work. Report observed/required state, exact paths, and the next skill/human decision; return to plan where the approved contract must change.
+10. **Bound retries** — after one unchanged readiness failure, stop and hand off rather than repeatedly rereading or mutating state.
 
 This guidance remains standalone without todo or peer extensions.
 
@@ -39,7 +40,7 @@ Optional tools such as todo or git evidence may enrich context when visible to t
 - Next recommended lifecycle step.
 - Required read paths.
 - Intended write path and artifact kind, or `none`.
-- Gate status for verification, review, and finalize.
+- Gate status for verification, review, finalize, and todo reconciliation when available.
 - Exception handoff, if blocked.
 
 Report exact reads and the one intended write destination concisely; never dump artifact contents into chat.

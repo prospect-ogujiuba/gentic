@@ -32,7 +32,8 @@ Classify the request before writing:
 5. **Plan review** — invoke `swe-review` in plan-review mode, set the reviewing state, and write the plan review under `.model-artifacts/reports/<topic>/`. Do not use implementation-review findings as plan approval.
 6. **Revise** — resolve findings in immutable revisions; update content hashes, active pointers, contract index, revision links, traceability, dependencies, applicability, verification, and blockers; then repeat specialist or plan review where affected.
 7. **Approve** — require an explicit `approve`, `request changes`, or `return to spec` decision tied to exact revision paths. For approval, record the exact active plan revision/path/hash, review path, timestamp, and zero blocking findings in the manifest and set the approved state.
-8. **Mark first contract ready** — only after approval, compute and report the first dependency- and gate-satisfied contract from `contracts.json`. Do not set `activeContract` until orchestration starts execution. Record/link approved contracts in todo when available; do not mirror the canonical plan into `.model-artifacts/todo/<topic>/phases/`.
+8. **Mark first contract ready** — only after approval, compute and report the first dependency- and gate-satisfied contract from `contracts.json`. Do not set `activeContract` until orchestration starts execution. Do not mirror the canonical plan, planning stages, or future contract tree into todo or `.model-artifacts/todo/<topic>/phases/`. Create/link only the first ready contract when execution will start now or an explicit todo handoff was requested.
+9. **Reconcile the LLM work ledger** — when todo is available, use one bounded planning todo for the planning outcome rather than nested todos for Specify/Classify/Draft/Review/Revise/Approve. Attach the exact plan/review artifacts as evidence and finish the active planning todo before the final response when approval/readiness is the requested outcome. Do not leave completed planning work `ready`, `claimed`, or `in_progress`; do not pre-create speculative implementation todos. Reconcile only the bounded current-work todo and proven duplicate/scaffold descendants created for this planning flow; preserve unrelated legitimate ledger entries unchanged. If planning cannot finish, leave at most one truthful active handoff among those workflow-owned entries, or mark it externally blocked only when it is waiting on a user, external system, or outside dependency.
 
 ## Required canonical documents
 
@@ -73,4 +74,5 @@ Return only:
 - Phases and subphases are dependency-safe, traceable, verifiable, and developer-executable.
 - Required specialist findings are incorporated before plan approval.
 - Planning stops at an explicit readiness result and does not implement.
+- When todo is available, completed planning work is evidence-backed and finished before final chat; the docket contains no nested planning scaffold or speculative future-contract entries.
 - The workflow remains standalone and introduces no legacy command namespace.

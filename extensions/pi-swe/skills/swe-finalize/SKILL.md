@@ -23,6 +23,7 @@ Reconcile contract dispositions as `complete`, `blocked`, or `approved-deferred`
 6. Provide the next action: todo evidence, commit/PR, docs/release step, blocked handoff, or `/skill:swe-plan` revision.
 7. Update terminal canonical state only after reconciliation succeeds; never claim unverified completion.
 8. For initiative, multi-contract, or residual-risk handoffs, write a durable handoff artifact.
+9. **Reconcile the LLM work ledger before final chat** — when todo is available, attach the exact handoff, verification, and review evidence to the bounded active todo and finish it when its stated outcome is complete. Completed work must not remain `ready`, `claimed`, or `in_progress`. Reconcile only that bounded current-work todo and descendants proven to be duplicate/scaffold entries created for the same workflow. Cancel or supersede those proven obsolete entries only with an explicit reason; never close real deferred or unimplemented work as completed. Preserve unrelated legitimate ledger entries unchanged, and never finish, cancel, supersede, or block them merely to make the docket look clean. Do not populate todo with the remaining canonical contract tree. If current workflow work cannot close, retain at most one exact active handoff or one truthfully external-blocked todo with its reason and next decision among the workflow-owned entries.
 
 Finalization is standalone and uses bounded retries: unresolved reconciliation conflicts stop with evidence rather than looping.
 
@@ -52,3 +53,4 @@ When a todo is active, record the handoff artifact in the todo ledger.
 - Larger handoffs are durable when an artifact is warranted.
 - Verification and review artifacts are referenced when available.
 - Remaining work is explicit rather than hidden.
+- When todo is available, the bounded completed work is evidence-backed and terminal before final chat, with no stale planning scaffold or speculative future-work entries.
