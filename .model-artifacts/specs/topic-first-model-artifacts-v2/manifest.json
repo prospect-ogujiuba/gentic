@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "initiativeId": "topic-first-model-artifacts-v2",
+  "topic": "topic-first-model-artifacts-v2",
+  "initiativeState": "approved",
+  "activeSpec": {
+    "revision": 1,
+    "path": ".model-artifacts/specs/topic-first-model-artifacts-v2/2026-09-01_2008-initiative-spec-r1.md",
+    "contentHash": "sha256:4212889d312f313c46563924eff744eeb6df5bac3f5fa1e0e40ff5847049a759"
+  },
+  "activePlan": {
+    "revision": 3,
+    "path": ".model-artifacts/plans/topic-first-model-artifacts-v2/2026-09-01_2008-plan-index-r3.md",
+    "contentHash": "sha256:6c89bc6b26827cfa11c6483ac5916818939c5a0d0f44c5b5a6c26475cac58d1a",
+    "contractRoot": ".model-artifacts/plans/topic-first-model-artifacts-v2/revisions/r3"
+  },
+  "approval": {
+    "decision": "approve",
+    "planRevision": 3,
+    "planPath": ".model-artifacts/plans/topic-first-model-artifacts-v2/2026-09-01_2008-plan-index-r3.md",
+    "planContentHash": "sha256:6c89bc6b26827cfa11c6483ac5916818939c5a0d0f44c5b5a6c26475cac58d1a",
+    "reviewPath": ".model-artifacts/reports/topic-first-model-artifacts-v2/2026-09-01_2008-plan-review-r3.md",
+    "approvedAt": "2026-09-01T20:08:18Z",
+    "blockingFindings": 0
+  },
+  "specialists": {
+    "diagnosis": {"status":"not-required","rationale":"No reported defect or regression; intentional architecture migration."},
+    "dsa": {"status":"complete","rationale":"Deterministic relocation, reference closure, dependency ordering, bounds, and rollback persistence assessed.","findingPath":".model-artifacts/findings/topic-first-model-artifacts-v2/2026-09-01_2008-dsa-decision.md"},
+    "tdd": {"status":"complete","rationale":"Observable behaviors, characterization, Red ordering, and verification scope assessed.","findingPath":".model-artifacts/findings/topic-first-model-artifacts-v2/2026-09-01_2008-tdd-plan.md"},
+    "security": {"status":"complete","rationale":"Path, schema, symlink, fingerprint, overwrite, and rollback boundaries assessed.","findingPath":".model-artifacts/findings/topic-first-model-artifacts-v2/2026-09-01_2008-cross-cutting-migration-risk.md"},
+    "migration": {"status":"complete","rationale":"Authority unit, rewrite ordering, mixed states, recovery, rollback, and finalize assessed.","findingPath":".model-artifacts/findings/topic-first-model-artifacts-v2/2026-09-01_2008-cross-cutting-migration-risk.md"},
+    "performance": {"status":"complete","rationale":"Scan/staging/rollback bounds and measurement gates assessed.","findingPath":".model-artifacts/findings/topic-first-model-artifacts-v2/2026-09-01_2008-cross-cutting-migration-risk.md"},
+    "accessibility-ux": {"status":"not-required","rationale":"No visual or assistive UI; actionable CLI diagnostics remain required."},
+    "operations": {"status":"complete","rationale":"Claims, recovery, approval fingerprints, evidence, retention, and finalize assessed.","findingPath":".model-artifacts/findings/topic-first-model-artifacts-v2/2026-09-01_2008-cross-cutting-migration-risk.md"},
+    "compatibility": {"status":"complete","rationale":"Schema-v2, v1 read-only window, mixed conflict, consumer inventory, and docs boundary assessed.","findingPath":".model-artifacts/findings/topic-first-model-artifacts-v2/2026-09-01_2008-cross-cutting-migration-risk.md"}
+  },
+  "updatedAt": "2026-09-01T20:08:18Z"
+}
