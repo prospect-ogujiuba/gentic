@@ -31,6 +31,7 @@
   "resources": {
     "extensions": [
       "extensions/gentic/index.ts",
+      "extensions/pi-artifacts/index.ts",
       "extensions/pi-catalog/index.ts",
       "extensions/pi-commands/index.ts",
       "extensions/pi-context/index.ts",
@@ -100,6 +101,35 @@
         "uiSurfaces": [
           "notify",
           "setStatus"
+        ]
+      }
+    },
+    {
+      "owner": "pi-artifacts",
+      "entrypoint": "extensions/pi-artifacts/index.ts",
+      "sourceFiles": [
+        "extensions/pi-artifacts/index.ts",
+        "extensions/pi-artifacts/src/app/service.ts",
+        "extensions/pi-artifacts/src/app/transaction.ts",
+        "extensions/pi-artifacts/src/domain/inventory.ts",
+        "extensions/pi-artifacts/src/domain/normalize.ts",
+        "extensions/pi-artifacts/src/domain/plan.ts",
+        "extensions/pi-artifacts/src/domain/types.ts",
+        "extensions/pi-artifacts/src/pi/commands.ts"
+      ],
+      "registrations": {
+        "commands": [
+          "artifacts"
+        ],
+        "tools": [],
+        "events": [],
+        "shortcuts": [],
+        "flags": [],
+        "providers": [],
+        "renderers": [],
+        "markdownTransformers": 0,
+        "uiSurfaces": [
+          "notify"
         ]
       }
     },

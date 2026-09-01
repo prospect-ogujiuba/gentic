@@ -1,0 +1,341 @@
+import assert from "node:assert/strict";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import test from "node:test";
+
+import { auditArtifacts, loadMigrationConfig } from "../extensions/pi-artifacts/src/domain/inventory.ts";
+import { createMigrationPlan } from "../extensions/pi-artifacts/src/domain/plan.ts";
+import type { ArtifactInventory } from "../extensions/pi-artifacts/src/domain/types.ts";
+import { planMigration } from "../extensions/pi-artifacts/src/app/service.ts";
+import { applyMigration, loadMigrationPlan, rollbackMigration } from "../extensions/pi-artifacts/src/app/transaction.ts";
+import registerPiArtifacts from "../extensions/pi-artifacts/index.ts";
+
+function fixture(): string {
+  return mkdtempSync(join(tmpdir(), "pi-artifacts-"));
+}
+
+function write(root: string, relative: string, content: string): void {
+  const target = join(root, relative);
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, content, "utf8");
+}
+
+test("artifact audit is deterministic and classifies canonical, movable, ambiguous, invalid, and protected files", () => {
+  const root = fixture();
+  write(root, ".model-artifacts/reports/demo/2026-05-01_1200-good.md", "# canonical\n");
+  write(root, ".model-artifacts/reports/2026-05-01_1201-report.md", "# legacy\nTopic: `demo`\n");
+  write(root, ".model-artifacts/loose.md", "# unknown\n");
+  write(root, ".model-artifacts/reports/demo/data.json", "{}\n");
+  write(root, ".model-artifacts/specs/demo/spec.md", "# spec\n");
+  write(root, ".model-artifacts/plans/demo/plan.md", "# plan\n");
+  write(root, ".model-artifacts/specs/demo/manifest.json", JSON.stringify({
+    schemaVersion: 1,
+    initiativeId: "demo",
+    topic: "demo",
+    initiativeState: "approved",
+    activeSpec: { revision: 1, path: ".model-artifacts/specs/demo/spec.md", contentHash: "sha256:x" },
+    activePlan: { revision: 1, path: ".model-artifacts/plans/demo/plan.md", contractRoot: ".model-artifacts/plans/demo/r1", contentHash: "sha256:y" },
+  }));
+
+  const first = auditArtifacts({ cwd: root });
+  const second = auditArtifacts({ cwd: root });
+  assert.deepEqual(second, first);
+  const classes = new Map(first.entries.map((entry) => [entry.source, entry.classification]));
+  assert.equal(classes.get(".model-artifacts/reports/demo/2026-05-01_1200-good.md"), "canonical-valid");
+  assert.equal(classes.get(".model-artifacts/reports/2026-05-01_1201-report.md"), "legacy-movable");
+  assert.equal(classes.get(".model-artifacts/loose.md"), "ambiguous");
+  assert.equal(classes.get(".model-artifacts/reports/demo/data.json"), "invalid");
+  assert.equal(classes.get(".model-artifacts/specs/demo/manifest.json"), "protected");
+  assert.equal(classes.get(".model-artifacts/specs/demo/spec.md"), "protected");
+  assert.equal(classes.get(".model-artifacts/plans/demo/plan.md"), "protected");
+  const movable = first.entries.find((entry) => entry.classification === "legacy-movable");
+  assert.deepEqual(movable?.destination, ".model-artifacts/reports/demo/2026-05-01_1201-report.md");
+});
+
+test("artifact audit protects contracts indexed by historical plan revisions", () => {
+  const root = fixture();
+  const contract = ".model-artifacts/plans/demo/revisions/r1/phases/01-legacy/01.01-contract.md";
+  write(root, contract, "# Historical contract\n");
+  write(root, ".model-artifacts/plans/demo/revisions/r1/contracts.json", JSON.stringify({
+    schemaVersion: 1,
+    contracts: [{ id: "01.01", path: contract }],
+  }));
+
+  const result = auditArtifacts({ cwd: root });
+  const indexed = result.entries.find((entry) => entry.source === contract);
+  assert.equal(indexed?.classification, "protected");
+  assert.deepEqual(indexed?.reasons, ["canonical-authority"]);
+});
+
+test("artifact audit blocks inbound references to legacy files but preserves referenced canonical files", () => {
+  const root = fixture();
+  write(root, ".model-artifacts/reports/2026-05-01_1201-report.md", "# legacy\nTopic: demo\n");
+  write(root, ".model-artifacts/reports/demo/2026-05-01_1200-canonical.md", "# canonical\n");
+  write(root, "README.md", [
+    "See .model-artifacts/reports/2026-05-01_1201-report.md",
+    "See .model-artifacts/reports/demo/2026-05-01_1200-canonical.md",
+    "",
+  ].join("\n"));
+  const outside = join(root, "outside.md");
+  writeFileSync(outside, "outside\n", "utf8");
+  symlinkSync(outside, join(root, ".model-artifacts", "linked.md"));
+
+  const result = auditArtifacts({ cwd: root });
+  const referenced = result.entries.find((entry) => entry.source.endsWith("1201-report.md"));
+  const canonical = result.entries.find((entry) => entry.source.endsWith("1200-canonical.md"));
+  const linked = result.entries.find((entry) => entry.source.endsWith("linked.md"));
+  assert.equal(referenced?.classification, "protected");
+  assert.ok(referenced?.reasons.some((reason) => reason.startsWith("inbound-reference:")));
+  assert.equal(canonical?.classification, "canonical-valid");
+  assert.deepEqual(canonical?.reasons, ["canonical-path"]);
+  assert.equal(linked?.classification, "invalid");
+  assert.ok(linked?.reasons.includes("symlink-not-followed"));
+});
+
+test("migration config is closed and supplies exact deterministic mappings", () => {
+  const root = fixture();
+  write(root, ".model-artifacts/misc/note.md", "# note\n");
+  write(root, ".pi/model-artifacts-migration.json", JSON.stringify({
+    schemaVersion: 1,
+    mappings: {
+      ".model-artifacts/misc/note.md": { kind: "findings", topic: "demo/topic", timestamp: "2026-05-01_1202", shortName: "Legacy Note" },
+    },
+  }));
+  const config = loadMigrationConfig(root);
+  assert.equal(config.mappings[".model-artifacts/misc/note.md"]?.shortName, "legacy-note");
+  const entry = auditArtifacts({ cwd: root }).entries.find((candidate) => candidate.source.endsWith("note.md"));
+  assert.equal(entry?.classification, "legacy-movable");
+  assert.equal(entry?.destination, ".model-artifacts/findings/demo/topic/2026-05-01_1202-legacy-note.md");
+
+  write(root, ".pi/model-artifacts-migration.json", JSON.stringify({ schemaVersion: 1, mappings: {}, extra: true }));
+  assert.throws(() => loadMigrationConfig(root), /unknown config key: extra/);
+  write(root, ".pi/model-artifacts-migration.json", JSON.stringify({ schemaVersion: 1, mappings: { "../escape.md": { kind: "reports", topic: "demo", timestamp: "2026-05-01_1202", shortName: "x" } } }));
+  assert.throws(() => loadMigrationConfig(root), /source must be a project-relative \.model-artifacts path/);
+});
+
+test("artifact audit fails closed at file and byte bounds", () => {
+  const root = fixture();
+  write(root, ".model-artifacts/a.md", "12345");
+  write(root, ".model-artifacts/b.md", "67890");
+  assert.throws(() => auditArtifacts({ cwd: root, maxFiles: 1 }), /file limit exceeded/);
+  assert.throws(() => auditArtifacts({ cwd: root, maxBytes: 9 }), /byte limit exceeded/);
+});
+
+test("migration plans have stable logical fingerprints and sorted eligible moves", () => {
+  const root = fixture();
+  write(root, ".model-artifacts/reports/2026-05-01_1202-b.md", "# b\nTopic: demo\n");
+  write(root, ".model-artifacts/reports/2026-05-01_1201-a.md", "# a\nTopic: demo\n");
+  const inventory = auditArtifacts({ cwd: root });
+  const first = createMigrationPlan(inventory, { generatedAt: "2026-05-01T13:00:00.000Z", configFingerprint: "sha256:config" });
+  const second = createMigrationPlan(inventory, { generatedAt: "2026-05-01T14:00:00.000Z", configFingerprint: "sha256:config" });
+  assert.equal(first.fingerprint, second.fingerprint);
+  assert.equal(first.eligible, true);
+  assert.deepEqual(first.moves.map((move) => move.source), [
+    ".model-artifacts/reports/2026-05-01_1201-a.md",
+    ".model-artifacts/reports/2026-05-01_1202-b.md",
+  ]);
+  assert.equal(first.blockers.length, 0);
+});
+
+test("migration planning persists exclusive versioned JSON and a concise report", () => {
+  const root = fixture();
+  write(root, ".model-artifacts/reports/2026-05-01_1201-a.md", "# a\nTopic: demo\n");
+  const result = planMigration({ cwd: root, generatedAt: "2026-05-01T13:00:00.000Z" });
+  assert.equal(result.plan.eligible, true);
+  assert.ok(result.planPath.startsWith(".model-artifacts/logs/model-artifact-migration/2026-05-01_1300-"));
+  assert.ok(existsSync(join(root, result.planPath)));
+  assert.ok(existsSync(join(root, result.reportPath)));
+  const stored = JSON.parse(readFileSync(join(root, result.planPath), "utf8"));
+  assert.equal(stored.fingerprint, result.plan.fingerprint);
+  assert.match(readFileSync(join(root, result.reportPath), "utf8"), /eligible moves: 1/);
+  assert.throws(() => planMigration({ cwd: root, generatedAt: "2026-05-01T13:00:00.000Z" }), (error: NodeJS.ErrnoException) => error.code === "EEXIST");
+});
+
+test("saved plan loader rejects unknown versions and stale fingerprints", () => {
+  const root = fixture();
+  write(root, ".model-artifacts/logs/model-artifact-migration/future-plan.json", JSON.stringify({ schemaVersion: 2 }));
+  assert.throws(() => loadMigrationPlan(root, ".model-artifacts/logs/model-artifact-migration/future-plan.json"), /unsupported migration plan schemaVersion/);
+  write(root, ".model-artifacts/reports/2026-05-01_1201-a.md", "# a\nTopic: demo\n");
+  const planned = planMigration({ cwd: root, generatedAt: "2026-05-01T13:00:00.000Z" });
+  const stored = JSON.parse(readFileSync(join(root, planned.planPath), "utf8"));
+  stored.fingerprint = "sha256:stale";
+  writeFileSync(join(root, planned.planPath), JSON.stringify(stored), "utf8");
+  assert.throws(() => loadMigrationPlan(root, planned.planPath), /fingerprint mismatch/);
+});
+
+test("migration apply is hash-gated, exclusive, byte-preserving, and idempotent", () => {
+  const root = fixture();
+  const source = ".model-artifacts/reports/2026-05-01_1201-a.md";
+  const bytes = "# a\nTopic: demo\n";
+  write(root, source, bytes);
+  const planned = planMigration({ cwd: root, generatedAt: "2026-05-01T13:00:00.000Z" });
+  const applied = applyMigration({ cwd: root, planPath: planned.planPath, ownerToken: "owner-a" });
+  assert.equal(applied.status, "applied");
+  assert.equal(existsSync(join(root, source)), false);
+  const destination = planned.plan.moves[0]!.destination;
+  assert.equal(readFileSync(join(root, destination), "utf8"), bytes);
+  assert.ok(existsSync(join(root, applied.ledgerPath)));
+  assert.equal(applyMigration({ cwd: root, planPath: planned.planPath, ownerToken: "owner-a" }).status, "already-applied");
+});
+
+test("migration apply refuses stale sources, occupied destinations, and concurrent claims", () => {
+  for (const mode of ["stale", "destination", "claim"] as const) {
+    const root = fixture();
+    const source = ".model-artifacts/reports/2026-05-01_1201-a.md";
+    write(root, source, "# a\nTopic: demo\n");
+    const planned = planMigration({ cwd: root, generatedAt: "2026-05-01T13:00:00.000Z" });
+    if (mode === "stale") writeFileSync(join(root, source), "changed\n", "utf8");
+    if (mode === "destination") write(root, planned.plan.moves[0]!.destination, "occupied\n");
+    if (mode === "claim") write(root, ".model-artifacts/logs/model-artifact-migration/active.claim.json", "{}\n");
+    assert.throws(() => applyMigration({ cwd: root, planPath: planned.planPath, ownerToken: "owner-a" }), new RegExp(mode === "stale" ? "source hash mismatch" : mode === "destination" ? "destination already exists" : "claim already exists"));
+    assert.equal(readFileSync(join(root, source), "utf8").startsWith("# a") || mode === "stale", true);
+    if (mode === "stale") assert.equal(existsSync(dirname(join(root, planned.plan.moves[0]!.destination))), false);
+  }
+});
+
+test("migration apply detects claim-token replacement before moving bytes", () => {
+  const root = fixture();
+  const source = ".model-artifacts/reports/2026-05-01_1201-a.md";
+  write(root, source, "# a\nTopic: demo\n");
+  const planned = planMigration({ cwd: root, generatedAt: "2026-05-01T13:00:00.000Z" });
+  assert.throws(() => applyMigration({
+    cwd: root,
+    planPath: planned.planPath,
+    ownerToken: "owner-a",
+    fault(stage) {
+      if (stage === "journal-prepared") writeFileSync(join(root, ".model-artifacts/logs/model-artifact-migration/active.claim.json"), JSON.stringify({ schemaVersion: 1, ownerToken: "owner-b", operation: "apply", identity: planned.plan.fingerprint }), "utf8");
+    },
+  }), /blocked recovery: migration claim ownership mismatch/);
+  assert.ok(existsSync(join(root, source)));
+  assert.equal(existsSync(join(root, planned.plan.moves[0]!.destination)), false);
+});
+
+test("migration apply faults restore preimages or preserve committed ledger truth", () => {
+  const stages = ["claim-acquired", "journal-prepared", "before-destination", "destination-written", "source-removed", "ledger-written"] as const;
+  for (const targetStage of stages) {
+    const root = fixture();
+    const source = ".model-artifacts/reports/2026-05-01_1201-a.md";
+    const bytes = "# a\nTopic: demo\n";
+    write(root, source, bytes);
+    const planned = planMigration({ cwd: root, generatedAt: "2026-05-01T13:00:00.000Z" });
+    const invoke = () => applyMigration({ cwd: root, planPath: planned.planPath, ownerToken: "owner-a", fault(stage) { if (stage === targetStage) throw new Error(`injected:${stage}`); } });
+    if (targetStage === "ledger-written") {
+      const result = invoke();
+      assert.equal(result.status, "applied");
+      assert.equal(existsSync(join(root, source)), false);
+      assert.equal(readFileSync(join(root, planned.plan.moves[0]!.destination), "utf8"), bytes);
+    } else {
+      assert.throws(invoke, new RegExp(`injected:${targetStage}`));
+      assert.equal(readFileSync(join(root, source), "utf8"), bytes);
+      assert.equal(existsSync(join(root, planned.plan.moves[0]!.destination)), false);
+    }
+    assert.equal(existsSync(join(root, ".model-artifacts/logs/model-artifact-migration/active.claim.json")), false);
+    assert.equal(existsSync(join(root, planned.planPath.replace(/-plan\.json$/, "-apply-journal.json"))), false);
+  }
+});
+
+test("migration rollback is reverse, hash-gated, conflict-safe, and idempotent", () => {
+  const root = fixture();
+  const source = ".model-artifacts/reports/2026-05-01_1201-a.md";
+  write(root, source, "# a\nTopic: demo\n");
+  const planned = planMigration({ cwd: root, generatedAt: "2026-05-01T13:00:00.000Z" });
+  const applied = applyMigration({ cwd: root, planPath: planned.planPath, ownerToken: "owner-a" });
+  const rolled = rollbackMigration({ cwd: root, ledgerPath: applied.ledgerPath, ownerToken: "owner-b" });
+  assert.equal(rolled.status, "rolled-back");
+  assert.ok(existsSync(join(root, source)));
+  assert.equal(existsSync(join(root, planned.plan.moves[0]!.destination)), false);
+  assert.equal(rollbackMigration({ cwd: root, ledgerPath: applied.ledgerPath, ownerToken: "owner-b" }).status, "already-rolled-back");
+
+  const other = fixture();
+  write(other, source, "# a\nTopic: demo\n");
+  const otherPlan = planMigration({ cwd: other, generatedAt: "2026-05-01T13:00:00.000Z" });
+  const otherApplied = applyMigration({ cwd: other, planPath: otherPlan.planPath, ownerToken: "owner-a" });
+  writeFileSync(join(other, otherPlan.plan.moves[0]!.destination), "changed\n", "utf8");
+  assert.throws(() => rollbackMigration({ cwd: other, ledgerPath: otherApplied.ledgerPath, ownerToken: "owner-b" }), /destination hash mismatch/);
+});
+
+test("rollback rejects a ledger whose moves drift from the saved plan", () => {
+  const root = fixture();
+  const source = ".model-artifacts/reports/2026-05-01_1201-a.md";
+  write(root, source, "# a\nTopic: demo\n");
+  const planned = planMigration({ cwd: root, generatedAt: "2026-05-01T13:00:00.000Z" });
+  const applied = applyMigration({ cwd: root, planPath: planned.planPath, ownerToken: "owner-a" });
+  const ledgerAbsolute = join(root, applied.ledgerPath);
+  const ledger = JSON.parse(readFileSync(ledgerAbsolute, "utf8"));
+  ledger.moves[0].destination = ".model-artifacts/reports/demo/2026-05-01_1201-other.md";
+  writeFileSync(ledgerAbsolute, JSON.stringify(ledger), "utf8");
+  assert.throws(() => rollbackMigration({ cwd: root, ledgerPath: applied.ledgerPath, ownerToken: "owner-b" }), /ledger moves do not match/);
+  assert.equal(existsSync(join(root, source)), false);
+  assert.ok(existsSync(join(root, planned.plan.moves[0]!.destination)));
+});
+
+test("partial rollback is reverse-ordered and retains exact blocked-recovery evidence", () => {
+  const root = fixture();
+  const sourceA = ".model-artifacts/reports/2026-05-01_1201-a.md";
+  const sourceB = ".model-artifacts/reports/2026-05-01_1202-b.md";
+  write(root, sourceA, "# a\nTopic: demo\n");
+  write(root, sourceB, "# b\nTopic: demo\n");
+  const planned = planMigration({ cwd: root, generatedAt: "2026-05-01T13:00:00.000Z" });
+  const applied = applyMigration({ cwd: root, planPath: planned.planPath, ownerToken: "owner-a" });
+  assert.throws(() => rollbackMigration({ cwd: root, ledgerPath: applied.ledgerPath, ownerToken: "owner-b", fault(stage) { if (stage === "rollback-source-restored") throw new Error("rollback-injected"); } }), /blocked rollback recovery.*rollback-injected/);
+  assert.equal(existsSync(join(root, sourceA)), false);
+  assert.equal(existsSync(join(root, planned.plan.moves.find((move) => move.source === sourceA)!.destination)), true);
+  assert.equal(existsSync(join(root, sourceB)), true);
+  assert.equal(existsSync(join(root, planned.plan.moves.find((move) => move.source === sourceB)!.destination)), false);
+  assert.ok(existsSync(join(root, ".model-artifacts/logs/model-artifact-migration/active.claim.json")));
+  assert.ok(existsSync(join(root, applied.ledgerPath.replace(/-ledger\.json$/, "-rollback-journal.json"))));
+});
+
+test("/artifacts command audits, plans, applies, and rolls back without an LLM", async () => {
+  const root = fixture();
+  write(root, ".model-artifacts/reports/2026-05-01_1201-a.md", "# a\nTopic: demo\n");
+  const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void>; getArgumentCompletions?: (prefix: string) => Array<{ value: string }> | null }>();
+  registerPiArtifacts({ registerCommand(name: string, command: never) { commands.set(name, command); } } as never);
+  const notifications: Array<{ message: string; type: string }> = [];
+  const ctx = { cwd: root, ui: { notify(message: string, type: string) { notifications.push({ message, type }); } } };
+  const command = commands.get("artifacts")!;
+  assert.deepEqual(command.getArgumentCompletions?.("a")?.map((item) => item.value), ["apply", "audit"]);
+  await command.handler("audit", ctx);
+  assert.match(notifications.at(-1)!.message, /legacy-movable: 1/);
+  await command.handler("plan", ctx);
+  const planPath = notifications.at(-1)!.message.match(/plan: (\.model-artifacts\/\S+-plan\.json)/)![1]!;
+  await command.handler(`apply ${planPath}`, ctx);
+  const ledgerPath = notifications.at(-1)!.message.match(/ledger: (\.model-artifacts\/\S+-ledger\.json)/)![1]!;
+  assert.match(notifications.at(-1)!.message, /status: applied/);
+  await command.handler(`rollback ${ledgerPath}`, ctx);
+  assert.match(notifications.at(-1)!.message, /status: rolled-back/);
+  await command.handler(`apply ${planPath}`, ctx);
+  assert.match(notifications.at(-1)!.message, /status: conflict/);
+  await command.handler("apply", ctx);
+  assert.equal(notifications.at(-1)!.type, "warning");
+  assert.match(notifications.at(-1)!.message, /Usage: \/artifacts/);
+});
+
+test("pi-artifacts README documents dry-run adoption, protected authority, and recovery", () => {
+  const readme = readFileSync(join(process.cwd(), "extensions/pi-artifacts/README.md"), "utf8");
+  for (const required of ["/artifacts audit", "/artifacts plan", "/artifacts apply", "/artifacts rollback", "Protected authority", "Claims are never auto-reaped", ".pi/model-artifacts-migration.json"]) assert.match(readme, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+  assert.match(readFileSync(join(process.cwd(), "catalog/gentic-inventory.json"), "utf8"), /"pi-artifacts"/);
+});
+
+test("migration plans block duplicate destinations and unsafe legacy entries", () => {
+  const root = fixture();
+  const inventory: ArtifactInventory = {
+    schemaVersion: 1,
+    projectRoot: root,
+    configPath: null,
+    fileCount: 3,
+    candidateBytes: 3,
+    diagnostics: [],
+    totals: { "canonical-valid": 0, "legacy-movable": 2, protected: 1, ambiguous: 0, invalid: 0 },
+    entries: [
+      { source: ".model-artifacts/a.md", destination: ".model-artifacts/reports/demo/2026-05-01_1200-x.md", classification: "legacy-movable", reasons: ["explicit-mapping"], bytes: 1, contentHash: "sha256:a" },
+      { source: ".model-artifacts/b.md", destination: ".model-artifacts/reports/demo/2026-05-01_1200-x.md", classification: "legacy-movable", reasons: ["explicit-mapping"], bytes: 1, contentHash: "sha256:b" },
+      { source: ".model-artifacts/c.md", classification: "protected", reasons: ["inbound-reference:README.md"], bytes: 1, contentHash: "sha256:c" },
+    ],
+  };
+  const plan = createMigrationPlan(inventory, { generatedAt: "2026-05-01T13:00:00.000Z", configFingerprint: "sha256:config" });
+  assert.equal(plan.eligible, false);
+  assert.ok(plan.blockers.some((blocker) => blocker.code === "duplicate-destination"));
+  assert.ok(plan.blockers.some((blocker) => blocker.code === "unsafe-entry" && blocker.source.endsWith("c.md")));
+});

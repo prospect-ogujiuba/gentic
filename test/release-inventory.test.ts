@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import gentic from "../extensions/gentic/index.ts";
+import piArtifacts from "../extensions/pi-artifacts/index.ts";
 import piCatalog from "../extensions/pi-catalog/index.ts";
 import piCommands from "../extensions/pi-commands/index.ts";
 import piContext from "../extensions/pi-context/index.ts";
@@ -35,7 +36,7 @@ test("generated source/manifest inventory matches runtime registration smoke out
       return () => undefined;
     },
   });
-  for (const extension of [gentic, piCatalog, piCommands, piContext, piGit, piHud, piPrimitives, piSwe, piTodo]) {
+  for (const extension of [gentic, piArtifacts, piCatalog, piCommands, piContext, piGit, piHud, piPrimitives, piSwe, piTodo]) {
     await extension(pi as never);
   }
 
