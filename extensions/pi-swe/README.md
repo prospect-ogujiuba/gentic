@@ -72,6 +72,20 @@ Use these canonical Pi skill commands for SWE work:
 
 Matching skills live under `extensions/pi-swe/skills/swe-*/SKILL.md`. Compact references live under `extensions/pi-swe/references/`.
 
+## Canonical plans and revisions
+
+For non-trivial work, canonical authority starts at `.model-artifacts/specs/<topic>/manifest.json`. The manifest points to the active specification and `activePlan`; the active plan points to its revision-specific `contractRoot`, where `contracts.json` indexes phase and subphase contracts. Todo may link approved work, but neither a todo nor a filename selects an executable revision.
+
+Before implementation:
+
+1. Follow `manifest.activePlan`, not the highest `rN` filename.
+2. Confirm `manifest.approval` is `approved` and matches the exact active plan revision, path, and `contentHash`.
+3. Read `<activePlan.contractRoot>/contracts.json` and validate its contract paths, hashes, dependencies, blockers, readiness facts, and planned verification.
+4. If `manifest.activeContract` exists and remains valid, execute that exact contract. Otherwise execute the lowest dependency-satisfied pending contract.
+5. Preserve contracts already marked `complete`; a newer approved revision does not restart completed phases.
+
+Normal contract completion does not create a plan revision. Completion updates canonical machine state and evidence while stable contract filenames remain unchanged. A new immutable revision is created during planning or replanning only when findings require a material plan change—for example scope, architecture, contract requirements, dependency order, verification, migration, or rollback changes. Stop execution, revise, review, and approve that new revision before continuing. Draft, reviewing, numerically newest, or unapproved revisions are not executable.
+
 ## Structured lifecycle
 
 Use `pi-swe` as a phase-gated lifecycle. Each stage should leave enough durable evidence for the next stage to continue without relying on chat memory.
@@ -82,15 +96,15 @@ Use `pi-swe` as a phase-gated lifecycle. Each stage should leave enough durable 
 
 2. **Plan before non-trivial changes** — `/skill:swe-plan`
    - Define outcome, constraints, non-goals, phase order, acceptance criteria, and verification targets.
-   - Durable output: editable phase files under `.model-artifacts/todo/<topic>/phases/`; each phase is an implementation contract.
+   - Durable output: `.model-artifacts/specs/<topic>/manifest.json`, immutable spec and plan-index revisions, and revision-specific phase/subphase contracts indexed by `contracts.json` under `.model-artifacts/plans/<topic>/revisions/rN/`.
 
 3. **Use TDD when the next behavior should be proven first** — `/skill:swe-tdd`
    - Add one failing test for the next observable behavior, make the smallest production change, then refactor only after green.
-   - TDD can replace or precede `/skill:swe-implement` for a narrow behavior slice; it does not expand phase scope.
+   - TDD can replace or precede `/skill:swe-implement` for a narrow behavior slice; it does not expand contract scope.
 
-4. **Implement one assigned slice** — `/skill:swe-implement`
-   - Read the assigned phase/todo/plan file first, restate intended behavior and verification target, edit only the required paths, and stop at a verifiable boundary.
-   - Scope drift must be made visible through a note, phase update, or return to planning.
+4. **Implement one approved contract** — `/skill:swe-implement`
+   - Resolve the manifest-approved active revision and its contract index, then read `activeContract` or the lowest dependency-satisfied pending contract before editing.
+   - Restate intended behavior and verification, edit only required paths, and stop at a verifiable boundary. Material scope or design drift returns to planning for a new reviewed and approved revision; never edit the approved contract in place.
 
 5. **Verify before claiming completion** — `/skill:swe-verify`
    - Run focused tests/checks first, then broader checks as risk requires. Record command/manual evidence and known gaps.
@@ -108,12 +122,13 @@ Use `pi-swe` as a phase-gated lifecycle. Each stage should leave enough durable 
    - Summarize what changed, why, key paths, verification evidence, review decision, residual risks, and next action such as commit/PR/release or return-to-plan.
    - Durable output for larger handoffs: `.model-artifacts/reports/<topic>/...`.
 
-Optional `/skill:swe-dsa` fits before planning or implementation whenever representation, access patterns, complexity, memory, ordering, persistence, or migration risk materially affect the slice. Its decision and validation plan should feed the phase file or implementation contract.
+Optional `/skill:swe-dsa` fits before planning or implementation whenever representation, access patterns, complexity, memory, ordering, persistence, or migration risk materially affect the slice. Its decision and validation plan should be incorporated into the relevant plan revision and implementation contract.
 
 Lifecycle gates:
 
 - Do not implement while diagnosing or planning.
-- Do not broaden an implementation beyond the assigned phase file without recording scope drift.
+- Do not execute a revision merely because it has the highest number; require the exact manifest approval.
+- Do not broaden an implementation beyond the approved contract; material drift returns to planning.
 - Do not finalize without verification evidence or an explicit verification gap.
 - Prefer durable artifacts for multi-step work so plan → implement → verify → review → finalize remains traceable.
 
@@ -123,7 +138,7 @@ Plan and implement a scoped change:
 
 ```text
 /skill:swe-plan Add a cache for repeated project metadata reads. Define intended behavior, file scope, acceptance criteria, and verification target.
-/skill:swe-implement Implement the assigned plan file. Read it first, edit only named targets, and stop at a verifiable boundary.
+/skill:swe-implement Implement the manifest-approved active contract. Validate its revision, hash, dependencies, and verification target; edit only named targets and stop at a verifiable boundary.
 /skill:swe-verify Run the planned focused test/check command and report evidence.
 /skill:swe-finalize Summarize behavior, changed files, verification evidence, and follow-up gaps.
 ```
@@ -146,19 +161,9 @@ Assess a DSA choice before implementation:
 
 Manual end-to-end scripts live in [`docs/e2e-scenarios.md`](docs/e2e-scenarios.md):
 
-1. plan → implement → verify → finalize.
-2. diagnose bug → TDD fix → verify → review.
-3. DSA assessment → implementation → validation.
-4. no `pi-todo` installed.
-5. `pi-todo` installed with active task/evidence.
-6. Feature orchestration path.
-7. Bug orchestration path.
-8. DSA orchestration path.
-9. Exception orchestration path.
-10. Resume orchestration path.
-11. Finalize gate orchestration path.
+The guide covers canonical plan approval and revision selection, implementation/verification/review/finalization, diagnosis/TDD, DSA, standalone and optional-todo operation, orchestration, resume, blocked handoff, reviewed completion/recovery, stale approval, legacy adoption, multi-initiative ambiguity, approved deferral, and stable-filename status projection.
 
-These scenarios are executable by a new contributor from a fresh Pi session and are the complete-version smoke checklist for Phase 12 plus the orchestration validation path.
+These scenarios are executable by a new contributor from a fresh Pi session. Their checklist is verification guidance, not authority to mark an initiative complete; canonical completion still requires the manifest, contract index, evidence, review, and finalization gates.
 
 ## Optional peer behavior
 
@@ -199,7 +204,7 @@ Legacy Programming SOP spread guidance across define/design/develop/verify/harde
 - explain/reflect/hand off → `/skill:swe-finalize`
 - bug-first work → `/skill:swe-diagnose`
 
-Use assigned plan/phase/todo files as implementation contracts. Do not call legacy `programming_sop` tools or `/sop` namespaces for core `pi-swe` work.
+Use the exact contract selected through the manifest-approved active revision as the implementation contract. Todo may link that contract but cannot replace its approval, path, or hash. Do not call legacy `programming_sop` tools or `/sop` namespaces for core `pi-swe` work.
 
 ### TDD RGR → `/skill:swe-tdd`
 
@@ -227,4 +232,4 @@ These omissions keep `pi-swe` small, standalone, and focused on SWE workflow dis
 
 ## Complete-version status
 
-Phase 12 complete-version definition of done is documented in [`docs/e2e-scenarios.md`](docs/e2e-scenarios.md#complete-version-checklist). Remaining core-completion gaps: none known. Deferred refactor cleanup, including flat compatibility shim retirement, is tracked in `.model-artifacts/reports/pi-swe-standard-extension-refactor/2026-05-14_2044-phase-06-deferred-cleanup.md`; future work should be treated as enhancement scope.
+The complete-version verification checklist is documented in [`docs/e2e-scenarios.md`](docs/e2e-scenarios.md#complete-version-checklist). Passing that checklist supports verification but does not itself complete a canonical initiative; the active manifest and contracts remain authoritative. Deferred refactor cleanup, including flat compatibility shim retirement, is tracked in `.model-artifacts/reports/pi-swe-standard-extension-refactor/2026-05-14_2044-phase-06-deferred-cleanup.md`; future work should be treated as enhancement scope.

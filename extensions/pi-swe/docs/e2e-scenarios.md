@@ -15,6 +15,8 @@ Expected baseline:
 - `/swe config` reports the effective defaults or project/global config.
 - If no peer extension is installed, `detected peers: none` and `active plan: none` are valid.
 
+For every canonical scenario, authority starts at `.model-artifacts/specs/<topic>/manifest.json`. Follow `manifest.activePlan` only when its exact revision, path, and hash match an `approved` approval record. Then read `<activePlan.contractRoot>/contracts.json` and execute `manifest.activeContract` when valid, otherwise the lowest dependency-satisfied pending contract. Never select a plan merely because it has the highest revision number.
+
 ## Scenario 1: plan → implement → verify → finalize
 
 Goal: exercise the normal Programming SOP replacement path without legacy `/sop` commands.
@@ -22,14 +24,14 @@ Goal: exercise the normal Programming SOP replacement path without legacy `/sop`
 1. Ask Pi:
 
    ```text
-   /skill:swe-plan Add a small user-visible behavior. Define the intended behavior, file scope, acceptance criteria, and verification target. Produce a narrow implementation slice.
+   /skill:swe-plan Add a small user-visible behavior. Define the intended behavior, file scope, acceptance criteria, verification target, canonical manifest, and narrow implementation contracts.
    ```
 
-2. Save the plan as the assigned slice or point `/skill:swe-implement` at the existing assigned file.
+2. Review and explicitly approve the exact plan revision. Confirm `manifest.approval` matches `manifest.activePlan`, then read its `contracts.json` and identify the first ready contract.
 3. Ask Pi:
 
    ```text
-   /skill:swe-implement Implement the assigned slice. Read the slice first, edit only the named target files, and stop at a verifiable boundary.
+   /skill:swe-implement Implement the exact manifest-approved active contract. Validate its revision, path, hash, dependencies, and verification target; edit only named files and stop at a verifiable boundary.
    ```
 
 4. Ask Pi:
@@ -133,7 +135,7 @@ Goal: prove optional peer context enriches, but does not replace, SWE discipline
    /skill:swe-verify Verify the active task and attach or report evidence.
    ```
 
-Expected result: `/swe status` reports `detected peers` including `pi-todo`, an `active plan` sourced from todo, summarized `todo scope`, and `todo evidence count`; `pi-swe` still requires read-before-edit, narrow scope, and verification evidence.
+Expected result: `/swe status` reports `detected peers` including `pi-todo`, summarized todo scope, and todo evidence. A todo may supply fallback context or link the selected contract, but when a canonical manifest exists it cannot replace the manifest-approved active revision, contract identity, or readiness gates.
 
 ## Scenario 6: Feature orchestration path
 
@@ -180,7 +182,7 @@ Goal: prove representation-risk work routes through DSA assessment before implem
 
 Expected result: orchestration routes to `/skill:swe-dsa` and records the DSA decision as a finding or plan input before implementation.
 
-## Scenario 9: Exception orchestration path
+## Scenario 9: Exception orchestration path and blocked handoff
 
 Goal: prove blocked cases produce deterministic human handoff instead of an unstructured partial stop.
 
@@ -233,6 +235,66 @@ Goal: prove completion uses stable machine state, exact evidence identity, and r
 
 Expected result: the contract becomes `complete` in `contracts.json`, its stable filename is unchanged, the completion record survives journal cleanup, status shows phase/next-contract progress, and the exact repeat returns `already-complete` without writes. Stage recovery either restores verified preimages, finishes committed cleanup, or retains the journal as `blocked-recovery`; it never guesses state or reports false success.
 
+## Scenario 13: Plan review and revision
+
+Goal: prove revisions are created for planning changes, not routine phase progress.
+
+1. Approve plan r1 and complete one contract without changing its approved requirements.
+2. Confirm normal contract completion updates machine state and evidence but does not create a plan revision.
+3. During the next contract, discover a material plan change such as an incorrect dependency, acceptance criterion, migration rule, or rollback design.
+4. Stop implementation, run `/skill:swe-plan`, incorporate the finding into immutable r2, and run plan review.
+5. Approve r2 and verify its `contracts.json` preserves completed dispositions from r1.
+
+Expected result: execution resumes from the next ready r2 contract; completed phases do not restart, and r2 is not executable before exact approval.
+
+## Scenario 14: Stale approval rejection
+
+Goal: prove a numerically latest or modified plan cannot execute under stale approval.
+
+1. Create a new plan revision or alter a linked plan artifact without updating the manifest approval and hashes.
+2. Run `/swe orchestrate resume` and attempt `/skill:swe-implement`.
+
+Expected result: execution stops with the mismatched revision/path/hash and returns to planning or review. It never falls back to a filename, todo, or earlier approval.
+
+## Scenario 15: Legacy adoption
+
+Goal: prove legacy planning artifacts require explicit adoption rather than silent mixing.
+
+1. Start with a legacy phase tree or todo-linked plan and no canonical manifest.
+2. Run `/swe orchestrate start` and follow the adoption handoff.
+3. Create the canonical manifest, immutable spec/plan revision, contract root, and `contracts.json`; explicitly map any accepted historical completion state.
+
+Expected result: status reports legacy mode until adoption is explicit. Canonical and legacy modes are never mixed silently, and canonical writes do not target a todo phase tree.
+
+## Scenario 16: Two initiatives and ambiguity
+
+Goal: prove repository discovery does not guess between multiple canonical initiatives.
+
+1. Create two valid manifests without a valid current cursor or explicit topic selection.
+2. Start a fresh session and run `/swe orchestrate resume`.
+
+Expected result: orchestration reports both bounded candidates and requests an exact topic; it performs no implementation or canonical mutation.
+
+## Scenario 17: Approved deferral
+
+Goal: prove deferred work advances only when the exact plan authorizes it.
+
+1. Mark a contract deferred without an approved deferral record and run orchestration.
+2. Add the exact plan-approved deferral rationale and disposition, then review and approve the affected revision.
+3. Run orchestration again.
+
+Expected result: the first attempt blocks; the approved deferral allows dependency-safe progression while remaining visible for final reconciliation.
+
+## Scenario 18: Stable filename status projection
+
+Goal: prove human-readable progress comes from canonical state rather than renaming contract files.
+
+1. Record the selected contract path before implementation.
+2. Complete it through verification, implementation review, and `/swe complete`.
+3. Compare the path and run `/swe status`.
+
+Expected result: the filename is unchanged; `contracts.json`, completion records, and status project `complete`, phase progress, and the next ready contract.
+
 ## Complete-version checklist
 
 - [x] Standalone `/swe status` and `/swe config` commands are documented.
@@ -242,6 +304,7 @@ Expected result: the contract becomes `complete` in `contracts.json`, its stable
 - [x] Feature, bug, DSA, exception, resume, and finalize-gate orchestration scenarios are documented.
 - [x] `/swe orchestrate [status|start|resume|handoff]` is documented as guidance-only orchestration inside the existing `/swe` namespace.
 - [x] Explicit `/swe complete` machine-state disposition, reload idempotency, stable canonical filenames, and staged recovery are documented.
+- [x] Manifest-approved revision selection, next-contract progression, plan review/revision, stale approval rejection, legacy adoption, two-initiative ambiguity, blocked handoff, and approved deferral are documented.
 - [x] Legacy Programming SOP, TDD RGR, and DSA Advisor migration paths are documented in `extensions/pi-swe/README.md`.
 - [x] Omitted legacy namespaces and model-callable advisor tools are documented as intentional omissions.
-- [x] Remaining core-completion gaps: none known from Phase 12 plus orchestration validation; further changes should be tracked as enhancements.
+- [x] The checklist is verification guidance; canonical completion still requires exact manifest, contract, evidence, review, and finalization state.
