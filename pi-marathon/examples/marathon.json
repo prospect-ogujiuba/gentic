@@ -1,0 +1,26 @@
+{
+  "scheduler": {
+    "maxConcurrency": 2,
+    "maxResearchConcurrency": 2
+  },
+  "budget": {
+    "maxTasks": 60,
+    "maxAgentCalls": 120,
+    "maxRunMinutes": 720,
+    "maxCostUsd": null,
+    "maxFinalAuditCycles": 3
+  },
+  "verification": {
+    "commands": [],
+    "requireAgentVerdict": true
+  },
+  "workspace": {
+    "mode": "auto",
+    "requireCleanGit": true,
+    "keepOnComplete": true
+  },
+  "git": {
+    "commitPassedTasks": true,
+    "branchPrefix": "marathon/"
+  }
+}

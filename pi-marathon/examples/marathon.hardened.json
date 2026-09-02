@@ -1,0 +1,57 @@
+{
+  "scheduler": {
+    "pollIntervalMs": 1000,
+    "maxConcurrency": 1,
+    "maxResearchConcurrency": 1,
+    "leaseSeconds": 180
+  },
+  "budget": {
+    "maxTasks": 40,
+    "maxAgentCalls": 80,
+    "maxRunMinutes": 480,
+    "maxCostUsd": 20,
+    "maxFinalAuditCycles": 3
+  },
+  "task": {
+    "maxAttempts": 3,
+    "timeoutMinutes": 30,
+    "criticAfterFailures": 2
+  },
+  "planner": {
+    "maxTasks": 24
+  },
+  "verification": {
+    "commands": [],
+    "commandTimeoutMs": 600000,
+    "requireAgentVerdict": true
+  },
+  "workspace": {
+    "mode": "auto",
+    "requireCleanGit": true,
+    "keepOnComplete": true
+  },
+  "git": {
+    "commitPassedTasks": true,
+    "branchPrefix": "marathon/"
+  },
+  "models": {
+    "planner": { "thinking": "high" },
+    "worker": { "thinking": "high" },
+    "verifier": { "thinking": "xhigh" },
+    "critic": { "thinking": "high" },
+    "auditor": { "thinking": "xhigh" }
+  },
+  "safety": {
+    "allowNetwork": false,
+    "allowedExternalPaths": [],
+    "blockedCommandPatterns": [
+      "rm\\s+-rf\\s+/(?:\\s|$)",
+      "(?:^|\\s)sudo(?:\\s|$)",
+      "(?:^|\\s)(?:shutdown|reboot|halt|poweroff)(?:\\s|$)",
+      "(?:^|\\s)(?:mkfs|fdisk|diskpart)(?:\\s|$)",
+      "git\\s+push\\s+.*--force",
+      "curl\\s+[^|]+\\|\\s*(?:sh|bash)",
+      "wget\\s+[^|]+\\|\\s*(?:sh|bash)"
+    ]
+  }
+}
