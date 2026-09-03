@@ -6,9 +6,10 @@ Deterministic agent defaults:
 
 - Use `todo({ "action": "begin" })` when no todo is active. It returns active work or starts the next ready todo.
 - Use `todo({ "action": "finish", "summary": "..." })` to close active work. Existing attached evidence counts toward completion.
-- Use `create_artifact` or `note_artifact` for generated durable notes/reports/plans so pi-todo creates the `.model-artifacts/<kind>/<topic>/...` path and attaches evidence automatically.
-- Use `record_artifact` only for existing files.
-- Artifact creation resolves beneath `ctx.cwd`, rejects symlink escapes and collisions, and rolls the file back if evidence publication fails.
+- Use `create_artifact` or `note_artifact` for generated durable notes/reports/plans so pi-todo creates the `.model-artifacts/initiatives/<topic>/<kind>/...` path and attaches evidence automatically.
+- Use `record_artifact` only for existing files. Historical kind-first evidence remains readable in existing ledgers but cannot authorize a new write.
+- Artifact creation resolves beneath `ctx.cwd`, rejects unsafe paths, symlinks, collisions, v1-only write targets, and mixed v1/v2 topic authority, and rolls the file back if evidence publication fails.
+- Initiative kinds are exactly `specs`, `plans`, `todo`, `findings`, `reports`, and `logs`. pi-todo does not infer or create `.model-artifacts/system/` artifacts.
 
 ## Lifecycle contract
 

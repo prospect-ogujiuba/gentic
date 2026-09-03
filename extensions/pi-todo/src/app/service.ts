@@ -1,4 +1,4 @@
-import { mkdir, readFile, realpath, unlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, realpath, unlink, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve, sep } from "node:path";
 import { canTransitionStatus, normalizeStatus, isSuccessStatus, isTerminalStatus, transitionAllowedStatuses } from "../domain/lifecycle.ts";
 import { ineligibleReasons, missingCapabilities, openDependencyIds, type EligibilityOptions } from "../domain/policy.ts";
@@ -16,7 +16,7 @@ type LifecycleEventPayload =
   | Omit<Extract<TodoEvent, { type: "todo.abandoned" }>, "id" | "at" | "todoId">;
 export const defaultTodoPolicy: TodoPolicy = { requireEvidenceForDone: true, maxInProgress: 1, splitting: defaultSplitPolicy };
 export const MODEL_ARTIFACTS_DIR = ".model-artifacts/";
-export const MODEL_TODO_ARTIFACTS_DIR = ".model-artifacts/todo/";
+export const MODEL_INITIATIVES_DIR = `${MODEL_ARTIFACTS_DIR}initiatives/`;
 export const SPLIT_SCAFFOLD_TAG = "pi-todo:split-scaffold";
 const ARTIFACT_FOLDERS = new Set(["reports", "logs", "specs", "plans", "findings", "todo"]);
 
@@ -49,9 +49,8 @@ function kebabCase(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64) || "artifact";
 }
 
-function artifactTopic(todo: Todo, input: Pick<CreateArtifactInput, "category" | "subcategory" | "shortName">): string[] {
+function artifactTopic(todo: Todo, input: Pick<CreateArtifactInput, "category" | "subcategory" | "shortName">): { topic: string; subtopic?: string } {
   const candidates = [
-    input.category,
     todo.scope.component,
     todo.scope.service,
     todo.scope.domain,
@@ -59,19 +58,21 @@ function artifactTopic(todo: Todo, input: Pick<CreateArtifactInput, "category" |
     todo.title,
     input.shortName,
   ].filter(Boolean) as string[];
-  const primary = candidates.map((value) => value.match(/\b(?:pi|gentic)-[a-z0-9][a-z0-9-]*\b/i)?.[0] ?? "").find(Boolean)
+  const primary = input.category
+    ?? candidates.map((value) => value.match(/\b(?:pi|gentic)-[a-z0-9][a-z0-9-]*\b/i)?.[0] ?? "").find(Boolean)
     ?? candidates.map((value) => value.match(/\bgentic\b/i)?.[0] ?? "").find(Boolean)
     ?? candidates[0]
     ?? "general";
   const topic = kebabCase(primary);
   const subtopic = input.subcategory ? kebabCase(input.subcategory) : undefined;
-  return subtopic && subtopic !== topic ? [topic, subtopic] : [topic];
+  return { topic, subtopic: subtopic && subtopic !== topic ? subtopic : undefined };
 }
 
 function artifactPath(kind: ArtifactKind, shortName: string, at: string, todo: Todo, input: Pick<CreateArtifactInput, "category" | "subcategory" | "shortName">): string {
   const stamp = at.slice(0, 16).replace("T", "_").replace(/:/g, "");
-  const topic = artifactTopic(todo, input).join("/");
-  return `${MODEL_ARTIFACTS_DIR}${kind}/${topic}/${stamp}-${kebabCase(shortName)}.md`;
+  const { topic, subtopic } = artifactTopic(todo, input);
+  const folder = `${MODEL_INITIATIVES_DIR}${topic}/${kind}${subtopic ? `/${subtopic}` : ""}`;
+  return `${folder}/${stamp}-${kebabCase(shortName)}.md`;
 }
 
 function artifactBody(title: string, purpose: string, created: string, content: string): string {
@@ -328,6 +329,8 @@ export class TodoService {
     if (!ARTIFACT_FOLDERS.has(input.kind)) throw new Error("invalid artifact kind");
     if (!input.purpose.trim()) throw new Error("artifact purpose is required");
     const at = now();
+    const topic = artifactTopic(existing, input).topic;
+    await this.assertWritableTopic(topic);
     const path = artifactPath(input.kind, input.shortName, at, existing, input);
     const absolute = await this.safeArtifactPath(path, true);
     await writeFile(absolute, artifactBody(input.shortName, input.purpose, at, input.content), { encoding: "utf8", flag: "wx", mode: 0o600 });
@@ -483,18 +486,49 @@ export class TodoService {
   }
 
   private async requireExisting(todoId: string): Promise<void> { this.requireTodo(await this.state(), todoId); }
+  private async pathExists(path: string): Promise<boolean> {
+    try {
+      await lstat(resolve(this.cwd, path));
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw error;
+    }
+  }
+  private async assertWritableTopic(topic: string): Promise<void> {
+    const legacy = (await Promise.all([...ARTIFACT_FOLDERS].map((kind) => this.pathExists(`${MODEL_ARTIFACTS_DIR}${kind}/${topic}`)))).some(Boolean);
+    const modern = await this.pathExists(`${MODEL_INITIATIVES_DIR}${topic}`);
+    if (legacy && modern) {
+      throw workflowError("ARTIFACT_LAYOUT_CONFLICT", `model-artifact topic ${topic} exists in both v1 and v2 layouts; resolve the blocking conflict before writing`, undefined, { topic });
+    }
+    if (legacy) {
+      throw workflowError("ARTIFACT_MIGRATION_REQUIRED", `model-artifact topic ${topic} is v1 read-only; explicit migration to layout v2 is required before writing`, undefined, { topic });
+    }
+  }
   private async validateGeneratedArtifact(todoId: string, path: string, createdByTodoId: string): Promise<void> {
     const repair = { action: "create_artifact", params: { todoId, kind: "todo", shortName: "artifact", purpose: "generated artifact", content: "" } };
     if (createdByTodoId !== todoId) throw workflowError("ARTIFACT_TODO_MISMATCH", "generated artifact createdByTodoId must match todoId", repair);
-    if (path.startsWith("/") || path.includes("..") || !path.startsWith(MODEL_ARTIFACTS_DIR)) throw workflowError("ARTIFACT_PATH_INVALID", "generated artifacts must be under .model-artifacts/", repair);
+    if (path.startsWith("/") || path.includes("..") || path.includes("\\") || /[\u0000-\u001f\u007f]/.test(path) || !path.startsWith(MODEL_ARTIFACTS_DIR)) {
+      throw workflowError("ARTIFACT_PATH_INVALID", "generated artifacts must use a safe project-relative POSIX path under .model-artifacts/", repair);
+    }
     const parts = path.split("/");
-    const folder = parts[1];
-    const name = parts.pop()?.toLowerCase() ?? "";
-    if (!ARTIFACT_FOLDERS.has(folder)) throw workflowError("ARTIFACT_PATH_INVALID", "generated artifacts must use an approved .model-artifacts subfolder", repair);
-    if (parts.length < 3) throw workflowError("ARTIFACT_PATH_INVALID", "generated artifact paths must include a topic directory", repair);
-    if (folder === "todo" && parts.length < 3) throw workflowError("ARTIFACT_PATH_INVALID", `todo artifacts must be under ${MODEL_TODO_ARTIFACTS_DIR}<topic>/`, repair);
-    if (name.includes("todo") && !path.startsWith(MODEL_TODO_ARTIFACTS_DIR)) throw workflowError("ARTIFACT_PATH_INVALID", `todo files must be under ${MODEL_TODO_ARTIFACTS_DIR}`, repair);
+    const legacyKind = parts[1];
+    if (ARTIFACT_FOLDERS.has(legacyKind)) {
+      throw workflowError("ARTIFACT_MIGRATION_REQUIRED", "layout-v1 generated artifact evidence is historical read-only; migration required before a new layout-v2 write", undefined, { path });
+    }
+    if (parts[0] !== ".model-artifacts" || parts[1] !== "initiatives" || parts.length < 5) {
+      throw workflowError("ARTIFACT_PATH_INVALID", "generated artifacts must be under .model-artifacts/initiatives/<topic>/<kind>/", repair);
+    }
+    const topic = parts[2];
+    const kind = parts[3];
+    const name = parts.at(-1) ?? "";
+    const kebabSegment = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+    if (!kebabSegment.test(topic)) throw workflowError("ARTIFACT_PATH_INVALID", "generated artifact topic must be kebab-case", repair);
+    if (!ARTIFACT_FOLDERS.has(kind)) throw workflowError("ARTIFACT_PATH_INVALID", "generated artifacts must use an approved initiative kind", repair);
+    if (parts.slice(4, -1).some((segment) => !kebabSegment.test(segment))) throw workflowError("ARTIFACT_PATH_INVALID", "generated artifact subdirectories must be kebab-case", repair);
+    if (name.includes("todo") && kind !== "todo") throw workflowError("ARTIFACT_PATH_INVALID", "todo files must use the initiative todo kind", repair);
     if (!/^\d{4}-\d{2}-\d{2}_\d{4}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.test(name)) throw workflowError("ARTIFACT_PATH_INVALID", "generated artifact filenames must be YYYY-MM-DD_HHMM-short-kebab-name.md", repair);
+    await this.assertWritableTopic(topic);
     try {
       const absolute = await this.safeArtifactPath(path, false);
       const text = await readFile(absolute, "utf8");
@@ -509,11 +543,29 @@ export class TodoService {
     const rel = relative(root, absolute);
     if (rel === ".." || rel.startsWith(`..${sep}`) || rel.startsWith(sep)) throw workflowError("ARTIFACT_PATH_INVALID", "artifact path escapes ctx.cwd");
     const parent = dirname(absolute);
+    let cursor = root;
+    for (const segment of relative(root, parent).split(sep).filter(Boolean)) {
+      cursor = resolve(cursor, segment);
+      try {
+        const info = await lstat(cursor);
+        if (info.isSymbolicLink()) throw workflowError("ARTIFACT_PATH_INVALID", "artifact path contains a symlink");
+        if (!info.isDirectory()) throw workflowError("ARTIFACT_PATH_INVALID", "artifact parent component is not a directory");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") break;
+        throw error;
+      }
+    }
     if (createParent) await mkdir(parent, { recursive: true });
     const realParent = await realpath(parent);
     const parentRel = relative(root, realParent);
     if (parentRel === ".." || parentRel.startsWith(`..${sep}`) || parentRel.startsWith(sep)) throw workflowError("ARTIFACT_PATH_INVALID", "artifact parent resolves outside ctx.cwd");
-    return resolve(realParent, absolute.slice(parent.length + 1));
+    const target = resolve(realParent, absolute.slice(parent.length + 1));
+    try {
+      if ((await lstat(target)).isSymbolicLink()) throw workflowError("ARTIFACT_PATH_INVALID", "artifact path is a symlink");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    return target;
   }
   private findActiveTodo(state: TodoState, owner?: string | null, exceptTodoId?: string): Todo | undefined {
     return Object.values(state.todos).find((todo) => todo.id !== exceptTodoId && (todo.status === "in_progress" || todo.status === "claimed") && (owner ? todo.owner === owner : true));

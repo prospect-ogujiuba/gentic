@@ -86,26 +86,25 @@ test("ambiguous title fallback is rejected", async () => {
   await assert.rejects(() => service.resolveId("duplicate"), /ambiguous/);
 });
 
-test("generated artifacts must live under model artifacts and trace to their todo", async () => {
+test("generated artifacts must use safe layout-v2 paths and trace to their todo", async () => {
   const service = new TodoService(new MemoryStore());
   const todo = await service.create({ title: "write report" });
   await assert.rejects(
     () => service.attachEvidence(todo.id, [{ type: "generated_artifact", path: "report.md", summary: "report", createdByTodoId: todo.id }]),
-    /under \.model-artifacts\//,
+    /project-relative POSIX path under \.model-artifacts\//,
   );
   await assert.rejects(
-    () => service.attachEvidence(todo.id, [{ type: "generated_artifact", path: ".model-artifacts/reports/2026-05-11_1200-report.md", summary: "report", createdByTodoId: "other" }]),
+    () => service.attachEvidence(todo.id, [{ type: "generated_artifact", path: ".model-artifacts/initiatives/gentic/reports/2026-05-11_1200-report.md", summary: "report", createdByTodoId: "other" }]),
     /createdByTodoId must match/,
   );
-  await assert.rejects(
-    () => service.attachEvidence(todo.id, [{ type: "generated_artifact", path: ".model-artifacts/reports/report.md", summary: "report", createdByTodoId: todo.id }]),
-    /topic directory|filename must be/,
-  );
-  await assert.rejects(
-    () => service.attachEvidence(todo.id, [{ type: "generated_artifact", path: ".model-artifacts/reports/2026-05-11_1200-report.md", summary: "report", createdByTodoId: todo.id }]),
-    /topic directory/,
-  );
-  const updated = await service.attachEvidence(todo.id, [{ type: "generated_artifact", path: ".model-artifacts/reports/gentic/2026-05-11_1200-report.md", summary: "report", createdByTodoId: todo.id }]);
+  for (const invalid of layoutV2.invalid) {
+    await assert.rejects(
+      () => service.attachEvidence(todo.id, [{ type: "generated_artifact", path: invalid.path, summary: invalid.reason, createdByTodoId: todo.id }]),
+      TodoWorkflowError,
+      invalid.reason,
+    );
+  }
+  const updated = await service.attachEvidence(todo.id, [{ type: "generated_artifact", path: ".model-artifacts/initiatives/gentic/reports/2026-05-11_1200-report.md", summary: "report", createdByTodoId: todo.id }]);
   assert.equal(updated.evidence[0].type, "generated_artifact");
   assert.equal(updated.evidence[0].createdByTodoId, todo.id);
 });
@@ -129,7 +128,12 @@ test("legacy created records load with defaults and preserved history", async ()
       title: "legacy blocked",
       status: "blocked",
       blockedReason: "waiting on design",
-      evidence: [{ type: "manual_note", note: "old verification" }],
+      evidence: [{
+        type: "generated_artifact",
+        path: ".model-artifacts/reports/demo/2026-01-01_0000-old-report.md",
+        summary: "historical v1 evidence",
+        createdByTodoId: "legacy-1",
+      }],
     } as TodoEvent extends { todo: infer T } ? T : never,
   });
   const service = new TodoService(store);
@@ -137,7 +141,8 @@ test("legacy created records load with defaults and preserved history", async ()
   assert.equal(todo.status, "external_blocked");
   assert.equal(todo.scope.paths.length, 0);
   assert.deepEqual(todo.blockers, ["waiting on design"]);
-  assert.equal(todo.evidence.length, 1);
+  assert.equal(todo.evidence[0].type, "generated_artifact");
+  assert.equal(todo.evidence[0].path, ".model-artifacts/reports/demo/2026-01-01_0000-old-report.md");
 });
 
 test("legacy ceremonial blockers can be cancelled or superseded without losing reason", async () => {
@@ -230,7 +235,7 @@ test("createArtifact writes a headed markdown artifact and records evidence", as
     const service = new TodoService(new MemoryStore());
     const todo = await service.create({ title: "write pi-swe plan", tags: ["pi-swe"] });
     const result = await service.createArtifact(todo.id, { kind: "plans", shortName: "My Plan!", purpose: "capture plan", content: "- do it" });
-    assert.match(result.path, /^\.model-artifacts\/plans\/pi-swe\/\d{4}-\d{2}-\d{2}_\d{4}-my-plan\.md$/);
+    assert.match(result.path, /^\.model-artifacts\/initiatives\/pi-swe\/plans\/\d{4}-\d{2}-\d{2}_\d{4}-my-plan\.md$/);
     const text = await readFile(result.path, "utf8");
     assert.match(text, /^# My Plan!\n\nCreated: .+\nPurpose: capture plan\n\n- do it\n$/);
     assert.equal(result.todo.evidence[0].type, "generated_artifact");
@@ -238,7 +243,10 @@ test("createArtifact writes a headed markdown artifact and records evidence", as
     assert.equal(result.todo.evidence[0].path, result.path);
 
     const phase = await service.createArtifact(todo.id, { kind: "todo", category: "pi-swe", subcategory: "pi-swe-phases", shortName: "Reconnaissance Contract", purpose: "phase plan", content: "- inspect" });
-    assert.match(phase.path, /^\.model-artifacts\/todo\/pi-swe\/pi-swe-phases\/\d{4}-\d{2}-\d{2}_\d{4}-reconnaissance-contract\.md$/);
+    assert.match(phase.path, /^\.model-artifacts\/initiatives\/pi-swe\/todo\/pi-swe-phases\/\d{4}-\d{2}-\d{2}_\d{4}-reconnaissance-contract\.md$/);
+
+    const categorized = await service.createArtifact(todo.id, { kind: "reports", category: "release-notes", shortName: "Summary", purpose: "explicit topic", content: "pass" });
+    assert.match(categorized.path, /^\.model-artifacts\/initiatives\/release-notes\/reports\/\d{4}-\d{2}-\d{2}_\d{4}-summary\.md$/);
   } finally {
     process.chdir(previous);
     await rm(dir, { recursive: true, force: true });
@@ -249,9 +257,11 @@ test("pi-todo emits layout-v2 initiative artifact paths", async () => {
   const root = await mkdtemp(join(tmpdir(), "pi-todo-layout-v2-"));
   try {
     const service = new TodoService(new MemoryStore(), undefined, root);
-    const todo = await service.create({ title: "write demo report", tags: ["demo"] });
-    const result = await service.createArtifact(todo.id, { kind: "reports", category: "demo", shortName: "Verification", purpose: "verify", content: "pass" });
-    assert.match(result.path, /^\.model-artifacts\/initiatives\/demo\/reports\/\d{4}-\d{2}-\d{2}_\d{4}-verification\.md$/);
+    const todo = await service.create({ title: "write demo artifacts", tags: ["demo"] });
+    for (const kind of layoutV2.initiativeKinds) {
+      const result = await service.createArtifact(todo.id, { kind, category: "demo", shortName: `${kind} Evidence`, purpose: "verify", content: "pass" });
+      assert.match(result.path, new RegExp(`^\\.model-artifacts/initiatives/demo/${kind}/\\d{4}-\\d{2}-\\d{2}_\\d{4}-${kind}-evidence\\.md$`));
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -267,6 +277,21 @@ test("pi-todo treats layout-v1 evidence as migration-required rather than writab
   );
 });
 
+test("pi-todo blocks writes for v1-only and mixed topic authority", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-todo-layout-state-"));
+  try {
+    const service = new TodoService(new MemoryStore(), undefined, root);
+    const todo = await service.create({ title: "write demo report", tags: ["demo"] });
+    const input = { kind: "reports" as const, category: "demo", shortName: "result", purpose: "verify", content: "pass" };
+    await mkdir(join(root, ".model-artifacts/reports/demo"), { recursive: true });
+    await assert.rejects(() => service.createArtifact(todo.id, input), /v1 read-only.*migration.*required/i);
+    await mkdir(join(root, ".model-artifacts/initiatives/demo/reports"), { recursive: true });
+    await assert.rejects(() => service.createArtifact(todo.id, input), /both v1 and v2.*blocking conflict/i);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("createArtifact rejects collisions and symlink escapes", async () => {
   const root = await mkdtemp(join(tmpdir(), "pi-todo-safe-artifact-"));
   const outside = await mkdtemp(join(tmpdir(), "pi-todo-outside-"));
@@ -277,11 +302,11 @@ test("createArtifact rejects collisions and symlink escapes", async () => {
     await service.createArtifact(todo.id, input);
     await assert.rejects(() => service.createArtifact(todo.id, input), (error: NodeJS.ErrnoException) => error.code === "EEXIST");
 
-    await mkdir(join(root, ".model-artifacts/findings"), { recursive: true });
-    await symlink(outside, join(root, ".model-artifacts/findings/escape"));
+    await mkdir(join(root, ".model-artifacts/initiatives"), { recursive: true });
+    await symlink(outside, join(root, ".model-artifacts/initiatives/escape"));
     await assert.rejects(
       () => service.createArtifact(todo.id, { kind: "findings", category: "escape", shortName: "bad", purpose: "test", content: "x" }),
-      /outside ctx.cwd/,
+      /symlink|outside ctx.cwd/,
     );
   } finally {
     await rm(root, { recursive: true, force: true });
