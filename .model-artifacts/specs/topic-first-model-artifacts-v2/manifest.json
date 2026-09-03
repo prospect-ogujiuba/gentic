@@ -15,8 +15,8 @@
     "contractRoot": ".model-artifacts/plans/topic-first-model-artifacts-v2/revisions/r3"
   },
   "activeContract": {
-    "id": "P02-C01",
-    "path": ".model-artifacts/plans/topic-first-model-artifacts-v2/revisions/r3/phases/02-runtime-writers-readers/02.01-primitives-todo.md"
+    "id": "P02-C02",
+    "path": ".model-artifacts/plans/topic-first-model-artifacts-v2/revisions/r3/phases/02-runtime-writers-readers/02.02-swe-consumers.md"
   },
   "approval": {
     "decision": "approved",
@@ -72,7 +72,7 @@
       "findingPath": ".model-artifacts/findings/topic-first-model-artifacts-v2/2026-09-01_2008-cross-cutting-migration-risk.md"
     }
   },
-  "updatedAt": "2026-09-03T20:47:45.415Z",
+  "updatedAt": "2026-09-03T21:12:00.252Z",
   "piSweMigration": {
     "schemaVersion": 1,
     "operation": "normalize-manifest-metadata",
