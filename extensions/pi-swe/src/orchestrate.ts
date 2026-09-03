@@ -1,6 +1,7 @@
 import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { join, posix } from "node:path";
 
+import { compareContractIds } from "./domain/contract-graph.ts";
 import type { PiSweContractState } from "./domain/lifecycle.ts";
 import type { InitiativeResolution } from "./planning.ts";
 
@@ -489,16 +490,6 @@ function isTopicArtifactPath(path: string, kind: string, topic: string): boolean
     && !path.includes("\\")
     && !/[\u0000-\u001f\u007f]/.test(path)
     && !path.split("/").some((segment) => segment === "" || segment === "." || segment === "..");
-}
-
-function compareContractIds(left: string, right: string): number {
-  const leftParts = left.split(".").map(Number);
-  const rightParts = right.split(".").map(Number);
-  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
-    const difference = (leftParts[index] ?? -1) - (rightParts[index] ?? -1);
-    if (difference) return difference;
-  }
-  return left.localeCompare(right);
 }
 
 export function recommendOrchestrationTransition(request: RecommendOrchestrationTransitionRequest): OrchestrationTransitionRecommendation {

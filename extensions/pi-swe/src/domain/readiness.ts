@@ -1,4 +1,4 @@
-import type { AnalyzeContractGraphResult, ContractId, ContractNode } from "./contract-graph.ts";
+import { compareContractIds, deriveEffectiveCompletion, type AnalyzeContractGraphResult, type ContractId, type ContractNode } from "./contract-graph.ts";
 import type { InitiativeManifest, InitiativeSpecialistEntry } from "./initiative.ts";
 
 export const READINESS_GATE_IDS = [
@@ -200,6 +200,11 @@ export function reduceReadiness(request: ReduceReadinessRequest): ReduceReadines
   }
 
   const contractsById = new Map(request.contracts.map((contract) => [contract.id, contract]));
+  const evidencedDeferrals = new Set(Object.entries(request.contractFacts)
+    .filter(([, facts]) => Boolean(facts?.deferral?.approved && facts.deferral.evidencePath && exists(request.artifacts, facts.deferral.evidencePath)))
+    .map(([id]) => id));
+  const effectivelyComplete = deriveEffectiveCompletion(request.contracts, evidencedDeferrals);
+  const groupingPhaseIds = new Set(request.contracts.filter((contract) => contract.kind === "subphase").map((contract) => contract.parentId));
   for (const id of [...graphReady].sort(compareContractIds)) {
     if (!contractsById.has(id)) {
       addReason(reasons, {
@@ -216,7 +221,7 @@ export function reduceReadiness(request: ReduceReadinessRequest): ReduceReadines
   for (const contract of [...request.contracts].sort((left, right) => compareContractIds(left.id, right.id))) {
     const before = reasons.length;
     for (const dependencyId of contract.dependsOn) {
-      if (contractsById.get(dependencyId)?.status !== "complete") {
+      if (!effectivelyComplete.has(dependencyId) && !(contract.kind === "subphase" && dependencyId === contract.parentId)) {
         addReason(reasons, {
           code: "dependency-incomplete",
           gateId: "contract-ready",
@@ -228,7 +233,7 @@ export function reduceReadiness(request: ReduceReadinessRequest): ReduceReadines
       }
     }
     validateContractLink(contract, plan, request.artifacts, reasons);
-    if (contract.status === "complete") continue;
+    if (effectivelyComplete.has(contract.id) || (contract.kind === "phase" && groupingPhaseIds.has(contract.id))) continue;
     validateContractExecution(contract, request.contractFacts[contract.id], reasons);
     if (graphReady.has(contract.id) && reasons.length === before) locallyReady.push(contract.id);
   }
@@ -237,12 +242,12 @@ export function reduceReadiness(request: ReduceReadinessRequest): ReduceReadines
 
   const approvedDeferrals: ContractId[] = [];
   for (const contract of [...request.contracts].sort((left, right) => compareContractIds(left.id, right.id))) {
-    if (contract.status === "complete") continue;
     const deferral = request.contractFacts[contract.id]?.deferral;
-    if (deferral?.approved && deferral.evidencePath && exists(request.artifacts, deferral.evidencePath)) {
+    if (contract.status !== "complete" && deferral?.approved && deferral.evidencePath && exists(request.artifacts, deferral.evidencePath)) {
       approvedDeferrals.push(contract.id);
       continue;
     }
+    if (effectivelyComplete.has(contract.id)) continue;
     if (deferral && !deferral.approved) {
       addReason(reasons, {
         code: "deferral-unapproved",
@@ -465,14 +470,4 @@ function compareOptionalContractIds(left: ContractId | undefined, right: Contrac
   if (left === undefined) return -1;
   if (right === undefined) return 1;
   return compareContractIds(left, right);
-}
-
-function compareContractIds(left: ContractId, right: ContractId): number {
-  const leftParts = left.split(".").map(Number);
-  const rightParts = right.split(".").map(Number);
-  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
-    const difference = (leftParts[index] ?? -1) - (rightParts[index] ?? -1);
-    if (difference !== 0) return difference;
-  }
-  return left.localeCompare(right);
 }

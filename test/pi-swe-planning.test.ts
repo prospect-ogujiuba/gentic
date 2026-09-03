@@ -63,6 +63,19 @@ test("canonical initiative manifest parses valid draft and approved schema-v1 va
   }
 });
 
+test("canonical initiative manifest normalizes legacy approval and specialist aliases", () => {
+  const legacy = approvedManifest() as any;
+  legacy.approval.decision = "approve";
+  legacy.specialists = { accessibilityUx: { status: "not-required", rationale: "No user interface." } };
+  const parsed = parseInitiativeManifest(legacy);
+  assert.equal(parsed.ok, true);
+  if (parsed.ok) {
+    assert.equal(parsed.manifest.approval.decision, "approved");
+    assert.deepEqual(parsed.manifest.specialists["accessibility-ux"], legacy.specialists.accessibilityUx);
+    assert.equal(parsed.manifest.specialists.accessibilityUx, undefined);
+  }
+});
+
 test("canonical initiative manifest rejects unsupported versions and invalid identities", () => {
   assert.deepEqual(diagnosticCodes({ ...draftManifest(), schemaVersion: 2 }), ["unsupported_schema_version"]);
   assert.ok(diagnosticCodes({ ...draftManifest(), topic: "../escape", initiativeId: "../escape" }).includes("invalid_topic"));
@@ -116,6 +129,27 @@ test("contract graph returns deterministic linear order and ready set without mu
   assert.deepEqual(contracts, snapshot);
 });
 
+test("contract graph treats phases with children as derived grouping nodes and accepts P-prefixed identities", () => {
+  const initial = [
+    phaseContract("P1"),
+    subphaseContract("P1.1", "P1", [], "in_progress"),
+    subphaseContract("P1.2", "P1", ["P1.1"]),
+    phaseContract("P2", ["P1"]),
+    subphaseContract("P2.1", "P2", ["P1.2"]),
+  ];
+  const first = analyzeContractGraph(initial);
+  assert.equal(first.ok, true);
+  if (first.ok) assert.deepEqual(first.ready, ["P1.1"]);
+
+  const afterFirst = analyzeContractGraph(initial.map((contract) => contract.id === "P1.1" ? { ...contract, status: "complete" as const } : contract));
+  assert.equal(afterFirst.ok, true);
+  if (afterFirst.ok) assert.deepEqual(afterFirst.ready, ["P1.2"]);
+
+  const afterPhase = analyzeContractGraph(initial.map((contract) => contract.id === "P1.1" || contract.id === "P1.2" ? { ...contract, status: "complete" as const } : contract));
+  assert.equal(afterPhase.ok, true);
+  if (afterPhase.ok) assert.deepEqual(afterPhase.ready, ["P2.1"]);
+});
+
 test("contract graph orders branching ties numerically and applies the readiness gate", () => {
   const contracts = [
     subphaseContract("01.10", "01", ["01"], "pending"),
@@ -138,7 +172,7 @@ test("contract graph rejects duplicate, missing, self, and parent integrity erro
   assert.deepEqual(graphDiagnosticCodes([phaseContract("01", ["02"])]), ["unknown_dependency"]);
   assert.deepEqual(graphDiagnosticCodes([phaseContract("01", ["01"])]), ["self_dependency"]);
   assert.deepEqual(graphDiagnosticCodes([subphaseContract("01.02", "02")]), ["parent_mismatch"]);
-  assert.deepEqual(graphDiagnosticCodes([phaseContract("1")]), ["invalid_id"]);
+  assert.deepEqual(graphDiagnosticCodes([phaseContract("bad/id")]), ["invalid_id"]);
 
   const invalidIds = [phaseContract("invalid-z"), phaseContract("invalid-a")];
   assert.deepEqual(analyzeContractGraph([...invalidIds].reverse()), analyzeContractGraph(invalidIds));

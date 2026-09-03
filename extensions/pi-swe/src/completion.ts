@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
-import { analyzeContractGraph, type ContractNode } from "./domain/contract-graph.ts";
+import { analyzeContractGraph, deriveEffectiveCompletion, type ContractNode } from "./domain/contract-graph.ts";
 import { isValidTopic, type InitiativeManifest } from "./domain/initiative.ts";
 import { deriveCanonicalCompletionRequestId, inspectCanonicalInitiative, type CanonicalCompletionRecord } from "./planning.ts";
 
@@ -184,13 +184,13 @@ export function completeCanonicalContract(
   }
 
   const inspection = inspectCanonicalInitiative({ cwd: context.root, topic: request.topic });
-  if (inspection.diagnostics.length || !inspection.manifest?.activePlan || !inspection.gateEvaluation?.approvalValid) {
-    return { status: "rejected", contractId: request.contractId, message: firstInspectionProblem(inspection), artifact: inspection.manifestPath };
+  if (inspection.diagnostics.length || inspection.blockers.some((blocker) => blocker.code === "graph-invalid") || !inspection.manifest?.activePlan || !inspection.gateEvaluation?.approvalValid || !inspection.contractIndex || !inspection.contractIndexPath) {
+    const problem = inspectionProblem(inspection);
+    return { status: "rejected", contractId: request.contractId, message: problem.message, artifact: problem.artifact };
   }
   const manifest = inspection.manifest;
-  const indexPath = `${manifest.activePlan!.contractRoot}/contracts.json`;
-  const index = readBoundedJson(context, indexPath);
-  if (!index || !Array.isArray(index.contracts)) return { status: "rejected", contractId: request.contractId, message: "active contract index is unavailable", artifact: indexPath };
+  const indexPath = inspection.contractIndexPath;
+  const index = structuredClone(inspection.contractIndex) as MutableJson;
   const contract = index.contracts.find((candidate: any) => candidate?.id === request.contractId);
   if (!contract) return { status: "rejected", contractId: request.contractId, message: `contract ${request.contractId} is not indexed`, artifact: indexPath };
 
@@ -209,22 +209,35 @@ export function completeCanonicalContract(
     };
   }
 
-  const guardFailure = validateMutationGuards(request, manifest, index.contracts, contract, inspection.readyIds);
+  const evidencedDeferralIds = new Set(inspection.gateEvaluation.approvedDeferrals);
+  const guardFailure = validateMutationGuards(request, manifest, index.contracts, contract, inspection.readyIds, evidencedDeferralIds);
   if (guardFailure) return { status: "rejected", contractId: request.contractId, message: guardFailure, artifact: indexPath };
   const evidenceFailure = validateEvidence(context, request);
-  if (evidenceFailure) return { status: "rejected", contractId: request.contractId, message: evidenceFailure };
+  if (evidenceFailure) return { status: "rejected", contractId: request.contractId, message: `evidence-stale: ${evidenceFailure.message}`, artifact: evidenceFailure.artifact };
 
   const preparedIndex = structuredClone(index);
   const preparedContract = preparedIndex.contracts.find((candidate: any) => candidate.id === request.contractId)!;
   preparedContract.status = "complete";
   const preparedContracts = preparedIndex.contracts as ContractNode[];
-  const readyContractIds = computeReadyContracts(preparedContracts, preparedIndex.contractFacts ?? {});
-  const allComplete = preparedContracts.every((candidate) => candidate.status === "complete");
+  const preparedFacts = preparedIndex.contractFacts ?? {};
+  const readyContractIds = computeReadyContracts(preparedContracts, preparedFacts, evidencedDeferralIds);
+  const allComplete = deriveEffectiveCompletion(preparedContracts, evidencedDeferralIds).size === preparedContracts.length;
   const initiativeState: "executing" | "finalizing" = allComplete ? "finalizing" : "executing";
   const activeContractId = request.nextActiveContract === "advance" ? readyContractIds[0] ?? null : null;
-  const preparedManifest = structuredClone(manifest) as MutableJson;
+  const persistedManifest = readBoundedJson(context, inspection.manifestPath);
+  if (!persistedManifest) return { status: "rejected", contractId: request.contractId, message: "active manifest is unavailable", artifact: inspection.manifestPath };
+  const preparedManifest = normalizePersistedManifest(persistedManifest, manifest);
   preparedManifest.initiativeState = initiativeState;
   preparedManifest.updatedAt = request.completedAt ?? new Date().toISOString();
+  if (inspection.manifestMigrationRequired) {
+    preparedManifest.piSweMigration = {
+      schemaVersion: 1,
+      operation: "normalize-manifest-metadata",
+      requestId,
+      migratedAt: preparedManifest.updatedAt,
+      fields: manifestMigrationFields(persistedManifest),
+    };
+  }
   if (activeContractId) {
     const next = preparedIndex.contracts.find((candidate: any) => candidate.id === activeContractId)!;
     preparedManifest.activeContract = { id: next.id, path: next.path };
@@ -243,12 +256,26 @@ export function completeCanonicalContract(
     nextState: { initiativeState, activeContractId, readyContractIds },
   };
   preparedIndex.completionRecords = { ...(preparedIndex.completionRecords ?? {}), [request.contractId]: record };
+  if (inspection.contractIndexMigrationRequired && preparedIndex.schemaVersion === 2) {
+    preparedIndex.migration = {
+      fromSchemaVersion: 1,
+      toSchemaVersion: 2,
+      operation: "normalize-complete-advance",
+      requestId,
+      migratedAt: preparedManifest.updatedAt,
+    };
+  }
 
   const preparedIndexBytes = serializeJson(preparedIndex);
   const preparedManifestBytes = serializeJson(preparedManifest);
   const journal = prepareTransaction(context, request, requestId, indexPath, preparedIndexBytes, preparedManifestBytes);
-  fault(options, "after-prepared-files");
-  createJournalExclusive(context, journal);
+  try {
+    fault(options, "after-prepared-files");
+    createJournalExclusive(context, journal);
+  } catch (error) {
+    if (!existsSync(absolute(context, context.journalPath))) cleanupUnjournaledPreparation(context, journal);
+    throw error;
+  }
   fault(options, "after-stage-prepared");
 
   installPrepared(context, journal.roles["contract-index"]);
@@ -436,6 +463,12 @@ function restorePreimages(context: CompletionContext, journal: CompletionJournal
   return { status: "rolled-back", requestId: journal.requestId };
 }
 
+function cleanupUnjournaledPreparation(context: CompletionContext, journal: CompletionJournal): void {
+  for (const role of Object.values(journal.roles)) {
+    for (const path of [role.preparedPath, role.restorePath, role.preimageBackupPath]) removeArtifact(context, path);
+  }
+}
+
 function cleanupCommitted(context: CompletionContext, journal: CompletionJournal): void {
   assertJournalOwnership(context, journal);
   for (const role of Object.values(journal.roles)) {
@@ -519,22 +552,27 @@ function validateMutationGuards(
   contracts: readonly any[],
   contract: any,
   readyIds: readonly string[],
+  evidencedDeferralIds: ReadonlySet<string>,
 ): string | undefined {
-  if (manifest.activePlan?.revision !== request.expectedPlanRevision) return `active plan revision does not match expected revision ${request.expectedPlanRevision}`;
-  if (contract.planRevision !== request.expectedPlanRevision) return `contract plan revision is stale`;
-  if (contract.path !== request.expectedContractPath) return `contract path does not match the expected stable path`;
-  if (contract.contentHash !== request.expectedPreCompletionContentHash) return `contract content hash is stale`;
-  if (manifest.activeContract?.id !== request.contractId || manifest.activeContract.path !== contract.path) return `activeContract does not name ${request.contractId}`;
-  if (contract.status !== "pending" && contract.status !== "in_progress") return `contract ${request.contractId} has conflicting status ${String(contract.status)}`;
-  if (!readyIds.includes(request.contractId)) return `contract ${request.contractId} is not readiness-selected`;
-  const byId = new Map(contracts.map((candidate) => [candidate.id, candidate]));
-  if (contract.dependsOn.some((id: string) => byId.get(id)?.status !== "complete")) return `contract dependencies are incomplete`;
-  return undefined;
+  const failures: string[] = [];
+  if (manifest.activePlan?.revision !== request.expectedPlanRevision) failures.push(`active plan revision does not match expected revision ${request.expectedPlanRevision}`);
+  if (contract.planRevision !== request.expectedPlanRevision) failures.push(`contract plan revision is stale`);
+  if (contract.path !== request.expectedContractPath) failures.push(`contract path does not match the expected stable path`);
+  if (contract.contentHash !== request.expectedPreCompletionContentHash) failures.push(`contract content hash is stale`);
+  if (manifest.activeContract?.id !== request.contractId || manifest.activeContract.path !== contract.path) failures.push(`activeContract does not name ${request.contractId}`);
+  if (contract.status !== "pending" && contract.status !== "in_progress") failures.push(`contract ${request.contractId} has conflicting status ${String(contract.status)}`);
+  if (!readyIds.includes(request.contractId)) failures.push(`contract ${request.contractId} is not readiness-selected`);
+  const effectivelyComplete = deriveEffectiveCompletion(contracts as ContractNode[], evidencedDeferralIds);
+  if (contract.dependsOn.some((id: string) => !effectivelyComplete.has(id) && !(contract.kind === "subphase" && id === contract.parentId))) failures.push(`contract dependencies are incomplete`);
+  return failures.length ? failures.join("; ") : undefined;
 }
 
-function validateEvidence(context: CompletionContext, request: CompleteCanonicalContractRequest): string | undefined {
+function validateEvidence(context: CompletionContext, request: CompleteCanonicalContractRequest): { message: string; artifact: string } | undefined {
   const verificationContent = readEvidence(context, request.verification.path, request.verification.contentHash);
   const verification = verificationContent ? readEvidenceEnvelope(verificationContent, "verification") : undefined;
+  const reviewContent = readEvidence(context, request.review.path, request.review.contentHash);
+  const review = reviewContent ? readEvidenceEnvelope(reviewContent, "implementation-review") : undefined;
+  const failures: Array<{ message: string; artifact: string }> = [];
   if (!verification
     || verification.topic !== request.topic
     || verification.contractId !== request.contractId
@@ -543,10 +581,8 @@ function validateEvidence(context: CompletionContext, request: CompleteCanonical
     || verification.contractContentHash !== request.expectedPreCompletionContentHash
     || verification.outcome !== "pass"
     || verification.gaps !== "none") {
-    return `verification evidence is missing, stale, partial, or not bound to the exact contract`;
+    failures.push({ message: `verification evidence is missing, stale, partial, or not bound to the exact contract`, artifact: request.verification.path });
   }
-  const reviewContent = readEvidence(context, request.review.path, request.review.contentHash);
-  const review = reviewContent ? readEvidenceEnvelope(reviewContent, "implementation-review") : undefined;
   if (!review
     || request.review.decision !== "approve"
     || review.topic !== request.topic
@@ -558,9 +594,9 @@ function validateEvidence(context: CompletionContext, request: CompleteCanonical
     || review.blockingFindings !== 0
     || review.verification.path !== request.verification.path
     || review.verification.contentHash !== request.verification.contentHash) {
-    return `implementation review evidence is missing, stale, blocked, or not bound to the exact contract and verification identity`;
+    failures.push({ message: `implementation review evidence is missing, stale, blocked, or not bound to the exact contract and verification identity`, artifact: request.review.path });
   }
-  return undefined;
+  return failures.length ? { artifact: failures[0]!.artifact, message: failures.map((failure) => `${failure.artifact}: ${failure.message}`).join("; ") } : undefined;
 }
 
 function readEvidenceEnvelope(content: string, mode: "verification"): VerificationEnvelope | undefined;
@@ -620,7 +656,7 @@ function completionIdentityMatches(record: CanonicalCompletionRecord, request: C
       : record.nextState.activeContractId === (record.nextState.readyContractIds[0] ?? null));
 }
 
-function computeReadyContracts(contracts: readonly ContractNode[], facts: Readonly<Record<string, any>>): string[] {
+function computeReadyContracts(contracts: readonly ContractNode[], facts: Readonly<Record<string, any>>, evidencedDeferralIds: ReadonlySet<string>): string[] {
   const graph = analyzeContractGraph(contracts, (contract) => {
     const item = facts[contract.id];
     return Boolean(item?.entryInputsAvailable
@@ -628,13 +664,15 @@ function computeReadyContracts(contracts: readonly ContractNode[], facts: Readon
       && item?.applicability === "applicable"
       && item?.acceptanceDefined
       && item?.verificationDefined);
-  });
+  }, evidencedDeferralIds);
   return graph.ok ? [...graph.ready] : [];
 }
 
 function formatPhaseProgress(contracts: readonly ContractNode[], contractId: string): string {
-  const phase = contractId.split(".")[0]!;
-  const phaseContracts = contracts.filter((contract) => contract.id === phase || contract.id.startsWith(`${phase}.`));
+  const target = contracts.find((contract) => contract.id === contractId);
+  const phase = target?.kind === "subphase" ? target.parentId : contractId;
+  const children = contracts.filter((contract) => contract.kind === "subphase" && contract.parentId === phase);
+  const phaseContracts = children.length ? children : contracts.filter((contract) => contract.id === phase);
   const completed = phaseContracts.filter((contract) => contract.status === "complete").length;
   return `${phase}:${completed}/${phaseContracts.length}`;
 }
@@ -927,8 +965,45 @@ function sameStrings(left: readonly string[], right: readonly string[]): boolean
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
+function manifestMigrationFields(persisted: MutableJson): string[] {
+  const fields: string[] = [];
+  if (isRecord(persisted.approval) && persisted.approval.decision === "approve") fields.push("approval.decision");
+  if (isRecord(persisted.specialists) && (persisted.specialists.accessibilityUx !== undefined || persisted.specialists.ACCESSIBILITY_UX !== undefined)) fields.push("specialists.accessibility-ux");
+  return fields;
+}
+
+function normalizePersistedManifest(persisted: MutableJson, normalized: InitiativeManifest): MutableJson {
+  const result = structuredClone(persisted);
+  result.schemaVersion = normalized.schemaVersion;
+  result.specialists = structuredClone(normalized.specialists);
+  if ("approval" in normalized && normalized.approval) {
+    result.approval = { ...(isRecord(result.approval) ? result.approval : {}), ...normalized.approval, decision: "approved" };
+  }
+  return result;
+}
+
+function inspectionProblem(inspection: ReturnType<typeof inspectCanonicalInitiative>): { message: string; artifact: string } {
+  if (inspection.diagnostics.length) {
+    const artifact = inspection.diagnostics[0]!.path;
+    const details = inspection.diagnostics.map((diagnostic) =>
+      `${diagnostic.path}${diagnostic.field ? `:${diagnostic.field}` : ""}: ${diagnostic.message}`
+    );
+    const outcome = inspection.diagnostics.some((diagnostic) => diagnostic.code === "unsupported_version") ? "migration-required" : "metadata-incompatible";
+    return { artifact, message: `${outcome}: ${details.join("; ")}` };
+  }
+  if (inspection.blockers.length) {
+    const graphInvalid = inspection.blockers.some((blocker) => blocker.code === "graph-invalid");
+    const blocker = inspection.blockers[0]!;
+    return {
+      artifact: blocker.artifact ?? (graphInvalid ? inspection.contractIndexPath : undefined) ?? inspection.manifestPath,
+      message: `${graphInvalid ? "graph-invalid" : "execution-blocked"}: ${inspection.blockers.map((candidate) => candidate.message).join("; ")}`,
+    };
+  }
+  return { artifact: inspection.manifestPath, message: "execution-blocked: canonical initiative is not approved and ready" };
+}
+
 function firstInspectionProblem(inspection: ReturnType<typeof inspectCanonicalInitiative>): string {
-  return inspection.diagnostics[0]?.message ?? inspection.blockers[0]?.message ?? "canonical initiative is not approved and ready";
+  return inspectionProblem(inspection).message;
 }
 
 function fault(options: CompletionOptions, point: CompletionFaultPoint): void {

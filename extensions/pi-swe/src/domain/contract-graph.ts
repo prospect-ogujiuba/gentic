@@ -50,12 +50,12 @@ export type AnalyzeContractGraphResult =
       readonly diagnostics: readonly ContractGraphDiagnostic[];
     };
 
-const PHASE_ID = /^\d{2}$/;
-const SUBPHASE_ID = /^\d{2}\.\d{2}$/;
+const CONTRACT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 export function analyzeContractGraph(
   contracts: readonly ContractNode[],
   gate: ContractGatePredicate = () => true,
+  additionalTerminalIds: ReadonlySet<ContractId> = new Set(),
 ): AnalyzeContractGraphResult {
   const diagnostics = validateContracts(contracts);
   if (diagnostics.length > 0) return { ok: false, diagnostics };
@@ -97,10 +97,14 @@ export function analyzeContractGraph(
     };
   }
 
+  const groupingPhaseIds = new Set(contracts.filter((candidate) => candidate.kind === "subphase").map((candidate) => candidate.parentId));
+  const effectivelyComplete = deriveEffectiveCompletion(contracts, additionalTerminalIds);
   const ready = [...nodes.values()]
     .filter((contract) =>
-      contract.status !== "complete"
-      && contract.dependsOn.every((dependencyId) => nodes.get(dependencyId)!.status === "complete")
+      !effectivelyComplete.has(contract.id)
+      && contract.status !== "blocked"
+      && !(contract.kind === "phase" && groupingPhaseIds.has(contract.id))
+      && contract.dependsOn.every((dependencyId) => effectivelyComplete.has(dependencyId) || (contract.kind === "subphase" && dependencyId === contract.parentId))
       && gate(contract))
     .map((contract) => contract.id)
     .sort(compareContractIds);
@@ -118,23 +122,19 @@ function validateContracts(contracts: readonly ContractNode[]): ContractGraphDia
     if (count > 1) diagnostics.push({ code: "duplicate_id", ids: [id], message: `contract ID is duplicated: ${id}` });
   }
 
+  const byId = new Map(contracts.map((contract) => [contract.id, contract]));
   for (const contract of contracts) {
-    const isPhaseId = PHASE_ID.test(contract.id);
-    const isSubphaseId = SUBPHASE_ID.test(contract.id);
-    if (!isPhaseId && !isSubphaseId) {
-      diagnostics.push({ code: "invalid_id", ids: [contract.id], message: `contract ID must match NN or NN.NN: ${contract.id}` });
+    if (!CONTRACT_ID.test(contract.id) || contract.id.length > 32) {
+      diagnostics.push({ code: "invalid_id", ids: [contract.id], message: `contract ID must be a bounded opaque identifier: ${contract.id}` });
       continue;
     }
-    if ((contract.kind === "phase") !== isPhaseId) {
-      diagnostics.push({ code: "kind_mismatch", ids: [contract.id], message: `contract kind does not match ID shape: ${contract.id}` });
-    }
     if (contract.kind === "subphase") {
-      const expectedParent = contract.id.slice(0, 2);
-      if (contract.parentId !== expectedParent) {
+      const parent = byId.get(contract.parentId);
+      if (!parent || parent.kind !== "phase") {
         diagnostics.push({
           code: "parent_mismatch",
           ids: [contract.id, contract.parentId],
-          message: `subphase ${contract.id} must have parent ${expectedParent}, received ${contract.parentId}`,
+          message: `subphase ${contract.id} must name an indexed phase parent, received ${contract.parentId}`,
         });
       }
     }
@@ -169,19 +169,46 @@ function compareDiagnostics(left: ContractGraphDiagnostic, right: ContractGraphD
   return left.ids.length - right.ids.length || left.message.localeCompare(right.message);
 }
 
-function compareContractIds(left: ContractId, right: ContractId): number {
-  const leftIsHierarchical = PHASE_ID.test(left) || SUBPHASE_ID.test(left);
-  const rightIsHierarchical = PHASE_ID.test(right) || SUBPHASE_ID.test(right);
-  if (!leftIsHierarchical || !rightIsHierarchical) return left.localeCompare(right);
-
-  const leftParts = left.split(".").map(Number);
-  const rightParts = right.split(".").map(Number);
+export function compareContractIds(left: ContractId, right: ContractId): number {
+  const leftParts = left.match(/\d+|\D+/g) ?? [left];
+  const rightParts = right.match(/\d+|\D+/g) ?? [right];
   const length = Math.min(leftParts.length, rightParts.length);
   for (let index = 0; index < length; index += 1) {
-    const difference = leftParts[index]! - rightParts[index]!;
-    if (difference !== 0) return difference;
+    const leftPart = leftParts[index]!;
+    const rightPart = rightParts[index]!;
+    const leftNumeric = /^\d+$/.test(leftPart);
+    const rightNumeric = /^\d+$/.test(rightPart);
+    if (leftNumeric && rightNumeric) {
+      const difference = Number(leftPart) - Number(rightPart);
+      if (difference !== 0) return difference;
+      if (leftPart.length !== rightPart.length) return leftPart.length - rightPart.length;
+    } else if (leftPart !== rightPart) {
+      return leftPart < rightPart ? -1 : 1;
+    }
   }
-  return leftParts.length - rightParts.length || left.localeCompare(right);
+  return leftParts.length - rightParts.length || (left < right ? -1 : left > right ? 1 : 0);
+}
+
+export function deriveEffectiveCompletion(contracts: readonly ContractNode[], additionalTerminalIds: ReadonlySet<ContractId> = new Set()): ReadonlySet<ContractId> {
+  const children = new Map<ContractId, ContractNode[]>();
+  for (const contract of contracts) {
+    if (contract.kind !== "subphase") continue;
+    const siblings = children.get(contract.parentId) ?? [];
+    siblings.push(contract);
+    children.set(contract.parentId, siblings);
+  }
+  const byId = new Map(contracts.map((contract) => [contract.id, contract]));
+  const complete = new Set([
+    ...[...additionalTerminalIds].filter((id) => byId.has(id) && !(byId.get(id)?.kind === "phase" && children.has(id))),
+    ...contracts
+      .filter((contract) => contract.status === "complete" && !(contract.kind === "phase" && children.has(contract.id)))
+      .map((contract) => contract.id),
+  ]);
+  for (const contract of contracts) {
+    const phaseChildren = contract.kind === "phase" ? children.get(contract.id) : undefined;
+    if (phaseChildren?.length && phaseChildren.every((child) => complete.has(child.id))) complete.add(contract.id);
+  }
+  return complete;
 }
 
 function findCycleIds(adjacency: ReadonlyMap<ContractId, readonly ContractId[]>): ContractId[] {

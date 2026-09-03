@@ -28,8 +28,11 @@ export type InitiativePlanPointer = InitiativeRevisionPointer & {
   contractRoot: string;
 };
 
+export type PlanReviewDecision = "approve";
+export type InitiativeApprovalState = "approved";
+
 export type InitiativeApproval = {
-  decision: "approved";
+  decision: InitiativeApprovalState;
   planRevision: number;
   planPath: string;
   planContentHash: string;
@@ -207,7 +210,8 @@ function readApproval(value: unknown, plan: InitiativePlanPointer, topic: string
     add(diagnostics, "missing_field", "approval", "approved initiative state requires approval");
     return undefined;
   }
-  if (value.decision !== "approved") add(diagnostics, "invalid_field", "approval.decision", "approval decision must be approved");
+  const decision = value.decision === "approve" ? "approved" : value.decision;
+  if (decision !== "approved") add(diagnostics, "invalid_field", "approval.decision", "approval decision must be approved (legacy approve is accepted)");
   const planRevision = readPositiveInteger(value.planRevision, "approval.planRevision", diagnostics);
   const planPath = readArtifactPath(value.planPath, "approval.planPath", ["plans"], topic, diagnostics);
   const planContentHash = readNonEmptyString(value.planContentHash, "approval.planContentHash", diagnostics);
@@ -220,7 +224,7 @@ function readApproval(value: unknown, plan: InitiativePlanPointer, topic: string
   if (planPath && planPath !== plan.path) add(diagnostics, "stale_approval", "approval.planPath", "approval path must match active plan path");
   if (planContentHash && planContentHash !== plan.contentHash) add(diagnostics, "stale_approval", "approval.planContentHash", "approval content hash must match active plan content hash");
 
-  if (value.decision !== "approved" || !planRevision || !planPath || !planContentHash || !reviewPath || !approvedAt || blockingFindings !== 0) return undefined;
+  if (decision !== "approved" || !planRevision || !planPath || !planContentHash || !reviewPath || !approvedAt || blockingFindings !== 0) return undefined;
   return { decision: "approved", planRevision, planPath, planContentHash, reviewPath, approvedAt, blockingFindings: 0 };
 }
 
@@ -244,7 +248,12 @@ function readSpecialists(value: unknown, topic: string, diagnostics: MutableDiag
     return undefined;
   }
   const specialists: Record<string, InitiativeSpecialistEntry> = {};
-  for (const [key, candidate] of Object.entries(value)) {
+  for (const [persistedKey, candidate] of Object.entries(value)) {
+    const key = persistedKey === "accessibilityUx" || persistedKey === "ACCESSIBILITY_UX" ? "accessibility-ux" : persistedKey;
+    if (specialists[key] !== undefined) {
+      add(diagnostics, "invalid_field", `specialists.${persistedKey}`, `specialist alias ${persistedKey} conflicts with ${key}`);
+      continue;
+    }
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(key) || !isRecord(candidate) || !SPECIALIST_STATUSES.has(candidate.status as InitiativeSpecialistStatus)) {
       add(diagnostics, "invalid_field", `specialists.${key}`, "specialist entry must have a valid key and status");
       continue;

@@ -52,7 +52,7 @@ Unknown future state-envelope versions are ignored. Failed commands, notes/manua
 - `/swe status` reports canonical disposition, phase progress, active/ready contracts, blockers, runtime context, and current warnings.
 - `/swe config` reports the effective project/global/default configuration and config diagnostics.
 - `/swe orchestrate` is guidance-only: it reports artifact readiness, recommends the next lifecycle step, routes missing verification/review/finalize gates, and emits deterministic exception handoffs without running hidden multi-step work.
-- `/swe complete` is the sole mutation action. It validates the exact active plan/contract hash plus passing verification and approving implementation-review identities, then runs the recoverable journaled state transition. Each report must contain one closed `Pi-SWE-Evidence: {...}` JSON line binding topic, contract ID/path/hash, plan revision, and overall decision; the review line also binds the verification path/hash and zero blocking findings. An owner-token-bound exclusive local claim prevents concurrent writers and every journal/target mutation revalidates it. Claim files are never auto-reaped; after a process crash, recovery reports the exact lock path for explicit removal only after the operator confirms its owner is gone. Exact repeats return `already-complete`; mismatches and unfinished/corrupt recovery state do not write or report success. Canonical filenames stay unchanged.
+- `/swe complete` is the sole mutation action. It validates the exact active plan/contract hash plus passing verification and approving implementation-review identities, then runs the recoverable journaled state transition. Before mutation it losslessly normalizes supported legacy schema-v1 manifest/index metadata; the same transaction writes the canonical schema-v2 contract index, records migration provenance and completion evidence, and advances readiness. Contract IDs remain unchanged and evidence stays bound to the original identity. Ambiguous migration, evidence drift, graph errors, and execution blockers reject before writes with artifact-specific diagnostics. Each report must contain one closed `Pi-SWE-Evidence: {...}` JSON line binding topic, contract ID/path/hash, plan revision, and overall decision; the review line also binds the verification path/hash and zero blocking findings. An owner-token-bound exclusive local claim prevents concurrent writers and every journal/target mutation revalidates it. Claim files are never auto-reaped; after a process crash, recovery reports the exact lock path for explicit removal only after the operator confirms its owner is gone. Exact repeats return `already-complete`; mismatches and unfinished/corrupt recovery state do not write or report success. Canonical filenames stay unchanged.
 
 ## Stage skills
 
@@ -74,15 +74,15 @@ Matching skills live under `extensions/pi-swe/skills/swe-*/SKILL.md`. Compact re
 
 ## Canonical plans and revisions
 
-For non-trivial work, canonical authority starts at `.model-artifacts/specs/<topic>/manifest.json`. The manifest points to the active specification and `activePlan`; the active plan points to its revision-specific `contractRoot`, where `contracts.json` indexes phase and subphase contracts. Todo may link approved work, but neither a todo nor a filename selects an executable revision.
+For non-trivial work, canonical authority starts at the schema-v1 `.model-artifacts/specs/<topic>/manifest.json`. The manifest points to the active specification and `activePlan`; the active plan points to its revision-specific `contractRoot`, where canonical schema-v2 `contracts.json` indexes phase and subphase contracts. Readers accept supported legacy schema-v1 metadata variants, but all new or migrated index writes use schema v2. Todo may link approved work, but neither a todo nor a filename selects an executable revision.
 
 Before implementation:
 
 1. Follow `manifest.activePlan`, not the highest `rN` filename.
 2. Confirm `manifest.approval` is `approved` and matches the exact active plan revision, path, and `contentHash`.
 3. Read `<activePlan.contractRoot>/contracts.json` and validate its contract paths, hashes, dependencies, blockers, readiness facts, and planned verification.
-4. If `manifest.activeContract` exists and remains valid, execute that exact contract. Otherwise execute the lowest dependency-satisfied pending contract.
-5. Preserve contracts already marked `complete`; a newer approved revision does not restart completed phases.
+4. If `manifest.activeContract` exists and remains valid, execute that exact contract. Otherwise execute the lowest dependency-satisfied pending subphase. Phase entries are non-executable grouping nodes and cannot preempt a ready child.
+5. Preserve contracts already marked `complete`; derive phase completion from child dispositions so a newer approved revision does not restart completed work.
 
 Normal contract completion does not create a plan revision. Completion updates canonical machine state and evidence while stable contract filenames remain unchanged. A new immutable revision is created during planning or replanning only when findings require a material plan change—for example scope, architecture, contract requirements, dependency order, verification, migration, or rollback changes. Stop execution, revise, review, and approve that new revision before continuing. Draft, reviewing, numerically newest, or unapproved revisions are not executable.
 

@@ -84,6 +84,38 @@ test("pi-swe completes an exact reviewed contract and repeats without writes aft
   assert.equal(readFileSync(join(fixture.cwd, fixture.indexPath), "utf8"), beforeIndex);
 });
 
+test("pi-swe completes without advancing when the next contract is explicitly blocked", () => {
+  const fixture = writeCompletionFixture();
+  fixture.index.contracts[1].status = "blocked";
+  fixture.writeIndex();
+  const result = completeCanonicalContract(fixture.request);
+  assert.equal(result.status, "completed");
+  assert.deepEqual(result.readyContractIds, []);
+  assert.equal(result.activeContractId, null);
+  const inspected = inspectCanonicalInitiative({ cwd: fixture.cwd, topic: "demo" });
+  assert.equal(inspected.contracts[0]?.status, "complete");
+  assert.equal(inspected.manifest?.activeContract, undefined);
+  assert.equal(existsSync(join(fixture.cwd, completionJournalPath("demo"))), false);
+});
+
+test("pi-swe rejects a deferral with missing evidence before completion mutation", () => {
+  const fixture = writeCompletionFixture();
+  const thirdPath = ".model-artifacts/plans/demo/revisions/r1/contracts/03.md";
+  const third = "# contract 03\n";
+  write(fixture.cwd, thirdPath, third);
+  fixture.index.contracts.push({ kind: "phase", id: "03", dependsOn: ["02"], planRevision: 1, path: thirdPath, status: "pending", contentHash: sha256(third) });
+  fixture.index.contractFacts["02"] = { ...fixture.index.contractFacts["02"], entryInputsAvailable: false, deferral: { approved: true, evidencePath: ".model-artifacts/reports/demo/missing-deferral.md" } };
+  fixture.index.contractFacts["03"] = { entryInputsAvailable: true, capabilitiesAvailable: true, applicability: "applicable", acceptanceDefined: true, verificationDefined: true };
+  fixture.writeIndex();
+  const before = readFileSync(join(fixture.cwd, fixture.indexPath), "utf8");
+
+  const result = completeCanonicalContract(fixture.request);
+  assert.equal(result.status, "rejected");
+  assert.equal(result.artifact, ".model-artifacts/reports/demo/missing-deferral.md");
+  assert.equal(readFileSync(join(fixture.cwd, fixture.indexPath), "utf8"), before);
+  assert.equal(existsSync(join(fixture.cwd, completionJournalPath("demo"))), false);
+});
+
 test("pi-swe exact repeats are idempotent after active pointer clear and semantics mismatches conflict", () => {
   const fixture = writeCompletionFixture();
   const clearRequest = { ...fixture.request, nextActiveContract: "clear" as const };
@@ -349,7 +381,7 @@ test("pi-swe rejects impossible consumed-source combinations and safely retries 
   rmSync(join(impossible.cwd, journal.roles["contract-index"].preparedPath));
   assert.equal(recoverCanonicalCompletion({ cwd: impossible.cwd, topic: "demo" }).status, "blocked-recovery");
 
-  for (const point of ["after-contract-index-prepared", "after-contract-index-backup", "after-manifest-prepared", "after-manifest-backup"] as CompletionFaultPoint[]) {
+  for (const point of ["after-contract-index-prepared", "after-contract-index-backup", "after-manifest-prepared", "after-manifest-backup", "after-prepared-files"] as CompletionFaultPoint[]) {
     const fixture = writeCompletionFixture();
     assert.throws(() => completeCanonicalContract(fixture.request, faultAt(point)), /injected completion fault/, point);
     assert.equal(existsSync(join(fixture.cwd, completionJournalPath("demo"))), false);
@@ -400,6 +432,86 @@ test("pi-swe validates same-snapshot next state but accepts historical advanceme
   writeFileSync(join(fixture.cwd, fixture.indexPath), `${JSON.stringify(stored, null, 2)}\n`, "utf8");
   const invalid = inspectCanonicalInitiative({ cwd: fixture.cwd, topic: "demo" });
   assert.ok(invalid.diagnostics.some((diagnostic) => diagnostic.field?.startsWith("completionRecords.01")));
+});
+
+test("pi-swe atomically normalizes a CSR-style legacy index, completes P1.1, and advances to P1.2", () => {
+  const fixture = writeLegacyCompatibilityFixture();
+  const inspected = inspectCanonicalInitiative({ cwd: fixture.cwd, topic: "demo" });
+  assert.deepEqual(inspected.diagnostics, []);
+  assert.equal(inspected.migrationRequired, true);
+  assert.equal(inspected.manifest?.approval.decision, "approved");
+  assert.equal(inspected.manifest?.specialists["accessibility-ux"]?.status, "not-required");
+  assert.deepEqual(inspected.readyIds, ["P1.1"]);
+
+  const evidenceBefore = [
+    readFileSync(join(fixture.cwd, fixture.verificationPath), "utf8"),
+    readFileSync(join(fixture.cwd, fixture.implementationReviewPath), "utf8"),
+  ];
+  const result = completeCanonicalContract(fixture.request);
+  assert.equal(result.status, "completed");
+  assert.deepEqual(result.readyContractIds, ["P1.2"]);
+  assert.equal(result.activeContractId, "P1.2");
+  const index = JSON.parse(readFileSync(join(fixture.cwd, fixture.indexPath), "utf8"));
+  const manifest = JSON.parse(readFileSync(join(fixture.cwd, fixture.manifestPath), "utf8"));
+  assert.equal(index.schemaVersion, 2);
+  assert.equal(index.migration.requestId, result.requestId);
+  assert.equal(index.contracts.find((contract: any) => contract.id === "P1.1").status, "complete");
+  assert.equal(index.contracts.find((contract: any) => contract.id === "P1.2").dependsOn[0], "P1.1");
+  assert.equal("dependencies" in index.contracts[0], false);
+  assert.equal("canonicalPath" in index.contracts[0], false);
+  assert.equal(manifest.approval.decision, "approved");
+  assert.equal(manifest.approvedMetadata, "preserved");
+  assert.equal(manifest.specialists.accessibilityUx, undefined);
+  assert.equal(manifest.activeContract.id, "P1.2");
+  assert.equal(existsSync(join(fixture.cwd, completionJournalPath("demo"))), false);
+  assert.deepEqual([
+    readFileSync(join(fixture.cwd, fixture.verificationPath), "utf8"),
+    readFileSync(join(fixture.cwd, fixture.implementationReviewPath), "utf8"),
+  ], evidenceBefore);
+
+  const beforeRetry = readFileSync(join(fixture.cwd, fixture.indexPath), "utf8");
+  const repeated = completeCanonicalContract(fixture.request);
+  assert.equal(repeated.status, "already-complete");
+  assert.equal(repeated.requestId, result.requestId);
+  assert.equal(readFileSync(join(fixture.cwd, fixture.indexPath), "utf8"), beforeRetry);
+});
+
+test("pi-swe records manifest-only normalization without claiming a contract-index migration", () => {
+  const fixture = writeCompletionFixture();
+  fixture.index.schemaVersion = 2;
+  fixture.manifest.approval.decision = "approve";
+  fixture.manifest.specialists.accessibilityUx = fixture.manifest.specialists["accessibility-ux"];
+  delete fixture.manifest.specialists["accessibility-ux"];
+  fixture.writeIndex();
+  fixture.writeManifest();
+
+  const result = completeCanonicalContract(fixture.request);
+  assert.equal(result.status, "completed");
+  const index = JSON.parse(readFileSync(join(fixture.cwd, fixture.indexPath), "utf8"));
+  const manifest = JSON.parse(readFileSync(join(fixture.cwd, fixture.manifestPath), "utf8"));
+  assert.equal(index.migration, undefined);
+  assert.deepEqual(manifest.piSweMigration.fields, ["approval.decision", "specialists.accessibility-ux"]);
+});
+
+test("pi-swe reports all ambiguous legacy index fields against contracts.json without mutation", () => {
+  const fixture = writeLegacyCompatibilityFixture();
+  const malformed = JSON.parse(readFileSync(join(fixture.cwd, fixture.indexPath), "utf8"));
+  malformed.contracts[0].dependsOn = ["different"];
+  malformed.contracts[1].path = ".model-artifacts/plans/demo/revisions/r1/wrong.md";
+  malformed.contracts[1].status = "unknown-legacy-state";
+  writeFileSync(join(fixture.cwd, fixture.indexPath), `${JSON.stringify(malformed, null, 2)}\n`, "utf8");
+  const beforeManifest = readFileSync(join(fixture.cwd, fixture.manifestPath), "utf8");
+  const beforeIndex = readFileSync(join(fixture.cwd, fixture.indexPath), "utf8");
+
+  const rejected = completeCanonicalContract(fixture.request);
+  assert.equal(rejected.status, "rejected");
+  assert.equal(rejected.artifact, fixture.indexPath);
+  assert.match(rejected.message, /contracts\[0\]\.dependsOn/);
+  assert.match(rejected.message, /contracts\[1\]\.path/);
+  assert.match(rejected.message, /contracts\[1\]\.status/);
+  assert.equal(readFileSync(join(fixture.cwd, fixture.manifestPath), "utf8"), beforeManifest);
+  assert.equal(readFileSync(join(fixture.cwd, fixture.indexPath), "utf8"), beforeIndex);
+  assert.equal(existsSync(join(fixture.cwd, completionJournalPath("demo"))), false);
 });
 
 async function waitForOutput(child: ReturnType<typeof spawn>, marker: string, getOutput?: () => string): Promise<void> {
@@ -541,6 +653,58 @@ function writeCompletionFixture() {
     writeManifest,
     writeIndex,
   };
+}
+
+function writeLegacyCompatibilityFixture() {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-legacy-completion-"));
+  const manifestPath = ".model-artifacts/specs/demo/manifest.json";
+  const specPath = ".model-artifacts/specs/demo/spec.md";
+  const planPath = ".model-artifacts/plans/demo/plan.md";
+  const contractRoot = ".model-artifacts/plans/demo/revisions/r1";
+  const phasePath = `${contractRoot}/phases/phase-1/phase.md`;
+  const contractPath = `${contractRoot}/phases/phase-1/p1.1.md`;
+  const secondContractPath = `${contractRoot}/phases/phase-1/p1.2.md`;
+  const indexPath = `${contractRoot}/contracts.json`;
+  const planReviewPath = ".model-artifacts/reports/demo/plan-review.md";
+  const verificationPath = ".model-artifacts/reports/demo/verification.md";
+  const implementationReviewPath = ".model-artifacts/reports/demo/implementation-review.md";
+  const spec = "# exact spec\n";
+  const plan = "# exact plan\n";
+  const phase = "# phase P1\n";
+  const firstContract = "# contract P1.1\n";
+  const secondContract = "# contract P1.2\n";
+  const verificationEnvelope = { schemaVersion: 1, mode: "verification", topic: "demo", contractId: "P1.1", contractPath, planRevision: 1, contractContentHash: sha256(firstContract), outcome: "pass", gaps: "none" };
+  const verification = `# Verification\n\nPi-SWE-Evidence: ${JSON.stringify(verificationEnvelope)}\n`;
+  const reviewEnvelope = { schemaVersion: 1, mode: "implementation-review", topic: "demo", contractId: "P1.1", contractPath, planRevision: 1, contractContentHash: sha256(firstContract), decision: "approve", blockingFindings: 0, verification: { path: verificationPath, contentHash: sha256(verification) } };
+  const review = `# Implementation review\n\nPi-SWE-Evidence: ${JSON.stringify(reviewEnvelope)}\n`;
+  for (const [path, content] of [[specPath, spec], [planPath, plan], [phasePath, phase], [contractPath, firstContract], [secondContractPath, secondContract], [planReviewPath, "# approved\n"], [verificationPath, verification], [implementationReviewPath, review]] as const) write(cwd, path, content);
+  const specialists: any = Object.fromEntries(CORE_SPECIALIST_IDS.filter((id) => id !== "accessibility-ux").map((id) => [id, { status: "not-required", rationale: `${id} is not consequential.` }]));
+  specialists.accessibilityUx = { status: "not-required", rationale: "No user interface." };
+  const manifest = {
+    schemaVersion: 1, initiativeId: "demo", topic: "demo", initiativeState: "executing",
+    activeSpec: { revision: 1, path: specPath, contentHash: sha256(spec) },
+    activePlan: { revision: 1, path: planPath, contractRoot, contentHash: sha256(plan) },
+    approval: { decision: "approve", planRevision: 1, planPath, planContentHash: sha256(plan), reviewPath: planReviewPath, approvedAt: "2026-09-03T18:00:00.000Z", blockingFindings: 0 },
+    activeContract: { id: "P1.1", path: contractPath }, specialists, approvedMetadata: "preserved", updatedAt: "2026-09-03T18:00:00.000Z",
+  };
+  const index = {
+    schemaVersion: 1, topic: "demo", planRevision: 1,
+    contracts: [
+      { kind: "phase", id: "P1", dependencies: [], planRevision: 1, canonicalPath: phasePath, status: "approved_not_started", contentHash: sha256(phase) },
+      { kind: "subphase", id: "P1.1", dependencies: [], planRevision: 1, canonicalPath: contractPath, status: "in_progress", contentHash: sha256(firstContract), readiness: { entryInputs: true, capabilities: true, applicability: false, acceptance: true, verification: true, approvedDeferrals: [] }, consequentialSpecialistIds: ["TDD", "SECURITY", "ACCESSIBILITY_UX"] },
+      { kind: "subphase", id: "P1.2", dependencies: ["P1.1"], planRevision: 1, canonicalPath: secondContractPath, status: "awaiting_dependency", contentHash: sha256(secondContract), readiness: { entryInputs: false, capabilities: true, applicability: false, acceptance: true, verification: true, approvedDeferrals: [] }, consequentialSpecialistIds: ["TDD"] },
+    ],
+  };
+  write(cwd, manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  write(cwd, indexPath, `${JSON.stringify(index, null, 2)}\n`);
+  const request: CompleteCanonicalContractRequest = {
+    cwd, topic: "demo", contractId: "P1.1", expectedPlanRevision: 1, expectedContractPath: contractPath,
+    expectedPreCompletionContentHash: sha256(firstContract),
+    verification: { path: verificationPath, contentHash: sha256(verification) },
+    review: { path: implementationReviewPath, contentHash: sha256(review), decision: "approve" },
+    nextActiveContract: "advance", completedAt: "2026-09-03T18:30:00.000Z",
+  };
+  return { cwd, manifestPath, indexPath, verificationPath, implementationReviewPath, request };
 }
 
 function completionRecord(request: CompleteCanonicalContractRequest, nextState: { initiativeState: "executing" | "finalizing"; activeContractId: string | null; readyContractIds: string[] }) {

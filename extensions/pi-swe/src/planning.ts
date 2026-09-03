@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
-import { analyzeContractGraph, CONTRACT_STATUSES, type ContractNode, type ContractStatus } from "./domain/contract-graph.ts";
+import { analyzeContractGraph, compareContractIds, CONTRACT_STATUSES, type ContractNode, type ContractStatus } from "./domain/contract-graph.ts";
 import type { SweCanonicalInitiativeLink } from "./domain/capabilities.ts";
 import { LegacyPlanInspector, type LegacyPlanInspectionResult } from "./orchestrate.ts";
 import {
@@ -23,7 +23,8 @@ const MAX_JSON_BYTES = 256 * 1024;
 const MAX_LINKED_ARTIFACT_BYTES = 2 * 1024 * 1024;
 const MAX_DIAGNOSTICS = 50;
 const MAX_CANONICAL_MANIFESTS = 100;
-const CONTRACT_INDEX_SCHEMA_VERSION = 1 as const;
+export const CONTRACT_INDEX_SCHEMA_VERSION = 2 as const;
+const LEGACY_CONTRACT_INDEX_SCHEMA_VERSION = 1 as const;
 
 export type CanonicalInspectionDiagnosticCode =
   | "invalid_topic"
@@ -81,12 +82,21 @@ export function deriveCanonicalCompletionRequestId(identity: CanonicalCompletion
   return `sha256:${createHash("sha256").update(JSON.stringify(canonical), "utf8").digest("hex")}`;
 }
 
+export type CanonicalIndexedContract = ContractNode & { readonly contentHash?: string };
+export type CanonicalMetadataMigration = {
+  readonly fromSchemaVersion: 1;
+  readonly toSchemaVersion: typeof CONTRACT_INDEX_SCHEMA_VERSION;
+  readonly operation: "normalize-complete-advance";
+  readonly requestId: string;
+  readonly migratedAt: string;
+};
 export type CanonicalContractIndex = {
   readonly schemaVersion: typeof CONTRACT_INDEX_SCHEMA_VERSION;
-  readonly contracts: readonly ContractNode[];
+  readonly contracts: readonly CanonicalIndexedContract[];
   readonly contractFacts: Readonly<Record<string, ContractReadinessFacts | undefined>>;
   readonly consequentialSpecialists: readonly string[];
   readonly completionRecords: Readonly<Record<string, CanonicalCompletionRecord | undefined>>;
+  readonly migration?: CanonicalMetadataMigration;
 };
 
 export type CanonicalInspectorResult = {
@@ -95,6 +105,11 @@ export type CanonicalInspectorResult = {
   readonly manifestPath: string;
   readonly manifest?: InitiativeManifest;
   readonly contracts: readonly ContractNode[];
+  readonly contractIndex?: CanonicalContractIndex;
+  readonly contractIndexPath?: string;
+  readonly migrationRequired: boolean;
+  readonly contractIndexMigrationRequired: boolean;
+  readonly manifestMigrationRequired: boolean;
   readonly completionRecords: Readonly<Record<string, CanonicalCompletionRecord | undefined>>;
   readonly gateEvaluation?: ReduceReadinessResult;
   readonly gates: readonly ReadinessGateResult[];
@@ -141,12 +156,14 @@ export type InitiativeResolution = CanonicalInitiativeResolution | LegacyPlanIns
 
 type MutableInspection = CanonicalInspectionDiagnostic[];
 type UnknownRecord = Record<string, unknown>;
-type IndexedContract = ContractNode & { readonly contentHash?: string };
+type IndexedContract = CanonicalIndexedContract;
 type ParsedContractIndex = {
   readonly contracts: readonly IndexedContract[];
   readonly contractFacts: Readonly<Record<string, ContractReadinessFacts | undefined>>;
   readonly consequentialSpecialists: readonly string[];
   readonly completionRecords: Readonly<Record<string, CanonicalCompletionRecord | undefined>>;
+  readonly canonicalIndex?: CanonicalContractIndex;
+  readonly migrationRequired: boolean;
 };
 
 export function inspectCanonicalInitiative(request: InspectCanonicalInitiativeRequest): CanonicalInspectorResult {
@@ -212,7 +229,10 @@ export function inspectCanonicalInitiative(request: InspectCanonicalInitiativeRe
     }
   }
 
-  const graph = analyzeContractGraph(contracts);
+  const evidencedDeferrals = new Set(Object.entries(parsedIndex.contractFacts)
+    .filter(([, facts]) => Boolean(facts?.deferral?.approved && facts.deferral.evidencePath && artifacts[facts.deferral.evidencePath]))
+    .map(([id]) => id));
+  const graph = analyzeContractGraph(contracts, undefined, evidencedDeferrals);
   const gateEvaluation = reduceReadiness({
     manifest,
     contracts,
@@ -228,6 +248,10 @@ export function inspectCanonicalInitiative(request: InspectCanonicalInitiativeRe
     manifestPath,
     manifest,
     contracts,
+    ...(parsedIndex.canonicalIndex ? { contractIndex: parsedIndex.canonicalIndex, contractIndexPath: indexPath } : {}),
+    migrationRequired: parsedIndex.migrationRequired || manifestValueRequiresMigration(manifestValue),
+    contractIndexMigrationRequired: parsedIndex.migrationRequired,
+    manifestMigrationRequired: manifestValueRequiresMigration(manifestValue),
     completionRecords: parsedIndex.completionRecords,
     gateEvaluation,
     gates: gateEvaluation.gates,
@@ -433,8 +457,9 @@ function parseContractIndex(
     if (value !== undefined) addDiagnostic(diagnostics, "contract_index_invalid", indexPath, "contract index must be an object");
     return emptyContractIndex();
   }
-  if (value.schemaVersion !== CONTRACT_INDEX_SCHEMA_VERSION) {
-    addDiagnostic(diagnostics, "unsupported_version", indexPath, `supported contract index schema version is ${CONTRACT_INDEX_SCHEMA_VERSION}`, "schemaVersion");
+  const legacy = value.schemaVersion === LEGACY_CONTRACT_INDEX_SCHEMA_VERSION;
+  if (!legacy && value.schemaVersion !== CONTRACT_INDEX_SCHEMA_VERSION) {
+    addDiagnostic(diagnostics, "unsupported_version", indexPath, `supported contract index schema versions are ${LEGACY_CONTRACT_INDEX_SCHEMA_VERSION} and ${CONTRACT_INDEX_SCHEMA_VERSION}`, "schemaVersion");
     return emptyContractIndex();
   }
   if (!Array.isArray(value.contracts) || value.contracts.length > 500) {
@@ -443,14 +468,42 @@ function parseContractIndex(
   }
 
   const contracts: IndexedContract[] = [];
+  const legacyFacts: Record<string, ContractReadinessFacts> = {};
+  const legacySpecialists: string[] = [];
   for (let index = 0; index < value.contracts.length; index += 1) {
-    const parsed = parseIndexedContract(value.contracts[index], indexPath, `contracts[${index}]`, topic, manifest, diagnostics);
-    if (parsed) contracts.push(parsed);
+    const candidate = value.contracts[index];
+    const parsed = parseIndexedContract(candidate, indexPath, `contracts[${index}]`, topic, manifest, diagnostics, legacy);
+    if (!parsed) continue;
+    contracts.push(parsed);
+    if (legacy && isRecord(candidate)) {
+      const facts = parseLegacyReadiness(candidate.readiness, parsed, indexPath, `contracts[${index}].readiness`, topic, diagnostics);
+      if (facts) legacyFacts[parsed.id] = facts;
+      legacySpecialists.push(...parseStringArray(candidate.consequentialSpecialistIds, indexPath, `contracts[${index}].consequentialSpecialistIds`, diagnostics));
+    }
   }
-  const contractFacts = parseContractFacts(value.contractFacts, indexPath, topic, diagnostics);
-  const consequentialSpecialists = parseStringArray(value.consequentialSpecialists, indexPath, "consequentialSpecialists", diagnostics);
+  const currentFacts = parseContractFacts(value.contractFacts, indexPath, topic, diagnostics);
+  for (const [id, facts] of Object.entries(legacyFacts)) {
+    if (currentFacts[id] !== undefined && JSON.stringify(currentFacts[id]) !== JSON.stringify(facts)) {
+      addDiagnostic(diagnostics, "contract_index_invalid", indexPath, `legacy and canonical readiness facts conflict for contract ${id}`, `contractFacts.${id}`);
+    }
+  }
+  const contractFacts = { ...legacyFacts, ...currentFacts };
+  const consequentialSpecialists = [...new Set([
+    ...parseStringArray(value.consequentialSpecialists, indexPath, "consequentialSpecialists", diagnostics),
+    ...legacySpecialists,
+  ].map(normalizeSpecialistId))].sort();
   const completionRecords = parseCompletionRecords(value.completionRecords, contracts, indexPath, topic, manifest, diagnostics);
-  return diagnostics.length === diagnosticCount ? { contracts, contractFacts, consequentialSpecialists, completionRecords } : emptyContractIndex();
+  const migration = legacy ? undefined : parseMetadataMigration(value.migration, indexPath, diagnostics);
+  if (diagnostics.length !== diagnosticCount) return emptyContractIndex();
+  const canonicalIndex: CanonicalContractIndex = {
+    schemaVersion: CONTRACT_INDEX_SCHEMA_VERSION,
+    contracts,
+    contractFacts,
+    consequentialSpecialists,
+    completionRecords,
+    ...(migration ? { migration } : {}),
+  };
+  return { contracts, contractFacts, consequentialSpecialists, completionRecords, canonicalIndex, migrationRequired: legacy };
 }
 
 function parseIndexedContract(
@@ -460,32 +513,125 @@ function parseIndexedContract(
   topic: string,
   manifest: InitiativeManifest,
   diagnostics: MutableInspection,
+  legacy: boolean,
 ): IndexedContract | undefined {
   if (!isRecord(value)) return invalidIndex(diagnostics, indexPath, field, "contract must be an object");
+  const before = diagnostics.length;
   const kind = value.kind;
   const id = value.id;
-  const parentId = value.parentId;
-  const dependsOn = value.dependsOn;
+  const canonicalDependencies = value.dependsOn;
+  const legacyDependencies = value.dependencies;
+  if (canonicalDependencies !== undefined && legacyDependencies !== undefined && JSON.stringify(canonicalDependencies) !== JSON.stringify(legacyDependencies)) {
+    addDiagnostic(diagnostics, "contract_index_invalid", indexPath, "dependsOn conflicts with legacy dependencies", `${field}.dependsOn`);
+  }
+  const dependsOn = canonicalDependencies ?? (legacy ? legacyDependencies : undefined);
+  const canonicalPath = value.path;
+  const legacyPath = value.canonicalPath;
+  if (canonicalPath !== undefined && legacyPath !== undefined && canonicalPath !== legacyPath) {
+    addDiagnostic(diagnostics, "contract_index_invalid", indexPath, "path conflicts with legacy canonicalPath", `${field}.path`);
+  }
+  const path = canonicalPath ?? (legacy ? legacyPath : undefined);
   const planRevision = value.planRevision;
-  const path = value.path;
-  const status = value.status;
+  const status = normalizeContractStatus(value.status, legacy);
   const contentHash = value.contentHash;
-  if (kind !== "phase" && kind !== "subphase") return invalidIndex(diagnostics, indexPath, `${field}.kind`, "contract kind must be phase or subphase");
-  if (typeof id !== "string" || id.length > 32) return invalidIndex(diagnostics, indexPath, `${field}.id`, "contract id must be a bounded string");
-  if (!Array.isArray(dependsOn) || dependsOn.some((entry) => typeof entry !== "string") || dependsOn.length > 500) {
-    return invalidIndex(diagnostics, indexPath, `${field}.dependsOn`, "contract dependencies must be a bounded string array");
-  }
-  if (!Number.isSafeInteger(planRevision) || (planRevision as number) <= 0) return invalidIndex(diagnostics, indexPath, `${field}.planRevision`, "plan revision must be a positive integer");
-  if (typeof path !== "string" || !isTopicArtifactPath(path, "plans", topic) || !manifest.activePlan || !path.startsWith(`${manifest.activePlan.contractRoot}/`)) {
-    return invalidIndex(diagnostics, indexPath, `${field}.path`, `contract path must remain under the active plan contract root for ${topic}`);
-  }
-  if (!(CONTRACT_STATUSES as readonly unknown[]).includes(status)) return invalidIndex(diagnostics, indexPath, `${field}.status`, "contract status is unsupported");
-  if (contentHash !== undefined && !isSha256(contentHash)) return invalidIndex(diagnostics, indexPath, `${field}.contentHash`, "content hash must use sha256:<hex>");
-  if (kind === "subphase" && typeof parentId !== "string") return invalidIndex(diagnostics, indexPath, `${field}.parentId`, "subphase parentId is required");
-  if (kind === "phase" && parentId !== undefined) return invalidIndex(diagnostics, indexPath, `${field}.parentId`, "phase cannot declare parentId");
+  const derivedParent = typeof id === "string" && id.includes(".") ? id.slice(0, id.lastIndexOf(".")) : undefined;
+  const parentId = value.parentId ?? (legacy && kind === "subphase" ? derivedParent : undefined);
 
-  const base = { id, dependsOn: dependsOn as string[], planRevision: planRevision as number, path, status: status as ContractStatus, ...(contentHash ? { contentHash } : {}) };
-  return kind === "phase" ? { kind, ...base } : { kind, parentId: parentId as string, ...base };
+  if (kind !== "phase" && kind !== "subphase") addDiagnostic(diagnostics, "contract_index_invalid", indexPath, "contract kind must be phase or subphase", `${field}.kind`);
+  if (typeof id !== "string" || !id || id.length > 32) addDiagnostic(diagnostics, "contract_index_invalid", indexPath, "contract id must be a bounded string", `${field}.id`);
+  if (!Array.isArray(dependsOn) || dependsOn.some((entry) => typeof entry !== "string" || !entry) || dependsOn.length > 500) {
+    addDiagnostic(diagnostics, "contract_index_invalid", indexPath, "contract dependencies must be a bounded string array", `${field}.dependsOn`);
+  }
+  if (!Number.isSafeInteger(planRevision) || (planRevision as number) <= 0) addDiagnostic(diagnostics, "contract_index_invalid", indexPath, "plan revision must be a positive integer", `${field}.planRevision`);
+  if (typeof path !== "string" || !isTopicArtifactPath(path, "plans", topic) || !manifest.activePlan || !path.startsWith(`${manifest.activePlan.contractRoot}/`)) {
+    addDiagnostic(diagnostics, "contract_index_invalid", indexPath, `contract path must remain under the active plan contract root for ${topic}`, `${field}.path`);
+  }
+  if (!status) addDiagnostic(diagnostics, "contract_index_invalid", indexPath, `contract status is unsupported: ${String(value.status)}`, `${field}.status`);
+  if (contentHash !== undefined && !isSha256(contentHash)) addDiagnostic(diagnostics, "contract_index_invalid", indexPath, "content hash must use sha256:<hex>", `${field}.contentHash`);
+  if (kind === "subphase" && (typeof parentId !== "string" || !parentId)) addDiagnostic(diagnostics, "contract_index_invalid", indexPath, "subphase parentId is required and could not be derived", `${field}.parentId`);
+  if (kind === "phase" && value.parentId !== undefined) addDiagnostic(diagnostics, "contract_index_invalid", indexPath, "phase cannot declare parentId", `${field}.parentId`);
+  if (diagnostics.length !== before) return undefined;
+
+  const base = { id: id as string, dependsOn: dependsOn as string[], planRevision: planRevision as number, path: path as string, status: status!, ...(contentHash ? { contentHash: contentHash as string } : {}) };
+  return kind === "phase" ? { kind, ...base } : { kind: "subphase", parentId: parentId as string, ...base };
+}
+
+function normalizeContractStatus(value: unknown, legacy: boolean): ContractStatus | undefined {
+  if ((CONTRACT_STATUSES as readonly unknown[]).includes(value)) return value as ContractStatus;
+  if (!legacy) return undefined;
+  if (value === "proposed" || value === "approved_not_started" || value === "awaiting_dependency") return "pending";
+  if (value === "started" || value === "active" || value === "implementing") return "in_progress";
+  if (value === "completed") return "complete";
+  return undefined;
+}
+
+function parseLegacyReadiness(
+  value: unknown,
+  contract: IndexedContract,
+  path: string,
+  field: string,
+  topic: string,
+  diagnostics: MutableInspection,
+): ContractReadinessFacts | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return invalidIndex(diagnostics, path, field, "legacy readiness must be an object");
+  const before = diagnostics.length;
+  for (const key of ["entryInputs", "capabilities", "acceptance", "verification"] as const) {
+    if (typeof value[key] !== "boolean") addDiagnostic(diagnostics, "contract_index_invalid", path, `${field}.${key} must be boolean`, `${field}.${key}`);
+  }
+  const applicability = typeof value.applicability === "boolean"
+    ? "applicable"
+    : (["applicable", "not-applicable", "unresolved"] as const).includes(value.applicability as any)
+      ? value.applicability as ContractReadinessFacts["applicability"]
+      : undefined;
+  if (!applicability) addDiagnostic(diagnostics, "contract_index_invalid", path, `${field}.applicability is unsupported`, `${field}.applicability`);
+  let deferral: ContractReadinessFacts["deferral"];
+  if (value.approvedDeferrals !== undefined) {
+    if (!Array.isArray(value.approvedDeferrals) || value.approvedDeferrals.length > 1 || value.approvedDeferrals.some((entry) => typeof entry !== "string" || (!isTopicArtifactPath(entry, "findings", topic) && !isTopicArtifactPath(entry, "reports", topic)))) {
+      addDiagnostic(diagnostics, "contract_index_invalid", path, `${field}.approvedDeferrals must be empty or contain one topic-confined evidence path`, `${field}.approvedDeferrals`);
+    } else if (value.approvedDeferrals.length === 1) {
+      deferral = { approved: true, evidencePath: value.approvedDeferrals[0] as string };
+    }
+  }
+  if (diagnostics.length !== before) return undefined;
+  const entryInputs = value.entryInputs as boolean;
+  return {
+    // Legacy writers used this bit for dependency state. Dependency satisfaction is now graph-derived.
+    entryInputsAvailable: contract.dependsOn.length > 0 && !entryInputs ? true : entryInputs,
+    capabilitiesAvailable: value.capabilities as boolean,
+    applicability: applicability!,
+    acceptanceDefined: value.acceptance as boolean,
+    verificationDefined: value.verification as boolean,
+    ...(deferral ? { deferral } : {}),
+  };
+}
+
+function normalizeSpecialistId(value: string): string {
+  const normalized = value === "accessibilityUx" ? "accessibility-ux" : value.toLowerCase().replaceAll("_", "-");
+  return normalized === "accessibility-ux" ? normalized : normalized;
+}
+
+function parseMetadataMigration(value: unknown, path: string, diagnostics: MutableInspection): CanonicalMetadataMigration | undefined {
+  if (value === undefined) return undefined;
+  const keys = new Set(["fromSchemaVersion", "toSchemaVersion", "operation", "requestId", "migratedAt"]);
+  if (!isRecord(value) || !hasExactKeys(value, keys)
+    || value.fromSchemaVersion !== 1
+    || value.toSchemaVersion !== CONTRACT_INDEX_SCHEMA_VERSION
+    || value.operation !== "normalize-complete-advance"
+    || !isSha256(value.requestId)
+    || typeof value.migratedAt !== "string"
+    || Number.isNaN(Date.parse(value.migratedAt))) {
+    addDiagnostic(diagnostics, "contract_index_invalid", path, "migration must be a closed canonical metadata migration record", "migration");
+    return undefined;
+  }
+  return value as CanonicalMetadataMigration;
+}
+
+function manifestValueRequiresMigration(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const approval = isRecord(value.approval) ? value.approval : undefined;
+  const specialists = isRecord(value.specialists) ? value.specialists : undefined;
+  return approval?.decision === "approve" || specialists?.accessibilityUx !== undefined || specialists?.ACCESSIBILITY_UX !== undefined;
 }
 
 function parseCompletionRecords(
@@ -596,7 +742,7 @@ function readCompletionNextState(
   if (readyContractIds.length > 500
     || readyContractIds.some((id) => typeof id !== "string" || !contracts.has(id))
     || new Set(readyContractIds).size !== readyContractIds.length
-    || [...readyContractIds].sort().some((id, index) => id !== readyContractIds[index])) {
+    || [...readyContractIds].sort(compareContractIds).some((id, index) => id !== readyContractIds[index])) {
     addDiagnostic(diagnostics, "contract_index_invalid", path, `${field} must be a bounded historical snapshot of indexed IDs`, field);
     return undefined;
   }
@@ -797,7 +943,7 @@ function isSha256(value: unknown): value is string {
 }
 
 function emptyContractIndex(): ParsedContractIndex {
-  return { contracts: [], contractFacts: {}, consequentialSpecialists: [], completionRecords: {} };
+  return { contracts: [], contractFacts: {}, consequentialSpecialists: [], completionRecords: {}, migrationRequired: false };
 }
 
 function emptyResult(
@@ -806,7 +952,7 @@ function emptyResult(
   diagnostics: readonly CanonicalInspectionDiagnostic[],
   manifest?: InitiativeManifest,
 ): CanonicalInspectorResult {
-  return { sourceMode: "canonical", topic, manifestPath, ...(manifest ? { manifest } : {}), contracts: [], completionRecords: {}, gates: [], readyIds: [], blockers: [], diagnostics };
+  return { sourceMode: "canonical", topic, manifestPath, ...(manifest ? { manifest } : {}), contracts: [], migrationRequired: false, contractIndexMigrationRequired: false, manifestMigrationRequired: false, completionRecords: {}, gates: [], readyIds: [], blockers: [], diagnostics };
 }
 
 function invalidIndex(diagnostics: MutableInspection, path: string, field: string, message: string): undefined {

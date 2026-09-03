@@ -15,7 +15,7 @@ Expected baseline:
 - `/swe config` reports the effective defaults or project/global config.
 - If no peer extension is installed, `detected peers: none` and `active plan: none` are valid.
 
-For every canonical scenario, authority starts at `.model-artifacts/specs/<topic>/manifest.json`. Follow `manifest.activePlan` only when its exact revision, path, and hash match an `approved` approval record. Then read `<activePlan.contractRoot>/contracts.json` and execute `manifest.activeContract` when valid, otherwise the lowest dependency-satisfied pending contract. Never select a plan merely because it has the highest revision number.
+For every canonical scenario, authority starts at schema-v1 `.model-artifacts/specs/<topic>/manifest.json`. Follow `manifest.activePlan` only when its exact revision, path, and hash match an `approved` approval record (legacy `approve` is normalized to that state). Then read `<activePlan.contractRoot>/contracts.json`; canonical writers emit schema v2, while readers normalize supported legacy schema-v1 variants. Execute `manifest.activeContract` when valid, otherwise the lowest dependency-satisfied pending subphase. Phase entries are non-executable grouping nodes and never preempt ready children. Never select a plan merely because it has the highest revision number.
 
 ## Scenario 1: plan → implement → verify → finalize
 
@@ -229,11 +229,11 @@ Goal: prove completion uses stable machine state, exact evidence identity, and r
 
 1. Start one canonical ready contract so `manifest.activeContract` names it and the index status is `in_progress`.
 2. Produce a passing verification report and an approving implementation-review report. Each contains one closed `Pi-SWE-Evidence: {...}` JSON line for the exact topic, contract ID/path/hash, and plan revision; verification declares `outcome: pass`/`gaps: none`, while implementation review declares `decision: approve`, zero blockers, and the exact verification path/hash. Compute whole-report sha256 identities plus the unchanged contract-content hash.
-3. Run the explicit `/swe complete ... approve advance` action with exact plan revision, stable contract path, hashes, and report paths.
+3. Run the explicit `/swe complete ... approve advance` action with exact plan revision, stable contract path, hashes, and report paths. Include a supported schema-v1 fixture using `dependencies`, `canonicalPath`, legacy statuses/per-entry readiness, derivable subphase parents, `P1`/`P1.1` IDs, `accessibilityUx`, and manifest approval token `approve`.
 4. Run `/swe status`, then repeat the identical completion action after reload.
 5. In a disposable fixture, interrupt each journal stage and run recovery; corrupt a required pre-validation backup in one case. Also race separate local processes and simulate incomplete, aged-live, dead-owner, and replaced claim-token files; claim files are never auto-reaped.
 
-Expected result: the contract becomes `complete` in `contracts.json`, its stable filename is unchanged, the completion record survives journal cleanup, status shows phase/next-contract progress, and the exact repeat returns `already-complete` without writes. Stage recovery either restores verified preimages, finishes committed cleanup, or retains the journal as `blocked-recovery`; it never guesses state or reports false success.
+Expected result: one journaled operation losslessly migrates compatible metadata to canonical contract-index schema v2, preserves contract/hash/evidence identities, marks the subphase `complete`, derives phase state, and advances to the next ready subphase rather than its phase. Its stable filename is unchanged, migration provenance and the completion record survive journal cleanup, and the exact repeat returns `already-complete` without writes. Ambiguous legacy metadata reports all bounded artifact-specific diagnostics with zero mutation. Stage recovery either restores verified preimages, finishes committed cleanup, or retains the journal as `blocked-recovery`; it never guesses state or reports false success.
 
 ## Scenario 13: Plan review and revision
 
@@ -262,9 +262,9 @@ Goal: prove legacy planning artifacts require explicit adoption rather than sile
 
 1. Start with a legacy phase tree or todo-linked plan and no canonical manifest.
 2. Run `/swe orchestrate start` and follow the adoption handoff.
-3. Create the canonical manifest, immutable spec/plan revision, contract root, and `contracts.json`; explicitly map any accepted historical completion state.
+3. Create the canonical schema-v1 manifest, immutable spec/plan revision, contract root, and schema-v2 `contracts.json`; explicitly map any accepted historical completion state.
 
-Expected result: status reports legacy mode until adoption is explicit. Canonical and legacy modes are never mixed silently, and canonical writes do not target a todo phase tree.
+Expected result: status reports legacy mode until adoption is explicit. Supported schema-v1 machine metadata may be normalized losslessly, but unrelated legacy planning modes are never mixed silently, and canonical writes do not target a todo phase tree.
 
 ## Scenario 16: Two initiatives and ambiguity
 
@@ -303,7 +303,7 @@ Expected result: the filename is unchanged; `contracts.json`, completion records
 - [x] No-`pi-todo` and with-`pi-todo` scenarios are documented.
 - [x] Feature, bug, DSA, exception, resume, and finalize-gate orchestration scenarios are documented.
 - [x] `/swe orchestrate [status|start|resume|handoff]` is documented as guidance-only orchestration inside the existing `/swe` namespace.
-- [x] Explicit `/swe complete` machine-state disposition, reload idempotency, stable canonical filenames, and staged recovery are documented.
+- [x] Explicit `/swe complete` machine-state disposition, schema-v1 compatibility migration to contract-index schema v2, reload idempotency, stable canonical filenames, and staged recovery are documented.
 - [x] Manifest-approved revision selection, next-contract progression, plan review/revision, stale approval rejection, legacy adoption, two-initiative ambiguity, blocked handoff, and approved deferral are documented.
 - [x] Legacy Programming SOP, TDD RGR, and DSA Advisor migration paths are documented in `extensions/pi-swe/README.md`.
 - [x] Omitted legacy namespaces and model-callable advisor tools are documented as intentional omissions.

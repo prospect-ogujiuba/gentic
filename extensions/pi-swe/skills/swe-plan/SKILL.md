@@ -37,7 +37,7 @@ Classify the request before writing:
 
 ## Required canonical documents
 
-The mutable schema-v1 `manifest.json` records `schemaVersion`, `initiativeId`, exact `topic`, `initiativeState`, `activeSpec` (`revision`, `path`, `contentHash`), optional `activePlan` (`revision`, `path`, `contentHash`, `contractRoot`), all specialist statuses/rationales/finding paths, `updatedAt`, and—when approved—the exact approval record. Add the optional `activeContract` pointer only when execution starts.
+The mutable schema-v1 `manifest.json` records `schemaVersion`, `initiativeId`, exact `topic`, `initiativeState`, `activeSpec` (`revision`, `path`, `contentHash`), optional `activePlan` (`revision`, `path`, `contentHash`, `contractRoot`), all specialist statuses/rationales/finding paths, `updatedAt`, and—when approved—the exact approval record. Add the optional `activeContract` pointer only when execution starts. Readers normalize the legacy approval token `approve` to the canonical manifest state `approved` and the legacy specialist alias `accessibilityUx` to `accessibility-ux`; writers emit only the canonical names and never require renewed approval for that lossless metadata normalization.
 
 The initiative spec records exact topic, problem/outcomes, constraints/non-goals, acceptance criteria, compatibility, migration/rollback, risks, and open blockers.
 
@@ -51,7 +51,7 @@ The plan index records:
 - acceptance-to-evidence verification matrix;
 - revision history, approval status, and open blockers.
 
-The schema-v1 `contracts.json` records every contract's kind/ID, dependencies, plan revision, canonical path, status, and `contentHash`; contract readiness facts for entry inputs, capabilities, applicability, acceptance, verification, and approved deferrals; and consequential specialist IDs. Keep it synchronized with contract files before evaluating readiness.
+The canonical schema-v2 `contracts.json` records every contract's opaque kind/ID, `dependsOn`, plan revision, `path`, current status, and `contentHash`; `contractFacts` for contract readiness facts covering external entry inputs, capabilities, applicability, acceptance, verification, and approved deferrals; canonical `consequentialSpecialists`; completion records; and migration provenance when a legacy index was upgraded. Writers emit schema v2 only. Readers may losslessly normalize supported schema-v1 variants (`dependencies`, `canonicalPath`, legacy statuses and per-entry readiness/specialist fields, missing derivable `parentId`, and supported specialist aliases), but ambiguous or conflicting metadata blocks before mutation. Dependency satisfaction is graph-derived rather than persisted as an entry-input fact. Phase contracts are non-executable grouping nodes: readiness selects subphases, and phase completion is derived from their children. Keep the index synchronized with immutable contract files before evaluating readiness.
 
 Each implementation contract records Goal, observable behavior, Scope and Non-goals, Dependencies and entry inputs, Expected files/outputs, specialist decisions incorporated, Acceptance criteria, Verification, rollback/migration constraints where applicable, status, and links to the exact spec and plan revisions. A developer must be able to execute it without reconstructing intent from chat.
 
