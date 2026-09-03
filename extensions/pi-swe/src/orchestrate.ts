@@ -47,22 +47,21 @@ const MAX_LEGACY_FILES = 1_000;
 const MAX_LEGACY_TOPICS = 100;
 
 const ARTIFACT_LOCATORS: ReadonlyArray<{ key: OrchestrationArtifactKey; roots: string[]; patterns: RegExp[] }> = Object.freeze([
-  { key: "workOrder", roots: [".model-artifacts/specs"], patterns: [/work-order|spec|contract/i] },
-  { key: "plan", roots: [".model-artifacts/plans", ".model-artifacts/todo"], patterns: [/plan|phase-index|phase|todo/i] },
-  { key: "diagnosis", roots: [".model-artifacts/findings"], patterns: [/diagnos|repro|failure/i] },
-  { key: "dsaDecision", roots: [".model-artifacts/findings"], patterns: [/dsa|decision|algorithm|data-structure/i] },
-  { key: "implementation", roots: [".model-artifacts/logs"], patterns: [/implement|state\.json$/i] },
-  { key: "verification", roots: [".model-artifacts/reports"], patterns: [/verif|test|check/i] },
-  { key: "review", roots: [".model-artifacts/reports", ".model-artifacts/findings"], patterns: [/review/i] },
-  { key: "finalHandoff", roots: [".model-artifacts/reports"], patterns: [/handoff|final/i] },
+  { key: "workOrder", roots: [".model-artifacts/initiatives/<topic>/specs"], patterns: [/work-order|spec|contract/i] },
+  { key: "plan", roots: [".model-artifacts/initiatives/<topic>/plans", ".model-artifacts/initiatives/<topic>/todo"], patterns: [/plan|phase-index|phase|todo/i] },
+  { key: "diagnosis", roots: [".model-artifacts/initiatives/<topic>/findings"], patterns: [/diagnos|repro|failure/i] },
+  { key: "dsaDecision", roots: [".model-artifacts/initiatives/<topic>/findings"], patterns: [/dsa|decision|algorithm|data-structure/i] },
+  { key: "implementation", roots: [".model-artifacts/initiatives/<topic>/logs"], patterns: [/implement/i] },
+  { key: "verification", roots: [".model-artifacts/initiatives/<topic>/reports"], patterns: [/verif|test|check/i] },
+  { key: "review", roots: [".model-artifacts/initiatives/<topic>/reports", ".model-artifacts/initiatives/<topic>/findings"], patterns: [/review/i] },
+  { key: "finalHandoff", roots: [".model-artifacts/initiatives/<topic>/reports"], patterns: [/handoff|final/i] },
 ]);
 
 export const LEGACY_ADOPTION_REQUIREMENTS = Object.freeze([
-  "create a schema-v1 canonical manifest",
-  "normalize the legacy plan into canonical plan revision r1",
-  "validate the contract DAG and applicability",
-  "complete plan review",
-  "approve the reviewed canonical plan",
+  "run the separately approved layout-v1 to layout-v2 migration",
+  "create a schema-v2 manifest under .model-artifacts/initiatives/<topic>/specs/manifest.json",
+  "rewrite and hash-validate exact topic-first plan and contract paths",
+  "remove layout-v1 authority only after migration verification",
 ] as const);
 
 export type LegacyPlanInspectionResult =
@@ -74,7 +73,18 @@ export type LegacyPlanInspectionResult =
       readonly candidatePaths: readonly string[];
       readonly candidateTopics: readonly string[];
       readonly adoptionRequirements: typeof LEGACY_ADOPTION_REQUIREMENTS;
-      readonly nextAction: "adopt-legacy-plan";
+      readonly nextAction: "migrate-legacy-plan";
+      readonly warnings: readonly string[];
+    }
+  | {
+      readonly sourceMode: "legacy";
+      readonly status: "migration-required";
+      readonly topic: string;
+      readonly manifestPath: string;
+      readonly candidatePaths: readonly string[];
+      readonly candidateTopics: readonly string[];
+      readonly adoptionRequirements: typeof LEGACY_ADOPTION_REQUIREMENTS;
+      readonly nextAction: "migrate-legacy-plan";
       readonly warnings: readonly string[];
     }
   | {
@@ -99,7 +109,7 @@ export class LegacyPlanInspector {
       candidatePaths: candidates,
       candidateTopics: [topic],
       adoptionRequirements: LEGACY_ADOPTION_REQUIREMENTS,
-      nextAction: "adopt-legacy-plan",
+      nextAction: "migrate-legacy-plan",
       warnings: [],
     };
   }
@@ -129,7 +139,8 @@ export class LegacyPlanInspector {
   private collectMatchingArtifacts(cwd: string, topic: string, roots: string[], patterns: RegExp[], requiredSegment?: string): string[] {
     const candidates: string[] = [];
     for (const root of roots) {
-      const relativeRoot = requiredSegment ? posix.join(root, topic, requiredSegment) : posix.join(root, topic);
+      const topicRootTemplate = root.includes("<topic>") ? root.replace("<topic>", topic) : posix.join(root, topic);
+      const relativeRoot = requiredSegment ? posix.join(topicRootTemplate, requiredSegment) : topicRootTemplate;
       const topicRoot = join(cwd, relativeRoot);
       if (existsSync(topicRoot)) collectFiles(topicRoot, relativeRoot, candidates);
     }
@@ -221,14 +232,12 @@ export function recommendGateAwareOrchestration(request: RecommendGateAwareOrche
   }
   if (resolution.sourceMode === "legacy") {
     if (resolution.status === "not-found") return blockedRecommendation("no canonical or legacy plan was found", [], resolution.warnings);
-    return recommendation({
-      stage: "plan-review",
-      skill: "swe-review",
-      reason: "legacy plans require canonical adoption and plan review before implementation",
-      requiredReadPaths: [resolution.planPath],
-      intendedWriteArtifact: `.model-artifacts/specs/${resolution.topic}/manifest.json`,
-      blockingReasons: resolution.adoptionRequirements,
-    });
+    const legacyPath = resolution.status === "legacy-unverified" ? resolution.planPath : resolution.manifestPath;
+    return blockedRecommendation(
+      "layout-v1 authority is inspection-only and requires migration before implementation",
+      [legacyPath],
+      resolution.adoptionRequirements,
+    );
   }
 
   const inspection = resolution.inspection;
@@ -267,7 +276,7 @@ export function recommendGateAwareOrchestration(request: RecommendGateAwareOrche
       skill: "swe-plan",
       reason: "the initiative needs a complete active specification before planning",
       requiredReadPaths: baseReads,
-      intendedWriteArtifact: `.model-artifacts/specs/${manifest.topic}/<timestamp>-spec.md`,
+      intendedWriteArtifact: `.model-artifacts/initiatives/${manifest.topic}/specs/<timestamp>-spec.md`,
       blockingReasons: blockersForGate(inspection, "spec-ready"),
     });
   }
@@ -277,7 +286,7 @@ export function recommendGateAwareOrchestration(request: RecommendGateAwareOrche
       skill: "swe-plan",
       reason: "the active specification needs a canonical plan revision",
       requiredReadPaths: baseReads,
-      intendedWriteArtifact: `.model-artifacts/plans/${manifest.topic}/<timestamp>-plan-index-r<revision>.md`,
+      intendedWriteArtifact: `.model-artifacts/initiatives/${manifest.topic}/plans/<timestamp>-plan-index-r<revision>.md`,
       blockingReasons: blockersForGate(inspection, "plan-review-ready"),
     });
   }
@@ -301,7 +310,7 @@ export function recommendGateAwareOrchestration(request: RecommendGateAwareOrche
       skill,
       reason: `required ${specialist} assessment must complete before plan review`,
       requiredReadPaths: planReads,
-      intendedWriteArtifact: `.model-artifacts/findings/${manifest.topic}/<timestamp>-${specialist}-finding.md`,
+      intendedWriteArtifact: `.model-artifacts/initiatives/${manifest.topic}/findings/<timestamp>-${specialist}-finding.md`,
       blockingReasons: blockersForGate(inspection, "plan-review-ready"),
     });
   }
@@ -320,7 +329,7 @@ export function recommendGateAwareOrchestration(request: RecommendGateAwareOrche
       skill: "swe-plan",
       reason: "the active plan must resolve readiness blockers before plan review",
       requiredReadPaths: [...planReads, ...specialistFindingPaths(manifest), ...blockerArtifactPaths(inspection, "plan-review-ready")],
-      intendedWriteArtifact: `.model-artifacts/plans/${manifest.topic}/<timestamp>-plan-index-r<next-revision>.md`,
+      intendedWriteArtifact: `.model-artifacts/initiatives/${manifest.topic}/plans/<timestamp>-plan-index-r<next-revision>.md`,
       blockingReasons: blockersForGate(inspection, "plan-review-ready"),
     });
   }
@@ -332,7 +341,7 @@ export function recommendGateAwareOrchestration(request: RecommendGateAwareOrche
       skill: "swe-review",
       reason: "the review-ready active plan requires explicit review and approval before implementation",
       requiredReadPaths: [...planReads, ...specialistFindingPaths(manifest)],
-      intendedWriteArtifact: `.model-artifacts/findings/${manifest.topic}/<timestamp>-plan-review.md`,
+      intendedWriteArtifact: `.model-artifacts/initiatives/${manifest.topic}/findings/<timestamp>-plan-review.md`,
       blockingReasons: blockersForGate(inspection, "plan-approved"),
     });
   }
@@ -382,7 +391,7 @@ export function recommendGateAwareOrchestration(request: RecommendGateAwareOrche
           [handoff ? `restore or validate final-handoff evidence at ${handoff.path}` : `create and validate final-handoff evidence for ${manifest.topic}`],
         );
       }
-      return recommendation({ stage: "finalize", skill: "swe-finalize", reason: "all required contracts are complete or approved for deferral", requiredReadPaths: planReads, intendedWriteArtifact: `.model-artifacts/reports/${manifest.topic}/<timestamp>-final-handoff.md`, blockingReasons: blockersForGate(inspection, "finalize-ready") });
+      return recommendation({ stage: "finalize", skill: "swe-finalize", reason: "all required contracts are complete or approved for deferral", requiredReadPaths: planReads, intendedWriteArtifact: `.model-artifacts/initiatives/${manifest.topic}/reports/<timestamp>-final-handoff.md`, blockingReasons: blockersForGate(inspection, "finalize-ready") });
     }
     return blockedRecommendation("no contract is ready for deterministic execution", [...planReads, ...blockerArtifactPaths(inspection)], inspection.blockers.map((blocker) => blocker.remediation));
   }
@@ -401,12 +410,12 @@ export function recommendGateAwareOrchestration(request: RecommendGateAwareOrche
   if (state === "verifying" && execution?.verifierAvailable === false) {
     return blockedRecommendation("no verifier is available for the active contract", [...contractReads, ...executionEvidencePaths(execution)], [`provide a verifier or approve a documented verification gap for contract ${contract.id}`], contractMeta.activeContract, contractMeta.readyContracts);
   }
-  if (state === "verifying") return contractRecommendation("verify", "swe-verify", "the active contract requires verification evidence", contractReads, execution, `.model-artifacts/reports/${manifest.topic}/<timestamp>-verification.md`, contractMeta);
-  if (state === "reviewing") return contractRecommendation("implementation-review", "swe-review", "verified implementation requires implementation review", contractReads, execution, `.model-artifacts/reports/${manifest.topic}/<timestamp>-implementation-review.md`, contractMeta);
+  if (state === "verifying") return contractRecommendation("verify", "swe-verify", "the active contract requires verification evidence", contractReads, execution, `.model-artifacts/initiatives/${manifest.topic}/reports/<timestamp>-verification.md`, contractMeta);
+  if (state === "reviewing") return contractRecommendation("implementation-review", "swe-review", "verified implementation requires implementation review", contractReads, execution, `.model-artifacts/initiatives/${manifest.topic}/reports/<timestamp>-implementation-review.md`, contractMeta);
   if (state === "complete" || state === "deferred") {
     return blockedRecommendation("contract disposition and manifest active contract are inconsistent", contractReads, [`clear active contract ${contract.id} and recompute the next ready contract`], contractMeta.activeContract, contractMeta.readyContracts);
   }
-  return contractRecommendation("implement", "swe-implement", `contract ${contract.id} is the deterministic next implementation slice`, contractReads, execution, `.model-artifacts/logs/${manifest.topic}/<timestamp>-implementation.md`, contractMeta);
+  return contractRecommendation("implement", "swe-implement", `contract ${contract.id} is the deterministic next implementation slice`, contractReads, execution, `.model-artifacts/initiatives/${manifest.topic}/logs/<timestamp>-implementation.md`, contractMeta);
 }
 
 function contractRecommendation(
@@ -481,12 +490,16 @@ function findInvalidSupplementalPaths(request: RecommendGateAwareOrchestrationRe
 }
 
 function isTopicModelArtifactPath(path: string, topic: string): boolean {
-  const match = /^\.model-artifacts\/([^/]+)\//.exec(path);
-  return Boolean(match && MODEL_ARTIFACT_KINDS.has(match[1]!) && isTopicArtifactPath(path, match[1]!, topic));
+  const safe = !path.includes("\\")
+    && !/[\u0000-\u001f\u007f]/.test(path)
+    && !path.split("/").some((segment) => segment === "" || segment === "." || segment === "..");
+  if (!safe) return false;
+  if (path.startsWith(`.model-artifacts/system/logs/pi-swe/${topic}/`)) return true;
+  return [...MODEL_ARTIFACT_KINDS].some((kind) => isTopicArtifactPath(path, kind, topic));
 }
 
 function isTopicArtifactPath(path: string, kind: string, topic: string): boolean {
-  return path.startsWith(`.model-artifacts/${kind}/${topic}/`)
+  return path.startsWith(`.model-artifacts/initiatives/${topic}/${kind}/`)
     && !path.includes("\\")
     && !/[\u0000-\u001f\u007f]/.test(path)
     && !path.split("/").some((segment) => segment === "" || segment === "." || segment === "..");

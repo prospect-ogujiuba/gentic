@@ -129,7 +129,7 @@ test("primitive triggers flatten structured context files", async () => {
   const result = handler({
     prompt: "Continue",
     systemPrompt: "BASE",
-    systemPromptOptions: { contextFiles: [{ path: ".model-artifacts/plans/demo.md", content: "phase" }] },
+    systemPromptOptions: { contextFiles: [{ path: ".model-artifacts/initiatives/demo/plans/2026-05-01_1200-demo.md", content: "phase" }] },
   });
   assert.match(result?.systemPrompt || "", /Model artifacts convention/);
 });

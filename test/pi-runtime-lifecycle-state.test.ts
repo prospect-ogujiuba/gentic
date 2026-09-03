@@ -51,15 +51,15 @@ test("pi-todo appends a versioned event envelope", async () => {
 });
 
 test("pi-swe decodes schema-v2 canonical pointers, preserves v1 as legacy, and ignores future versions", () => {
-  const legacy = { version: 1, state: { activePlan: { source: "artifact", marker: " .model-artifacts/todo/demo/phases/03.md " }, activeStage: "implement" } };
+  const legacy = { version: 1, state: { activePlan: { source: "artifact", marker: " .model-artifacts/initiatives/demo/todo/phases/03.md " }, activeStage: "implement" } };
   const activeInitiative = {
     topic: "demo",
-    manifestPath: ".model-artifacts/specs/demo/manifest.json",
-    manifestSchemaVersion: 1,
+    manifestPath: ".model-artifacts/initiatives/demo/specs/manifest.json",
+    manifestSchemaVersion: 2,
     planRevision: 1,
-    planPath: ".model-artifacts/plans/demo/plan.md",
+    planPath: ".model-artifacts/initiatives/demo/plans/plan.md",
     contractId: "01",
-    contractPath: ".model-artifacts/plans/demo/revisions/r1/contracts/01.md",
+    contractPath: ".model-artifacts/initiatives/demo/plans/revisions/r1/contracts/01.md",
     lifecycle: { initiativeState: "approved", contractStatus: "pending" },
     gates: { readyIds: ["01"], blockerCodes: [] },
   };
@@ -67,7 +67,7 @@ test("pi-swe decodes schema-v2 canonical pointers, preserves v1 as legacy, and i
   const future = { version: 3, state: { activePlan: { source: "prompt", marker: "abandoned" }, activeStage: "finalize" } };
 
   assert.deepEqual(decodeSweStateEnvelope(legacy), {
-    activePlan: { source: "artifact", marker: ".model-artifacts/todo/demo/phases/03.md" },
+    activePlan: { source: "artifact", marker: ".model-artifacts/initiatives/demo/todo/phases/03.md" },
     activeStage: "implement",
   });
   assert.deepEqual(reconstructPersistedSweState([

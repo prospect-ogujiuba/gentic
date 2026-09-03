@@ -131,7 +131,7 @@ test("/swe status and orchestrate expose canonical topic, revision, gates, contr
   for (const field of [
     "source mode: canonical",
     "initiative/topic: team/demo",
-    "schema: 1",
+    "schema: 2",
     "initiative state: approved",
     "active spec: r1",
     "active plan: r1",
@@ -176,7 +176,7 @@ test("/swe command warns with actionable topic selection for none, ambiguity, le
   await legacyHarness.swe.handler("orchestrate resume old-flow", { cwd: legacy, ui: { notify: (message: string, type?: string) => legacyHarness.notifications.push({ message, type }) } });
   assert.equal(legacyHarness.notifications[0]?.type, "warning");
   assert.match(legacyHarness.notifications[0]?.message ?? "", /source mode: legacy/);
-  assert.match(legacyHarness.notifications[0]?.message ?? "", /canonical adoption/);
+  assert.match(legacyHarness.notifications[0]?.message ?? "", /requires migration/);
 
   await legacyHarness.swe.handler("orchestrate launch old-flow", { cwd: legacy, ui: { notify: (message: string, type?: string) => legacyHarness.notifications.push({ message, type }) } });
   assert.equal(legacyHarness.notifications.at(-1)?.type, "warning");
@@ -234,12 +234,12 @@ function registerSweForCommandTest(cwd: string) {
 }
 
 function writeCommandCanonicalFixture(topic: string, cwd = mkdtempSync(join(tmpdir(), "pi-swe-command-canonical-"))): string {
-  const specPath = `.model-artifacts/specs/${topic}/spec.md`;
-  const manifestPath = `.model-artifacts/specs/${topic}/manifest.json`;
-  const planPath = `.model-artifacts/plans/${topic}/plan.md`;
-  const contractRoot = `.model-artifacts/plans/${topic}/revisions/r1`;
+  const specPath = `.model-artifacts/initiatives/${topic}/specs/spec.md`;
+  const manifestPath = `.model-artifacts/initiatives/${topic}/specs/manifest.json`;
+  const planPath = `.model-artifacts/initiatives/${topic}/plans/plan.md`;
+  const contractRoot = `.model-artifacts/initiatives/${topic}/plans/revisions/r1`;
   const contractPath = `${contractRoot}/contracts/01.md`;
-  const reviewPath = `.model-artifacts/findings/${topic}/review.md`;
+  const reviewPath = `.model-artifacts/initiatives/${topic}/findings/review.md`;
   const spec = "# spec\n", plan = "# plan\n", contract = "# contract\n";
   writeCommandFile(cwd, specPath, spec);
   writeCommandFile(cwd, planPath, plan);
@@ -252,7 +252,7 @@ function writeCommandCanonicalFixture(topic: string, cwd = mkdtempSync(join(tmpd
     consequentialSpecialists: [],
   }));
   writeCommandFile(cwd, manifestPath, JSON.stringify({
-    schemaVersion: 1, initiativeId: topic, topic, initiativeState: "approved",
+    schemaVersion: 2, initiativeId: topic, topic, initiativeState: "approved",
     activeSpec: { revision: 1, path: specPath, contentHash: commandSha256(spec) },
     activePlan: { revision: 1, path: planPath, contractRoot, contentHash: commandSha256(plan) },
     specialists: Object.fromEntries(["diagnosis", "dsa", "tdd", "security", "migration", "performance", "accessibility-ux", "operations", "compatibility"].map((id) => [id, { status: "not-required", rationale: `${id} has no consequential work.` }])),
@@ -328,9 +328,9 @@ test("planning and plan-review skills define the canonical approval workflow", (
   ].join("\n");
 
   for (const required of [
-    ".model-artifacts/specs/<topic>/",
-    ".model-artifacts/plans/<topic>/",
-    ".model-artifacts/specs/<topic>/manifest.json",
+    ".model-artifacts/initiatives/<topic>/specs/",
+    ".model-artifacts/initiatives/<topic>/plans/",
+    ".model-artifacts/initiatives/<topic>/specs/manifest.json",
     "contracts.json",
     "contractRoot",
     "contentHash",
@@ -353,14 +353,14 @@ test("planning and plan-review skills define the canonical approval workflow", (
   assert.match(planningResources, /accepted specialist findings[^.]*incorporat/i);
   assert.match(plan, /required[^.]*complete[^.]*finding path/i);
   assert.match(plan, /\*\*Trivial\*\*:[^\n]*applicability[^\n]*acceptance[^\n]*verification[^\n]*approval/i);
-  assert.match(plan, /specialist findings[^.]*\.model-artifacts\/findings\/<topic>/i);
-  assert.match(plan, /plan reviews[^.]*\.model-artifacts\/reports\/<topic>/i);
-  assert.match(review, /plan reviews[^.]*\.model-artifacts\/reports\/<topic>/i);
+  assert.match(plan, /\.model-artifacts\/initiatives\/<topic>\/findings\//i);
+  assert.match(plan, /\.model-artifacts\/initiatives\/<topic>\/reports\//i);
+  assert.match(review, /\.model-artifacts\/initiatives\/<topic>\/reports\//i);
   assert.match(planningResources, /plan-time[^.]*does not[^.]*Red evidence/i);
   assert.match(plan, /do not implement|never implement/i);
   assert.match(plan, /without (?:a )?todo/i);
-  assert.match(plan, /do not mirror[^.]*\.model-artifacts\/todo\/<topic>\/phases/i);
-  assert.doesNotMatch(plan, /create[^.]*\.model-artifacts\/todo\/<topic>\/phases/i);
+  assert.match(plan, /do not mirror[^.]*\.model-artifacts\/initiatives\/<topic>\/todo\/phases/i);
+  assert.doesNotMatch(plan, /create[^.]*\.model-artifacts\/initiatives\/<topic>\/todo\/phases/i);
   assert.doesNotMatch(planningResources, /\/swe-auto|swe-auto/i);
 });
 
@@ -395,7 +395,7 @@ test("execution lifecycle skills enforce approved contracts and evidence reconci
     .join("\n");
 
   for (const required of [
-    ".model-artifacts/specs/<topic>/manifest.json",
+    ".model-artifacts/initiatives/<topic>/specs/manifest.json",
     "contracts.json",
     "active approved plan",
     "exact contract",
@@ -424,9 +424,9 @@ test("execution lifecycle skills enforce approved contracts and evidence reconci
   assert.match(skills.finalize, /approved deferrals/i);
   assert.match(skills.orchestrate, /required read paths/i);
   assert.match(skills.orchestrate, /intended write path/i);
-  assert.match(skills.orchestrate, /specs\/<topic>[^\n]*manifest[^\n]*immutable initiative spec revisions/i);
-  assert.match(skills.orchestrate, /plans\/<topic>[^\n]*plan indexes[^\n]*contracts\.json[^\n]*phase and subphase contracts/i);
-  assert.doesNotMatch(skills.orchestrate, /specs\/<topic>[^\n]*slice contracts/i);
+  assert.match(skills.orchestrate, /initiatives\/<topic>\/specs[^\n]*manifest[^\n]*immutable initiative spec revisions/i);
+  assert.match(skills.orchestrate, /initiatives\/<topic>\/plans[^\n]*plan indexes[^\n]*contracts\.json[^\n]*phase and subphase contracts/i);
+  assert.doesNotMatch(skills.orchestrate, /initiatives\/<topic>\/specs[^\n]*slice contracts/i);
   assert.match(executionResources, /missing verifier/i);
   assert.doesNotMatch(executionResources, /\/swe-auto|swe-auto/i);
 });
@@ -546,7 +546,7 @@ test("pi-swe end-to-end docs cover scenarios, migration, and omitted legacy surf
     "Reviewed canonical contract completion and recovery",
     "Plan review and revision",
     "Stale approval rejection",
-    "Legacy adoption",
+    "Legacy inspection and migration handoff",
     "Two initiatives and ambiguity",
     "Blocked handoff",
     "Approved deferral",
@@ -556,7 +556,7 @@ test("pi-swe end-to-end docs cover scenarios, migration, and omitted legacy surf
   }
 
   for (const required of [
-    ".model-artifacts/specs/<topic>/manifest.json",
+    ".model-artifacts/initiatives/<topic>/specs/manifest.json",
     "activePlan",
     "contracts.json",
     "activeContract",

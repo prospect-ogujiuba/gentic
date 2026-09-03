@@ -110,8 +110,8 @@ test("pi-context writes non-initiative reports in the layout-v2 system namespace
   const json = writePiContextReportArtifact(snapshot, { artifactFormat: "json" }, { cwd });
 
   assert.ok(layoutV2.valid.system.some((candidate: string) => candidate.startsWith(".model-artifacts/system/reports/")));
-  assert.equal(markdown.relativePath, path.join(".model-artifacts", "system", "reports", "pi-context-2026-05-13T02-05-06-000Z.md"));
-  assert.equal(json.relativePath, path.join(".model-artifacts", "system", "reports", "pi-context-2026-05-13T02-05-06-000Z.json"));
+  assert.equal(markdown.relativePath, path.join(".model-artifacts", "system", "reports", "pi-context", "2026-05-13T02-05-06-000Z-pi-context.md"));
+  assert.equal(json.relativePath, path.join(".model-artifacts", "system", "reports", "pi-context", "2026-05-13T02-05-06-000Z-pi-context.json"));
   assert.match(fs.readFileSync(markdown.path, "utf8"), /# pi-context report/);
   assert.equal(JSON.parse(fs.readFileSync(json.path, "utf8")).schemaVersion, 1);
 });
@@ -121,12 +121,12 @@ test("markdown and json reports include details safe for todo evidence", () => {
   startSessionState({ reason: "test", at: at(0), metadata: { contextWindow: 1000 } });
   const state = recordLedgerEntries({
     at: at(1),
-    entries: [normalizeLedgerEntry({ id: "artifact", kind: "artifact", label: "phase note", byteCount: 16, tokenCount: 4, tokenConfidence: "exact", seenAt: at(1), sourceMetadata: { displayPath: ".model-artifacts/todo/pi-context/phases/06.md", resourceType: "artifact" } })],
+    entries: [normalizeLedgerEntry({ id: "artifact", kind: "artifact", label: "phase note", byteCount: 16, tokenCount: 4, tokenConfidence: "exact", seenAt: at(1), sourceMetadata: { displayPath: ".model-artifacts/initiatives/pi-context/todo/phases/06.md", resourceType: "artifact" } })],
   });
   const snapshot = createPiContextReportSnapshot(state, { capturedAt: at(2) });
 
   assert.match(renderPiContextMarkdown(snapshot), /phase note/);
-  assert.match(renderPiContextMarkdown(snapshot), /\.model-artifacts\/todo\/pi-context\/phases\/06\.md/);
+  assert.match(renderPiContextMarkdown(snapshot), /\.model-artifacts\/initiatives\/pi-context\/todo\/phases\/06\.md/);
   const payload = JSON.parse(renderPiContextJson(snapshot));
   assert.equal(payload.groups[0].label, "Discovered/Artifacts");
 });
@@ -154,7 +154,7 @@ test("registered command writes json artifact from maintained snapshot", async (
 
   assert.equal(notifications.length, 1);
   assert.match(notifications[0]?.text ?? "", /Artifact: \.model-artifacts/);
-  const reportDir = path.join(cwd, ".model-artifacts", "todo", "pi-context", "reports");
+  const reportDir = path.join(cwd, ".model-artifacts", "system", "reports", "pi-context");
   const reportFile = fs.readdirSync(reportDir).find((name) => name.endsWith(".json"));
   assert.ok(reportFile);
   const payload = JSON.parse(fs.readFileSync(path.join(reportDir, reportFile), "utf8"));

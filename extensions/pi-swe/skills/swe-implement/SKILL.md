@@ -11,7 +11,7 @@ Use this only for one execution-ready contract from an active approved plan. A t
 
 Before editing, read in order:
 
-1. `.model-artifacts/specs/<topic>/manifest.json` and its active spec and active approved plan paths.
+1. `.model-artifacts/initiatives/<topic>/specs/manifest.json` and its active spec and active approved plan paths.
 2. `<activePlan.contractRoot>/contracts.json`, then the exact contract selected as ready.
 3. The contract's dependencies, incorporated specialist findings, prior implementation/verification notes, and current repository and todo state when available.
 
@@ -37,7 +37,7 @@ This workflow remains standalone when todo or peer extensions are unavailable.
 
 Trivial implementation that stays within the assigned contract does not require a note file. When a note is useful, write it under:
 
-`.model-artifacts/findings/<topic>/YYYY-MM-DD_HHMM-implementation-notes.md`
+`.model-artifacts/initiatives/<topic>/findings/YYYY-MM-DD_HHMM-implementation-notes.md`
 
 Keep the note short and include at least:
 

@@ -119,11 +119,11 @@ export function persistSessionRuntime(runtime: PiSweRuntime, pi: ExtensionAPI): 
 
 export function persistRepositoryRuntime(cwd: string, activeInitiative: ActiveInitiative): PiSweStateDiagnostic[] {
   if (!isBoundedStateTopic(activeInitiative.topic)) {
-    return [{ code: "invalid_state", path: ".model-artifacts/logs/<invalid-topic>/state.json", message: `repository state topic is invalid or exceeds bounds` }];
+    return [{ code: "invalid_state", path: ".model-artifacts/system/logs/pi-swe/<invalid-topic>/state.json", message: `repository state topic is invalid or exceeds bounds` }];
   }
   const statePath = repositoryStatePath(activeInitiative.topic);
   const repositoryRoot = resolve(cwd);
-  const logsRoot = resolve(repositoryRoot, ".model-artifacts/logs");
+  const logsRoot = resolve(repositoryRoot, ".model-artifacts/system/logs/pi-swe");
   const absolutePath = resolve(logsRoot, activeInitiative.topic, "state.json");
   if (!isWithinPath(logsRoot, absolutePath) || hasSymlinkedPathSegment(repositoryRoot, dirname(absolutePath))) {
     return [{ code: "invalid_state", path: statePath, message: `repository state path escapes the repository or traverses a symlink` }];
@@ -280,7 +280,7 @@ function restoreRuntimeState(runtime: PiSweRuntime, ctx: ExtensionContext): void
 }
 
 export function repositoryStatePath(topic: string): string {
-  return `.model-artifacts/logs/${topic}/state.json`;
+  return `.model-artifacts/system/logs/pi-swe/${topic}/state.json`;
 }
 
 export function readRepositoryRuntime(cwd: string): ReconstructedSweState {
@@ -550,12 +550,12 @@ function readRepositoryStateFile(cwd: string, statePath: string, diagnostics: Pi
 
 function findRepositoryStatePaths(cwd: string): { paths: string[]; diagnostics: PiSweStateDiagnostic[] } {
   const repositoryRoot = resolve(cwd);
-  const root = resolve(repositoryRoot, ".model-artifacts/logs");
+  const root = resolve(repositoryRoot, ".model-artifacts/system/logs/pi-swe");
   if (!existsSync(root)) return { paths: [], diagnostics: [] };
   const found: string[] = [];
   const diagnostics: PiSweStateDiagnostic[] = [];
   if (hasSymlinkedPathSegment(repositoryRoot, root)) {
-    addStateDiagnostic(diagnostics, "state_read_error", `repository state discovery root traverses a symlink`, ".model-artifacts/logs");
+    addStateDiagnostic(diagnostics, "state_read_error", `repository state discovery root traverses a symlink`, ".model-artifacts/system/logs/pi-swe");
     return { paths: [], diagnostics };
   }
   let limitReported = false;
@@ -581,7 +581,7 @@ function findRepositoryStatePaths(cwd: string): { paths: string[]; diagnostics: 
       else if (entry.isFile() && entry.name === "state.json") found.push(normalizeSwePath(relative(repositoryRoot, absolute)));
       if (found.length >= MAX_REPOSITORY_STATE_CANDIDATES) {
         if (!limitReported) {
-          addStateDiagnostic(diagnostics, "state_scan_limit", `repository state discovery reached ${MAX_REPOSITORY_STATE_CANDIDATES} candidates`, ".model-artifacts/logs");
+          addStateDiagnostic(diagnostics, "state_scan_limit", `repository state discovery reached ${MAX_REPOSITORY_STATE_CANDIDATES} candidates`, ".model-artifacts/system/logs/pi-swe");
           limitReported = true;
         }
         return;

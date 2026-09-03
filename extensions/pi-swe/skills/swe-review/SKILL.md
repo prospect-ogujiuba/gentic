@@ -26,7 +26,7 @@ Plan review never implements and never claims plan-time Red evidence. Changes re
 
 Use after implementation and verification for one exact contract/revision from the active approved plan.
 
-1. Read `.model-artifacts/specs/<topic>/manifest.json`, the active spec and active approved plan, `<activePlan.contractRoot>/contracts.json`, the exact contract, incorporated findings, implementation notes/diff, and verification artifact. Validate revision, approval, `contentHash`, dependency, blocker, and active-contract state before judging the diff.
+1. Read `.model-artifacts/initiatives/<topic>/specs/manifest.json`, the active spec and active approved plan, `<activePlan.contractRoot>/contracts.json`, the exact contract, incorporated findings, implementation notes/diff, and verification artifact. Validate revision, approval, `contentHash`, dependency, blocker, and active-contract state before judging the diff.
 2. Compare the diff and evidence only with that exact contract/revision, its scope/non-goals, acceptance criteria, and planned verification.
 3. Check correctness, edge cases, state transitions, compatibility, and applicable error, validation, security, data, performance, migration, rollback, operations, and UX risks.
 4. Reject unrelated churn; do not add adjacent features or silently edit the approved contract.
@@ -40,9 +40,9 @@ Implementation review works standalone. Todo may record the decision but neither
 
 A substantial review, multi-file/phase review, or any non-approval decision requires a durable artifact. Plan reviews and implementation reviews both use:
 
-`.model-artifacts/reports/<topic>/YYYY-MM-DD_HHMM-<plan-or-implementation>-review.md`
+`.model-artifacts/initiatives/<topic>/reports/YYYY-MM-DD_HHMM-<plan-or-implementation>-review.md`
 
-Reserve `.model-artifacts/findings/<topic>/` for specialist findings; do not place plan reviews there.
+Reserve `.model-artifacts/initiatives/<topic>/findings/` for specialist findings; do not place plan reviews there.
 
 Include:
 

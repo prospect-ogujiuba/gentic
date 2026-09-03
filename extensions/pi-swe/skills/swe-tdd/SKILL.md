@@ -19,7 +19,7 @@ During `swe-plan`, record TDD applicability and choose observable behaviors, tes
 
 ## Execution gate
 
-During implementation, read `.model-artifacts/specs/<topic>/manifest.json`, the active approved plan, `<activePlan.contractRoot>/contracts.json`, and the exact contract/revision before production changes. Validate approval, `contentHash`, ready/dependency/blocker state, the next observable behavior, acceptance criterion, test level, and planned verification. A todo or filename is not approval. Stale state, a missing verifier, or behavior outside the contract returns to plan with the affected paths. This gate remains standalone.
+During implementation, read `.model-artifacts/initiatives/<topic>/specs/manifest.json`, the active approved plan, `<activePlan.contractRoot>/contracts.json`, and the exact contract/revision before production changes. Validate approval, `contentHash`, ready/dependency/blocker state, the next observable behavior, acceptance criterion, test level, and planned verification. A todo or filename is not approval. Stale state, a missing verifier, or behavior outside the contract returns to plan with the affected paths. This gate remains standalone.
 
 ## Workflow
 
@@ -37,7 +37,7 @@ Capture runtime Red, Green, and Refactor evidence for each executed behavior.
 
 For multi-cycle work, flaky/debug-heavy behavior, or changes where Red/Green/Refactor evidence must survive handoff, write a short artifact under:
 
-`.model-artifacts/reports/<topic>/YYYY-MM-DD_HHMM-tdd-cycle.md`
+`.model-artifacts/initiatives/<topic>/reports/YYYY-MM-DD_HHMM-tdd-cycle.md`
 
 Use one artifact entry per observable behavior. Keep it as a behavior ledger, not broad design notes. Each behavior entry should include:
 

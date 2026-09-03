@@ -143,11 +143,11 @@ type ReviewEnvelope = {
 };
 
 export function completionJournalPath(topic: string): string {
-  return `.model-artifacts/logs/${topic}/completion-transaction.json`;
+  return `.model-artifacts/system/logs/pi-swe/${topic}/completion-transaction.json`;
 }
 
 export function completionClaimPath(topic: string): string {
-  return `.model-artifacts/logs/${topic}/completion-transaction.lock`;
+  return `.model-artifacts/system/logs/pi-swe/${topic}/completion-transaction.lock`;
 }
 
 export function deriveCompletionRequestId(request: CompleteCanonicalContractRequest): string {
@@ -395,7 +395,7 @@ function prepareTransaction(
   const roles = {} as Record<TransactionRoleName, TransactionRole>;
   try {
     roles["contract-index"] = prepareRole(context, "contract-index", indexPath, indexBytes, suffix);
-    roles.manifest = prepareRole(context, "manifest", `.model-artifacts/specs/${request.topic}/manifest.json`, manifestBytes, suffix);
+    roles.manifest = prepareRole(context, "manifest", `.model-artifacts/initiatives/${request.topic}/specs/manifest.json`, manifestBytes, suffix);
     return { schemaVersion: 1, topic: request.topic, ownerToken: requiredOwnerToken(context), requestId, contractId: request.contractId, stage: "prepared", roles };
   } catch (error) {
     for (const role of Object.values(roles)) {
@@ -681,7 +681,7 @@ function validateCompletionRequest(request: CompleteCanonicalContractRequest): s
   if (!isValidTopic(request.topic)) return "topic is invalid";
   if (!request.contractId || request.contractId.length > 32) return "contractId is invalid";
   if (!Number.isSafeInteger(request.expectedPlanRevision) || request.expectedPlanRevision < 1) return "expectedPlanRevision must be positive";
-  if (!isSafeRelativePath(request.expectedContractPath) || !request.expectedContractPath.startsWith(`.model-artifacts/plans/${request.topic}/`)) return "expectedContractPath is outside the active topic";
+  if (!isSafeRelativePath(request.expectedContractPath) || !request.expectedContractPath.startsWith(`.model-artifacts/initiatives/${request.topic}/plans/`)) return "expectedContractPath is outside the active topic";
   if (!SHA256_PATTERN.test(request.expectedPreCompletionContentHash)
     || !SHA256_PATTERN.test(request.verification.contentHash)
     || !SHA256_PATTERN.test(request.review.contentHash)) return "completion hashes must use sha256:<hex>";
@@ -723,8 +723,8 @@ function readJournal(context: CompletionContext): CompletionJournal | undefined 
   const index = parseJournalRole(context, value.roles["contract-index"]);
   const manifest = parseJournalRole(context, value.roles.manifest);
   if (!index || !manifest) return undefined;
-  if (manifest.targetPath !== `.model-artifacts/specs/${context.topic}/manifest.json`
-    || !index.targetPath.startsWith(`.model-artifacts/plans/${context.topic}/`)
+  if (manifest.targetPath !== `.model-artifacts/initiatives/${context.topic}/specs/manifest.json`
+    || !index.targetPath.startsWith(`.model-artifacts/initiatives/${context.topic}/plans/`)
     || !index.targetPath.endsWith("/contracts.json")) return undefined;
   return {
     schemaVersion: 1,
@@ -921,7 +921,7 @@ function isSafeRelativePath(path: string): boolean {
 }
 
 function isTopicReportPath(path: string, topic: string): boolean {
-  return isSafeRelativePath(path) && path.startsWith(`.model-artifacts/reports/${topic}/`);
+  return isSafeRelativePath(path) && path.startsWith(`.model-artifacts/initiatives/${topic}/reports/`);
 }
 
 function serializeJson(value: unknown): string {

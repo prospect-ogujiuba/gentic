@@ -67,14 +67,14 @@ npm run check:performance
 npm test
 ```
 
-Use `npm run release:verify -- --report <path>` for a versioned release evidence report. Generated reports belong under `.model-artifacts/reports/` and are not package resources.
+Use `npm run release:verify -- --report <path>` for a versioned release evidence report. Generated repository-wide reports belong under `.model-artifacts/system/reports/` and are not package resources.
 
 ## Updating Pi
 
 Never widen or change one Pi dependency alone. Preview declaration and changelog drift:
 
 ```sh
-npm run pi:update -- --target <version> --report .model-artifacts/reports/pi-update/YYYY-MM-DD_HHMM-<version>.md
+npm run pi:update -- --target <version> --report .model-artifacts/system/reports/pi-update/YYYY-MM-DD_HHMM-<version>.md
 ```
 
 The dry-run does not modify pins. After reviewing the report, use `--apply` on a dedicated branch; it updates all three pinned Pi packages, regenerates catalogs/inventory, and runs the compatibility matrix. See [`docs/release.md`](docs/release.md).

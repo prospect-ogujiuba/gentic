@@ -275,14 +275,14 @@ export const PI_SWE_LIFECYCLE_TRANSITIONS: Readonly<Record<PiSweLifecycleState, 
 });
 
 export const PI_SWE_STABLE_WORK_DOCUMENTS: Readonly<Record<StableWorkDocumentKey, { ownerState: PiSweLifecycleState; pathShape: string }>> = Object.freeze({
-  workOrder: { ownerState: "intake", pathShape: ".model-artifacts/specs/<topic>/<timestamp>-work-order.md" },
-  phaseIndex: { ownerState: "plan", pathShape: ".model-artifacts/todo/<topic>/phases/00-phase-index.md" },
-  diagnosisFinding: { ownerState: "diagnose", pathShape: ".model-artifacts/findings/<topic>/<timestamp>-diagnosis.md" },
-  dsaDecision: { ownerState: "dsa-assess", pathShape: ".model-artifacts/findings/<topic>/<timestamp>-dsa-decision.md" },
-  implementationNote: { ownerState: "implement", pathShape: ".model-artifacts/logs/<topic>/<timestamp>-implementation.md" },
-  verificationReport: { ownerState: "verify", pathShape: ".model-artifacts/reports/<topic>/<timestamp>-verification.md" },
-  reviewReport: { ownerState: "review", pathShape: ".model-artifacts/reports/<topic>/<timestamp>-review.md" },
-  finalHandoff: { ownerState: "finalize", pathShape: ".model-artifacts/reports/<topic>/<timestamp>-handoff.md" },
+  workOrder: { ownerState: "intake", pathShape: ".model-artifacts/initiatives/<topic>/specs/<timestamp>-work-order.md" },
+  phaseIndex: { ownerState: "plan", pathShape: ".model-artifacts/initiatives/<topic>/todo/phases/00-phase-index.md" },
+  diagnosisFinding: { ownerState: "diagnose", pathShape: ".model-artifacts/initiatives/<topic>/findings/<timestamp>-diagnosis.md" },
+  dsaDecision: { ownerState: "dsa-assess", pathShape: ".model-artifacts/initiatives/<topic>/findings/<timestamp>-dsa-decision.md" },
+  implementationNote: { ownerState: "implement", pathShape: ".model-artifacts/initiatives/<topic>/logs/<timestamp>-implementation.md" },
+  verificationReport: { ownerState: "verify", pathShape: ".model-artifacts/initiatives/<topic>/reports/<timestamp>-verification.md" },
+  reviewReport: { ownerState: "review", pathShape: ".model-artifacts/initiatives/<topic>/reports/<timestamp>-review.md" },
+  finalHandoff: { ownerState: "finalize", pathShape: ".model-artifacts/initiatives/<topic>/reports/<timestamp>-handoff.md" },
 });
 
 const BASE_STAGE_READ_KEYS = ["workOrder", "phaseIndex", "activePhase"] as const;
@@ -549,7 +549,9 @@ export function normalizeArtifactPath(filePath: string): string {
 }
 
 export function assertStableArtifactPath(filePath: string): void {
-  if (!/^\.model-artifacts\/(todo|plans|findings|reports|logs|specs)\//.test(filePath)) throw new Error(`unsupported artifact path: ${filePath}`);
+  const initiativePath = /^\.model-artifacts\/initiatives\/(?:[a-z0-9]+(?:-[a-z0-9]+)*\/)+(todo|plans|findings|reports|logs|specs)\//;
+  const systemPath = /^\.model-artifacts\/system\/(logs|reports)\//;
+  if (!initiativePath.test(filePath) && !systemPath.test(filePath)) throw new Error(`unsupported artifact path: ${filePath}`);
 }
 
 export function isPiSweLifecycleState(value: unknown): value is PiSweLifecycleState {
@@ -627,7 +629,7 @@ function retryBudgetFor(from: PiSweLifecycleState, to: PiSweLifecycleState, poli
 }
 
 function artifactPathForBlockedDecision(state: AutonomousWorkStateFile): string {
-  return state.artifacts?.verificationReport ?? state.artifacts?.reviewReport ?? state.artifacts?.finalHandoff ?? state.artifacts?.workOrder ?? state.activePhase ?? ".model-artifacts/reports/unknown/blocked.md";
+  return state.artifacts?.verificationReport ?? state.artifacts?.reviewReport ?? state.artifacts?.finalHandoff ?? state.artifacts?.workOrder ?? state.activePhase ?? ".model-artifacts/system/reports/pi-swe-blocked.md";
 }
 
 function readPathsForStage(stage: PiSweLifecycleState, artifactPaths: Record<string, string>): string[] {

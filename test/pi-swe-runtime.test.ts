@@ -43,10 +43,10 @@ test("pi-swe active todo is fallback context and cannot replace a canonical curs
   const state = runtime();
   state.state.activeInitiative = {
     topic: "demo",
-    manifestPath: ".model-artifacts/specs/demo/manifest.json",
-    manifestSchemaVersion: 1,
+    manifestPath: ".model-artifacts/initiatives/demo/specs/manifest.json",
+    manifestSchemaVersion: 2,
     planRevision: 1,
-    planPath: ".model-artifacts/plans/demo/plan.md",
+    planPath: ".model-artifacts/initiatives/demo/plans/plan.md",
     lifecycle: { initiativeState: "approved" },
     gates: { readyIds: [], blockerCodes: [] },
   };
@@ -66,10 +66,10 @@ test("pi-swe bounds session cursor summaries and markers before append", () => {
   state.state.activePlan = { source: "prompt", marker: "m".repeat(5000) };
   state.state.activeInitiative = {
     topic: "demo",
-    manifestPath: ".model-artifacts/specs/demo/manifest.json",
-    manifestSchemaVersion: 1,
+    manifestPath: ".model-artifacts/initiatives/demo/specs/manifest.json",
+    manifestSchemaVersion: 2,
     planRevision: 1,
-    planPath: ".model-artifacts/plans/demo/plan.md",
+    planPath: ".model-artifacts/initiatives/demo/plans/plan.md",
     lifecycle: { initiativeState: "approved" },
     gates: { readyIds: Array.from({ length: 20_000 }, (_, index) => `id-${index}`), blockerCodes: [] },
   };

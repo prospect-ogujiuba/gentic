@@ -9,7 +9,7 @@ Use this when a SWE flow needs a next-stage recommendation, resume decision, or 
 
 ## Workflow
 
-1. **Inspect work order and canonical state before chat** — for one exact topic, read `.model-artifacts/specs/<topic>/manifest.json`, its active spec and active approved plan, `<activePlan.contractRoot>/contracts.json`, the exact active/ready contract when applicable, linked findings/evidence/reviews, and only then current todo/repository state.
+1. **Inspect work order and canonical state before chat** — for one exact topic, read `.model-artifacts/initiatives/<topic>/specs/manifest.json`, its active spec and active approved plan, `<activePlan.contractRoot>/contracts.json`, the exact active/ready contract when applicable, linked findings/evidence/reviews, and only then current todo/repository state.
 2. **Validate identity and readiness** — check every revision, path, `contentHash`, approval, dependency, blocker, contract readiness fact, planned verifier, and active-contract pointer. A todo or filename is not approval.
 3. **Choose the next lifecycle stage** — classify the path as feature, bug, DSA-sensitive, resume, finalize-gated, or blocked.
 4. **Follow the matching existing skill** — use `swe-plan`, `swe-diagnose`, `swe-tdd`, `swe-dsa`, `swe-implement`, `swe-verify`, `swe-review`, or `swe-finalize`; do not duplicate detailed instructions or execute hidden autonomous work.
@@ -26,11 +26,11 @@ This guidance remains standalone without todo or peer extensions.
 
 Prefer durable model artifacts as the cross-session contract:
 
-- `.model-artifacts/specs/<topic>/...` for the manifest and immutable initiative spec revisions.
-- `.model-artifacts/plans/<topic>/...` for plan indexes, `contracts.json`, and phase and subphase contracts.
-- `.model-artifacts/logs/<topic>/...` only for optional state/resume trails, never approval or verification evidence.
-- `.model-artifacts/findings/<topic>/...` for diagnosis, DSA, and implementation-drift findings.
-- `.model-artifacts/reports/<topic>/...` for plan/implementation reviews, verification, final handoff, and exception reports.
+- `.model-artifacts/initiatives/<topic>/specs/...` for the manifest and immutable initiative spec revisions.
+- `.model-artifacts/initiatives/<topic>/plans/...` for plan indexes, `contracts.json`, and phase and subphase contracts.
+- `.model-artifacts/initiatives/<topic>/logs/...` only for optional state/resume trails, never approval or verification evidence.
+- `.model-artifacts/initiatives/<topic>/findings/...` for diagnosis, DSA, and implementation-drift findings.
+- `.model-artifacts/initiatives/<topic>/reports/...` for plan/implementation reviews, verification, final handoff, and exception reports.
 
 Optional tools such as todo or git evidence may enrich context when visible to the agent, but orchestration must still work without them and must not depend on peer extension internals.
 

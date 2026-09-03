@@ -228,8 +228,8 @@ function formatResolutionSummary(resolution: InitiativeResolution): string[] {
       "source mode: legacy",
       `initiative/topic: ${resolution.topic}`,
       `candidates: ${bounded(resolution.candidateTopics)}`,
-      `legacy plan: ${resolution.status === "legacy-unverified" ? resolution.planPath : "none"}`,
-      `next command: /swe orchestrate resume ${resolution.topic} after canonical adoption`,
+      `legacy authority: ${resolution.status === "legacy-unverified" ? resolution.planPath : resolution.status === "migration-required" ? resolution.manifestPath : "none"}`,
+      `next command: migrate layout-v1 authority before /swe orchestrate resume ${resolution.topic}`,
     ];
   }
   return [

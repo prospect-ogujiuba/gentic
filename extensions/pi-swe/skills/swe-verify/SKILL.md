@@ -9,7 +9,7 @@ Use this before claiming an exact contract is complete.
 
 ## Contract and evidence gate
 
-Read `.model-artifacts/specs/<topic>/manifest.json`, the active approved plan, `<activePlan.contractRoot>/contracts.json`, the exact contract/revision, its incorporated findings, implementation notes/diff, and existing evidence before running checks. Confirm revision and `contentHash` links are current. A todo or filename does not prove approval.
+Read `.model-artifacts/initiatives/<topic>/specs/manifest.json`, the active approved plan, `<activePlan.contractRoot>/contracts.json`, the exact contract/revision, its incorporated findings, implementation notes/diff, and existing evidence before running checks. Confirm revision and `contentHash` links are current. A todo or filename does not prove approval.
 
 Build an acceptance-to-evidence map: give every contract acceptance criterion and every planned verification item a check, evidence location, and result of `pass`, `fail`, `partial`, or `gap`. A missing verifier, stale revision, contradictory planned check, or change outside the exact contract is a deterministic `return to plan` handoff; name the artifact/path and required correction rather than inventing coverage.
 
@@ -29,7 +29,7 @@ Verification remains standalone without todo or peer extensions.
 
 When an artifact is warranted, write it under:
 
-`.model-artifacts/reports/<topic>/YYYY-MM-DD_HHMM-verification.md`
+`.model-artifacts/initiatives/<topic>/reports/YYYY-MM-DD_HHMM-verification.md`
 
 Use a topic that matches the feature, extension, or slice being verified. Reference the artifact path in review/finalize handoff notes so later flows can inspect the durable evidence instead of relying on chat history. When a todo is active, record the verification artifact in the todo ledger.
 

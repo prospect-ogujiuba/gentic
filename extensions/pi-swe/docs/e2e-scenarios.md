@@ -15,7 +15,7 @@ Expected baseline:
 - `/swe config` reports the effective defaults or project/global config.
 - If no peer extension is installed, `detected peers: none` and `active plan: none` are valid.
 
-For every canonical scenario, authority starts at schema-v1 `.model-artifacts/specs/<topic>/manifest.json`. Follow `manifest.activePlan` only when its exact revision, path, and hash match an `approved` approval record (legacy `approve` is normalized to that state). Then read `<activePlan.contractRoot>/contracts.json`; canonical writers emit schema v2, while readers normalize supported legacy schema-v1 variants. Execute `manifest.activeContract` when valid, otherwise the lowest dependency-satisfied pending subphase. Phase entries are non-executable grouping nodes and never preempt ready children. Never select a plan merely because it has the highest revision number.
+For every canonical scenario, authority starts at schema-v2 `.model-artifacts/initiatives/<topic>/specs/manifest.json`. Layout-v1 authority is inspection-only and migration-required; mixed layout authority blocks. Follow `manifest.activePlan` only when its exact revision, path, and hash match an `approved` approval record (legacy `approve` is normalized to that state). Then read `<activePlan.contractRoot>/contracts.json`; canonical writers emit schema v2, while readers normalize supported legacy schema-v1 variants. Execute `manifest.activeContract` when valid, otherwise the lowest dependency-satisfied pending subphase. Phase entries are non-executable grouping nodes and never preempt ready children. Never select a plan merely because it has the highest revision number.
 
 ## Scenario 1: plan → implement → verify → finalize
 
@@ -141,7 +141,7 @@ Expected result: `/swe status` reports `detected peers` including `pi-todo`, sum
 
 Goal: prove `/swe orchestrate` composes the existing feature lifecycle without hidden execution.
 
-1. Create or select a work-order artifact under `.model-artifacts/specs/<topic>/...`.
+1. Create or select a work-order artifact under `.model-artifacts/initiatives/<topic>/specs/...`.
 2. Run:
 
    ```text
@@ -256,15 +256,15 @@ Goal: prove a numerically latest or modified plan cannot execute under stale app
 
 Expected result: execution stops with the mismatched revision/path/hash and returns to planning or review. It never falls back to a filename, todo, or earlier approval.
 
-## Scenario 15: Legacy adoption
+## Scenario 15: Legacy inspection and migration handoff
 
-Goal: prove legacy planning artifacts require explicit adoption rather than silent mixing.
+Goal: prove legacy planning artifacts remain inspection-only and require a separately approved migration rather than silent mixing.
 
 1. Start with a legacy phase tree or todo-linked plan and no canonical manifest.
-2. Run `/swe orchestrate start` and follow the adoption handoff.
-3. Create the canonical schema-v1 manifest, immutable spec/plan revision, contract root, and schema-v2 `contracts.json`; explicitly map any accepted historical completion state.
+2. Run `/swe orchestrate start` and follow the migration-required handoff.
+3. Do not write a parallel v2 tree; run the separately approved migration workflow when available.
 
-Expected result: status reports legacy mode until adoption is explicit. Supported schema-v1 machine metadata may be normalized losslessly, but unrelated legacy planning modes are never mixed silently, and canonical writes do not target a todo phase tree.
+Expected result: status reports legacy mode until migration is complete. Supported schema-v1 machine metadata may be normalized losslessly, but unrelated legacy planning modes are never mixed silently, and canonical writes do not target a todo phase tree.
 
 ## Scenario 16: Two initiatives and ambiguity
 
@@ -304,7 +304,7 @@ Expected result: the filename is unchanged; `contracts.json`, completion records
 - [x] Feature, bug, DSA, exception, resume, and finalize-gate orchestration scenarios are documented.
 - [x] `/swe orchestrate [status|start|resume|handoff]` is documented as guidance-only orchestration inside the existing `/swe` namespace.
 - [x] Explicit `/swe complete` machine-state disposition, schema-v1 compatibility migration to contract-index schema v2, reload idempotency, stable canonical filenames, and staged recovery are documented.
-- [x] Manifest-approved revision selection, next-contract progression, plan review/revision, stale approval rejection, legacy adoption, two-initiative ambiguity, blocked handoff, and approved deferral are documented.
+- [x] Manifest-approved revision selection, next-contract progression, plan review/revision, stale approval rejection, legacy inspection/migration handoff, two-initiative ambiguity, blocked handoff, and approved deferral are documented.
 - [x] Legacy Programming SOP, TDD RGR, and DSA Advisor migration paths are documented in `extensions/pi-swe/README.md`.
 - [x] Omitted legacy namespaces and model-callable advisor tools are documented as intentional omissions.
 - [x] The checklist is verification guidance; canonical completion still requires exact manifest, contract, evidence, review, and finalization state.

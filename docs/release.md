@@ -20,7 +20,7 @@ Each Gentic release supports exactly the Pi minor pinned by all three `@earendil
 
 1. Preview upstream declarations and changelog without mutation:
    ```sh
-   npm run pi:update -- --target <version> --report .model-artifacts/reports/pi-update/YYYY-MM-DD_HHMM-<version>.md
+   npm run pi:update -- --target <version> --report .model-artifacts/system/reports/pi-update/YYYY-MM-DD_HHMM-<version>.md
    ```
 2. Review added/removed events, `ExtensionAPI` methods, catalog capability loss, and release notes.
 3. On a dedicated branch, repeat with `--apply`. This updates all Pi pins and the lockfile, regenerates catalogs/inventory, and runs the compatibility matrix.
@@ -47,7 +47,7 @@ Budgets are intentionally broad wall-clock guardrails, not microbenchmark claims
 - [ ] `CHANGELOG.md` has user-visible changes and migrations under the target version.
 - [ ] `package.json`, lockfile, `src/pi-contract.ts`, and catalog source version agree.
 - [ ] `npm ci` succeeds from a clean checkout.
-- [ ] `npm run release:verify -- --report .model-artifacts/reports/release/YYYY-MM-DD_HHMM-<version>.md` passes and records Pi/Node versions plus every check.
+- [ ] `npm run release:verify -- --report .model-artifacts/system/reports/release/YYYY-MM-DD_HHMM-<version>.md` passes and records Pi/Node versions plus every check.
 - [ ] `catalog/pi-native-capabilities.json` and `catalog/gentic-inventory.json` are current.
 - [ ] Core/full profile paths pass inventory validation.
 - [ ] A temporary project scaffolds and smoke-loads one representative capability.

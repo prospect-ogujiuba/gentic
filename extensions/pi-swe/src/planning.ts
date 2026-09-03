@@ -4,7 +4,7 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 
 import { analyzeContractGraph, compareContractIds, CONTRACT_STATUSES, type ContractNode, type ContractStatus } from "./domain/contract-graph.ts";
 import type { SweCanonicalInitiativeLink } from "./domain/capabilities.ts";
-import { LegacyPlanInspector, type LegacyPlanInspectionResult } from "./orchestrate.ts";
+import { LEGACY_ADOPTION_REQUIREMENTS, LegacyPlanInspector, type LegacyPlanInspectionResult } from "./orchestrate.ts";
 import {
   isValidTopic,
   parseInitiativeManifest,
@@ -38,7 +38,9 @@ export type CanonicalInspectionDiagnosticCode =
   | "unsupported_version"
   | "contract_index_invalid"
   | "completion_transaction_pending"
-  | "stale_link";
+  | "stale_link"
+  | "migration_required"
+  | "mixed_authority";
 
 export type CanonicalInspectionDiagnostic = {
   readonly code: CanonicalInspectionDiagnosticCode;
@@ -100,7 +102,7 @@ export type CanonicalContractIndex = {
 };
 
 export type CanonicalInspectorResult = {
-  readonly sourceMode: "canonical";
+  readonly sourceMode: "canonical" | "legacy";
   readonly topic: string;
   readonly manifestPath: string;
   readonly manifest?: InitiativeManifest;
@@ -168,7 +170,8 @@ type ParsedContractIndex = {
 
 export function inspectCanonicalInitiative(request: InspectCanonicalInitiativeRequest): CanonicalInspectorResult {
   const topic = normalizeTopic(request.topic);
-  const manifestPath = topic ? `.model-artifacts/specs/${topic}/manifest.json` : ".model-artifacts/specs/<invalid-topic>/manifest.json";
+  const manifestPath = topic ? `.model-artifacts/initiatives/${topic}/specs/manifest.json` : ".model-artifacts/initiatives/<invalid-topic>/specs/manifest.json";
+  const legacyManifestPath = topic ? `.model-artifacts/specs/${topic}/manifest.json` : ".model-artifacts/specs/<invalid-topic>/manifest.json";
   const diagnostics: MutableInspection = [];
   if (!topic) {
     addDiagnostic(diagnostics, "invalid_topic", manifestPath, `invalid canonical topic: ${request.topic}`);
@@ -177,7 +180,17 @@ export function inspectCanonicalInitiative(request: InspectCanonicalInitiativeRe
 
   const repositoryRoot = resolveRepositoryRoot(request.cwd, diagnostics);
   if (!repositoryRoot) return emptyResult(topic, manifestPath, diagnostics);
-  const transactionPath = `.model-artifacts/logs/${topic}/completion-transaction.json`;
+  const canonicalExists = existsSync(resolve(repositoryRoot, manifestPath));
+  const legacyExists = existsSync(resolve(repositoryRoot, legacyManifestPath));
+  if (canonicalExists && legacyExists) {
+    addDiagnostic(diagnostics, "mixed_authority", manifestPath, `layout-v1 and layout-v2 manifests both exist for ${topic}; migrate or remove legacy authority before execution`);
+    return emptyResult(topic, manifestPath, diagnostics);
+  }
+  if (!canonicalExists && legacyExists) {
+    addDiagnostic(diagnostics, "migration_required", legacyManifestPath, `layout-v1 manifest is inspection-only; migrate ${topic} to layout v2 before execution or writes`);
+    return { ...emptyResult(topic, legacyManifestPath, diagnostics), sourceMode: "legacy", migrationRequired: true, manifestMigrationRequired: true };
+  }
+  const transactionPath = `.model-artifacts/system/logs/pi-swe/${topic}/completion-transaction.json`;
   if (!request.recoveryMode && existsSync(resolve(repositoryRoot, transactionPath))) {
     addDiagnostic(diagnostics, "completion_transaction_pending", transactionPath, `unfinished completion transaction blocks canonical inspection for ${topic}`);
     return emptyResult(topic, manifestPath, diagnostics);
@@ -270,8 +283,9 @@ export function resolveInitiative(request: ResolveInitiativeRequest): Initiative
   const persistedTopic = normalizeResolutionTopic(request.persistedTopic, "persisted topic", warnings);
   const todoLink = readTodoCanonicalLink(request.activeTodo, warnings);
   const canonicalDiscovery = discoverActiveCanonicalTopics(request.cwd, warnings);
+  const legacyManifestDiscovery = discoverLegacyManifestTopics(request.cwd, warnings);
   const activeCanonicalTopics = canonicalDiscovery.topics;
-  const candidateTopics = sortedUnique([explicitTopic, persistedTopic, todoLink?.topic, ...activeCanonicalTopics]);
+  const candidateTopics = sortedUnique([explicitTopic, persistedTopic, todoLink?.topic, ...activeCanonicalTopics, ...legacyManifestDiscovery.topics]);
 
   const selectorTopics = sortedUnique([explicitTopic, persistedTopic, todoLink?.topic]);
   if (selectorTopics.length > 1) {
@@ -280,8 +294,9 @@ export function resolveInitiative(request: ResolveInitiativeRequest): Initiative
 
   const selectedTopic = explicitTopic ?? persistedTopic;
   if (selectedTopic) {
-    const manifestPath = `.model-artifacts/specs/${selectedTopic}/manifest.json`;
-    if (persistedTopic || existsSync(resolve(request.cwd, manifestPath))) {
+    const manifestPath = `.model-artifacts/initiatives/${selectedTopic}/specs/manifest.json`;
+    const legacyManifestPath = `.model-artifacts/specs/${selectedTopic}/manifest.json`;
+    if (persistedTopic || existsSync(resolve(request.cwd, manifestPath)) || existsSync(resolve(request.cwd, legacyManifestPath))) {
       return canonicalResolution(request.cwd, selectedTopic, explicitTopic ? "explicit" : "persisted", candidateTopics, todoLink, warnings);
     }
     if (activeCanonicalTopics.length || canonicalDiscovery.incomplete) {
@@ -307,11 +322,33 @@ export function resolveInitiative(request: ResolveInitiativeRequest): Initiative
   }
 
   if (todoLink) {
-    const manifestPath = `.model-artifacts/specs/${todoLink.topic}/manifest.json`;
+    const manifestPath = `.model-artifacts/initiatives/${todoLink.topic}/specs/manifest.json`;
     if (existsSync(resolve(request.cwd, manifestPath))) {
       return canonicalResolution(request.cwd, todoLink.topic, "todo", candidateTopics, todoLink, warnings);
     }
     warnings.push(`todo canonical initiative link points to missing manifest ${manifestPath}`);
+  }
+
+  if (legacyManifestDiscovery.incomplete) {
+    return resolutionFailure("ambiguous", candidateTopics, "repair or narrow the layout-v1 manifest scan before migration", warnings);
+  }
+  if (legacyManifestDiscovery.topics.length > 1) {
+    return resolutionFailure("ambiguous", candidateTopics, "select one layout-v1 topic explicitly for inspection and migration guidance", warnings);
+  }
+  if (legacyManifestDiscovery.topics.length === 1) {
+    const topic = legacyManifestDiscovery.topics[0]!;
+    const manifestPath = `.model-artifacts/specs/${topic}/manifest.json`;
+    return {
+      sourceMode: "legacy",
+      status: "migration-required",
+      topic,
+      manifestPath,
+      candidatePaths: [manifestPath],
+      candidateTopics,
+      adoptionRequirements: LEGACY_ADOPTION_REQUIREMENTS,
+      nextAction: "migrate-legacy-plan",
+      warnings,
+    };
   }
 
   const legacyInspector = request.legacyInspector ?? new LegacyPlanInspector();
@@ -377,7 +414,7 @@ function readTodoCanonicalLink(activeTodo: unknown, warnings: string[]): SweCano
     return undefined;
   }
   if (value.contractId !== undefined && (typeof value.contractId !== "string" || !value.contractId.trim())) return malformedTodoLink(warnings);
-  if (value.contractPath !== undefined && (typeof value.contractPath !== "string" || !value.contractPath.startsWith(`.model-artifacts/plans/${value.topic}/`))) return malformedTodoLink(warnings);
+  if (value.contractPath !== undefined && (typeof value.contractPath !== "string" || !value.contractPath.startsWith(`.model-artifacts/initiatives/${value.topic}/plans/`))) return malformedTodoLink(warnings);
   if (value.planRevision !== undefined && (!Number.isInteger(value.planRevision) || (value.planRevision as number) < 1)) return malformedTodoLink(warnings);
   if (value.dependencies !== undefined && (!Array.isArray(value.dependencies) || value.dependencies.some((dependency) => typeof dependency !== "string" || !dependency))) return malformedTodoLink(warnings);
   return {
@@ -395,7 +432,7 @@ function malformedTodoLink(warnings: string[]): undefined {
 }
 
 function discoverActiveCanonicalTopics(cwd: string, warnings: string[]): { topics: string[]; incomplete: boolean } {
-  const specsRoot = resolve(cwd, ".model-artifacts/specs");
+  const specsRoot = resolve(cwd, ".model-artifacts/initiatives");
   if (!existsSync(specsRoot)) return { topics: [], incomplete: false };
   const manifests: string[] = [];
   const scan = { incomplete: false };
@@ -403,7 +440,8 @@ function discoverActiveCanonicalTopics(cwd: string, warnings: string[]): { topic
   if (scan.incomplete) warnings.push(`canonical manifest scan was incomplete after ${MAX_CANONICAL_MANIFESTS} candidates or a filesystem read error`);
   const topics: string[] = [];
   for (const relativeManifest of manifests.slice(0, MAX_CANONICAL_MANIFESTS)) {
-    const topic = relativeManifest.slice(0, -"/manifest.json".length);
+    if (!relativeManifest.endsWith("/specs/manifest.json")) continue;
+    const topic = relativeManifest.slice(0, -"/specs/manifest.json".length);
     try {
       const content = readFileSync(resolve(specsRoot, relativeManifest), "utf8");
       if (Buffer.byteLength(content, "utf8") > MAX_JSON_BYTES) {
@@ -419,6 +457,40 @@ function discoverActiveCanonicalTopics(cwd: string, warnings: string[]): { topic
   return { topics: sortedUnique(topics), incomplete: scan.incomplete };
 }
 
+function discoverLegacyManifestTopics(cwd: string, warnings: string[]): { topics: string[]; incomplete: boolean } {
+  const specsRoot = resolve(cwd, ".model-artifacts/specs");
+  if (!existsSync(specsRoot)) return { topics: [], incomplete: false };
+  const manifests: string[] = [];
+  const scan = { incomplete: false };
+  collectLegacyManifests(specsRoot, "", manifests, scan);
+  if (scan.incomplete) warnings.push(`layout-v1 manifest scan was incomplete after ${MAX_CANONICAL_MANIFESTS} candidates or a filesystem read error`);
+  return {
+    topics: sortedUnique(manifests.map((path) => path.slice(0, -"/manifest.json".length))),
+    incomplete: scan.incomplete,
+  };
+}
+
+function collectLegacyManifests(absoluteDir: string, relativeDir: string, manifests: string[], scan: { incomplete: boolean }): void {
+  if (manifests.length > MAX_CANONICAL_MANIFESTS) {
+    scan.incomplete = true;
+    return;
+  }
+  try {
+    for (const entry of readdirSync(absoluteDir, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
+      if (entry.isSymbolicLink()) continue;
+      const relativePath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) collectLegacyManifests(resolve(absoluteDir, entry.name), relativePath, manifests, scan);
+      else if (entry.isFile() && entry.name === "manifest.json" && relativeDir) manifests.push(relativePath);
+      if (manifests.length > MAX_CANONICAL_MANIFESTS) {
+        scan.incomplete = true;
+        return;
+      }
+    }
+  } catch {
+    scan.incomplete = true;
+  }
+}
+
 function collectCanonicalManifests(absoluteDir: string, relativeDir: string, manifests: string[], scan: { incomplete: boolean }): void {
   if (manifests.length > MAX_CANONICAL_MANIFESTS) {
     scan.incomplete = true;
@@ -429,7 +501,7 @@ function collectCanonicalManifests(absoluteDir: string, relativeDir: string, man
       if (entry.isSymbolicLink()) continue;
       const relativePath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
       if (entry.isDirectory()) collectCanonicalManifests(resolve(absoluteDir, entry.name), relativePath, manifests, scan);
-      else if (entry.isFile() && entry.name === "manifest.json" && relativeDir) manifests.push(relativePath);
+      else if (entry.isFile() && entry.name === "manifest.json" && relativeDir.endsWith("/specs")) manifests.push(relativePath);
       if (manifests.length > MAX_CANONICAL_MANIFESTS) {
         scan.incomplete = true;
         return;
@@ -930,7 +1002,7 @@ function normalizeTopic(topic: string): string | undefined {
 }
 
 function isTopicArtifactPath(path: string, kind: string, topic: string): boolean {
-  return path.startsWith(`.model-artifacts/${kind}/${topic}/`) && !path.includes("\\") && !path.split("/").some((segment) => segment === "" || segment === "." || segment === "..");
+  return path.startsWith(`.model-artifacts/initiatives/${topic}/${kind}/`) && !path.includes("\\") && !path.split("/").some((segment) => segment === "" || segment === "." || segment === "..");
 }
 
 function isWithin(root: string, candidate: string): boolean {

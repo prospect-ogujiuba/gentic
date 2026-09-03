@@ -23,7 +23,7 @@ test("pi-swe lifecycle allows every defined transition and blocks undefined tran
   const result = validateLifecycleTransition({
     state: "intake",
     nextState: "verify",
-    outputs: { workOrder: ".model-artifacts/todo/demo/autonomous/work-order.md" },
+    outputs: { workOrder: ".model-artifacts/initiatives/demo/todo/autonomous/work-order.md" },
   });
 
   assert.equal(result.allowed, false);
@@ -70,7 +70,7 @@ test("pi-swe inspects missing, partial, and complete orchestration artifact cont
     missingRequired: ["workOrder", "plan", "implementation", "verification", "finalHandoff"],
   });
 
-  const partialWorkOrder = ".model-artifacts/specs/demo/2026-05-14_1200-work-order.md";
+  const partialWorkOrder = ".model-artifacts/initiatives/demo/specs/2026-05-14_1200-work-order.md";
   mkdirSync(dirname(join(cwd, partialWorkOrder)), { recursive: true });
   writeFileSync(join(cwd, partialWorkOrder), "# work order\n", "utf8");
 
@@ -82,10 +82,10 @@ test("pi-swe inspects missing, partial, and complete orchestration artifact cont
   });
 
   const completePaths = {
-    plan: ".model-artifacts/plans/demo/2026-05-14_1210-plan.md",
-    implementation: ".model-artifacts/logs/demo/2026-05-14_1220-implementation.md",
-    verification: ".model-artifacts/reports/demo/2026-05-14_1230-verification.md",
-    finalHandoff: ".model-artifacts/reports/demo/2026-05-14_1240-handoff.md",
+    plan: ".model-artifacts/initiatives/demo/plans/2026-05-14_1210-plan.md",
+    implementation: ".model-artifacts/initiatives/demo/logs/2026-05-14_1220-implementation.md",
+    verification: ".model-artifacts/initiatives/demo/reports/2026-05-14_1230-verification.md",
+    finalHandoff: ".model-artifacts/initiatives/demo/reports/2026-05-14_1240-handoff.md",
   };
   for (const relativePath of Object.values(completePaths)) {
     mkdirSync(dirname(join(cwd, relativePath)), { recursive: true });
@@ -105,7 +105,7 @@ test("pi-swe canonical inspector resolves an exact manifest and bounded contract
   const result = inspectCanonicalInitiative({ cwd: fixture.cwd, topic: "demo" });
 
   assert.equal(result.sourceMode, "canonical");
-  assert.equal(result.manifestPath, ".model-artifacts/specs/demo/manifest.json");
+  assert.equal(result.manifestPath, ".model-artifacts/initiatives/demo/specs/manifest.json");
   assert.deepEqual(result.contracts.map((contract) => contract.id), ["01"]);
   assert.deepEqual(result.readyIds, ["01"]);
   assert.deepEqual(result.diagnostics, []);
@@ -117,26 +117,42 @@ test("pi-swe discovers the layout-v2 canonical manifest", () => {
   writeFixtureFile(cwd, layoutV2.mixedAuthority.v2Manifest, "{}\n");
   const result = inspectCanonicalInitiative({ cwd, topic: layoutV2.mixedAuthority.topic });
   assert.equal(result.manifestPath, layoutV2.mixedAuthority.v2Manifest);
-  assert.notEqual(result.sourceMode, "missing");
+  assert.equal(result.sourceMode, "canonical");
+});
+
+test("pi-swe inspects layout-v1 authority only as migration-required", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-layout-v1-"));
+  writeFixtureFile(cwd, layoutV2.mixedAuthority.v1Manifest, "{}\n");
+  const result = inspectCanonicalInitiative({ cwd, topic: layoutV2.mixedAuthority.topic });
+  assert.equal(result.manifestPath, layoutV2.mixedAuthority.v1Manifest);
+  assert.equal(result.sourceMode, "legacy");
+  assert.equal(result.migrationRequired, true);
+  assert.equal(result.manifest, undefined);
+  assert.deepEqual(result.readyIds, []);
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.code === "migration_required"));
+  const resolution = resolveInitiative({ cwd });
+  assert.equal(resolution.sourceMode, "legacy");
+  assert.equal(resolution.status, "migration-required");
+  assert.equal(recommendGateAwareOrchestration({ resolution }).intendedWriteArtifact, undefined);
 });
 
 test("pi-swe blocks a topic with simultaneous layout-v1 and layout-v2 authority", () => {
   const fixture = writeCanonicalFixture();
-  writeFixtureFile(fixture.cwd, layoutV2.mixedAuthority.v2Manifest, "{}\n");
+  writeFixtureFile(fixture.cwd, layoutV2.mixedAuthority.v1Manifest, "{}\n");
   const result = inspectCanonicalInitiative({ cwd: fixture.cwd, topic: "demo" });
-  assert.ok(result.diagnostics.some((diagnostic) => /mixed|conflict/i.test(`${diagnostic.code} ${diagnostic.message}`)));
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.code === "mixed_authority"));
   assert.deepEqual(result.readyIds, []);
 });
 
 test("pi-swe validates and atomically persists canonical runtime cursors", () => {
   const fixture = writeCanonicalFixture();
-  const contractPath = ".model-artifacts/plans/demo/revisions/r1/contracts/01.md";
+  const contractPath = ".model-artifacts/initiatives/demo/plans/revisions/r1/contracts/01.md";
   fixture.manifest.activeContract = { id: "01", path: contractPath };
   fixture.writeManifest();
   const active = {
     topic: "demo",
     manifestPath: fixture.manifestPath,
-    manifestSchemaVersion: 1,
+    manifestSchemaVersion: 2,
     planRevision: 1,
     planPath: fixture.manifest.activePlan.path,
     contractId: "01",
@@ -165,14 +181,14 @@ test("pi-swe validates and atomically persists canonical runtime cursors", () =>
 
   const symlinkCwd = mkdtempSync(join(tmpdir(), "pi-swe-state-symlink-"));
   const symlinkTarget = mkdtempSync(join(tmpdir(), "pi-swe-state-outside-"));
-  mkdirSync(join(symlinkCwd, ".model-artifacts"));
-  symlinkSync(symlinkTarget, join(symlinkCwd, ".model-artifacts/logs"), "dir");
+  mkdirSync(join(symlinkCwd, ".model-artifacts/system/logs"), { recursive: true });
+  symlinkSync(symlinkTarget, join(symlinkCwd, ".model-artifacts/system/logs/pi-swe"), "dir");
   assert.equal(persistRepositoryRuntime(symlinkCwd, active)[0]?.code, "invalid_state");
   assert.equal(existsSync(join(symlinkTarget, "demo/state.json")), false);
   writeFixtureFile(symlinkTarget, "demo/state.json", "{}\n");
   const symlinkRead = readRepositoryRuntime(symlinkCwd);
   assert.equal(symlinkRead.diagnostics[0]?.code, "state_read_error");
-  assert.equal(symlinkRead.diagnostics[0]?.path, ".model-artifacts/logs");
+  assert.equal(symlinkRead.diagnostics[0]?.path, ".model-artifacts/system/logs/pi-swe");
 
   const blockedCwd = mkdtempSync(join(tmpdir(), "pi-swe-state-write-failure-"));
   writeFileSync(join(blockedCwd, ".model-artifacts"), "not a directory", "utf8");
@@ -230,9 +246,9 @@ test("pi-swe clears a stale session stage before repository initiative fallback"
   const staleSession = {
     ...active,
     topic: "missing",
-    manifestPath: ".model-artifacts/specs/missing/manifest.json",
-    planPath: ".model-artifacts/plans/missing/plan.md",
-    contractPath: ".model-artifacts/plans/missing/revisions/r1/contracts/01.md",
+    manifestPath: ".model-artifacts/initiatives/missing/specs/manifest.json",
+    planPath: ".model-artifacts/initiatives/missing/plans/plan.md",
+    contractPath: ".model-artifacts/initiatives/missing/plans/revisions/r1/contracts/01.md",
   };
   const branch = [{
     type: "custom",
@@ -255,7 +271,7 @@ test("pi-swe clears a stale session stage before repository initiative fallback"
 test("pi-swe reports bounded repository state discovery truncation", () => {
   const cwd = mkdtempSync(join(tmpdir(), "pi-swe-state-scan-limit-"));
   for (let index = 0; index < 100; index += 1) {
-    writeFixtureFile(cwd, `.model-artifacts/logs/topic-${index}/state.json`, "{}\n");
+    writeFixtureFile(cwd, `.model-artifacts/system/logs/pi-swe/topic-${index}/state.json`, "{}\n");
   }
 
   const result = readRepositoryRuntime(cwd);
@@ -266,8 +282,8 @@ test("pi-swe reports bounded repository state discovery truncation", () => {
 
 test("pi-swe canonical inspector never falls through from an invalid manifest to a legacy phase tree", () => {
   const fixture = writeCanonicalFixture();
-  writeFixtureFile(fixture.cwd, ".model-artifacts/plans/demo/phases/99-valid-looking.md", "# legacy fallback bait\n");
-  fixture.manifest.schemaVersion = 2;
+  writeFixtureFile(fixture.cwd, ".model-artifacts/initiatives/demo/plans/phases/99-valid-looking.md", "# legacy fallback bait\n");
+  fixture.manifest.schemaVersion = 3;
   fixture.writeManifest();
 
   const result = inspectCanonicalInitiative({ cwd: fixture.cwd, topic: "demo" });
@@ -278,7 +294,7 @@ test("pi-swe canonical inspector never falls through from an invalid manifest to
 
 test("pi-swe canonical inspector reports missing links and exact topic mismatches", () => {
   const missing = writeCanonicalFixture();
-  missing.manifest.activeSpec.path = ".model-artifacts/specs/demo/missing.md";
+  missing.manifest.activeSpec.path = ".model-artifacts/initiatives/demo/specs/missing.md";
   missing.writeManifest();
   const missingResult = inspectCanonicalInitiative({ cwd: missing.cwd, topic: "demo" });
   assert.ok(missingResult.diagnostics.some((diagnostic) => diagnostic.code === "artifact_missing" && diagnostic.path.endsWith("missing.md")));
@@ -287,11 +303,11 @@ test("pi-swe canonical inspector reports missing links and exact topic mismatche
   const mismatch = writeCanonicalFixture();
   mismatch.manifest.topic = "other";
   mismatch.manifest.initiativeId = "other";
-  mismatch.manifest.activeSpec.path = ".model-artifacts/specs/other/spec.md";
-  mismatch.manifest.activePlan.path = ".model-artifacts/plans/other/plan.md";
-  mismatch.manifest.activePlan.contractRoot = ".model-artifacts/plans/other/revisions/r1";
+  mismatch.manifest.activeSpec.path = ".model-artifacts/initiatives/other/specs/spec.md";
+  mismatch.manifest.activePlan.path = ".model-artifacts/initiatives/other/plans/plan.md";
+  mismatch.manifest.activePlan.contractRoot = ".model-artifacts/initiatives/other/plans/revisions/r1";
   mismatch.manifest.approval.planPath = mismatch.manifest.activePlan.path;
-  mismatch.manifest.approval.reviewPath = ".model-artifacts/findings/other/review.md";
+  mismatch.manifest.approval.reviewPath = ".model-artifacts/initiatives/other/findings/review.md";
   mismatch.writeManifest();
   const mismatchResult = inspectCanonicalInitiative({ cwd: mismatch.cwd, topic: "demo" });
   assert.ok(mismatchResult.diagnostics.some((diagnostic) => diagnostic.code === "manifest_invalid" && diagnostic.field === "topic"));
@@ -355,13 +371,12 @@ test("pi-swe legacy adapter detects todo-phase plans only as legacy-unverified",
   assert.equal(result.status, "legacy-unverified");
   if (result.status !== "legacy-unverified") return;
   assert.equal(result.planPath, ".model-artifacts/todo/demo/phases/00-phase-index.md");
-  assert.equal(result.nextAction, "adopt-legacy-plan");
+  assert.equal(result.nextAction, "migrate-legacy-plan");
   assert.deepEqual(result.adoptionRequirements, [
-    "create a schema-v1 canonical manifest",
-    "normalize the legacy plan into canonical plan revision r1",
-    "validate the contract DAG and applicability",
-    "complete plan review",
-    "approve the reviewed canonical plan",
+    "run the separately approved layout-v1 to layout-v2 migration",
+    "create a schema-v2 manifest under .model-artifacts/initiatives/<topic>/specs/manifest.json",
+    "rewrite and hash-validate exact topic-first plan and contract paths",
+    "remove layout-v1 authority only after migration verification",
   ]);
   assert.equal("gates" in result, false);
 
@@ -374,8 +389,8 @@ test("pi-swe legacy adapter detects todo-phase plans only as legacy-unverified",
 
 test("pi-swe initiative resolver honors selection, reports ambiguity, and never falls through malformed canonical state", () => {
   const fixture = writeCanonicalFixture();
-  writeFixtureFile(fixture.cwd, ".model-artifacts/todo/demo/phases/00-phase-index.md", "# legacy plan\n");
-  writeFixtureFile(fixture.cwd, ".model-artifacts/specs/other/manifest.json", "{}");
+  writeFixtureFile(fixture.cwd, ".model-artifacts/initiatives/demo/todo/phases/00-phase-index.md", "# legacy plan\n");
+  writeFixtureFile(fixture.cwd, ".model-artifacts/initiatives/other/specs/manifest.json", "{}");
 
   const ambiguous = resolveInitiative({ cwd: fixture.cwd });
   assert.equal(ambiguous.status, "ambiguous");
@@ -393,7 +408,7 @@ test("pi-swe initiative resolver honors selection, reports ambiguity, and never 
   assert.equal(selected.selectionSource, "explicit");
   assert.equal(selected.inspection.gates.find((gate) => gate.id === "plan-approved")?.ready, true);
 
-  fixture.manifest.schemaVersion = 2;
+  fixture.manifest.schemaVersion = 3;
   fixture.writeManifest();
   const malformed = resolveInitiative({ cwd: fixture.cwd, explicitTopic: "demo" });
   assert.equal(malformed.sourceMode, "canonical");
@@ -425,7 +440,7 @@ test("pi-swe todo canonical link enriches resolution without granting approval a
       canonicalInitiative: {
         topic: "demo",
         contractId: "01",
-        contractPath: ".model-artifacts/plans/demo/revisions/r1/contracts/01.md",
+        contractPath: ".model-artifacts/initiatives/demo/plans/revisions/r1/contracts/01.md",
         planRevision: 1,
         dependencies: [],
       },
@@ -491,9 +506,9 @@ test("pi-swe recommends canonical gates before implementation and remains determ
   assert.equal(first.stage, "plan-review");
   assert.equal(first.skill, "swe-review");
   assert.ok(first.requiredReadPaths.includes(fixture.manifestPath));
-  assert.ok(first.requiredReadPaths.includes(".model-artifacts/specs/demo/spec.md"));
-  assert.ok(first.requiredReadPaths.includes(".model-artifacts/plans/demo/plan.md"));
-  assert.equal(first.intendedWriteArtifact, ".model-artifacts/findings/demo/<timestamp>-plan-review.md");
+  assert.ok(first.requiredReadPaths.includes(".model-artifacts/initiatives/demo/specs/spec.md"));
+  assert.ok(first.requiredReadPaths.includes(".model-artifacts/initiatives/demo/plans/plan.md"));
+  assert.equal(first.intendedWriteArtifact, ".model-artifacts/initiatives/demo/findings/<timestamp>-plan-review.md");
   assert.ok(first.blockingReasons.some((reason) => reason.includes("review and approve")));
 });
 
@@ -504,12 +519,12 @@ test("pi-swe returns blocked handoff for blocked initiatives and plan revision f
   blockedFixture.writeManifest();
   const blocked = recommendGateAwareOrchestration({
     resolution: resolveInitiative({ cwd: blockedFixture.cwd, explicitTopic: "demo" }),
-    initiativeBlocker: { statePath: ".model-artifacts/logs/demo/state.json", evidencePaths: [".model-artifacts/findings/demo/blocker.md"], remediation: "resolve the recorded dependency blocker" },
+    initiativeBlocker: { statePath: ".model-artifacts/system/logs/pi-swe/demo/state.json", evidencePaths: [".model-artifacts/initiatives/demo/findings/blocker.md"], remediation: "resolve the recorded dependency blocker" },
   });
   assert.equal(blocked.stage, "blocked-handoff");
   assert.equal(blocked.reason, "the canonical initiative is blocked");
   assert.deepEqual(blocked.blockingReasons, ["resolve the recorded dependency blocker"]);
-  assert.ok(blocked.requiredReadPaths.includes(".model-artifacts/findings/demo/blocker.md"));
+  assert.ok(blocked.requiredReadPaths.includes(".model-artifacts/initiatives/demo/findings/blocker.md"));
 
   const blockedWithoutPlanFixture = writeCanonicalFixture();
   blockedWithoutPlanFixture.manifest.initiativeState = "blocked";
@@ -518,7 +533,7 @@ test("pi-swe returns blocked handoff for blocked initiatives and plan revision f
   blockedWithoutPlanFixture.writeManifest();
   const blockedWithoutPlan = recommendGateAwareOrchestration({
     resolution: resolveInitiative({ cwd: blockedWithoutPlanFixture.cwd, explicitTopic: "demo" }),
-    initiativeBlocker: { statePath: ".model-artifacts/logs/demo/state.json", remediation: "resolve intake blocker" },
+    initiativeBlocker: { statePath: ".model-artifacts/system/logs/pi-swe/demo/state.json", remediation: "resolve intake blocker" },
   });
   assert.equal(blockedWithoutPlan.stage, "blocked-handoff");
   assert.deepEqual(blockedWithoutPlan.blockingReasons, ["resolve intake blocker"]);
@@ -603,13 +618,13 @@ test("pi-swe maps specialist, verification, review, and finalization gates to ex
 
   const fixture = writeCanonicalFixture();
   const resolution = resolveInitiative({ cwd: fixture.cwd, explicitTopic: "demo" });
-  const statePath = ".model-artifacts/logs/demo/state.json";
-  const verifying = recommendGateAwareOrchestration({ resolution, contractExecution: { "01": { state: "verifying", statePath, verifierAvailable: true, implementationPath: ".model-artifacts/logs/demo/implementation.md" } } });
+  const statePath = ".model-artifacts/system/logs/pi-swe/demo/state.json";
+  const verifying = recommendGateAwareOrchestration({ resolution, contractExecution: { "01": { state: "verifying", statePath, verifierAvailable: true, implementationPath: ".model-artifacts/initiatives/demo/logs/implementation.md" } } });
   assert.equal(verifying.stage, "verify");
   assert.equal(verifying.skill, "swe-verify");
   assert.ok(verifying.requiredReadPaths.includes(statePath));
 
-  const reviewing = recommendGateAwareOrchestration({ resolution, contractExecution: { "01": { state: "reviewing", statePath, verificationPath: ".model-artifacts/reports/demo/verification.md" } } });
+  const reviewing = recommendGateAwareOrchestration({ resolution, contractExecution: { "01": { state: "reviewing", statePath, verificationPath: ".model-artifacts/initiatives/demo/reports/verification.md" } } });
   assert.equal(reviewing.stage, "implementation-review");
   assert.equal(reviewing.skill, "swe-review");
 
@@ -645,7 +660,7 @@ test("pi-swe maps specialist, verification, review, and finalization gates to ex
 
   const unavailableHandoff = recommendGateAwareOrchestration({
     resolution: { ...terminalResolution, inspection: { ...terminalResolution.inspection, manifest: { ...terminalResolution.inspection.manifest!, initiativeState: "finalizing" as const } } },
-    finalHandoffEvidence: { path: ".model-artifacts/reports/demo/final-handoff.md", statePath, available: false, valid: false },
+    finalHandoffEvidence: { path: ".model-artifacts/initiatives/demo/reports/final-handoff.md", statePath, available: false, valid: false },
   });
   assert.equal(unavailableHandoff.stage, "blocked-handoff");
   assert.ok(unavailableHandoff.requiredReadPaths.includes(statePath));
@@ -653,9 +668,9 @@ test("pi-swe maps specialist, verification, review, and finalization gates to ex
   const invalidPathHandoff = recommendGateAwareOrchestration({ resolution: terminalResolution, finalHandoffEvidence: { path: "outside/final-handoff.md", available: true, valid: true } });
   assert.equal(invalidPathHandoff.stage, "blocked-handoff");
 
-  const complete = recommendGateAwareOrchestration({ resolution: terminalResolution, finalHandoffEvidence: { path: ".model-artifacts/reports/demo/final-handoff.md", statePath, available: true, valid: true } });
+  const complete = recommendGateAwareOrchestration({ resolution: terminalResolution, finalHandoffEvidence: { path: ".model-artifacts/initiatives/demo/reports/final-handoff.md", statePath, available: true, valid: true } });
   assert.equal(complete.stage, "complete");
-  assert.ok(complete.requiredReadPaths.includes(".model-artifacts/reports/demo/final-handoff.md"));
+  assert.ok(complete.requiredReadPaths.includes(".model-artifacts/initiatives/demo/reports/final-handoff.md"));
 });
 
 test("pi-swe returns actionable handoffs for legacy, ambiguity, stale contracts, no-verifier, and repeat-failure states", () => {
@@ -667,13 +682,13 @@ test("pi-swe returns actionable handoffs for legacy, ambiguity, stale contracts,
       planPath: ".model-artifacts/todo/demo/phases/00-phase-index.md",
       candidatePaths: [".model-artifacts/todo/demo/phases/00-phase-index.md"],
       candidateTopics: ["demo"],
-      adoptionRequirements: ["create a schema-v1 canonical manifest", "normalize the legacy plan into canonical plan revision r1", "validate the contract DAG and applicability", "complete plan review", "approve the reviewed canonical plan"],
-      nextAction: "adopt-legacy-plan",
+      adoptionRequirements: ["run the separately approved layout-v1 to layout-v2 migration", "create a schema-v2 manifest under .model-artifacts/initiatives/<topic>/specs/manifest.json", "rewrite and hash-validate exact topic-first plan and contract paths", "remove layout-v1 authority only after migration verification"],
+      nextAction: "migrate-legacy-plan",
       warnings: [],
     },
   });
-  assert.equal(legacy.stage, "plan-review");
-  assert.equal(legacy.skill, "swe-review");
+  assert.equal(legacy.stage, "blocked-handoff");
+  assert.equal(legacy.intendedWriteArtifact, undefined);
 
   const ambiguous = recommendGateAwareOrchestration({ resolution: { sourceMode: "resolution", status: "ambiguous", candidateTopics: ["a", "b"], remediation: "select one topic", warnings: [] } });
   assert.equal(ambiguous.stage, "blocked-handoff");
@@ -686,22 +701,22 @@ test("pi-swe returns actionable handoffs for legacy, ambiguity, stale contracts,
 
   const fixture = writeCanonicalFixture();
   const resolution = resolveInitiative({ cwd: fixture.cwd, explicitTopic: "demo" });
-  const statePath = ".model-artifacts/logs/demo/state.json";
+  const statePath = ".model-artifacts/system/logs/pi-swe/demo/state.json";
   const traversal = recommendGateAwareOrchestration({ resolution, contractExecution: { "01": { state: "verifying", statePath: "../secret.json", verifierAvailable: false } } });
   assert.equal(traversal.stage, "blocked-handoff");
   assert.ok(traversal.blockingReasons.some((reason) => reason.includes("../secret.json")));
   assert.ok(!traversal.requiredReadPaths.includes("../secret.json"));
 
-  const wrongTopic = recommendGateAwareOrchestration({ resolution, finalHandoffEvidence: { path: ".model-artifacts/reports/other/final-handoff.md", available: true, valid: true } });
+  const wrongTopic = recommendGateAwareOrchestration({ resolution, finalHandoffEvidence: { path: ".model-artifacts/initiatives/other/reports/final-handoff.md", available: true, valid: true } });
   assert.equal(wrongTopic.stage, "blocked-handoff");
-  assert.ok(wrongTopic.blockingReasons.some((reason) => reason.includes("reports/other")));
+  assert.ok(wrongTopic.blockingReasons.some((reason) => reason.includes("initiatives/other/reports")));
 
   const noVerifier = recommendGateAwareOrchestration({ resolution, contractExecution: { "01": { state: "verifying", statePath, verifierAvailable: false } } });
   assert.equal(noVerifier.stage, "blocked-handoff");
   assert.ok(noVerifier.blockingReasons.some((reason) => reason.includes("provide a verifier")));
   assert.ok(noVerifier.requiredReadPaths.includes(statePath));
 
-  const repeated = recommendGateAwareOrchestration({ resolution, contractExecution: { "01": { state: "reviewing", statePath, retryCount: 2, retryBudget: 2, verificationPath: ".model-artifacts/reports/demo/verification.md" } } });
+  const repeated = recommendGateAwareOrchestration({ resolution, contractExecution: { "01": { state: "reviewing", statePath, retryCount: 2, retryBudget: 2, verificationPath: ".model-artifacts/initiatives/demo/reports/verification.md" } } });
   assert.equal(repeated.stage, "blocked-handoff");
   assert.ok(repeated.blockingReasons.some((reason) => reason.includes("repeated failure")));
 });
@@ -903,7 +918,7 @@ test("pi-swe rejects an active contract inconsistent with the contract index", (
 });
 
 test("pi-swe runner rejects stale event sources and incomplete canonical retry identity", () => {
-  const evidencePath = ".model-artifacts/reports/demo/verification.md";
+  const evidencePath = ".model-artifacts/initiatives/demo/reports/verification.md";
   assert.deepEqual(evaluateAutonomousRunnerStep({
     state: { topic: "demo", state: "verify" },
     event: {
@@ -1144,7 +1159,7 @@ test("pi-swe retry budgets are isolated by plan revision and contract ID", () =>
     from: "review" as const,
     requestedNextState: "implement" as const,
     failureSignature: "same-review-failure",
-    evidencePath: ".model-artifacts/reports/demo/review.md",
+    evidencePath: ".model-artifacts/initiatives/demo/reports/review.md",
   };
   const first = evaluateAutonomousRunnerStep({
     state: { topic: "demo", state: "review", planRevision: 4, activeContractId: "03.01" },
@@ -1180,13 +1195,13 @@ test("pi-swe reconstructs a next action for every non-terminal lifecycle state",
 
 function writeCanonicalFixture(options: { contractPlanRevision?: number; deferral?: unknown } = {}) {
   const cwd = mkdtempSync(join(tmpdir(), "pi-swe-canonical-inspector-"));
-  const manifestPath = ".model-artifacts/specs/demo/manifest.json";
-  const specPath = ".model-artifacts/specs/demo/spec.md";
-  const planPath = ".model-artifacts/plans/demo/plan.md";
-  const contractRoot = ".model-artifacts/plans/demo/revisions/r1";
+  const manifestPath = ".model-artifacts/initiatives/demo/specs/manifest.json";
+  const specPath = ".model-artifacts/initiatives/demo/specs/spec.md";
+  const planPath = ".model-artifacts/initiatives/demo/plans/plan.md";
+  const contractRoot = ".model-artifacts/initiatives/demo/plans/revisions/r1";
   const contractPath = `${contractRoot}/contracts/01.md`;
   const indexPath = `${contractRoot}/contracts.json`;
-  const reviewPath = ".model-artifacts/findings/demo/review.md";
+  const reviewPath = ".model-artifacts/initiatives/demo/findings/review.md";
   const spec = "# exact canonical spec\n";
   const plan = "# exact canonical plan\n";
   const contract = "# phase 01\n";
@@ -1197,7 +1212,7 @@ function writeCanonicalFixture(options: { contractPlanRevision?: number; deferra
 
   const specialists = Object.fromEntries(CORE_SPECIALIST_IDS.map((id) => [id, { status: "not-required", rationale: `${id} has no consequential work.` }]));
   const manifest: any = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     initiativeId: "demo",
     topic: "demo",
     initiativeState: "approved",
@@ -1227,13 +1242,13 @@ function writeCanonicalFixture(options: { contractPlanRevision?: number; deferra
 }
 
 function activateCanonicalContract(fixture: ReturnType<typeof writeCanonicalFixture>) {
-  const contractPath = ".model-artifacts/plans/demo/revisions/r1/contracts/01.md";
+  const contractPath = ".model-artifacts/initiatives/demo/plans/revisions/r1/contracts/01.md";
   fixture.manifest.activeContract = { id: "01", path: contractPath };
   fixture.writeManifest();
   return {
     topic: "demo",
     manifestPath: fixture.manifestPath,
-    manifestSchemaVersion: 1,
+    manifestSchemaVersion: 2,
     planRevision: 1,
     planPath: fixture.manifest.activePlan.path as string,
     contractId: "01",
@@ -1255,15 +1270,15 @@ function sha256(content: string): string {
 function writeAutonomousFixture(state: PiSweLifecycleState) {
   const cwd = mkdtempSync(join(tmpdir(), "pi-swe-work-docs-"));
   const paths = {
-    workOrder: ".model-artifacts/specs/demo/2026-05-14_1200-work-order.md",
-    phaseIndex: ".model-artifacts/todo/demo/phases/00-phase-index.md",
-    activePhase: ".model-artifacts/todo/demo/phases/02-stable-work-documents.md",
-    diagnosisFinding: ".model-artifacts/findings/demo/2026-05-14_1205-diagnosis.md",
-    dsaDecision: ".model-artifacts/findings/demo/2026-05-14_1206-dsa-decision.md",
-    implementationNote: ".model-artifacts/logs/demo/2026-05-14_1210-implementation.md",
-    verificationReport: ".model-artifacts/reports/demo/2026-05-14_1220-verification.md",
-    reviewReport: ".model-artifacts/reports/demo/2026-05-14_1230-review.md",
-    finalHandoff: ".model-artifacts/reports/demo/2026-05-14_1240-handoff.md",
+    workOrder: ".model-artifacts/initiatives/demo/specs/2026-05-14_1200-work-order.md",
+    phaseIndex: ".model-artifacts/initiatives/demo/todo/phases/00-phase-index.md",
+    activePhase: ".model-artifacts/initiatives/demo/todo/phases/02-stable-work-documents.md",
+    diagnosisFinding: ".model-artifacts/initiatives/demo/findings/2026-05-14_1205-diagnosis.md",
+    dsaDecision: ".model-artifacts/initiatives/demo/findings/2026-05-14_1206-dsa-decision.md",
+    implementationNote: ".model-artifacts/initiatives/demo/logs/2026-05-14_1210-implementation.md",
+    verificationReport: ".model-artifacts/initiatives/demo/reports/2026-05-14_1220-verification.md",
+    reviewReport: ".model-artifacts/initiatives/demo/reports/2026-05-14_1230-review.md",
+    finalHandoff: ".model-artifacts/initiatives/demo/reports/2026-05-14_1240-handoff.md",
   };
 
   for (const relativePath of Object.values(paths)) {
@@ -1271,7 +1286,7 @@ function writeAutonomousFixture(state: PiSweLifecycleState) {
     writeFileSync(join(cwd, relativePath), `# ${relativePath}\n`, "utf8");
   }
 
-  const statePath = ".model-artifacts/logs/demo/state.json";
+  const statePath = ".model-artifacts/system/logs/pi-swe/demo/state.json";
   mkdirSync(dirname(join(cwd, statePath)), { recursive: true });
   writeFileSync(
     join(cwd, statePath),

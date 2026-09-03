@@ -24,7 +24,7 @@ test("pi-swe capability adapter reads valid todo peer context", () => {
       canonicalInitiative: {
         topic: "demo",
         contractId: "01",
-        contractPath: ".model-artifacts/plans/demo/revisions/r1/contracts/01.md",
+        contractPath: ".model-artifacts/initiatives/demo/plans/revisions/r1/contracts/01.md",
         planRevision: 1,
         dependencies: [],
       },
@@ -43,7 +43,7 @@ test("pi-swe capability adapter reads valid todo peer context", () => {
     canonicalInitiative: {
       topic: "demo",
       contractId: "01",
-      contractPath: ".model-artifacts/plans/demo/revisions/r1/contracts/01.md",
+      contractPath: ".model-artifacts/initiatives/demo/plans/revisions/r1/contracts/01.md",
       planRevision: 1,
       dependencies: [],
     },

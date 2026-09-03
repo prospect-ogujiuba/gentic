@@ -7,7 +7,7 @@ description: Diagnose bugs, failures, and regressions with reproduce-minimize-hy
 
 Use this when behavior is broken, failing, or regressing. Diagnosis may produce evidence or a candidate fix, but never grants implementation approval.
 
-For an approved execution contract, first read `.model-artifacts/specs/<topic>/manifest.json`, the active approved plan, `<activePlan.contractRoot>/contracts.json`, and the exact contract/revision plus linked findings/current state. Validate `contentHash`, dependencies, blockers, acceptance criteria, and planned verification. A todo, filename, or diagnosis artifact is not approval. Stale state, a missing verifier, scope drift, or conflicting changes yields a deterministic return to plan with exact paths. Diagnosis remains standalone.
+For an approved execution contract, first read `.model-artifacts/initiatives/<topic>/specs/manifest.json`, the active approved plan, `<activePlan.contractRoot>/contracts.json`, and the exact contract/revision plus linked findings/current state. Validate `contentHash`, dependencies, blockers, acceptance criteria, and planned verification. A todo, filename, or diagnosis artifact is not approval. Stale state, a missing verifier, scope drift, or conflicting changes yields a deterministic return to plan with exact paths. Diagnosis remains standalone.
 
 ## Workflow
 
@@ -25,7 +25,7 @@ For trivial one-step diagnoses, keep the investigation in chat unless the user a
 
 For hard bugs, multi-step investigations, performance regressions, or investigations whose evidence or fix-slice should be handed to `/skill:swe-plan` or `/skill:swe-implement`, write a durable diagnosis artifact at:
 
-`.model-artifacts/findings/<topic>/YYYY-MM-DD_HHMM-diagnosis.md`
+`.model-artifacts/initiatives/<topic>/findings/YYYY-MM-DD_HHMM-diagnosis.md`
 
 Keep the artifact concise and structured with these sections:
 

@@ -100,18 +100,18 @@ test("pi-swe completes without advancing when the next contract is explicitly bl
 
 test("pi-swe rejects a deferral with missing evidence before completion mutation", () => {
   const fixture = writeCompletionFixture();
-  const thirdPath = ".model-artifacts/plans/demo/revisions/r1/contracts/03.md";
+  const thirdPath = ".model-artifacts/initiatives/demo/plans/revisions/r1/contracts/03.md";
   const third = "# contract 03\n";
   write(fixture.cwd, thirdPath, third);
   fixture.index.contracts.push({ kind: "phase", id: "03", dependsOn: ["02"], planRevision: 1, path: thirdPath, status: "pending", contentHash: sha256(third) });
-  fixture.index.contractFacts["02"] = { ...fixture.index.contractFacts["02"], entryInputsAvailable: false, deferral: { approved: true, evidencePath: ".model-artifacts/reports/demo/missing-deferral.md" } };
+  fixture.index.contractFacts["02"] = { ...fixture.index.contractFacts["02"], entryInputsAvailable: false, deferral: { approved: true, evidencePath: ".model-artifacts/initiatives/demo/reports/missing-deferral.md" } };
   fixture.index.contractFacts["03"] = { entryInputsAvailable: true, capabilitiesAvailable: true, applicability: "applicable", acceptanceDefined: true, verificationDefined: true };
   fixture.writeIndex();
   const before = readFileSync(join(fixture.cwd, fixture.indexPath), "utf8");
 
   const result = completeCanonicalContract(fixture.request);
   assert.equal(result.status, "rejected");
-  assert.equal(result.artifact, ".model-artifacts/reports/demo/missing-deferral.md");
+  assert.equal(result.artifact, ".model-artifacts/initiatives/demo/reports/missing-deferral.md");
   assert.equal(readFileSync(join(fixture.cwd, fixture.indexPath), "utf8"), before);
   assert.equal(existsSync(join(fixture.cwd, completionJournalPath("demo"))), false);
 });
@@ -160,7 +160,7 @@ test("pi-swe rejects unrelated pass reports and plan reviews as completion evide
     mode: "verification",
     topic: "demo",
     contractId: "99",
-    contractPath: ".model-artifacts/plans/demo/revisions/r1/contracts/99.md",
+    contractPath: ".model-artifacts/initiatives/demo/plans/revisions/r1/contracts/99.md",
     planRevision: 1,
     contractContentHash: fixture.request.expectedPreCompletionContentHash,
     outcome: "pass",
@@ -460,7 +460,6 @@ test("pi-swe atomically normalizes a CSR-style legacy index, completes P1.1, and
   assert.equal("dependencies" in index.contracts[0], false);
   assert.equal("canonicalPath" in index.contracts[0], false);
   assert.equal(manifest.approval.decision, "approved");
-  assert.equal(manifest.approvedMetadata, "preserved");
   assert.equal(manifest.specialists.accessibilityUx, undefined);
   assert.equal(manifest.activeContract.id, "P1.2");
   assert.equal(existsSync(join(fixture.cwd, completionJournalPath("demo"))), false);
@@ -497,7 +496,7 @@ test("pi-swe reports all ambiguous legacy index fields against contracts.json wi
   const fixture = writeLegacyCompatibilityFixture();
   const malformed = JSON.parse(readFileSync(join(fixture.cwd, fixture.indexPath), "utf8"));
   malformed.contracts[0].dependsOn = ["different"];
-  malformed.contracts[1].path = ".model-artifacts/plans/demo/revisions/r1/wrong.md";
+  malformed.contracts[1].path = ".model-artifacts/initiatives/demo/plans/revisions/r1/wrong.md";
   malformed.contracts[1].status = "unknown-legacy-state";
   writeFileSync(join(fixture.cwd, fixture.indexPath), `${JSON.stringify(malformed, null, 2)}\n`, "utf8");
   const beforeManifest = readFileSync(join(fixture.cwd, fixture.manifestPath), "utf8");
@@ -544,16 +543,16 @@ function faultAt(point: CompletionFaultPoint) {
 
 function writeCompletionFixture() {
   const cwd = mkdtempSync(join(tmpdir(), "pi-swe-completion-"));
-  const manifestPath = ".model-artifacts/specs/demo/manifest.json";
-  const specPath = ".model-artifacts/specs/demo/spec.md";
-  const planPath = ".model-artifacts/plans/demo/plan.md";
-  const contractRoot = ".model-artifacts/plans/demo/revisions/r1";
+  const manifestPath = ".model-artifacts/initiatives/demo/specs/manifest.json";
+  const specPath = ".model-artifacts/initiatives/demo/specs/spec.md";
+  const planPath = ".model-artifacts/initiatives/demo/plans/plan.md";
+  const contractRoot = ".model-artifacts/initiatives/demo/plans/revisions/r1";
   const contractPath = `${contractRoot}/contracts/01.md`;
   const secondContractPath = `${contractRoot}/contracts/02.md`;
   const indexPath = `${contractRoot}/contracts.json`;
-  const planReviewPath = ".model-artifacts/reports/demo/plan-review.md";
-  const verificationPath = ".model-artifacts/reports/demo/verification.md";
-  const implementationReviewPath = ".model-artifacts/reports/demo/implementation-review.md";
+  const planReviewPath = ".model-artifacts/initiatives/demo/reports/plan-review.md";
+  const verificationPath = ".model-artifacts/initiatives/demo/reports/verification.md";
+  const implementationReviewPath = ".model-artifacts/initiatives/demo/reports/implementation-review.md";
   const spec = "# exact spec\n";
   const plan = "# exact plan\n";
   const firstContract = "# contract 01\n";
@@ -592,7 +591,7 @@ function writeCompletionFixture() {
   write(cwd, implementationReviewPath, review);
   const specialists = Object.fromEntries(CORE_SPECIALIST_IDS.map((id) => [id, { status: "not-required", rationale: `${id} is not consequential.` }]));
   const manifest: any = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     initiativeId: "demo",
     topic: "demo",
     initiativeState: "executing",
@@ -657,17 +656,17 @@ function writeCompletionFixture() {
 
 function writeLegacyCompatibilityFixture() {
   const cwd = mkdtempSync(join(tmpdir(), "pi-swe-legacy-completion-"));
-  const manifestPath = ".model-artifacts/specs/demo/manifest.json";
-  const specPath = ".model-artifacts/specs/demo/spec.md";
-  const planPath = ".model-artifacts/plans/demo/plan.md";
-  const contractRoot = ".model-artifacts/plans/demo/revisions/r1";
+  const manifestPath = ".model-artifacts/initiatives/demo/specs/manifest.json";
+  const specPath = ".model-artifacts/initiatives/demo/specs/spec.md";
+  const planPath = ".model-artifacts/initiatives/demo/plans/plan.md";
+  const contractRoot = ".model-artifacts/initiatives/demo/plans/revisions/r1";
   const phasePath = `${contractRoot}/phases/phase-1/phase.md`;
   const contractPath = `${contractRoot}/phases/phase-1/p1.1.md`;
   const secondContractPath = `${contractRoot}/phases/phase-1/p1.2.md`;
   const indexPath = `${contractRoot}/contracts.json`;
-  const planReviewPath = ".model-artifacts/reports/demo/plan-review.md";
-  const verificationPath = ".model-artifacts/reports/demo/verification.md";
-  const implementationReviewPath = ".model-artifacts/reports/demo/implementation-review.md";
+  const planReviewPath = ".model-artifacts/initiatives/demo/reports/plan-review.md";
+  const verificationPath = ".model-artifacts/initiatives/demo/reports/verification.md";
+  const implementationReviewPath = ".model-artifacts/initiatives/demo/reports/implementation-review.md";
   const spec = "# exact spec\n";
   const plan = "# exact plan\n";
   const phase = "# phase P1\n";
@@ -681,11 +680,11 @@ function writeLegacyCompatibilityFixture() {
   const specialists: any = Object.fromEntries(CORE_SPECIALIST_IDS.filter((id) => id !== "accessibility-ux").map((id) => [id, { status: "not-required", rationale: `${id} is not consequential.` }]));
   specialists.accessibilityUx = { status: "not-required", rationale: "No user interface." };
   const manifest = {
-    schemaVersion: 1, initiativeId: "demo", topic: "demo", initiativeState: "executing",
+    schemaVersion: 2, initiativeId: "demo", topic: "demo", initiativeState: "executing",
     activeSpec: { revision: 1, path: specPath, contentHash: sha256(spec) },
     activePlan: { revision: 1, path: planPath, contractRoot, contentHash: sha256(plan) },
     approval: { decision: "approve", planRevision: 1, planPath, planContentHash: sha256(plan), reviewPath: planReviewPath, approvedAt: "2026-09-03T18:00:00.000Z", blockingFindings: 0 },
-    activeContract: { id: "P1.1", path: contractPath }, specialists, approvedMetadata: "preserved", updatedAt: "2026-09-03T18:00:00.000Z",
+    activeContract: { id: "P1.1", path: contractPath }, specialists, updatedAt: "2026-09-03T18:00:00.000Z",
   };
   const index = {
     schemaVersion: 1, topic: "demo", planRevision: 1,
@@ -712,7 +711,7 @@ function completionRecord(request: CompleteCanonicalContractRequest, nextState: 
     schemaVersion: 1,
     requestId: deriveCompletionRequestId(request),
     planRevision: request.expectedPlanRevision,
-    contractPath: ".model-artifacts/plans/demo/revisions/r1/contracts/01.md",
+    contractPath: ".model-artifacts/initiatives/demo/plans/revisions/r1/contracts/01.md",
     preCompletionContentHash: request.expectedPreCompletionContentHash,
     verification: request.verification,
     review: request.review,

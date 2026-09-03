@@ -52,7 +52,7 @@ Unknown future state-envelope versions are ignored. Failed commands, notes/manua
 - `/swe status` reports canonical disposition, phase progress, active/ready contracts, blockers, runtime context, and current warnings.
 - `/swe config` reports the effective project/global/default configuration and config diagnostics.
 - `/swe orchestrate` is guidance-only: it reports artifact readiness, recommends the next lifecycle step, routes missing verification/review/finalize gates, and emits deterministic exception handoffs without running hidden multi-step work.
-- `/swe complete` is the sole mutation action. It validates the exact active plan/contract hash plus passing verification and approving implementation-review identities, then runs the recoverable journaled state transition. Before mutation it losslessly normalizes supported legacy schema-v1 manifest/index metadata; the same transaction writes the canonical schema-v2 contract index, records migration provenance and completion evidence, and advances readiness. Contract IDs remain unchanged and evidence stays bound to the original identity. Ambiguous migration, evidence drift, graph errors, and execution blockers reject before writes with artifact-specific diagnostics. Each report must contain one closed `Pi-SWE-Evidence: {...}` JSON line binding topic, contract ID/path/hash, plan revision, and overall decision; the review line also binds the verification path/hash and zero blocking findings. An owner-token-bound exclusive local claim prevents concurrent writers and every journal/target mutation revalidates it. Claim files are never auto-reaped; after a process crash, recovery reports the exact lock path for explicit removal only after the operator confirms its owner is gone. Exact repeats return `already-complete`; mismatches and unfinished/corrupt recovery state do not write or report success. Canonical filenames stay unchanged.
+- `/swe complete` is the sole mutation action. It validates the exact active plan/contract hash plus passing verification and approving implementation-review identities, then runs the recoverable journaled state transition. Before mutation it losslessly normalizes supported legacy contract-index and manifest metadata within layout-v2 authority; the same transaction writes the canonical schema-v2 contract index, records migration provenance and completion evidence, and advances readiness. Contract IDs remain unchanged and evidence stays bound to the original identity. Ambiguous migration, evidence drift, graph errors, and execution blockers reject before writes with artifact-specific diagnostics. Each report must contain one closed `Pi-SWE-Evidence: {...}` JSON line binding topic, contract ID/path/hash, plan revision, and overall decision; the review line also binds the verification path/hash and zero blocking findings. An owner-token-bound exclusive local claim prevents concurrent writers and every journal/target mutation revalidates it. Claim files are never auto-reaped; after a process crash, recovery reports the exact lock path for explicit removal only after the operator confirms its owner is gone. Exact repeats return `already-complete`; mismatches and unfinished/corrupt recovery state do not write or report success. Canonical filenames stay unchanged.
 
 ## Stage skills
 
@@ -74,7 +74,7 @@ Matching skills live under `extensions/pi-swe/skills/swe-*/SKILL.md`. Compact re
 
 ## Canonical plans and revisions
 
-For non-trivial work, canonical authority starts at the schema-v1 `.model-artifacts/specs/<topic>/manifest.json`. The manifest points to the active specification and `activePlan`; the active plan points to its revision-specific `contractRoot`, where canonical schema-v2 `contracts.json` indexes phase and subphase contracts. Readers accept supported legacy schema-v1 metadata variants, but all new or migrated index writes use schema v2. Todo may link approved work, but neither a todo nor a filename selects an executable revision.
+For non-trivial work, canonical authority starts at the schema-v2 `.model-artifacts/initiatives/<topic>/specs/manifest.json`. The manifest points to the active specification and `activePlan`; the active plan points to its revision-specific `contractRoot`, where canonical schema-v2 `contracts.json` indexes phase and subphase contracts. Layout-v1 manifests are inspection-only and migration-required; simultaneous v1/v2 authority blocks. All writes use layout v2. Todo may link approved work, but neither a todo nor a filename selects an executable revision.
 
 Before implementation:
 
@@ -92,11 +92,11 @@ Use `pi-swe` as a phase-gated lifecycle. Each stage should leave enough durable 
 
 1. **Diagnose when behavior is broken or unclear** — `/skill:swe-diagnose`
    - Reproduce the symptom, minimize the failing scope, inspect relevant code/config/logs, list hypotheses with falsifiers, instrument only when needed, and name the smallest credible fix slice.
-   - Durable output when non-trivial: `.model-artifacts/findings/<topic>/...` or a diagnosis artifact referenced by the active todo.
+   - Durable output when non-trivial: `.model-artifacts/initiatives/<topic>/findings/...` or a diagnosis artifact referenced by the active todo.
 
 2. **Plan before non-trivial changes** — `/skill:swe-plan`
    - Define outcome, constraints, non-goals, phase order, acceptance criteria, and verification targets.
-   - Durable output: `.model-artifacts/specs/<topic>/manifest.json`, immutable spec and plan-index revisions, and revision-specific phase/subphase contracts indexed by `contracts.json` under `.model-artifacts/plans/<topic>/revisions/rN/`.
+   - Durable output: `.model-artifacts/initiatives/<topic>/specs/manifest.json`, immutable spec and plan-index revisions, and revision-specific phase/subphase contracts indexed by `contracts.json` under `.model-artifacts/initiatives/<topic>/plans/revisions/rN/`.
 
 3. **Use TDD when the next behavior should be proven first** — `/skill:swe-tdd`
    - Add one failing test for the next observable behavior, make the smallest production change, then refactor only after green.
@@ -108,11 +108,11 @@ Use `pi-swe` as a phase-gated lifecycle. Each stage should leave enough durable 
 
 5. **Verify before claiming completion** — `/skill:swe-verify`
    - Run focused tests/checks first, then broader checks as risk requires. Record command/manual evidence and known gaps.
-   - Durable output for non-trivial verification: `.model-artifacts/reports/<topic>/...`.
+   - Durable output for non-trivial verification: `.model-artifacts/initiatives/<topic>/reports/...`.
 
 6. **Review after implementation or before handoff** — `/skill:swe-review`
    - Compare the diff to the intended slice, check correctness/hardening/cleanup/security/performance/UX risks, and decide: approve, request changes, or return to plan.
-   - Durable output for substantial reviews: `.model-artifacts/reports/<topic>/...`.
+   - Durable output for substantial reviews: `.model-artifacts/initiatives/<topic>/reports/...`.
 
 7. **Orchestrate across artifacts when resuming or handing off** — `/skill:swe-orchestrate` and `/swe orchestrate`
    - Inspect work orders, todo context when available, and model artifacts; choose the next lifecycle stage; route back to verification/review when gates are missing; or emit an exception handoff.
@@ -120,7 +120,7 @@ Use `pi-swe` as a phase-gated lifecycle. Each stage should leave enough durable 
 
 8. **Finalize the handoff** — `/skill:swe-finalize`
    - Summarize what changed, why, key paths, verification evidence, review decision, residual risks, and next action such as commit/PR/release or return-to-plan.
-   - Durable output for larger handoffs: `.model-artifacts/reports/<topic>/...`.
+   - Durable output for larger handoffs: `.model-artifacts/initiatives/<topic>/reports/...`.
 
 Optional `/skill:swe-dsa` fits before planning or implementation whenever representation, access patterns, complexity, memory, ordering, persistence, or migration risk materially affect the slice. Its decision and validation plan should be incorporated into the relevant plan revision and implementation contract.
 
@@ -161,7 +161,7 @@ Assess a DSA choice before implementation:
 
 Manual end-to-end scripts live in [`docs/e2e-scenarios.md`](docs/e2e-scenarios.md):
 
-The guide covers canonical plan approval and revision selection, implementation/verification/review/finalization, diagnosis/TDD, DSA, standalone and optional-todo operation, orchestration, resume, blocked handoff, reviewed completion/recovery, stale approval, legacy adoption, multi-initiative ambiguity, approved deferral, and stable-filename status projection.
+The guide covers canonical plan approval and revision selection, implementation/verification/review/finalization, diagnosis/TDD, DSA, standalone and optional-todo operation, orchestration, resume, blocked handoff, reviewed completion/recovery, stale approval, legacy inspection and migration handoff, multi-initiative ambiguity, approved deferral, and stable-filename status projection.
 
 These scenarios are executable by a new contributor from a fresh Pi session. Their checklist is verification guidance, not authority to mark an initiative complete; canonical completion still requires the manifest, contract index, evidence, review, and finalization gates.
 
@@ -232,4 +232,4 @@ These omissions keep `pi-swe` small, standalone, and focused on SWE workflow dis
 
 ## Complete-version status
 
-The complete-version verification checklist is documented in [`docs/e2e-scenarios.md`](docs/e2e-scenarios.md#complete-version-checklist). Passing that checklist supports verification but does not itself complete a canonical initiative; the active manifest and contracts remain authoritative. Deferred refactor cleanup, including flat compatibility shim retirement, is tracked in `.model-artifacts/reports/pi-swe-standard-extension-refactor/2026-05-14_2044-phase-06-deferred-cleanup.md`; future work should be treated as enhancement scope.
+The complete-version verification checklist is documented in [`docs/e2e-scenarios.md`](docs/e2e-scenarios.md#complete-version-checklist). Passing that checklist supports verification but does not itself complete a canonical initiative; the active manifest and contracts remain authoritative. Deferred refactor cleanup, including flat compatibility shim retirement, remains a legacy-read-only reference at `.model-artifacts/reports/pi-swe-standard-extension-refactor/2026-05-14_2044-phase-06-deferred-cleanup.md`; future work should be treated as enhancement scope.

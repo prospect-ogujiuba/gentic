@@ -159,7 +159,7 @@ async function main(): Promise<void> {
   const fixture = valueAfter("--fixture");
   const requestedTarget = valueAfter("--target");
   const apply = process.argv.includes("--apply");
-  const reportPath = resolve(valueAfter("--report") ?? join(root, `.model-artifacts/reports/pi-update/${artifactTimestamp()}-pi-update.md`));
+  const reportPath = resolve(valueAfter("--report") ?? join(root, `.model-artifacts/system/reports/pi-update/${artifactTimestamp()}-pi-update.md`));
   if (!fixture && !requestedTarget) throw new Error("Usage: npm run pi:update -- --target <version> [--apply] [--report <path>] or --fixture <dir>");
   if (apply && fixture) throw new Error("--apply cannot use a fixture package");
 

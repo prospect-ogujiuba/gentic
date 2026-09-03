@@ -25,7 +25,7 @@ Earliest capture: Pi documents `session_start` as the first extension lifecycle 
 
 Use filters to keep terminal output small: `/pi-context tools`, `/pi-context extensions`, `/pi-context system session`, or `/pi-context artifacts`.
 
-Use `/pi-context artifact` (or `/pi-context open`) to write an expanded markdown report under `.model-artifacts/todo/pi-context/reports/`. Use `/pi-context json` to write the same maintained snapshot as deterministic JSON for downstream tools and todo evidence.
+Use `/pi-context artifact` (or `/pi-context open`) to write an expanded markdown report under `.model-artifacts/system/reports/pi-context/`. Use `/pi-context json` to write the same maintained snapshot as deterministic JSON for downstream tools and todo evidence.
 
 ## UI integration
 
@@ -36,7 +36,7 @@ The HUD adapter includes only totals, remaining window, largest group, latest co
 ## Persistence, privacy, and performance policy
 
 - Persistence is per-session and in-memory by default. `session_shutdown` resets the ledger; `session_compact` clears stale entries while preserving a compact compaction observation.
-- Artifact export is explicit via `/pi-context artifact` or `/pi-context json`; reports are written under `.model-artifacts/todo/pi-context/reports/` and are not generated automatically.
+- Artifact export is explicit via `/pi-context artifact` or `/pi-context json`; reports are written under `.model-artifacts/system/reports/pi-context/` and are not generated automatically.
 - Project reset/deletion should remove those report artifacts with the rest of `.model-artifacts`; no hidden long-term pi-context store is created.
 - Raw prompts, tool arguments, tool results, and large content previews are never stored in ledger entries. Collectors keep byte/token counts, hashes, status flags, path counts, and redaction metadata instead.
 - Runtime retention is bounded: ledger entries, usage snapshots, lifecycle events, warnings, HUD contributors, and rendered warnings are capped. Hot-path hooks update maintained state only; report and HUD rendering do not scan full session history or filesystem trees.

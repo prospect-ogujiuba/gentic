@@ -57,12 +57,12 @@ test("pi-swe verification evidence represents command and manual scopes", () => 
 test("pi-swe turn reset preserves the durable canonical initiative cursor", () => {
   const activeInitiative = {
     topic: "demo",
-    manifestPath: ".model-artifacts/specs/demo/manifest.json",
-    manifestSchemaVersion: 1,
+    manifestPath: ".model-artifacts/initiatives/demo/specs/manifest.json",
+    manifestSchemaVersion: 2,
     planRevision: 1,
-    planPath: ".model-artifacts/plans/demo/plan.md",
+    planPath: ".model-artifacts/initiatives/demo/plans/plan.md",
     contractId: "01",
-    contractPath: ".model-artifacts/plans/demo/revisions/r1/contracts/01.md",
+    contractPath: ".model-artifacts/initiatives/demo/plans/revisions/r1/contracts/01.md",
     lifecycle: { initiativeState: "executing" as const, contractStatus: "in-progress" as const },
     gates: { readyIds: ["02", "02"], blockerCodes: [] },
   };
@@ -78,7 +78,7 @@ test("pi-swe active plan markers support todo artifact and prompt sources", () =
   const base = createSweState();
 
   assert.deepEqual(setActivePlan(base, { source: "todo", marker: " todo-1 " }).activePlan, { source: "todo", marker: "todo-1" });
-  assert.deepEqual(setActivePlan(base, { source: "artifact", marker: " .model-artifacts/todo/pi-swe/plan.md " }).activePlan, { source: "artifact", marker: ".model-artifacts/todo/pi-swe/plan.md" });
+  assert.deepEqual(setActivePlan(base, { source: "artifact", marker: " .model-artifacts/initiatives/pi-swe/todo/plan.md " }).activePlan, { source: "artifact", marker: ".model-artifacts/initiatives/pi-swe/todo/plan.md" });
   assert.deepEqual(setActivePlan(base, { source: "prompt", marker: "user request" }).activePlan, { source: "prompt", marker: "user request" });
   assert.equal(setActivePlan(base, undefined).activePlan, undefined);
 });

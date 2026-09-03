@@ -154,7 +154,7 @@ function normalizeTodo(value: unknown, warnings: SweCapabilityWarning[]): SweExt
 function normalizeCanonicalInitiative(value: unknown): SweCanonicalInitiativeLink | undefined {
   if (!isPlainObject(value) || typeof value.topic !== "string" || !isSafeTopic(value.topic)) return undefined;
   if (value.contractId !== undefined && (typeof value.contractId !== "string" || !value.contractId.trim())) return undefined;
-  if (value.contractPath !== undefined && (typeof value.contractPath !== "string" || !value.contractPath.startsWith(`.model-artifacts/plans/${value.topic}/`))) return undefined;
+  if (value.contractPath !== undefined && (typeof value.contractPath !== "string" || !value.contractPath.startsWith(`.model-artifacts/initiatives/${value.topic}/plans/`))) return undefined;
   if (value.planRevision !== undefined && (!Number.isInteger(value.planRevision) || (value.planRevision as number) < 1)) return undefined;
   if (value.dependencies !== undefined && !isStringArray(value.dependencies)) return undefined;
   return {

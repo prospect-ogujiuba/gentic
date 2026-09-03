@@ -1,6 +1,6 @@
 import { posix } from "node:path";
 
-export const PI_SWE_INITIATIVE_MANIFEST_SCHEMA_VERSION = 1 as const;
+export const PI_SWE_INITIATIVE_MANIFEST_SCHEMA_VERSION = 2 as const;
 
 export const PI_SWE_INITIATIVE_STATES = [
   "intake",
@@ -114,9 +114,16 @@ export function parseInitiativeManifest(value: unknown): ParseInitiativeManifest
   }
 
   const diagnostics: MutableDiagnostics = [];
+  const initiativeState = readInitiativeState(value.initiativeState, diagnostics);
+  const expectedKeys = new Set([
+    "schemaVersion", "initiativeId", "topic", "initiativeState", "activeSpec", "activePlan",
+    "activeContract", "approval", "specialists", "updatedAt", "piSweMigration",
+  ]);
+  for (const key of Object.keys(value)) {
+    if (!expectedKeys.has(key)) add(diagnostics, "invalid_field", key, `manifest contains unsupported field ${key}`);
+  }
   const initiativeId = readString(value, "initiativeId", diagnostics);
   const topic = readString(value, "topic", diagnostics);
-  const initiativeState = readInitiativeState(value.initiativeState, diagnostics);
   const updatedAt = readTimestamp(value.updatedAt, "updatedAt", diagnostics);
 
   if (initiativeId && !isValidTopic(initiativeId)) add(diagnostics, "invalid_topic", "initiativeId", "initiativeId must contain safe non-empty path segments");
@@ -129,6 +136,7 @@ export function parseInitiativeManifest(value: unknown): ParseInitiativeManifest
     ? readPlanPointer(value.activePlan, canonicalTopic, diagnostics)
     : undefined;
   const specialists = canonicalTopic ? readSpecialists(value.specialists, canonicalTopic, diagnostics) : undefined;
+  if (value.piSweMigration !== undefined) readManifestMigration(value.piSweMigration, diagnostics);
 
   if (!initiativeState || !canonicalTopic || !initiativeId || !topic || !updatedAt || !activeSpec || !specialists) return { ok: false, diagnostics };
 
@@ -179,7 +187,7 @@ export function parseInitiativeManifest(value: unknown): ParseInitiativeManifest
 export function isValidTopic(value: string): boolean {
   if (!value || value.startsWith("/") || value.endsWith("/") || value.includes("\\") || /[\u0000-\u001f\u007f]/.test(value)) return false;
   const segments = value.split("/");
-  return segments.every((segment) => segment !== "." && segment !== ".." && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(segment));
+  return segments.every((segment) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(segment));
 }
 
 function readRevisionPointer(value: unknown, field: string, kind: "specs", topic: string, diagnostics: MutableDiagnostics): InitiativeRevisionPointer | undefined {
@@ -187,9 +195,10 @@ function readRevisionPointer(value: unknown, field: string, kind: "specs", topic
     add(diagnostics, "missing_field", field, `${field} must be an object`);
     return undefined;
   }
+  rejectUnknownFields(value, new Set(["revision", "path", "contentHash"]), field, diagnostics);
   const revision = readPositiveInteger(value.revision, `${field}.revision`, diagnostics);
   const path = readArtifactPath(value.path, `${field}.path`, [kind], topic, diagnostics);
-  const contentHash = readNonEmptyString(value.contentHash, `${field}.contentHash`, diagnostics);
+  const contentHash = readContentHash(value.contentHash, `${field}.contentHash`, diagnostics);
   return revision && path && contentHash ? { revision, path, contentHash } : undefined;
 }
 
@@ -198,10 +207,11 @@ function readPlanPointer(value: unknown, topic: string, diagnostics: MutableDiag
     add(diagnostics, "invalid_field", "activePlan", "activePlan must be an object");
     return undefined;
   }
+  rejectUnknownFields(value, new Set(["revision", "path", "contractRoot", "contentHash"]), "activePlan", diagnostics);
   const revision = readPositiveInteger(value.revision, "activePlan.revision", diagnostics);
   const path = readArtifactPath(value.path, "activePlan.path", ["plans"], topic, diagnostics);
   const contractRoot = readArtifactPath(value.contractRoot, "activePlan.contractRoot", ["plans"], topic, diagnostics, true);
-  const contentHash = readNonEmptyString(value.contentHash, "activePlan.contentHash", diagnostics);
+  const contentHash = readContentHash(value.contentHash, "activePlan.contentHash", diagnostics);
   return revision && path && contractRoot && contentHash ? { revision, path, contractRoot, contentHash } : undefined;
 }
 
@@ -210,11 +220,12 @@ function readApproval(value: unknown, plan: InitiativePlanPointer, topic: string
     add(diagnostics, "missing_field", "approval", "approved initiative state requires approval");
     return undefined;
   }
+  rejectUnknownFields(value, new Set(["decision", "planRevision", "planPath", "planContentHash", "reviewPath", "approvedAt", "blockingFindings"]), "approval", diagnostics);
   const decision = value.decision === "approve" ? "approved" : value.decision;
   if (decision !== "approved") add(diagnostics, "invalid_field", "approval.decision", "approval decision must be approved (legacy approve is accepted)");
   const planRevision = readPositiveInteger(value.planRevision, "approval.planRevision", diagnostics);
   const planPath = readArtifactPath(value.planPath, "approval.planPath", ["plans"], topic, diagnostics);
-  const planContentHash = readNonEmptyString(value.planContentHash, "approval.planContentHash", diagnostics);
+  const planContentHash = readContentHash(value.planContentHash, "approval.planContentHash", diagnostics);
   const reviewPath = readArtifactPath(value.reviewPath, "approval.reviewPath", ["findings", "reports"], topic, diagnostics);
   const approvedAt = readTimestamp(value.approvedAt, "approval.approvedAt", diagnostics);
   const blockingFindings = value.blockingFindings;
@@ -233,6 +244,7 @@ function readActiveContract(value: unknown, plan: InitiativePlanPointer, diagnos
     add(diagnostics, "invalid_field", "activeContract", "activeContract must be an object");
     return undefined;
   }
+  rejectUnknownFields(value, new Set(["id", "path"]), "activeContract", diagnostics);
   const id = readNonEmptyString(value.id, "activeContract.id", diagnostics);
   const path = readNonEmptyString(value.path, "activeContract.path", diagnostics);
   if (path && (!isSafeRelativePath(path) || !path.startsWith(`${plan.contractRoot}/`))) {
@@ -258,6 +270,7 @@ function readSpecialists(value: unknown, topic: string, diagnostics: MutableDiag
       add(diagnostics, "invalid_field", `specialists.${key}`, "specialist entry must have a valid key and status");
       continue;
     }
+    rejectUnknownFields(candidate, new Set(["status", "rationale", "findingPath"]), `specialists.${key}`, diagnostics);
     const status = candidate.status as InitiativeSpecialistStatus;
     const rationale = candidate.rationale === undefined ? undefined : readNonEmptyString(candidate.rationale, `specialists.${key}.rationale`, diagnostics);
     const findingPath = candidate.findingPath === undefined
@@ -268,11 +281,33 @@ function readSpecialists(value: unknown, topic: string, diagnostics: MutableDiag
   return specialists;
 }
 
+function readManifestMigration(value: unknown, diagnostics: MutableDiagnostics): void {
+  const field = "piSweMigration";
+  if (!isRecord(value)) {
+    add(diagnostics, "invalid_field", field, `${field} must be an object`);
+    return;
+  }
+  rejectUnknownFields(value, new Set(["schemaVersion", "operation", "requestId", "migratedAt", "fields"]), field, diagnostics);
+  if (value.schemaVersion !== 1) add(diagnostics, "invalid_field", `${field}.schemaVersion`, `${field}.schemaVersion must be 1`);
+  if (value.operation !== "normalize-manifest-metadata") add(diagnostics, "invalid_field", `${field}.operation`, `${field}.operation is unsupported`);
+  if (typeof value.requestId !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.requestId)) add(diagnostics, "invalid_field", `${field}.requestId`, `${field}.requestId must use sha256:<64 lowercase hex>`);
+  readTimestamp(value.migratedAt, `${field}.migratedAt`, diagnostics);
+  if (!Array.isArray(value.fields) || value.fields.some((entry) => entry !== "approval.decision" && entry !== "specialists.accessibility-ux")) {
+    add(diagnostics, "invalid_field", `${field}.fields`, `${field}.fields contains unsupported metadata normalization`);
+  }
+}
+
+function rejectUnknownFields(value: UnknownRecord, expected: ReadonlySet<string>, field: string, diagnostics: MutableDiagnostics): void {
+  for (const key of Object.keys(value)) {
+    if (!expected.has(key)) add(diagnostics, "invalid_field", `${field}.${key}`, `${field} contains unsupported field ${key}`);
+  }
+}
+
 function readArtifactPath(value: unknown, field: string, kinds: string[], topic: string, diagnostics: MutableDiagnostics, allowDirectory = false): string | undefined {
   const path = readNonEmptyString(value, field, diagnostics);
   if (!path) return undefined;
-  const prefixes = kinds.map((kind) => `.model-artifacts/${kind}/${topic}/`);
-  const directoryMatches = allowDirectory && kinds.some((kind) => path === `.model-artifacts/${kind}/${topic}`);
+  const prefixes = kinds.map((kind) => `.model-artifacts/initiatives/${topic}/${kind}/`);
+  const directoryMatches = allowDirectory && kinds.some((kind) => path === `.model-artifacts/initiatives/${topic}/${kind}`);
   if (!isSafeRelativePath(path) || (!directoryMatches && !prefixes.some((prefix) => path.startsWith(prefix)))) {
     add(diagnostics, "invalid_path", field, `${field} must stay within ${kinds.join(" or ")} for topic ${topic}`);
     return undefined;
@@ -295,6 +330,15 @@ function readInitiativeState(value: unknown, diagnostics: MutableDiagnostics): P
 
 function readString(record: UnknownRecord, field: string, diagnostics: MutableDiagnostics): string | undefined {
   return readNonEmptyString(record[field], field, diagnostics);
+}
+
+function readContentHash(value: unknown, field: string, diagnostics: MutableDiagnostics): string | undefined {
+  const hash = readNonEmptyString(value, field, diagnostics);
+  if (hash && !/^sha256:[a-f0-9]{64}$/.test(hash)) {
+    add(diagnostics, "invalid_field", field, `${field} must use sha256:<64 lowercase hex>`);
+    return undefined;
+  }
+  return hash;
 }
 
 function readNonEmptyString(value: unknown, field: string, diagnostics: MutableDiagnostics): string | undefined {

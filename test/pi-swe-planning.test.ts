@@ -6,18 +6,20 @@ import { parseInitiativeManifest, type InitiativeManifest } from "../extensions/
 import { reduceReadiness, type ContractReadinessFacts } from "../extensions/pi-swe/src/domain/readiness.ts";
 
 const topic = "pi-swe/canonical-planning";
-const specPath = `.model-artifacts/specs/${topic}/2026-08-30_0331-initiative-spec-r2.md`;
-const planPath = `.model-artifacts/plans/${topic}/2026-08-30_0333-plan-index-r1.md`;
-const contractRoot = `.model-artifacts/plans/${topic}/revisions/r1`;
-const reviewPath = `.model-artifacts/findings/${topic}/2026-08-30_0335-execution-plan-review.md`;
+const specPath = `.model-artifacts/initiatives/${topic}/specs/2026-08-30_0331-initiative-spec-r2.md`;
+const planPath = `.model-artifacts/initiatives/${topic}/plans/2026-08-30_0333-plan-index-r1.md`;
+const contractRoot = `.model-artifacts/initiatives/${topic}/plans/revisions/r1`;
+const reviewPath = `.model-artifacts/initiatives/${topic}/findings/2026-08-30_0335-execution-plan-review.md`;
+const specHash = `sha256:${"a".repeat(64)}`;
+const planHash = `sha256:${"b".repeat(64)}`;
 
 function draftManifest() {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     initiativeId: topic,
     topic,
     initiativeState: "planning",
-    activeSpec: { revision: 2, path: specPath, contentHash: "sha256:spec-r2" },
+    activeSpec: { revision: 2, path: specPath, contentHash: specHash },
     specialists: {},
     updatedAt: "2026-08-30T03:31:00.000Z",
   };
@@ -27,12 +29,12 @@ function approvedManifest() {
   return {
     ...draftManifest(),
     initiativeState: "approved",
-    activePlan: { revision: 1, path: planPath, contractRoot, contentHash: "sha256:plan-r1" },
+    activePlan: { revision: 1, path: planPath, contractRoot, contentHash: planHash },
     approval: {
       decision: "approved",
       planRevision: 1,
       planPath,
-      planContentHash: "sha256:plan-r1",
+      planContentHash: planHash,
       reviewPath,
       approvedAt: "2026-08-30T03:35:00.000Z",
       blockingFindings: 0,
@@ -46,7 +48,7 @@ function diagnosticCodes(value: unknown): string[] {
   return result.ok ? [] : result.diagnostics.map((diagnostic) => diagnostic.code);
 }
 
-test("canonical initiative manifest parses valid draft and approved schema-v1 values", () => {
+test("canonical initiative manifest parses valid draft and approved schema-v2 values", () => {
   const draft = parseInitiativeManifest(draftManifest());
   assert.equal(draft.ok, true);
   if (draft.ok) {
@@ -77,20 +79,24 @@ test("canonical initiative manifest normalizes legacy approval and specialist al
 });
 
 test("canonical initiative manifest rejects unsupported versions and invalid identities", () => {
-  assert.deepEqual(diagnosticCodes({ ...draftManifest(), schemaVersion: 2 }), ["unsupported_schema_version"]);
+  assert.deepEqual(diagnosticCodes({ ...draftManifest(), schemaVersion: 3 }), ["unsupported_schema_version"]);
   assert.ok(diagnosticCodes({ ...draftManifest(), topic: "../escape", initiativeId: "../escape" }).includes("invalid_topic"));
   assert.ok(diagnosticCodes({ ...draftManifest(), topic: "other/topic" }).includes("identity_mismatch"));
+  assert.ok(diagnosticCodes({ ...draftManifest(), initiativeId: "Demo", topic: "Demo" }).includes("invalid_topic"));
+  assert.ok(diagnosticCodes({ ...draftManifest(), unsupported: true }).includes("invalid_field"));
+  assert.ok(diagnosticCodes({ ...draftManifest(), activeSpec: { ...draftManifest().activeSpec, extra: true } }).includes("invalid_field"));
+  assert.ok(diagnosticCodes({ ...draftManifest(), activeSpec: { ...draftManifest().activeSpec, contentHash: "sha256:not-a-hash" } }).includes("invalid_field"));
 });
 
 test("canonical initiative manifest rejects unsafe and non-canonical linked paths", () => {
-  assert.ok(diagnosticCodes({ ...draftManifest(), activeSpec: { revision: 2, path: "../spec.md", contentHash: "sha256:x" } }).includes("invalid_path"));
-  assert.ok(diagnosticCodes({ ...approvedManifest(), activePlan: { revision: 1, path: `.model-artifacts/todo/${topic}/phases/00-phase-index.md`, contractRoot, contentHash: "sha256:plan-r1" } }).includes("invalid_path"));
-  assert.ok(diagnosticCodes({ ...draftManifest(), activeSpec: { revision: 2, path: "/tmp/spec.md", contentHash: "sha256:x" } }).includes("invalid_path"));
+  assert.ok(diagnosticCodes({ ...draftManifest(), activeSpec: { revision: 2, path: "../spec.md", contentHash: specHash } }).includes("invalid_path"));
+  assert.ok(diagnosticCodes({ ...approvedManifest(), activePlan: { revision: 1, path: `.model-artifacts/initiatives/${topic}/todo/phases/00-phase-index.md`, contractRoot, contentHash: planHash } }).includes("invalid_path"));
+  assert.ok(diagnosticCodes({ ...draftManifest(), activeSpec: { revision: 2, path: "/tmp/spec.md", contentHash: specHash } }).includes("invalid_path"));
 });
 
 test("canonical initiative manifest rejects stale or incomplete approval", () => {
   assert.ok(diagnosticCodes({ ...approvedManifest(), approval: { ...approvedManifest().approval, planRevision: 2 } }).includes("stale_approval"));
-  assert.ok(diagnosticCodes({ ...approvedManifest(), approval: { ...approvedManifest().approval, planContentHash: "sha256:stale" } }).includes("stale_approval"));
+  assert.ok(diagnosticCodes({ ...approvedManifest(), approval: { ...approvedManifest().approval, planContentHash: `sha256:${"c".repeat(64)}` } }).includes("stale_approval"));
   assert.ok(diagnosticCodes({ ...approvedManifest(), approval: { ...approvedManifest().approval, blockingFindings: 1 } }).includes("blocking_findings"));
   const { approval: _approval, ...withoutApproval } = approvedManifest();
   assert.ok(diagnosticCodes(withoutApproval).includes("missing_field"));
@@ -200,8 +206,8 @@ test("contract graph defines empty and single-contract results", () => {
 
 const completeSpecialists = {
   diagnosis: { status: "not-required", rationale: "No failure to diagnose." },
-  dsa: { status: "complete", findingPath: `.model-artifacts/findings/${topic}/dsa.md` },
-  tdd: { status: "complete", findingPath: `.model-artifacts/findings/${topic}/tdd.md` },
+  dsa: { status: "complete", findingPath: `.model-artifacts/initiatives/${topic}/findings/dsa.md` },
+  tdd: { status: "complete", findingPath: `.model-artifacts/initiatives/${topic}/findings/tdd.md` },
   security: { status: "not-required", rationale: "No security boundary." },
   migration: { status: "not-required", rationale: "No migration." },
   performance: { status: "not-required", rationale: "No performance risk." },
@@ -340,7 +346,7 @@ test("readiness returns multiple ready contracts deterministically and enforces 
 test("finalize readiness accepts evidenced approved deferrals but rejects incomplete work", () => {
   const complete = phaseContract("01", [], "complete");
   const deferred = phaseContract("02");
-  const evidencePath = `.model-artifacts/findings/${topic}/approved-deferral.md`;
+  const evidencePath = `.model-artifacts/initiatives/${topic}/findings/approved-deferral.md`;
   const base = {
     manifest: canonicalApprovedManifest(),
     contracts: [complete, deferred],

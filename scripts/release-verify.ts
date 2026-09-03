@@ -9,7 +9,7 @@ const reportIndex = process.argv.indexOf("--report");
 const timestamp = new Date().toISOString().slice(0, 16).replace("T", "_").replace(":", "");
 const reportPath = resolve(reportIndex >= 0 && process.argv[reportIndex + 1]
   ? process.argv[reportIndex + 1]
-  : `${root}/.model-artifacts/reports/release/${timestamp}-release-verification.md`);
+  : `${root}/.model-artifacts/system/reports/release/${timestamp}-release-verification.md`);
 const packageJson = JSON.parse(readFileSync(`${root}/package.json`, "utf8")) as {
   version: string;
   dependencies: Record<string, string>;

@@ -36,7 +36,7 @@ export type PiContextReportArtifact = {
   format: PiContextArtifactFormat;
 };
 
-const REPORT_DIR = path.join(".model-artifacts", "todo", "pi-context", "reports");
+const REPORT_DIR = path.join(".model-artifacts", "system", "reports", "pi-context");
 const GROUP_ALIASES: Record<string, ContextSourceKind> = {
   system: "system",
   user: "user",
@@ -142,8 +142,8 @@ export function piContextHelpText(): string {
     "pi-context",
     "Usage: /pi-context [summary|artifact|json] [system|session|tools|extensions|project|user|artifacts]",
     "summary/default: concise grouped ledger report",
-    "artifact/open: write markdown report under .model-artifacts/todo/pi-context/reports/",
-    "json: write deterministic JSON report under .model-artifacts/todo/pi-context/reports/",
+    "artifact/open: write markdown report under .model-artifacts/system/reports/pi-context/",
+    "json: write deterministic JSON report under .model-artifacts/system/reports/pi-context/",
   ].join("\n");
 }
 
@@ -153,7 +153,7 @@ export function writePiContextReportArtifact(snapshot: ContextSnapshot, request:
   const relativeDir = options.reportDir ?? REPORT_DIR;
   const dir = path.resolve(cwd, relativeDir);
   fs.mkdirSync(dir, { recursive: true });
-  const stem = `pi-context-${safeTimestamp(snapshot.capturedAt)}`;
+  const stem = `${safeTimestamp(snapshot.capturedAt)}-pi-context`;
   const relativePath = path.join(relativeDir, `${stem}.${format === "json" ? "json" : "md"}`);
   const filePath = path.resolve(cwd, relativePath);
   const content = format === "json" ? renderPiContextJson(snapshot, request.groups ?? []) : renderPiContextMarkdown(snapshot, request.groups ?? []);
