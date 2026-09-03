@@ -11,6 +11,8 @@ import { planMigration } from "../extensions/pi-artifacts/src/app/service.ts";
 import { applyMigration, loadMigrationPlan, rollbackMigration } from "../extensions/pi-artifacts/src/app/transaction.ts";
 import registerPiArtifacts from "../extensions/pi-artifacts/index.ts";
 
+const layoutV2 = JSON.parse(readFileSync(new URL("./fixtures/model-artifacts-layout-v2.json", import.meta.url), "utf8"));
+
 function fixture(): string {
   return mkdtempSync(join(tmpdir(), "pi-artifacts-"));
 }
@@ -51,6 +53,25 @@ test("artifact audit is deterministic and classifies canonical, movable, ambiguo
   assert.equal(classes.get(".model-artifacts/plans/demo/plan.md"), "protected");
   const movable = first.entries.find((entry) => entry.classification === "legacy-movable");
   assert.deepEqual(movable?.destination, ".model-artifacts/reports/demo/2026-05-01_1201-report.md");
+});
+
+test("artifact audit recognizes layout-v2 initiative and system namespaces", () => {
+  const root = fixture();
+  const initiativePath = layoutV2.valid.initiative.find((path: string) => path.includes("/reports/"));
+  const systemPath = layoutV2.valid.system.find((path: string) => path.includes("/reports/"));
+  write(root, initiativePath, "# initiative report\n");
+  write(root, systemPath, "# system report\n");
+  const classes = new Map(auditArtifacts({ cwd: root }).entries.map((entry) => [entry.source, entry.classification]));
+  assert.equal(classes.get(initiativePath), "canonical-valid");
+  assert.equal(classes.get(systemPath), "canonical-valid");
+});
+
+test("artifact audit blocks mixed layout authority for one topic", () => {
+  const root = fixture();
+  write(root, layoutV2.mixedAuthority.v1Manifest, "{}\n");
+  write(root, layoutV2.mixedAuthority.v2Manifest, "{}\n");
+  const result = auditArtifacts({ cwd: root });
+  assert.ok(result.diagnostics.some((diagnostic) => /mixed.*demo|demo.*mixed/i.test(diagnostic)));
 });
 
 test("artifact audit protects contracts indexed by historical plan revisions", () => {

@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   APPROVED_ARTIFACT_KINDS,
+  APPROVED_ARTIFACT_ROOTS,
   discoverPackageResources,
   validatePackageResources,
 } from "../src/package-resource-validation.ts";
@@ -30,6 +31,7 @@ test("Gentic package resources validate as one collision-free native surface", (
   assert.equal(inventory.prompts.some((path) => path.startsWith("extensions/pi-swe/")), false);
   assert.equal(inventory.extensions.some((path) => /pi-(prompts|skills)\//.test(path)), false);
   assert.deepEqual(APPROVED_ARTIFACT_KINDS, ["reports", "plans", "findings", "logs", "specs", "todo"]);
+  assert.deepEqual(APPROVED_ARTIFACT_ROOTS, ["initiatives", "system"]);
 });
 
 test("manifest discovery covers inclusions and exclusions", () => {

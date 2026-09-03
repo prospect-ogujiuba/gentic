@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { TodoService, TodoWorkflowError, type TodoEventStore } from "../extensions/pi-todo/src/app/service.ts";
 import type { TodoEvent } from "../extensions/pi-todo/src/domain/types.ts";
 
+const layoutV2 = JSON.parse(await readFile(new URL("./fixtures/model-artifacts-layout-v2.json", import.meta.url), "utf8"));
+
 class MemoryStore implements TodoEventStore {
   events: TodoEvent[] = [];
   async read() { return this.events; }
@@ -241,6 +243,28 @@ test("createArtifact writes a headed markdown artifact and records evidence", as
     process.chdir(previous);
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("pi-todo emits layout-v2 initiative artifact paths", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-todo-layout-v2-"));
+  try {
+    const service = new TodoService(new MemoryStore(), undefined, root);
+    const todo = await service.create({ title: "write demo report", tags: ["demo"] });
+    const result = await service.createArtifact(todo.id, { kind: "reports", category: "demo", shortName: "Verification", purpose: "verify", content: "pass" });
+    assert.match(result.path, /^\.model-artifacts\/initiatives\/demo\/reports\/\d{4}-\d{2}-\d{2}_\d{4}-verification\.md$/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("pi-todo treats layout-v1 evidence as migration-required rather than writable authority", async () => {
+  const service = new TodoService(new MemoryStore());
+  const todo = await service.create({ title: "legacy evidence" });
+  const legacyPath = layoutV2.legacyReadOnly.find((path: string) => path.includes("/reports/"));
+  await assert.rejects(
+    () => service.attachEvidence(todo.id, [{ type: "generated_artifact", path: legacyPath, summary: "legacy", createdByTodoId: todo.id }]),
+    /migration required/i,
+  );
 });
 
 test("createArtifact rejects collisions and symlink escapes", async () => {

@@ -2,7 +2,8 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 
 export const APPROVED_ARTIFACT_KINDS = ["reports", "plans", "findings", "logs", "specs", "todo"] as const;
-const approvedArtifactKinds = new Set<string>(APPROVED_ARTIFACT_KINDS);
+export const APPROVED_ARTIFACT_ROOTS = ["initiatives", "system"] as const;
+const approvedArtifactRoots = new Set<string>([...APPROVED_ARTIFACT_KINDS, ...APPROVED_ARTIFACT_ROOTS]);
 const skillNamePattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export interface ResourceIssue {
@@ -177,7 +178,7 @@ export function validateArtifactRoots(paths: readonly string[]): ResourceIssue[]
   for (const path of paths) {
     const content = readFileSync(path, "utf8");
     for (const match of content.matchAll(/\.model-artifacts\/([a-z-]+)/g)) {
-      if (!approvedArtifactKinds.has(match[1])) issues.push({ path, message: `unapproved model artifact kind: ${match[1]}` });
+      if (!approvedArtifactRoots.has(match[1])) issues.push({ path, message: `unapproved model artifact kind: ${match[1]}` });
     }
   }
   return issues;

@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 2,
+  "contractName": "model-artifacts layout v2",
+  "initiativeKinds": ["specs", "plans", "todo", "findings", "reports", "logs"],
+  "systemKinds": ["logs", "reports"],
+  "valid": {
+    "initiative": [
+      ".model-artifacts/initiatives/demo/specs/2026-05-01_1200-work-order.md",
+      ".model-artifacts/initiatives/demo/plans/2026-05-01_1201-plan.md",
+      ".model-artifacts/initiatives/demo/todo/2026-05-01_1202-work.md",
+      ".model-artifacts/initiatives/demo/findings/2026-05-01_1203-diagnosis.md",
+      ".model-artifacts/initiatives/demo/reports/2026-05-01_1204-verification.md",
+      ".model-artifacts/initiatives/demo/logs/2026-05-01_1205-implementation.md"
+    ],
+    "system": [
+      ".model-artifacts/system/logs/2026-05-01_1206-migration.md",
+      ".model-artifacts/system/reports/2026-05-01_1207-context.md"
+    ],
+    "canonicalExceptions": [
+      ".model-artifacts/initiatives/demo/specs/manifest.json",
+      ".model-artifacts/initiatives/demo/plans/revisions/r1/contracts.json",
+      ".model-artifacts/initiatives/demo/plans/revisions/r1/phases/01-layout/01.01-contract.md"
+    ]
+  },
+  "legacyReadOnly": [
+    ".model-artifacts/specs/demo/manifest.json",
+    ".model-artifacts/plans/demo/2026-05-01_1201-plan.md",
+    ".model-artifacts/reports/demo/2026-05-01_1204-verification.md"
+  ],
+  "mixedAuthority": {
+    "topic": "demo",
+    "v1Manifest": ".model-artifacts/specs/demo/manifest.json",
+    "v2Manifest": ".model-artifacts/initiatives/demo/specs/manifest.json",
+    "expected": "blocking-conflict"
+  },
+  "invalid": [
+    { "path": ".model-artifacts/initiatives/../demo/reports/2026-05-01_1200-report.md", "reason": "traversal" },
+    { "path": "/tmp/.model-artifacts/initiatives/demo/reports/2026-05-01_1200-report.md", "reason": "absolute" },
+    { "path": ".model-artifacts\\initiatives\\demo\\reports\\2026-05-01_1200-report.md", "reason": "backslash" },
+    { "path": ".model-artifacts/initiatives/Demo/reports/2026-05-01_1200-report.md", "reason": "non-kebab-topic" },
+    { "path": ".model-artifacts/initiatives/demo/cache/2026-05-01_1200-data.md", "reason": "wrong-initiative-kind" },
+    { "path": ".model-artifacts/system/specs/2026-05-01_1200-spec.md", "reason": "wrong-system-kind" },
+    { "path": ".model-artifacts/initiatives/demo/reports/report.md", "reason": "invalid-generated-filename" },
+    { "path": ".model-artifacts/initiatives/demo/reports/2026-05-01_1200-Report.md", "reason": "non-kebab-short-name" }
+  ],
+  "symlink": {
+    "root": ".model-artifacts/initiatives/demo/reports",
+    "entry": ".model-artifacts/initiatives/demo/reports/escape",
+    "expected": "reject-without-following"
+  },
+  "sourceOfTruth": {
+    "canonical": ".model-artifacts/initiatives/<topic>/plans/",
+    "curatedDocs": "docs/plans/",
+    "generatedMirrorAllowed": false
+  }
+}

@@ -18,6 +18,7 @@ import {
 import { normalizeLedgerEntry } from "../extensions/pi-context/src/domain/index.ts";
 import { registerPiContext } from "../extensions/pi-context/src/pi/index.ts";
 
+const layoutV2 = JSON.parse(fs.readFileSync(new URL("./fixtures/model-artifacts-layout-v2.json", import.meta.url), "utf8"));
 const at = (minute: number) => `2026-05-13T02:${String(minute).padStart(2, "0")}:00.000Z`;
 
 test("report summary keeps grouped order and estimate labels", () => {
@@ -101,15 +102,16 @@ test("report filters only requested groups", () => {
   assert.match(text, /- Tools:/);
 });
 
-test("artifact writer creates deterministic markdown and json paths", () => {
+test("pi-context writes non-initiative reports in the layout-v2 system namespace", () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-context-report-"));
   const snapshot = createPiContextReportSnapshot(undefined, { capturedAt: "2026-05-13T02:05:06.000Z" });
 
   const markdown = writePiContextReportArtifact(snapshot, { artifactFormat: "markdown" }, { cwd });
   const json = writePiContextReportArtifact(snapshot, { artifactFormat: "json" }, { cwd });
 
-  assert.equal(markdown.relativePath, path.join(".model-artifacts", "todo", "pi-context", "reports", "pi-context-2026-05-13T02-05-06-000Z.md"));
-  assert.equal(json.relativePath, path.join(".model-artifacts", "todo", "pi-context", "reports", "pi-context-2026-05-13T02-05-06-000Z.json"));
+  assert.ok(layoutV2.valid.system.some((candidate: string) => candidate.startsWith(".model-artifacts/system/reports/")));
+  assert.equal(markdown.relativePath, path.join(".model-artifacts", "system", "reports", "pi-context-2026-05-13T02-05-06-000Z.md"));
+  assert.equal(json.relativePath, path.join(".model-artifacts", "system", "reports", "pi-context-2026-05-13T02-05-06-000Z.json"));
   assert.match(fs.readFileSync(markdown.path, "utf8"), /# pi-context report/);
   assert.equal(JSON.parse(fs.readFileSync(json.path, "utf8")).schemaVersion, 1);
 });

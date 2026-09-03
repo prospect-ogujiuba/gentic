@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
@@ -10,6 +10,8 @@ import { inspectOrchestrationArtifacts, LegacyPlanInspector, recommendGateAwareO
 import { inspectCanonicalInitiative, resolveInitiative } from "../extensions/pi-swe/src/planning.ts";
 import { createRuntime, persistRepositoryRuntime, PI_SWE_STATE_DIAGNOSTIC_PATH_MAX_LENGTH, readRepositoryRuntime, reloadBranchRuntime, repositoryStatePath, validateActiveInitiative } from "../extensions/pi-swe/src/app/runtime.ts";
 import { CORE_SPECIALIST_IDS } from "../extensions/pi-swe/src/domain/readiness.ts";
+
+const layoutV2 = JSON.parse(readFileSync(new URL("./fixtures/model-artifacts-layout-v2.json", import.meta.url), "utf8"));
 
 test("pi-swe lifecycle allows every defined transition and blocks undefined transitions deterministically", () => {
   for (const [state, nextStates] of Object.entries(PI_SWE_LIFECYCLE_TRANSITIONS) as Array<[PiSweLifecycleState, readonly PiSweLifecycleState[]]>) {
@@ -108,6 +110,22 @@ test("pi-swe canonical inspector resolves an exact manifest and bounded contract
   assert.deepEqual(result.readyIds, ["01"]);
   assert.deepEqual(result.diagnostics, []);
   assert.equal(result.gates.find((gate) => gate.id === "plan-approved")?.ready, true);
+});
+
+test("pi-swe discovers the layout-v2 canonical manifest", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-layout-v2-"));
+  writeFixtureFile(cwd, layoutV2.mixedAuthority.v2Manifest, "{}\n");
+  const result = inspectCanonicalInitiative({ cwd, topic: layoutV2.mixedAuthority.topic });
+  assert.equal(result.manifestPath, layoutV2.mixedAuthority.v2Manifest);
+  assert.notEqual(result.sourceMode, "missing");
+});
+
+test("pi-swe blocks a topic with simultaneous layout-v1 and layout-v2 authority", () => {
+  const fixture = writeCanonicalFixture();
+  writeFixtureFile(fixture.cwd, layoutV2.mixedAuthority.v2Manifest, "{}\n");
+  const result = inspectCanonicalInitiative({ cwd: fixture.cwd, topic: "demo" });
+  assert.ok(result.diagnostics.some((diagnostic) => /mixed|conflict/i.test(`${diagnostic.code} ${diagnostic.message}`)));
+  assert.deepEqual(result.readyIds, []);
 });
 
 test("pi-swe validates and atomically persists canonical runtime cursors", () => {
