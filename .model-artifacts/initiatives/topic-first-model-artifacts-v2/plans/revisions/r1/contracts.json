@@ -1,0 +1,314 @@
+{
+  "schemaVersion": 1,
+  "topic": "topic-first-model-artifacts-v2",
+  "planRevision": 1,
+  "planPath": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/2026-09-01_2008-plan-index-r1.md",
+  "specRevision": 1,
+  "specPath": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/specs/2026-09-01_2008-initiative-spec-r1.md",
+  "contracts": [
+    {
+      "kind": "phase",
+      "id": "P01",
+      "dependencies": [],
+      "planRevision": 1,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r1/phases/01-layout-contract/00-phase-index.md",
+      "status": "draft",
+      "contentHash": "sha256:811980acdb092e2d837a44fbcb3e2423e8eb1712b94daad3ddbddd850e228177",
+      "readiness": {
+        "entryInputs": true,
+        "capabilities": true,
+        "applicability": false,
+        "acceptance": true,
+        "verification": true,
+        "approvedDeferrals": []
+      },
+      "consequentialSpecialists": [
+        "tdd",
+        "compatibility"
+      ]
+    },
+    {
+      "kind": "subphase",
+      "id": "P01-C01",
+      "dependencies": [],
+      "planRevision": 1,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r1/phases/01-layout-contract/01.01-layout-contract.md",
+      "status": "draft",
+      "contentHash": "sha256:5d0aad010ec8db29c07fa96696ddd28ed9ee12ed5efe2e9432f5d93c920f775e",
+      "readiness": {
+        "entryInputs": true,
+        "capabilities": true,
+        "applicability": false,
+        "acceptance": true,
+        "verification": true,
+        "approvedDeferrals": []
+      },
+      "consequentialSpecialists": [
+        "tdd",
+        "security",
+        "migration",
+        "compatibility"
+      ]
+    },
+    {
+      "kind": "phase",
+      "id": "P02",
+      "dependencies": [
+        "P01-C01"
+      ],
+      "planRevision": 1,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r1/phases/02-runtime-writers-readers/00-phase-index.md",
+      "status": "draft",
+      "contentHash": "sha256:d9533910c3224e86f843b65bb155e89260b0c542fd7b9e0834867c74b188692b",
+      "readiness": {
+        "entryInputs": true,
+        "capabilities": true,
+        "applicability": false,
+        "acceptance": true,
+        "verification": true,
+        "approvedDeferrals": []
+      },
+      "consequentialSpecialists": [
+        "tdd",
+        "compatibility"
+      ]
+    },
+    {
+      "kind": "subphase",
+      "id": "P02-C01",
+      "dependencies": [
+        "P01-C01"
+      ],
+      "planRevision": 1,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r1/phases/02-runtime-writers-readers/02.01-primitives-todo.md",
+      "status": "draft",
+      "contentHash": "sha256:e3d0231c68eac5562ca16e4aef15b96d086e44fd1f3086fee746c74c170b5bf2",
+      "readiness": {
+        "entryInputs": true,
+        "capabilities": true,
+        "applicability": false,
+        "acceptance": true,
+        "verification": true,
+        "approvedDeferrals": []
+      },
+      "consequentialSpecialists": [
+        "tdd",
+        "security",
+        "compatibility"
+      ]
+    },
+    {
+      "kind": "subphase",
+      "id": "P02-C02",
+      "dependencies": [
+        "P01-C01"
+      ],
+      "planRevision": 1,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r1/phases/02-runtime-writers-readers/02.02-swe-consumers.md",
+      "status": "draft",
+      "contentHash": "sha256:bafbe8e5c246619239ed04f41837bee94310364ccb65925bf1b291777bdb9548",
+      "readiness": {
+        "entryInputs": true,
+        "capabilities": true,
+        "applicability": false,
+        "acceptance": true,
+        "verification": true,
+        "approvedDeferrals": []
+      },
+      "consequentialSpecialists": [
+        "tdd",
+        "security",
+        "migration",
+        "operations",
+        "compatibility"
+      ]
+    },
+    {
+      "kind": "phase",
+      "id": "P03",
+      "dependencies": [
+        "P02-C01",
+        "P02-C02"
+      ],
+      "planRevision": 1,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r1/phases/03-migration-engine/00-phase-index.md",
+      "status": "draft",
+      "contentHash": "sha256:634875f887ca5bf1a5f7e30f5068e0ec0ae3ba676f99624952e8289547dabaab",
+      "readiness": {
+        "entryInputs": true,
+        "capabilities": true,
+        "applicability": false,
+        "acceptance": true,
+        "verification": true,
+        "approvedDeferrals": []
+      },
+      "consequentialSpecialists": [
+        "dsa",
+        "tdd",
+        "security",
+        "migration",
+        "performance",
+        "operations",
+        "compatibility"
+      ]
+    },
+    {
+      "kind": "subphase",
+      "id": "P03-C01",
+      "dependencies": [
+        "P02-C01",
+        "P02-C02"
+      ],
+      "planRevision": 1,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r1/phases/03-migration-engine/03.01-inventory-plan.md",
+      "status": "draft",
+      "contentHash": "sha256:70e7e3b2ec9c31237a3a3bfb90a77aae55adbe8b7f1db999d9f71934f68ea57b",
+      "readiness": {
+        "entryInputs": true,
+        "capabilities": true,
+        "applicability": false,
+        "acceptance": true,
+        "verification": true,
+        "approvedDeferrals": []
+      },
+      "consequentialSpecialists": [
+        "dsa",
+        "tdd",
+        "security",
+        "migration",
+        "performance",
+        "operations",
+        "compatibility"
+      ]
+    },
+    {
+      "kind": "subphase",
+      "id": "P03-C02",
+      "dependencies": [
+        "P03-C01"
+      ],
+      "planRevision": 1,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r1/phases/03-migration-engine/03.02-transaction.md",
+      "status": "draft",
+      "contentHash": "sha256:7370b4b18554562d2ccbff30356df69a40c46a9c5fe292490f4a026693c1c8a0",
+      "readiness": {
+        "entryInputs": true,
+        "capabilities": true,
+        "applicability": false,
+        "acceptance": true,
+        "verification": true,
+        "approvedDeferrals": []
+      },
+      "consequentialSpecialists": [
+        "dsa",
+        "tdd",
+        "security",
+        "migration",
+        "performance",
+        "operations",
+        "compatibility"
+      ]
+    },
+    {
+      "kind": "phase",
+      "id": "P04",
+      "dependencies": [
+        "P03-C02"
+      ],
+      "planRevision": 1,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r1/phases/04-gentic-rollout/00-phase-index.md",
+      "status": "draft",
+      "contentHash": "sha256:0863fe40f55885354dfae7241e0b3cead792f4c917c964c6be1c9b8a42a82b6a",
+      "readiness": {
+        "entryInputs": true,
+        "capabilities": true,
+        "applicability": false,
+        "acceptance": true,
+        "verification": true,
+        "approvedDeferrals": []
+      },
+      "consequentialSpecialists": [
+        "tdd",
+        "migration",
+        "operations",
+        "compatibility"
+      ]
+    },
+    {
+      "kind": "subphase",
+      "id": "P04-C01",
+      "dependencies": [
+        "P03-C02"
+      ],
+      "planRevision": 1,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r1/phases/04-gentic-rollout/04.01-gentic-rollout.md",
+      "status": "draft",
+      "contentHash": "sha256:3c371c5f53ef1ec3d9c7cc351b528dca06f844adc276acbb2037b1187d52bc0e",
+      "readiness": {
+        "entryInputs": true,
+        "capabilities": true,
+        "applicability": false,
+        "acceptance": true,
+        "verification": true,
+        "approvedDeferrals": []
+      },
+      "consequentialSpecialists": [
+        "tdd",
+        "security",
+        "migration",
+        "performance",
+        "operations",
+        "compatibility"
+      ]
+    },
+    {
+      "kind": "phase",
+      "id": "P05",
+      "dependencies": [
+        "P04-C01"
+      ],
+      "planRevision": 1,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r1/phases/05-devarch-rollout/00-phase-index.md",
+      "status": "draft",
+      "contentHash": "sha256:7cf84a9d832c5ebc279ab47450a6ef44e0926a620a18fdb28d063c8a07f98e0d",
+      "readiness": {
+        "entryInputs": false,
+        "capabilities": true,
+        "applicability": false,
+        "acceptance": true,
+        "verification": true,
+        "approvedDeferrals": []
+      },
+      "consequentialSpecialists": [
+        "migration",
+        "operations",
+        "compatibility"
+      ]
+    },
+    {
+      "kind": "subphase",
+      "id": "P05-C01",
+      "dependencies": [
+        "P04-C01"
+      ],
+      "planRevision": 1,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r1/phases/05-devarch-rollout/05.01-devarch-rollout.md",
+      "status": "draft",
+      "contentHash": "sha256:121b08f64f514605906ad14c5a5f0313d5dc66e9dce108071a812a46ffd49621",
+      "readiness": {
+        "entryInputs": false,
+        "capabilities": true,
+        "applicability": false,
+        "acceptance": true,
+        "verification": true,
+        "approvedDeferrals": []
+      },
+      "consequentialSpecialists": [
+        "security",
+        "migration",
+        "operations",
+        "compatibility"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,319 @@
+{
+  "schemaVersion": 2,
+  "contracts": [
+    {
+      "kind": "phase",
+      "id": "P01",
+      "dependsOn": [],
+      "planRevision": 3,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3/phases/01-layout-contract/00-phase-index.md",
+      "status": "pending",
+      "contentHash": "sha256:dfa8ef00174c21345286da808c2ab154e3b566f51f5a093b2b8856dd0d9d1171"
+    },
+    {
+      "kind": "subphase",
+      "parentId": "P01",
+      "id": "P01-C01",
+      "dependsOn": [],
+      "planRevision": 3,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3/phases/01-layout-contract/01.01-layout-contract.md",
+      "status": "complete",
+      "contentHash": "sha256:a9add0c8aaf4d541b76be4b78b4c34b45ac9dc916661e91f9eb03c3860fa9130"
+    },
+    {
+      "kind": "phase",
+      "id": "P02",
+      "dependsOn": [
+        "P01-C01"
+      ],
+      "planRevision": 3,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3/phases/02-runtime-writers-readers/00-phase-index.md",
+      "status": "pending",
+      "contentHash": "sha256:fff2c0951bd8216c3aa44551919c6c329054e23fa8aa801c1606536ebf122d25"
+    },
+    {
+      "kind": "subphase",
+      "parentId": "P02",
+      "id": "P02-C01",
+      "dependsOn": [
+        "P01-C01"
+      ],
+      "planRevision": 3,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3/phases/02-runtime-writers-readers/02.01-primitives-todo.md",
+      "status": "complete",
+      "contentHash": "sha256:cd3a680d261b54ca1fa29bbd09213bd6d963b97f371302b2c630df202c528d1b"
+    },
+    {
+      "kind": "subphase",
+      "parentId": "P02",
+      "id": "P02-C02",
+      "dependsOn": [
+        "P01-C01"
+      ],
+      "planRevision": 3,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3/phases/02-runtime-writers-readers/02.02-swe-consumers.md",
+      "status": "complete",
+      "contentHash": "sha256:b8bf0f461b00e00a08e7fdc603b75010a4a204f0bdd0c98c2334b5794fb9bcaa"
+    },
+    {
+      "kind": "phase",
+      "id": "P03",
+      "dependsOn": [
+        "P02-C01",
+        "P02-C02"
+      ],
+      "planRevision": 3,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3/phases/03-migration-engine/00-phase-index.md",
+      "status": "pending",
+      "contentHash": "sha256:67e878023a79db83ba57a90d231ca131f906c8a499bcc3bf6d0dbad7bb2c0e4c"
+    },
+    {
+      "kind": "subphase",
+      "parentId": "P03",
+      "id": "P03-C01",
+      "dependsOn": [
+        "P02-C01",
+        "P02-C02"
+      ],
+      "planRevision": 3,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3/phases/03-migration-engine/03.01-inventory-plan.md",
+      "status": "pending",
+      "contentHash": "sha256:2f502a693e60853acf6ee485b0ac1dc99e100d7f24705fef81e0460173cfe02e"
+    },
+    {
+      "kind": "subphase",
+      "parentId": "P03",
+      "id": "P03-C02",
+      "dependsOn": [
+        "P03-C01"
+      ],
+      "planRevision": 3,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3/phases/03-migration-engine/03.02-transaction.md",
+      "status": "pending",
+      "contentHash": "sha256:2b11ab8e16802d72e89c3a0d503e3456d16cb13130e869ed190e80a6d45abf8a"
+    },
+    {
+      "kind": "phase",
+      "id": "P04",
+      "dependsOn": [
+        "P03-C02"
+      ],
+      "planRevision": 3,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3/phases/04-gentic-rollout/00-phase-index.md",
+      "status": "pending",
+      "contentHash": "sha256:3d3dfdb04adda4aea4a62d38a2376e5a448f90efaae2b756200949e2acac8864"
+    },
+    {
+      "kind": "subphase",
+      "parentId": "P04",
+      "id": "P04-C01",
+      "dependsOn": [
+        "P03-C02"
+      ],
+      "planRevision": 3,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3/phases/04-gentic-rollout/04.01-gentic-rollout.md",
+      "status": "pending",
+      "contentHash": "sha256:54ee19117eede0ef0912313292940613af05cb56152b73175d67aed8607acd87"
+    },
+    {
+      "kind": "phase",
+      "id": "P05",
+      "dependsOn": [
+        "P04-C01"
+      ],
+      "planRevision": 3,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3/phases/05-devarch-rollout/00-phase-index.md",
+      "status": "blocked",
+      "contentHash": "sha256:453c0ac1a9352d11a608581b0cd6a441c7b9027599014a7652216ca310b8a0d4"
+    },
+    {
+      "kind": "subphase",
+      "parentId": "P05",
+      "id": "P05-C01",
+      "dependsOn": [
+        "P04-C01"
+      ],
+      "planRevision": 3,
+      "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3/phases/05-devarch-rollout/05.01-devarch-rollout.md",
+      "status": "blocked",
+      "contentHash": "sha256:6b8ff4a65c678704be00ed7b729b1627178f5580d048f68fee08539550fb70a8"
+    }
+  ],
+  "contractFacts": {
+    "P01": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    },
+    "P01-C01": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    },
+    "P02": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    },
+    "P02-C01": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    },
+    "P02-C02": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    },
+    "P03": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    },
+    "P03-C01": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    },
+    "P03-C02": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    },
+    "P04": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    },
+    "P04-C01": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    },
+    "P05": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    },
+    "P05-C01": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    }
+  },
+  "consequentialSpecialists": [
+    "compatibility",
+    "dsa",
+    "migration",
+    "operations",
+    "performance",
+    "security",
+    "tdd"
+  ],
+  "completionRecords": {
+    "P01-C01": {
+      "schemaVersion": 1,
+      "requestId": "sha256:4ed33d73909d8d37d3aadc50351dfe65610de67d911546bf53dbe1661843fd33",
+      "planRevision": 3,
+      "contractPath": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3/phases/01-layout-contract/01.01-layout-contract.md",
+      "preCompletionContentHash": "sha256:a9add0c8aaf4d541b76be4b78b4c34b45ac9dc916661e91f9eb03c3860fa9130",
+      "verification": {
+        "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/reports/2026-09-03_2026-verification.md",
+        "contentHash": "sha256:173b55b761f447772aad07943754b3c7b2b7447490a5affbebf20250ce0dbaf3"
+      },
+      "review": {
+        "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/reports/2026-09-03_2031-implementation-review.md",
+        "contentHash": "sha256:a1d87d6eb7729329d7e8cb67adab4125d12fe8e6f6933b63c04b704980c4d162",
+        "decision": "approve"
+      },
+      "completedAt": "2026-09-03T20:47:45.415Z",
+      "nextState": {
+        "initiativeState": "executing",
+        "activeContractId": "P02-C01",
+        "readyContractIds": [
+          "P02-C01",
+          "P02-C02"
+        ]
+      }
+    },
+    "P02-C01": {
+      "schemaVersion": 1,
+      "requestId": "sha256:a147337bd0db4e44aebc851456b7fe4eb6ce083c760e220c02fb76afbe5043ea",
+      "planRevision": 3,
+      "contractPath": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3/phases/02-runtime-writers-readers/02.01-primitives-todo.md",
+      "preCompletionContentHash": "sha256:cd3a680d261b54ca1fa29bbd09213bd6d963b97f371302b2c630df202c528d1b",
+      "verification": {
+        "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/reports/2026-09-03_2109-verification.md",
+        "contentHash": "sha256:c4d25f185cd3005806e36427cce1df56a0fff678c31ab2622d84e59d7c3582a0"
+      },
+      "review": {
+        "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/reports/2026-09-03_2111-implementation-review.md",
+        "contentHash": "sha256:872847b95aa05e33c71965a0ddadc0e2f3a48e38f70b6fb4c42cfd91d83426c1",
+        "decision": "approve"
+      },
+      "completedAt": "2026-09-03T21:12:00.252Z",
+      "nextState": {
+        "initiativeState": "executing",
+        "activeContractId": "P02-C02",
+        "readyContractIds": [
+          "P02-C02"
+        ]
+      }
+    },
+    "P02-C02": {
+      "schemaVersion": 1,
+      "requestId": "sha256:0e359b279386af2671d5b11f3d3e524ee683e9fa05991007d4d5bc45886a726e",
+      "planRevision": 3,
+      "contractPath": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3/phases/02-runtime-writers-readers/02.02-swe-consumers.md",
+      "preCompletionContentHash": "sha256:b8bf0f461b00e00a08e7fdc603b75010a4a204f0bdd0c98c2334b5794fb9bcaa",
+      "verification": {
+        "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/reports/2026-09-03_2339-p02-c02-verification.md",
+        "contentHash": "sha256:8318b716d33386c58e086bc43f138529b691dfc3994e03567628046a0baa63c3"
+      },
+      "review": {
+        "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/reports/2026-09-03_2340-p02-c02-implementation-review.md",
+        "contentHash": "sha256:53e7c8480aa32c26ec88ff3054c773b04117d6a2503d941937c5f6d68a3a8f44",
+        "decision": "approve"
+      },
+      "completedAt": "2026-09-03T23:41:40.775Z",
+      "nextState": {
+        "initiativeState": "executing",
+        "activeContractId": "P03-C01",
+        "readyContractIds": [
+          "P03-C01"
+        ]
+      }
+    }
+  },
+  "migration": {
+    "fromSchemaVersion": 1,
+    "toSchemaVersion": 2,
+    "operation": "normalize-complete-advance",
+    "requestId": "sha256:c13c7706b015e5cb8c8f1bd1e2905e51d36fbde2d0840e95eb90d6e7cd8eb20c",
+    "migratedAt": "2026-09-03T20:47:45.415Z"
+  }
+}
