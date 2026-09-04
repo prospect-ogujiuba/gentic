@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -18,7 +18,212 @@ import {
   type CompletionFaultPoint,
 } from "../extensions/pi-swe/src/completion.ts";
 import { CORE_SPECIALIST_IDS } from "../extensions/pi-swe/src/domain/readiness.ts";
+import { resolveCanonicalCompletionRequest } from "../extensions/pi-swe/src/completion-resolution.ts";
 import { inspectCanonicalInitiative } from "../extensions/pi-swe/src/planning.ts";
+
+test("pi-swe resolves an explicit active contract and its exact evidence chain", () => {
+  const fixture = writeCompletionResolutionFixture();
+  const result = resolveCanonicalCompletionRequest({
+    cwd: fixture.cwd,
+    topic: "demo",
+    contractId: "01",
+    nextActiveContract: "advance",
+  });
+
+  assert.equal(result.status, "resolved");
+  if (result.status !== "resolved") return;
+  const { completedAt: _completedAt, ...expected } = fixture.request;
+  assert.deepEqual(result.request, expected);
+});
+
+test("pi-swe derived completion requests preserve the guarded transaction race boundary", () => {
+  const valid = writeCompletionResolutionFixture();
+  const resolved = resolveCanonicalCompletionRequest({ cwd: valid.cwd, topic: "demo", contractId: "01", nextActiveContract: "advance" });
+  assert.equal(resolved.status, "resolved");
+  if (resolved.status === "resolved") assert.equal(completeCanonicalContract(resolved.request).status, "completed");
+
+  const drifted = writeCompletionResolutionFixture();
+  const stale = resolveCanonicalCompletionRequest({ cwd: drifted.cwd, topic: "demo", contractId: "01", nextActiveContract: "advance" });
+  assert.equal(stale.status, "resolved");
+  if (stale.status !== "resolved") return;
+  write(drifted.cwd, drifted.contractPath, "# drift after resolution\n");
+  assert.equal(completeCanonicalContract(stale.request).status, "rejected");
+});
+
+test("pi-swe completion resolution infers only one active canonical identity", () => {
+  const fixture = writeCompletionResolutionFixture();
+  const inferred = resolveCanonicalCompletionRequest({ cwd: fixture.cwd, nextActiveContract: "clear" });
+  assert.equal(inferred.status, "resolved");
+  if (inferred.status === "resolved") {
+    assert.equal(inferred.request.topic, "demo");
+    assert.equal(inferred.request.contractId, "01");
+    assert.equal(inferred.request.nextActiveContract, "clear");
+  }
+
+  write(fixture.cwd, ".model-artifacts/initiatives/other/specs/manifest.json", "{}\n");
+  const ambiguous = resolveCanonicalCompletionRequest({ cwd: fixture.cwd, nextActiveContract: "advance" });
+  assert.equal(ambiguous.status, "rejected");
+  if (ambiguous.status === "rejected") assert.match(ambiguous.message, /ambiguous/);
+
+  const wrong = resolveCanonicalCompletionRequest({ cwd: fixture.cwd, topic: "demo", contractId: "02", nextActiveContract: "advance" });
+  assert.equal(wrong.status, "rejected");
+  if (wrong.status === "rejected") assert.match(wrong.message, /not the manifest activeContract/);
+
+  const missingActive = writeCompletionResolutionFixture();
+  delete missingActive.manifest.activeContract;
+  missingActive.writeManifest();
+  const omittedContract = resolveCanonicalCompletionRequest({ cwd: missingActive.cwd, topic: "demo", nextActiveContract: "advance" });
+  assert.equal(omittedContract.status, "rejected");
+  if (omittedContract.status === "rejected") assert.match(omittedContract.message, /activeContract/);
+});
+
+test("pi-swe completion resolution rejects active phase grouping nodes", () => {
+  const fixture = writeCompletionResolutionFixture();
+  fixture.manifest.activeContract = { id: "P0", path: fixture.parentPath };
+  fixture.index.contracts[0].status = "in_progress";
+  fixture.writeManifest();
+  fixture.writeIndex();
+
+  const result = resolveCanonicalCompletionRequest({ cwd: fixture.cwd, topic: "demo", contractId: "P0", nextActiveContract: "advance" });
+  assert.equal(result.status, "rejected");
+  if (result.status === "rejected") assert.match(result.message, /not an executable subphase/);
+});
+
+test("pi-swe completion resolution requires exactly one current approving review", () => {
+  const missing = writeCompletionResolutionFixture();
+  rmSync(join(missing.cwd, missing.implementationReviewPath));
+  const absent = resolveCanonicalCompletionRequest({ cwd: missing.cwd, topic: "demo", contractId: "01", nextActiveContract: "advance" });
+  assert.equal(absent.status, "rejected");
+  if (absent.status === "rejected") assert.match(absent.message, /no current approving/);
+
+  const duplicate = writeCompletionResolutionFixture();
+  write(
+    duplicate.cwd,
+    ".model-artifacts/initiatives/demo/reports/implementation-review-copy.md",
+    readFileSync(join(duplicate.cwd, duplicate.implementationReviewPath), "utf8"),
+  );
+  const ambiguous = resolveCanonicalCompletionRequest({ cwd: duplicate.cwd, topic: "demo", contractId: "01", nextActiveContract: "advance" });
+  assert.equal(ambiguous.status, "rejected");
+  if (ambiguous.status === "rejected") assert.match(ambiguous.message, /multiple current approving/);
+});
+
+test("pi-swe completion resolution rejects stale and malformed evidence chains", () => {
+  const staleContract = writeCompletionResolutionFixture();
+  write(staleContract.cwd, staleContract.contractPath, "# changed contract 01\n");
+  const contractDrift = resolveCanonicalCompletionRequest({ cwd: staleContract.cwd, topic: "demo", contractId: "01", nextActiveContract: "advance" });
+  assert.equal(contractDrift.status, "rejected");
+  if (contractDrift.status === "rejected") assert.equal(contractDrift.artifact, staleContract.contractPath);
+
+  const staleReview = writeCompletionResolutionFixture();
+  rewriteReviewEnvelope(staleReview, (envelope) => {
+    envelope.contractContentHash = `sha256:${"0".repeat(64)}`;
+  });
+  const unrelated = resolveCanonicalCompletionRequest({ cwd: staleReview.cwd, topic: "demo", contractId: "01", nextActiveContract: "advance" });
+  assert.equal(unrelated.status, "rejected");
+  if (unrelated.status === "rejected") assert.match(unrelated.message, /no current approving/);
+
+  const malformedReview = writeCompletionResolutionFixture();
+  const reviewPath = join(malformedReview.cwd, malformedReview.implementationReviewPath);
+  writeFileSync(reviewPath, `${readFileSync(reviewPath, "utf8")}Pi-SWE-Evidence: {"bad":true}\n`, "utf8");
+  const malformed = resolveCanonicalCompletionRequest({ cwd: malformedReview.cwd, topic: "demo", contractId: "01", nextActiveContract: "advance" });
+  assert.equal(malformed.status, "rejected");
+  if (malformed.status === "rejected") assert.match(malformed.message, /no current approving/);
+
+  const hashMismatch = writeCompletionResolutionFixture();
+  write(hashMismatch.cwd, hashMismatch.verificationPath, "# changed verification\n");
+  const mismatched = resolveCanonicalCompletionRequest({ cwd: hashMismatch.cwd, topic: "demo", contractId: "01", nextActiveContract: "advance" });
+  assert.equal(mismatched.status, "rejected");
+  if (mismatched.status === "rejected") assert.match(mismatched.message, /content hash does not match/);
+
+  const staleVerification = writeCompletionResolutionFixture();
+  const verificationPath = join(staleVerification.cwd, staleVerification.verificationPath);
+  const verificationContent = readFileSync(verificationPath, "utf8").replace('"contractId":"01"', '"contractId":"99"');
+  writeFileSync(verificationPath, verificationContent, "utf8");
+  rewriteReviewEnvelope(staleVerification, (envelope) => {
+    envelope.verification.contentHash = sha256(verificationContent);
+  });
+  const stale = resolveCanonicalCompletionRequest({ cwd: staleVerification.cwd, topic: "demo", contractId: "01", nextActiveContract: "advance" });
+  assert.equal(stale.status, "rejected");
+  if (stale.status === "rejected") assert.match(stale.message, /bound to another contract/);
+});
+
+test("pi-swe completion resolution rejects unsafe evidence without canonical mutation", () => {
+  const traversal = writeCompletionResolutionFixture();
+  rewriteReviewEnvelope(traversal, (envelope) => {
+    envelope.verification.path = "../verification.md";
+  });
+  const beforeManifest = readFileSync(join(traversal.cwd, traversal.manifestPath), "utf8");
+  const beforeIndex = readFileSync(join(traversal.cwd, traversal.indexPath), "utf8");
+  const unsafe = resolveCanonicalCompletionRequest({ cwd: traversal.cwd, topic: "demo", contractId: "01", nextActiveContract: "advance" });
+  assert.equal(unsafe.status, "rejected");
+  if (unsafe.status === "rejected") assert.match(unsafe.message, /unsafe or non-direct/);
+  assert.equal(readFileSync(join(traversal.cwd, traversal.manifestPath), "utf8"), beforeManifest);
+  assert.equal(readFileSync(join(traversal.cwd, traversal.indexPath), "utf8"), beforeIndex);
+
+  const symlink = writeCompletionResolutionFixture();
+  symlinkSync(symlink.verificationPath, join(symlink.cwd, ".model-artifacts/initiatives/demo/reports/link.md"));
+  const linked = resolveCanonicalCompletionRequest({ cwd: symlink.cwd, topic: "demo", contractId: "01", nextActiveContract: "advance" });
+  assert.equal(linked.status, "rejected");
+  if (linked.status === "rejected") assert.match(linked.message, /non-regular or symlink/);
+
+  const nested = writeCompletionResolutionFixture();
+  mkdirSync(join(nested.cwd, ".model-artifacts/initiatives/demo/reports/nested"));
+  const nonFile = resolveCanonicalCompletionRequest({ cwd: nested.cwd, topic: "demo", contractId: "01", nextActiveContract: "advance" });
+  assert.equal(nonFile.status, "rejected");
+  if (nonFile.status === "rejected") assert.match(nonFile.message, /non-regular or symlink/);
+
+  const raced = writeCompletionResolutionFixture();
+  let injected = false;
+  const changedWhileReading = resolveCanonicalCompletionRequest(
+    { cwd: raced.cwd, topic: "demo", contractId: "01", nextActiveContract: "advance" },
+    { onReportRead: (path) => {
+      if (injected) return;
+      injected = true;
+      const absolute = join(raced.cwd, path);
+      writeFileSync(absolute, `${readFileSync(absolute, "utf8")}x`, "utf8");
+    } },
+  );
+  assert.equal(changedWhileReading.status, "rejected");
+  if (changedWhileReading.status === "rejected") assert.match(changedWhileReading.message, /changed while being read/);
+});
+
+test("pi-swe completion resolution enforces report count, file, and aggregate byte bounds", () => {
+  const tooMany = writeCompletionResolutionFixture();
+  for (let index = 0; index < 198; index += 1) {
+    write(tooMany.cwd, `.model-artifacts/initiatives/demo/reports/extra-${index}.md`, "x");
+  }
+  const countBound = resolveCanonicalCompletionRequest({ cwd: tooMany.cwd, topic: "demo", contractId: "01", nextActiveContract: "advance" });
+  assert.equal(countBound.status, "rejected");
+  if (countBound.status === "rejected") assert.match(countBound.message, /exceeds 200 entries/);
+
+  const tooLarge = writeCompletionResolutionFixture();
+  write(tooLarge.cwd, ".model-artifacts/initiatives/demo/reports/oversize.md", "x".repeat(2 * 1024 * 1024 + 1));
+  const fileBound = resolveCanonicalCompletionRequest({ cwd: tooLarge.cwd, topic: "demo", contractId: "01", nextActiveContract: "advance" });
+  assert.equal(fileBound.status, "rejected");
+  if (fileBound.status === "rejected") assert.match(fileBound.message, /report exceeds 2097152 bytes/);
+
+  const observed = writeCompletionResolutionFixture();
+  let successfulReads = 0;
+  const observedResult = resolveCanonicalCompletionRequest(
+    { cwd: observed.cwd, topic: "demo", contractId: "01", nextActiveContract: "advance" },
+    { onReportRead: () => { successfulReads += 1; } },
+  );
+  assert.equal(observedResult.status, "resolved");
+  assert.ok(successfulReads > 0);
+
+  const aggregate = writeCompletionResolutionFixture();
+  for (let index = 0; index < 8; index += 1) {
+    write(aggregate.cwd, `.model-artifacts/initiatives/demo/reports/chunk-${index}.md`, "x".repeat(2 * 1024 * 1024));
+  }
+  let aggregateReads = 0;
+  const aggregateBound = resolveCanonicalCompletionRequest(
+    { cwd: aggregate.cwd, topic: "demo", contractId: "01", nextActiveContract: "advance" },
+    { onReportRead: () => { aggregateReads += 1; } },
+  );
+  assert.equal(aggregateBound.status, "rejected");
+  if (aggregateBound.status === "rejected") assert.match(aggregateBound.message, /aggregate bytes/);
+  assert.equal(aggregateReads, 0);
+});
 
 test("pi-swe completion records require an indexed complete disposition", () => {
   for (const status of ["pending", "in_progress", "blocked"]) {
@@ -541,6 +746,35 @@ function faultAt(point: CompletionFaultPoint) {
   } };
 }
 
+function writeCompletionResolutionFixture() {
+  const fixture = writeCompletionFixture();
+  const parentPath = ".model-artifacts/initiatives/demo/plans/revisions/r1/contracts/phase.md";
+  const parent = "# phase P0\n";
+  write(fixture.cwd, parentPath, parent);
+  fixture.index.contracts.unshift({
+    kind: "phase",
+    id: "P0",
+    dependsOn: [],
+    planRevision: 1,
+    path: parentPath,
+    status: "pending",
+    contentHash: sha256(parent),
+  });
+  fixture.index.contracts[1].kind = "subphase";
+  fixture.index.contracts[1].parentId = "P0";
+  fixture.index.contracts[2].kind = "subphase";
+  fixture.index.contracts[2].parentId = "P0";
+  fixture.index.contractFacts.P0 = {
+    entryInputsAvailable: true,
+    capabilitiesAvailable: true,
+    applicability: "applicable",
+    acceptanceDefined: true,
+    verificationDefined: true,
+  };
+  fixture.writeIndex();
+  return { ...fixture, parentPath };
+}
+
 function writeCompletionFixture() {
   const cwd = mkdtempSync(join(tmpdir(), "pi-swe-completion-"));
   const manifestPath = ".model-artifacts/initiatives/demo/specs/manifest.json";
@@ -718,6 +952,16 @@ function completionRecord(request: CompleteCanonicalContractRequest, nextState: 
     completedAt: request.completedAt,
     nextState,
   };
+}
+
+function rewriteReviewEnvelope(fixture: ReturnType<typeof writeCompletionFixture>, mutate: (envelope: any) => void): void {
+  const absolute = join(fixture.cwd, fixture.implementationReviewPath);
+  const content = readFileSync(absolute, "utf8");
+  const match = content.match(/^Pi-SWE-Evidence:\s*(\{[^\n]+\})\s*$/m);
+  assert.ok(match?.[1]);
+  const envelope = JSON.parse(match[1]);
+  mutate(envelope);
+  writeFileSync(absolute, content.replace(match[1], JSON.stringify(envelope)), "utf8");
 }
 
 function write(cwd: string, path: string, content: string): void {

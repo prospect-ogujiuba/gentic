@@ -14,6 +14,10 @@
     "contentHash": "sha256:7de975d94ef2e6e778f7dcc98dac4aa2fa327fd005e0bda737652bcb1acee6fb",
     "contractRoot": ".model-artifacts/initiatives/swe-completion-tool/plans/revisions/r3"
   },
+  "activeContract": {
+    "id": "P01-C01",
+    "path": ".model-artifacts/initiatives/swe-completion-tool/plans/revisions/r3/phases/01-completion-resolution/01.01-completion-resolution.md"
+  },
   "approval": {
     "decision": "approved",
     "planRevision": 3,
@@ -34,5 +38,5 @@
     "operations": { "status": "complete", "rationale": "Mutation ownership, recovery, idempotency, race revalidation, and diagnostics assessed.", "findingPath": ".model-artifacts/initiatives/swe-completion-tool/findings/2026-09-04_1627-completion-safety-compatibility.md" },
     "compatibility": { "status": "complete", "rationale": "Additive tool schema, retained command/API, mocks, docs, and inventory impacts assessed.", "findingPath": ".model-artifacts/initiatives/swe-completion-tool/findings/2026-09-04_1627-completion-safety-compatibility.md" }
   },
-  "updatedAt": "2026-09-04T16:27:32Z"
+  "updatedAt": "2026-09-04T19:15:13Z"
 }

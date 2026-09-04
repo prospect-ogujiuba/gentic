@@ -118,7 +118,7 @@ type CompletionContext = {
   ownerToken?: string;
 };
 type CompletionClaim = { readonly schemaVersion: 1; readonly token: string; readonly pid: number; readonly requestId: string; readonly createdAt: string };
-type VerificationEnvelope = {
+export type CompletionVerificationEnvelope = {
   readonly schemaVersion: 1;
   readonly mode: "verification";
   readonly topic: string;
@@ -129,7 +129,7 @@ type VerificationEnvelope = {
   readonly outcome: "pass";
   readonly gaps: "none";
 };
-type ReviewEnvelope = {
+export type CompletionReviewEnvelope = {
   readonly schemaVersion: 1;
   readonly mode: "implementation-review";
   readonly topic: string;
@@ -569,9 +569,9 @@ function validateMutationGuards(
 
 function validateEvidence(context: CompletionContext, request: CompleteCanonicalContractRequest): { message: string; artifact: string } | undefined {
   const verificationContent = readEvidence(context, request.verification.path, request.verification.contentHash);
-  const verification = verificationContent ? readEvidenceEnvelope(verificationContent, "verification") : undefined;
+  const verification = verificationContent ? parseCompletionEvidenceEnvelope(verificationContent, "verification") : undefined;
   const reviewContent = readEvidence(context, request.review.path, request.review.contentHash);
-  const review = reviewContent ? readEvidenceEnvelope(reviewContent, "implementation-review") : undefined;
+  const review = reviewContent ? parseCompletionEvidenceEnvelope(reviewContent, "implementation-review") : undefined;
   const failures: Array<{ message: string; artifact: string }> = [];
   if (!verification
     || verification.topic !== request.topic
@@ -599,9 +599,9 @@ function validateEvidence(context: CompletionContext, request: CompleteCanonical
   return failures.length ? { artifact: failures[0]!.artifact, message: failures.map((failure) => `${failure.artifact}: ${failure.message}`).join("; ") } : undefined;
 }
 
-function readEvidenceEnvelope(content: string, mode: "verification"): VerificationEnvelope | undefined;
-function readEvidenceEnvelope(content: string, mode: "implementation-review"): ReviewEnvelope | undefined;
-function readEvidenceEnvelope(content: string, mode: "verification" | "implementation-review"): VerificationEnvelope | ReviewEnvelope | undefined {
+export function parseCompletionEvidenceEnvelope(content: string, mode: "verification"): CompletionVerificationEnvelope | undefined;
+export function parseCompletionEvidenceEnvelope(content: string, mode: "implementation-review"): CompletionReviewEnvelope | undefined;
+export function parseCompletionEvidenceEnvelope(content: string, mode: "verification" | "implementation-review"): CompletionVerificationEnvelope | CompletionReviewEnvelope | undefined {
   const matches = [...content.matchAll(/^Pi-SWE-Evidence:\s*(\{[^\n]+\})\s*$/gm)];
   if (matches.length !== 1) return undefined;
   let value: unknown;
@@ -615,13 +615,13 @@ function readEvidenceEnvelope(content: string, mode: "verification" | "implement
   if (!commonValid) return undefined;
   if (mode === "verification") {
     const keys = new Set(["schemaVersion", "mode", "topic", "contractId", "contractPath", "planRevision", "contractContentHash", "outcome", "gaps"]);
-    return hasExactKeys(value, keys) && value.outcome === "pass" && value.gaps === "none" ? value as VerificationEnvelope : undefined;
+    return hasExactKeys(value, keys) && value.outcome === "pass" && value.gaps === "none" ? value as CompletionVerificationEnvelope : undefined;
   }
   const keys = new Set(["schemaVersion", "mode", "topic", "contractId", "contractPath", "planRevision", "contractContentHash", "decision", "blockingFindings", "verification"]);
   if (!hasExactKeys(value, keys) || value.decision !== "approve" || value.blockingFindings !== 0 || !isRecord(value.verification)
     || !hasExactKeys(value.verification, new Set(["path", "contentHash"]))
     || typeof value.verification.path !== "string" || !isSha256(value.verification.contentHash)) return undefined;
-  return value as ReviewEnvelope;
+  return value as CompletionReviewEnvelope;
 }
 
 function evidenceRemainsValid(context: CompletionContext, request: CompleteCanonicalContractRequest): boolean {

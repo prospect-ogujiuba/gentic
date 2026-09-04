@@ -17,7 +17,7 @@
       "dependsOn": [],
       "planRevision": 3,
       "path": ".model-artifacts/initiatives/swe-completion-tool/plans/revisions/r3/phases/01-completion-resolution/01.01-completion-resolution.md",
-      "status": "pending",
+      "status": "in_progress",
       "contentHash": "sha256:1b5270b9e7426e99eb597a8ed49043af0b4bfac4bce9618db33687c8e015174e"
     },
     {
