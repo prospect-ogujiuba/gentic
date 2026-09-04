@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "initiativeId": "topic-first-model-artifacts-v2",
   "topic": "topic-first-model-artifacts-v2",
-  "initiativeState": "executing",
+  "initiativeState": "complete",
   "activeSpec": {
     "revision": 1,
     "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/specs/2026-09-01_2008-initiative-spec-r1.md",
@@ -68,7 +68,7 @@
       "findingPath": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/findings/2026-09-01_2008-cross-cutting-migration-risk.md"
     }
   },
-  "updatedAt": "2026-09-04T16:20:50.225Z",
+  "updatedAt": "2026-09-04T16:53:00Z",
   "piSweMigration": {
     "schemaVersion": 1,
     "operation": "normalize-manifest-metadata",
