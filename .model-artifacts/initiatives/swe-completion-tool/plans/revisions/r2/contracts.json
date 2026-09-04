@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 2,
+  "contracts": [
+    {
+      "kind": "phase",
+      "id": "P01",
+      "dependsOn": [],
+      "planRevision": 2,
+      "path": ".model-artifacts/initiatives/swe-completion-tool/plans/revisions/r2/phases/01-completion-resolution/00-phase-index.md",
+      "status": "pending",
+      "contentHash": "sha256:8732810af241e22954b330228d60b0edefcaf0bcb1f655cd2061a2f4d348b34c"
+    },
+    {
+      "kind": "subphase",
+      "parentId": "P01",
+      "id": "P01-C01",
+      "dependsOn": [],
+      "planRevision": 2,
+      "path": ".model-artifacts/initiatives/swe-completion-tool/plans/revisions/r2/phases/01-completion-resolution/01.01-completion-resolution.md",
+      "status": "pending",
+      "contentHash": "sha256:b5c85191b8cb810d49323787e3d12a2fdae4ac7a58b87d8c824c278c6d26c4ea"
+    },
+    {
+      "kind": "phase",
+      "id": "P02",
+      "dependsOn": ["P01-C01"],
+      "planRevision": 2,
+      "path": ".model-artifacts/initiatives/swe-completion-tool/plans/revisions/r2/phases/02-tool-surface/00-phase-index.md",
+      "status": "pending",
+      "contentHash": "sha256:02e4b01b9f088d05e14608f6d473115c5b003c254c5200c12c515ea2cc187023"
+    },
+    {
+      "kind": "subphase",
+      "parentId": "P02",
+      "id": "P02-C01",
+      "dependsOn": ["P01-C01"],
+      "planRevision": 2,
+      "path": ".model-artifacts/initiatives/swe-completion-tool/plans/revisions/r2/phases/02-tool-surface/02.01-tool-surface.md",
+      "status": "pending",
+      "contentHash": "sha256:5e1eb12447c44bf4674e30917592767277510f687f5fb41d598a4de8c69f9590"
+    }
+  ],
+  "contractFacts": {
+    "P01": { "entryInputsAvailable": true, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true },
+    "P01-C01": { "entryInputsAvailable": true, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true },
+    "P02": { "entryInputsAvailable": true, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true },
+    "P02-C01": { "entryInputsAvailable": true, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true }
+  },
+  "consequentialSpecialists": ["compatibility", "operations", "security", "tdd"],
+  "completionRecords": {}
+}
