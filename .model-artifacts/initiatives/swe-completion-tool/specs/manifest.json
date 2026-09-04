@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "initiativeId": "swe-completion-tool",
   "topic": "swe-completion-tool",
-  "initiativeState": "approved",
+  "initiativeState": "executing",
   "activeSpec": {
     "revision": 1,
     "path": ".model-artifacts/initiatives/swe-completion-tool/specs/2026-09-04_1627-initiative-spec-r1.md",
@@ -15,8 +15,8 @@
     "contractRoot": ".model-artifacts/initiatives/swe-completion-tool/plans/revisions/r3"
   },
   "activeContract": {
-    "id": "P01-C01",
-    "path": ".model-artifacts/initiatives/swe-completion-tool/plans/revisions/r3/phases/01-completion-resolution/01.01-completion-resolution.md"
+    "id": "P02-C01",
+    "path": ".model-artifacts/initiatives/swe-completion-tool/plans/revisions/r3/phases/02-tool-surface/02.01-tool-surface.md"
   },
   "approval": {
     "decision": "approved",
@@ -28,15 +28,46 @@
     "blockingFindings": 0
   },
   "specialists": {
-    "diagnosis": { "status": "not-required", "rationale": "Intentional ergonomic enhancement; guarded completion is functioning." },
-    "dsa": { "status": "not-required", "rationale": "Bounded sorted report enumeration and small candidate arrays need no consequential representation decision." },
-    "tdd": { "status": "complete", "rationale": "Observable behaviors, characterization, Red ordering, and verification scope assessed.", "findingPath": ".model-artifacts/initiatives/swe-completion-tool/findings/2026-09-04_1627-tdd-plan.md" },
-    "security": { "status": "complete", "rationale": "Evidence discovery, containment, symlink, hash, ambiguity, and confirmation boundaries assessed.", "findingPath": ".model-artifacts/initiatives/swe-completion-tool/findings/2026-09-04_1627-completion-safety-compatibility.md" },
-    "migration": { "status": "not-required", "rationale": "No persisted schema/data migration; existing transaction normalization remains unchanged." },
-    "performance": { "status": "not-required", "rationale": "A bounded local report scan with count and byte budgets is sufficient." },
-    "accessibility-ux": { "status": "not-required", "rationale": "No visual UI; compact actionable tool output is an acceptance requirement." },
-    "operations": { "status": "complete", "rationale": "Mutation ownership, recovery, idempotency, race revalidation, and diagnostics assessed.", "findingPath": ".model-artifacts/initiatives/swe-completion-tool/findings/2026-09-04_1627-completion-safety-compatibility.md" },
-    "compatibility": { "status": "complete", "rationale": "Additive tool schema, retained command/API, mocks, docs, and inventory impacts assessed.", "findingPath": ".model-artifacts/initiatives/swe-completion-tool/findings/2026-09-04_1627-completion-safety-compatibility.md" }
+    "diagnosis": {
+      "status": "not-required",
+      "rationale": "Intentional ergonomic enhancement; guarded completion is functioning."
+    },
+    "dsa": {
+      "status": "not-required",
+      "rationale": "Bounded sorted report enumeration and small candidate arrays need no consequential representation decision."
+    },
+    "tdd": {
+      "status": "complete",
+      "rationale": "Observable behaviors, characterization, Red ordering, and verification scope assessed.",
+      "findingPath": ".model-artifacts/initiatives/swe-completion-tool/findings/2026-09-04_1627-tdd-plan.md"
+    },
+    "security": {
+      "status": "complete",
+      "rationale": "Evidence discovery, containment, symlink, hash, ambiguity, and confirmation boundaries assessed.",
+      "findingPath": ".model-artifacts/initiatives/swe-completion-tool/findings/2026-09-04_1627-completion-safety-compatibility.md"
+    },
+    "migration": {
+      "status": "not-required",
+      "rationale": "No persisted schema/data migration; existing transaction normalization remains unchanged."
+    },
+    "performance": {
+      "status": "not-required",
+      "rationale": "A bounded local report scan with count and byte budgets is sufficient."
+    },
+    "accessibility-ux": {
+      "status": "not-required",
+      "rationale": "No visual UI; compact actionable tool output is an acceptance requirement."
+    },
+    "operations": {
+      "status": "complete",
+      "rationale": "Mutation ownership, recovery, idempotency, race revalidation, and diagnostics assessed.",
+      "findingPath": ".model-artifacts/initiatives/swe-completion-tool/findings/2026-09-04_1627-completion-safety-compatibility.md"
+    },
+    "compatibility": {
+      "status": "complete",
+      "rationale": "Additive tool schema, retained command/API, mocks, docs, and inventory impacts assessed.",
+      "findingPath": ".model-artifacts/initiatives/swe-completion-tool/findings/2026-09-04_1627-completion-safety-compatibility.md"
+    }
   },
-  "updatedAt": "2026-09-04T19:15:13Z"
+  "updatedAt": "2026-09-04T23:20:28.067Z"
 }

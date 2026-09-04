@@ -17,13 +17,15 @@
       "dependsOn": [],
       "planRevision": 3,
       "path": ".model-artifacts/initiatives/swe-completion-tool/plans/revisions/r3/phases/01-completion-resolution/01.01-completion-resolution.md",
-      "status": "in_progress",
+      "status": "complete",
       "contentHash": "sha256:1b5270b9e7426e99eb597a8ed49043af0b4bfac4bce9618db33687c8e015174e"
     },
     {
       "kind": "phase",
       "id": "P02",
-      "dependsOn": ["P01-C01"],
+      "dependsOn": [
+        "P01-C01"
+      ],
       "planRevision": 3,
       "path": ".model-artifacts/initiatives/swe-completion-tool/plans/revisions/r3/phases/02-tool-surface/00-phase-index.md",
       "status": "pending",
@@ -33,7 +35,9 @@
       "kind": "subphase",
       "parentId": "P02",
       "id": "P02-C01",
-      "dependsOn": ["P01-C01"],
+      "dependsOn": [
+        "P01-C01"
+      ],
       "planRevision": 3,
       "path": ".model-artifacts/initiatives/swe-completion-tool/plans/revisions/r3/phases/02-tool-surface/02.01-tool-surface.md",
       "status": "pending",
@@ -41,11 +45,65 @@
     }
   ],
   "contractFacts": {
-    "P01": { "entryInputsAvailable": true, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true },
-    "P01-C01": { "entryInputsAvailable": true, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true },
-    "P02": { "entryInputsAvailable": true, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true },
-    "P02-C01": { "entryInputsAvailable": true, "capabilitiesAvailable": true, "applicability": "applicable", "acceptanceDefined": true, "verificationDefined": true }
+    "P01": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    },
+    "P01-C01": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    },
+    "P02": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    },
+    "P02-C01": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    }
   },
-  "consequentialSpecialists": ["compatibility", "operations", "security", "tdd"],
-  "completionRecords": {}
+  "consequentialSpecialists": [
+    "compatibility",
+    "operations",
+    "security",
+    "tdd"
+  ],
+  "completionRecords": {
+    "P01-C01": {
+      "schemaVersion": 1,
+      "requestId": "sha256:1a79f0c89d553ddcf334ee4ced39b8c5a32ffe92da2673691568d167e17f2a12",
+      "planRevision": 3,
+      "contractPath": ".model-artifacts/initiatives/swe-completion-tool/plans/revisions/r3/phases/01-completion-resolution/01.01-completion-resolution.md",
+      "preCompletionContentHash": "sha256:1b5270b9e7426e99eb597a8ed49043af0b4bfac4bce9618db33687c8e015174e",
+      "verification": {
+        "path": ".model-artifacts/initiatives/swe-completion-tool/reports/2026-09-04_2113-verification.md",
+        "contentHash": "sha256:120b888855144ea3405f868d23c22f2275c579a6a898a85e88edeb0e4f17cae1"
+      },
+      "review": {
+        "path": ".model-artifacts/initiatives/swe-completion-tool/reports/2026-09-04_2117-implementation-review.md",
+        "contentHash": "sha256:43d3639a767e4c35be57690faa420af7fd294d9863f46ca97ad6cdd51dca37fc",
+        "decision": "approve"
+      },
+      "completedAt": "2026-09-04T23:20:28.067Z",
+      "nextState": {
+        "initiativeState": "executing",
+        "activeContractId": "P02-C01",
+        "readyContractIds": [
+          "P02-C01"
+        ]
+      }
+    }
+  }
 }
