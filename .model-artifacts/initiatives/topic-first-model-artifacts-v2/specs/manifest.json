@@ -15,8 +15,8 @@
     "contractRoot": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3"
   },
   "activeContract": {
-    "id": "P03-C01",
-    "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3/phases/03-migration-engine/03.01-inventory-plan.md"
+    "id": "P03-C02",
+    "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3/phases/03-migration-engine/03.02-transaction.md"
   },
   "approval": {
     "decision": "approved",
@@ -72,7 +72,7 @@
       "findingPath": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/findings/2026-09-01_2008-cross-cutting-migration-risk.md"
     }
   },
-  "updatedAt": "2026-09-03T23:41:40.775Z",
+  "updatedAt": "2026-09-04T09:40:00Z",
   "piSweMigration": {
     "schemaVersion": 1,
     "operation": "normalize-manifest-metadata",
