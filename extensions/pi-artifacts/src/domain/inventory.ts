@@ -365,11 +365,17 @@ function classifyEntry(root: string, file: Discovered, config: MigrationConfig, 
 function parseV2Canonical(source: string): { topic?: string; unit: "initiative" | "system" } | undefined {
   const parts = source.split("/");
   if (parts[0] !== ".model-artifacts") return undefined;
+  const stable = source.match(/^\.model-artifacts\/initiatives\/(.+)\/(?:specs\/manifest\.json|plans\/revisions\/r[1-9]\d*\/(?:contracts\.json|phases\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9][a-z0-9.-]*\.md))$/);
+  if (stable?.[1] && isCanonicalTopic(stable[1])) return { topic: stable[1], unit: "initiative" };
   if (parts[1] === "initiatives" && parts.length >= 5 && parts.slice(2, -2).every((segment) => normalizeSegment(segment) === segment && segment.length > 0)
     && isArtifactKind(parts.at(-2)) && CANONICAL_FILE_PATTERN.test(parts.at(-1) ?? "")) return { topic: parts.slice(2, -2).join("/"), unit: "initiative" };
   if (parts[1] === "system" && parts.length >= 4 && (parts[2] === "logs" || parts[2] === "reports")
     && (CANONICAL_FILE_PATTERN.test(parts.at(-1) ?? "") || source.startsWith(SYSTEM_TRANSACTION_PREFIX))) return { unit: "system" };
   return undefined;
+}
+
+function isCanonicalTopic(value: string): boolean {
+  try { return validateTopic(value) === value; } catch { return false; }
 }
 
 function belongsToLegacyTopic(source: string, topic: string): boolean {

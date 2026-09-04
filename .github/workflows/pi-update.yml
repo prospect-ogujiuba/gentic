@@ -28,10 +28,10 @@ jobs:
           npm run pi:update --
           --target "${{ inputs.target }}"
           --apply
-          --report ".model-artifacts/reports/pi-update/node-${{ matrix.node }}.md"
+          --report ".model-artifacts/system/reports/pi-update/node-${{ matrix.node }}.md"
       - uses: actions/upload-artifact@v4
         with:
           name: pi-update-${{ inputs.target }}-node-${{ matrix.node }}
-          path: .model-artifacts/reports/pi-update/*.md
+          path: .model-artifacts/system/reports/pi-update/*.md
       - name: Fail when report contains failed checks
-        run: '! grep -q "| failed" .model-artifacts/reports/pi-update/node-${{ matrix.node }}.md'
+        run: '! grep -q "| failed" .model-artifacts/system/reports/pi-update/node-${{ matrix.node }}.md'

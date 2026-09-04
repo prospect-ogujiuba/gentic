@@ -108,7 +108,6 @@ export class GitSnapshotService {
       updatedAt: this.lastGood?.updatedAt,
     };
     pending.timer = setTimeout(() => void this.collectPending(pending), Math.max(0, this.debounceMs));
-    pending.timer.unref?.();
     return promise;
   }
 

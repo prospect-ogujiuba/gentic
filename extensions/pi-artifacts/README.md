@@ -46,7 +46,7 @@ Run the workflow independently in each project:
 - `rollback` requires the exact terminal ledger and retained payload bundle written by apply. It refuses modified v2 bytes and restores byte-identical v1 files plus external rewrites.
 - `finalize` is a separate irreversible action. It revalidates published v2 bytes, removes rollback payloads, and leaves a durable finalized ledger and report. It is never implicit.
 
-Dry-run audit/plan is always the first step. Review the plan before applying it. For several projects, run audit in every project first, then apply one project at a time; transactions are deliberately not cross-repository.
+Dry-run audit/plan is always the first step. Review and approve the exact saved-plan fingerprint before applying it; regenerate instead of editing a plan. For several projects, run audit in every project first, then apply one project at a time; transactions are deliberately not cross-repository. The operator checklist and rollback rehearsal are in [`../../docs/model-artifacts.md`](../../docs/model-artifacts.md).
 
 ## Deterministic inference
 
@@ -110,6 +110,8 @@ Claims are never auto-reaped. If a crash or injected fault leaves `active.claim.
 Conflicting or changed bytes block recovery rather than being overwritten. After post-migration verification, `/artifacts finalize <ledger-path>` permanently deletes rollback payloads and records that rollback is unavailable.
 
 ## Bounds and compatibility
+
+Gentic 0.x keeps kind-first reads only for audit and explicit migration. Writers are v2-only, mixed topics block, and removing v1 read compatibility is a separate reviewed change no earlier than 1.0.
 
 - Maximum inventory: 10,000 artifact entries; maximum aggregate candidate bytes: 64 MiB.
 - Reference scanning defaults to 20,000 files and 256 MiB, skips common dependency/build directories, and ignores individual files above 1 MiB.

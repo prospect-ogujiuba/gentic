@@ -3,13 +3,19 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
+const configuredTimeout = Number(process.env.GENTIC_COMMAND_INVENTORY_TIMEOUT_MS ?? 60_000);
+if (!Number.isFinite(configuredTimeout) || configuredTimeout <= 0) {
+  throw new Error("GENTIC_COMMAND_INVENTORY_TIMEOUT_MS must be a positive number");
+}
+const timeoutMs = Math.floor(configuredTimeout);
 const result = spawnSync("pi", ["-e", root, "--mode", "rpc", "--no-session"], {
   cwd: root,
   env: { ...process.env, PI_OFFLINE: "1" },
   input: `${JSON.stringify({ type: "get_commands" })}\n`,
   encoding: "utf8",
-  timeout: 30_000,
+  timeout: timeoutMs,
 });
+if (result.error?.code === "ETIMEDOUT") throw new Error(`Pi command inventory exceeded ${timeoutMs}ms`, { cause: result.error });
 if (result.error) throw result.error;
 const response = result.stdout
   .split("\n")

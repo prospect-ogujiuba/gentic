@@ -1,0 +1,6 @@
+{"recordedAt":"2026-09-04T14:58:09.918Z","operation":"apply","stage":"prepared","completed":[]}
+{"recordedAt":"2026-09-04T14:58:09.929Z","operation":"apply","stage":"publishing","current":0,"completed":[]}
+{"recordedAt":"2026-09-04T14:58:09.938Z","operation":"apply","stage":"publishing","completed":[0]}
+{"recordedAt":"2026-09-04T14:58:09.945Z","operation":"apply","stage":"publishing","current":1,"completed":[0]}
+{"recordedAt":"2026-09-04T14:58:09.957Z","operation":"apply","stage":"publishing","completed":[0,1]}
+{"recordedAt":"2026-09-04T14:58:09.966Z","operation":"apply","stage":"committed","completed":[0,1]}

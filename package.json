@@ -33,7 +33,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "check": "npm run check:pi-api && npm run check:catalog && npm run check:inventory && npm run check:anatomy && npm run check:resources",
+    "check": "npm run check:pi-api && npm run check:catalog && npm run check:inventory && npm run check:anatomy && npm run check:resources && npm run check:model-artifacts",
     "check:pi-api": "node scripts/check-pi-extension-api.mjs",
     "generate:catalog": "node --experimental-strip-types scripts/generate-pi-catalog.ts",
     "check:catalog": "node --experimental-strip-types scripts/generate-pi-catalog.ts --check",
@@ -43,6 +43,7 @@
     "check:resources": "node --experimental-strip-types scripts/check-package-resources.ts",
     "check:commands": "node scripts/check-command-inventory.mjs",
     "check:performance": "node --experimental-strip-types scripts/check-performance-budgets.ts",
+    "check:model-artifacts": "node --experimental-strip-types scripts/check-model-artifact-layout.ts",
     "pi:update": "node --experimental-strip-types scripts/pi-update.ts",
     "release:verify": "node --experimental-strip-types scripts/release-verify.ts",
     "test": "node --experimental-strip-types --test test/**/*.test.ts",

@@ -118,6 +118,20 @@ test("artifact audit recognizes layout-v2 initiative/system namespaces and reloc
   assert.equal(entries.get(legacySystemPath)?.destination, ".model-artifacts/system/logs/model-artifact-migration/2026-05-01_1208-plan.json");
 });
 
+test("artifact audit accepts canonical pi-swe stable filenames in layout v2", () => {
+  const root = fixture();
+  const paths = [
+    ".model-artifacts/initiatives/demo/specs/manifest.json",
+    ".model-artifacts/initiatives/demo/plans/revisions/r1/contracts.json",
+    ".model-artifacts/initiatives/demo/plans/revisions/r1/phases/01-demo/00-phase-index.md",
+    ".model-artifacts/initiatives/demo/plans/revisions/r1/phases/01-demo/01.01-demo.md",
+  ];
+  for (const path of paths) write(root, path, path.endsWith(".json") ? "{}\n" : "# Contract\n");
+
+  const entries = new Map(auditArtifacts({ cwd: root }).entries.map((entry) => [entry.source, entry]));
+  for (const path of paths) assert.notEqual(entries.get(path)?.classification, "invalid", path);
+});
+
 test("artifact audit blocks mixed layout authority for one topic", () => {
   const root = fixture();
   write(root, layoutV2.mixedAuthority.v1Manifest, "{}\n");
@@ -255,7 +269,7 @@ test("complete v1 topic authority plans one deterministic topic-first relocation
   assert.equal(first.expectedPostTransformHashes[indexDestination], sha(`${JSON.stringify(transformedIndex, null, 2)}\n`));
   for (const [path, content] of before) assert.equal(readFileSync(join(root, path), "utf8"), content);
   assert.equal(readFileSync(join(root, "README.md"), "utf8"), `See ${referenced}\n`);
-  assert.match(renderPlanReport(first, ".model-artifacts/system/logs/model-artifact-migration/plan.json"), /P03-C02/);
+  assert.match(renderPlanReport(first, ".model-artifacts/system/logs/model-artifact-migration/plan.json"), /\/artifacts apply \.model-artifacts\/system\/logs\/model-artifact-migration\/plan\.json/);
 });
 
 test("nested-topic authority transforms its manifest to schema v2 with exact dependent hashes", () => {
@@ -765,6 +779,11 @@ test("/artifacts plan reports a clean zero-move inventory as up-to-date", async 
 test("pi-artifacts README documents dry-run adoption, protected authority, and recovery", () => {
   const readme = readFileSync(join(process.cwd(), "extensions/pi-artifacts/README.md"), "utf8");
   for (const required of ["/artifacts audit", "/artifacts plan", "/artifacts apply", "/artifacts recover", "/artifacts rollback", "/artifacts finalize", "Protected authority", "Claims are never auto-reaped", ".pi/model-artifacts-migration.json"]) assert.match(readme, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+  const guide = readFileSync(join(process.cwd(), "docs/model-artifacts.md"), "utf8");
+  for (const required of ["docs/plans/", "Compatibility window", "exact saved plan fingerprint", "Rollback retention and rehearsal", "check:model-artifacts"]) assert.match(guide, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+  const workflow = readFileSync(join(process.cwd(), ".github/workflows/pi-update.yml"), "utf8");
+  assert.doesNotMatch(workflow, /\.model-artifacts\/reports\/pi-update/);
+  assert.match(workflow, /\.model-artifacts\/system\/reports\/pi-update/);
   assert.match(readFileSync(join(process.cwd(), "catalog/gentic-inventory.json"), "utf8"), /"pi-artifacts"/);
 });
 

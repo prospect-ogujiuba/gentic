@@ -106,7 +106,7 @@ prompts/          # Package-level Pi prompt templates
 themes/           # Package-level Pi themes
 scripts/          # maintenance checks against installed Pi
 docs/             # Repository conventions, including model artifacts
-.model-artifacts/ # Generated reports, plans, findings, logs, specs, and todo artifacts
+.model-artifacts/ # initiatives/<topic>/<kind> plus system/{logs,reports}
 ```
 
 For first-class resources, discovery is constrained to avoid accidental docs-as-resources: skill and prompt `README.md` files are excluded by the package manifest. Ownership and invocation migration are documented in [`docs/pi-package-resources.md`](docs/pi-package-resources.md).
@@ -123,4 +123,4 @@ The check reads the installed `@earendil-works/pi-coding-agent` package directly
 
 Run `npm run check:resources` for native resource validation, `npm run check:inventory` for source/manifest/profile drift, and `npm run check:commands` for collision-free command provenance.
 
-Preview a Pi release with `npm run pi:update -- --target <version> --report <path>`. Release policy, support window, performance budgets, and the verification checklist live in [`docs/release.md`](docs/release.md). Native surface creation is documented in [`docs/plugin-guide.md`](docs/plugin-guide.md).
+Preview a Pi release with `npm run pi:update -- --target <version> --report <path>`. The canonical model-artifacts layout, compatibility window, and migration runbook live in [`docs/model-artifacts.md`](docs/model-artifacts.md); `docs/plans/` remains curated human documentation and is never generated authority. Release policy, support window, performance budgets, and the verification checklist live in [`docs/release.md`](docs/release.md). Native surface creation is documented in [`docs/plugin-guide.md`](docs/plugin-guide.md).

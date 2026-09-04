@@ -100,9 +100,7 @@ export function renderPlanReport(plan: MigrationPlan, planPath: string): string 
     "## Next action",
     "",
     plan.eligible
-      ? plan.authorityUnits.some((unit) => unit !== "isolated")
-        ? "Review the JSON plan, then continue with P03-C02 transactional apply implementation; this complete-authority plan is intentionally read-only."
-        : `Review the JSON plan, then run \`/artifacts apply ${planPath}\`.`
+      ? `Review and approve the exact fingerprint, then run \`/artifacts apply ${planPath}\`.`
       : isNoopMigrationPlan(plan)
         ? "No migration is needed; all discovered artifacts are already canonical or protected."
         : "Resolve every blocker and generate a new plan. This plan cannot be applied.",

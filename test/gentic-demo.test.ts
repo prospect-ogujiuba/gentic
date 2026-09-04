@@ -179,8 +179,11 @@ function createPiHarness() {
   return { pi, ctx, handlers, commands, tools, entries, sentUserMessages, execCalls, activate, emit };
 }
 
-test("demo activates every Gentic-owned extension and exercises shared runtime paths", async () => {
+test("demo activates every Gentic-owned extension and exercises shared runtime paths", async (t) => {
   const harness = createPiHarness();
+  t.after(async () => {
+    await harness.emit("session_shutdown", { reason: "test-complete" }, harness.ctx);
+  });
 
   await harness.activate("gentic", gentic as never);
   await harness.activate("pi-catalog", piCatalog as never);

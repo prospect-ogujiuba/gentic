@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "planFingerprint": "sha256:37501b038ee50e5fdb0c9851919defd0b5ec1d7b0c528c7a35dc93bf5e6b1bb3",
+  "records": [
+    {
+      "kind": "move",
+      "source": ".model-artifacts/reports/pi-swe/planning-reconciliation/2026-09-03_2041-contract-index-reconciliation.md",
+      "destination": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/reports/2026-09-03_2041-contract-index-reconciliation.md",
+      "originalHash": "sha256:a5ad480d0a77d3087b8062f15b383ef2c5480214a385834a773ed85405bdd5f8",
+      "expectedHash": "sha256:a5ad480d0a77d3087b8062f15b383ef2c5480214a385834a773ed85405bdd5f8",
+      "originalPayload": ".model-artifacts/system/logs/model-artifact-migration/2026-09-04_1457-37501b038ee5-transaction/originals/000000.bin",
+      "stagedPayload": ".model-artifacts/system/logs/model-artifact-migration/2026-09-04_1457-37501b038ee5-transaction/staged/000000.bin"
+    },
+    {
+      "kind": "move",
+      "source": ".model-artifacts/specs/pi-swe-compatibility/2026-09-03_1835-implementation-brief.md",
+      "destination": ".model-artifacts/initiatives/pi-swe-compatibility/specs/2026-09-03_1835-implementation-brief.md",
+      "originalHash": "sha256:15c2d71ca2cf562b4e37450a44ba5fa231f690e711f946688f1a88a35a7b09ca",
+      "expectedHash": "sha256:15c2d71ca2cf562b4e37450a44ba5fa231f690e711f946688f1a88a35a7b09ca",
+      "originalPayload": ".model-artifacts/system/logs/model-artifact-migration/2026-09-04_1457-37501b038ee5-transaction/originals/000001.bin",
+      "stagedPayload": ".model-artifacts/system/logs/model-artifact-migration/2026-09-04_1457-37501b038ee5-transaction/staged/000001.bin"
+    }
+  ]
+}

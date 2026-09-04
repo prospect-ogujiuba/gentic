@@ -47,7 +47,9 @@ Budgets are intentionally broad wall-clock guardrails, not microbenchmark claims
 - [ ] `CHANGELOG.md` has user-visible changes and migrations under the target version.
 - [ ] `package.json`, lockfile, `src/pi-contract.ts`, and catalog source version agree.
 - [ ] `npm ci` succeeds from a clean checkout.
-- [ ] `npm run release:verify -- --report .model-artifacts/system/reports/release/YYYY-MM-DD_HHMM-<version>.md` passes and records Pi/Node versions plus every check.
+- [ ] `npm run check:model-artifacts` reports no non-v2 artifacts or unclassified kind-first references.
+- [ ] For a repository migration, the exact reviewed plan fingerprint, apply ledger, rollback bundle, pre/post audits, measured counts/bytes/durations, and restore rehearsal evidence are retained as described in [`model-artifacts.md`](model-artifacts.md).
+- [ ] `npm run release:verify -- --report .model-artifacts/system/reports/release/YYYY-MM-DD_HHMM-release-verification.md` passes and records Pi/Node versions plus every check.
 - [ ] `catalog/pi-native-capabilities.json` and `catalog/gentic-inventory.json` are current.
 - [ ] Core/full profile paths pass inventory validation.
 - [ ] A temporary project scaffolds and smoke-loads one representative capability.
