@@ -33,14 +33,18 @@ Run the workflow independently in each project:
 /artifacts audit
 /artifacts plan
 /artifacts apply .model-artifacts/system/logs/model-artifact-migration/<timestamp>-<id>-plan.json
+/artifacts recover .model-artifacts/system/logs/model-artifact-migration/<timestamp>-<id>-apply-journal.json
 /artifacts rollback .model-artifacts/system/logs/model-artifact-migration/<timestamp>-<id>-ledger.json
+/artifacts finalize .model-artifacts/system/logs/model-artifact-migration/<timestamp>-<id>-ledger.json
 ```
 
 - `audit` is read-only and reports canonical-valid, legacy-movable, protected, ambiguous, and invalid entries.
 - `plan` is read-only with respect to candidates. It writes a reviewable JSON plan and bounded Markdown report under `.model-artifacts/system/logs/model-artifact-migration/`.
 - A complete kind-first topic is one migration authority unit. The plan includes sorted old→new paths, exact reference rewrites, source and expected post-transform hashes, bounds, rollback storage, blockers, and a semantic fingerprint.
-- `apply` is the only migration action. Isolated legacy mappings remain supported; complete-authority apply/recovery/finalize is intentionally assigned to `P03-C02` and is refused by this planning slice.
-- `rollback` requires the exact terminal ledger written by apply.
+- `apply` revalidates the exact saved plan and fingerprints, stages original and transformed bytes on disk, validates the complete v2 graph, then publishes under an exclusive claim and append-only named-state journal.
+- `recover` consumes a retained apply or rollback journal after an interruption. It deterministically restores preimages or completes rollback, writes durable recovery evidence, and is idempotent.
+- `rollback` requires the exact terminal ledger and retained payload bundle written by apply. It refuses modified v2 bytes and restores byte-identical v1 files plus external rewrites.
+- `finalize` is a separate irreversible action. It revalidates published v2 bytes, removes rollback payloads, and leaves a durable finalized ledger and report. It is never implicit.
 
 Dry-run audit/plan is always the first step. Review the plan before applying it. For several projects, run audit in every project first, then apply one project at a time; transactions are deliberately not cross-repository.
 
@@ -90,20 +94,20 @@ Protected canonical v1 files become migratable only when the manifest, active sp
 
 ## Transaction and recovery
 
-Apply revalidates the plan fingerprint, root, normalized config, source hashes, destination absence, and owner-token claim. It writes one move at a time through a durable staged journal, exclusive destination creation, byte/hash verification, source removal, and a terminal ledger. Exact repeats return `already-applied`.
+Preflight is mutation-free. Apply revalidates eligibility, plan/config fingerprints, normalized paths, source and external-reference bytes, destination absence, bounds, and claim state before creating transaction artifacts. Original and transformed bytes are retained beneath the system migration log; every staged hash and schema-v2 manifest is checked before any destination is published. Exact repeats return `already-applied`.
 
-Rollback validates the ledger against the saved plan, verifies destination bytes, restores in reverse order without overwrite, and records `rolled-back`. Exact repeats return `already-rolled-back`.
+Rollback validates the ledger against the saved plan and every current v2 fingerprint, restores records in reverse order without overwrite, and records `rolled-back`. Exact repeats return `already-rolled-back`. Any modified v2 byte blocks rollback.
 
 Claims are never auto-reaped. If a crash or injected fault leaves `active.claim.json` and a journal:
 
 1. confirm the recorded owner process is no longer running;
-2. inspect the retained journal, sources, destinations, and hashes;
-3. preserve/copy the journal as recovery evidence;
-4. restore or complete the recorded move without guessing;
-5. remove the claim only after ownership and bytes are reconciled;
+2. inspect and preserve the retained journal, ledger (if present), payload bundle, and hashes;
+3. run `/artifacts recover <journal-path>`; do not remove the claim manually;
+4. recovery verifies claim identity and current bytes, restores the exact recorded preimages or completes the recorded rollback, and writes durable recovery evidence;
+5. repeat the same recovery command safely if operator confirmation was interrupted;
 6. rerun audit and create a new plan when state changed.
 
-Conflicting or changed bytes block recovery rather than being overwritten.
+Conflicting or changed bytes block recovery rather than being overwritten. After post-migration verification, `/artifacts finalize <ledger-path>` permanently deletes rollback payloads and records that rollback is unavailable.
 
 ## Bounds and compatibility
 

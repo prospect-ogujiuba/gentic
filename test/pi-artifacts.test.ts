@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -10,7 +10,7 @@ import { createMigrationPlan, fingerprint } from "../extensions/pi-artifacts/src
 import { resolveProjectPath } from "../extensions/pi-artifacts/src/domain/normalize.ts";
 import type { ArtifactInventory } from "../extensions/pi-artifacts/src/domain/types.ts";
 import { planMigration, renderPlanReport } from "../extensions/pi-artifacts/src/app/service.ts";
-import { applyMigration, loadMigrationPlan, rollbackMigration } from "../extensions/pi-artifacts/src/app/transaction.ts";
+import { applyMigration, finalizeMigration, loadMigrationPlan, recoverMigration, rollbackMigration } from "../extensions/pi-artifacts/src/app/transaction.ts";
 import registerPiArtifacts from "../extensions/pi-artifacts/index.ts";
 
 const layoutV2 = JSON.parse(readFileSync(new URL("./fixtures/model-artifacts-layout-v2.json", import.meta.url), "utf8"));
@@ -25,8 +25,23 @@ function write(root: string, relative: string, content: string): void {
   writeFileSync(target, content, "utf8");
 }
 
-function sha(content: string): string {
+function sha(content: string | Buffer): string {
   return `sha256:${createHash("sha256").update(content).digest("hex")}`;
+}
+
+function fixtureFileHashes(root: string): Record<string, string> {
+  const hashes: Record<string, string> = {};
+  const visit = (directory: string, relative = ""): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const path = relative ? `${relative}/${entry.name}` : entry.name;
+      if (path.startsWith(".model-artifacts/system/logs/model-artifact-migration")) continue;
+      const absolute = join(directory, entry.name);
+      if (entry.isDirectory()) visit(absolute, path);
+      else if (entry.isFile()) hashes[path] = sha(readFileSync(absolute));
+    }
+  };
+  visit(root);
+  return hashes;
 }
 
 function completeV1Authority(root: string, topic = "demo"): string[] {
@@ -482,33 +497,149 @@ test("migration apply detects claim-token replacement before moving bytes", () =
     fault(stage) {
       if (stage === "journal-prepared") writeFileSync(join(root, ".model-artifacts/system/logs/model-artifact-migration/active.claim.json"), JSON.stringify({ schemaVersion: 1, ownerToken: "owner-b", operation: "apply", identity: planned.plan.fingerprint }), "utf8");
     },
-  }), /blocked recovery: migration claim ownership mismatch/);
+  }), /migration interrupted.*migration claim ownership mismatch/);
   assert.ok(existsSync(join(root, source)));
   assert.equal(existsSync(join(root, planned.plan.moves[0]!.destination)), false);
 });
 
-test("migration apply faults restore preimages or preserve committed ledger truth", () => {
-  const stages = ["claim-acquired", "journal-prepared", "before-destination", "destination-written", "source-removed", "ledger-written"] as const;
+test("migration apply interruptions retain evidence and recover preimages idempotently", () => {
+  const stages = ["preflight-complete", "claim-acquired", "staging-complete", "journal-prepared", "before-destination", "destination-written", "source-removed", "ledger-written"] as const;
   for (const targetStage of stages) {
     const root = fixture();
     const source = ".model-artifacts/reports/2026-05-01_1201-a.md";
     const bytes = "# a\nTopic: demo\n";
     write(root, source, bytes);
     const planned = planMigration({ cwd: root, generatedAt: "2026-05-01T13:00:00.000Z" });
+    const before = fixtureFileHashes(root);
+    const journalPath = planned.planPath.replace(/-plan\.json$/, "-apply-journal.json");
+    const bundlePath = planned.planPath.replace(/-plan\.json$/, "-transaction");
+    const claimPath = ".model-artifacts/system/logs/model-artifact-migration/active.claim.json";
     const invoke = () => applyMigration({ cwd: root, planPath: planned.planPath, ownerToken: "owner-a", fault(stage) { if (stage === targetStage) throw new Error(`injected:${stage}`); } });
     if (targetStage === "ledger-written") {
       const result = invoke();
       assert.equal(result.status, "applied");
       assert.equal(existsSync(join(root, source)), false);
       assert.equal(readFileSync(join(root, planned.plan.moves[0]!.destination), "utf8"), bytes);
-    } else {
+    } else if (targetStage === "preflight-complete" || targetStage === "claim-acquired" || targetStage === "staging-complete") {
       assert.throws(invoke, new RegExp(`injected:${targetStage}`));
-      assert.equal(readFileSync(join(root, source), "utf8"), bytes);
-      assert.equal(existsSync(join(root, planned.plan.moves[0]!.destination)), false);
+      assert.deepEqual(fixtureFileHashes(root), before);
+      assert.equal(existsSync(join(root, claimPath)), false);
+      assert.equal(existsSync(join(root, journalPath)), false);
+      assert.equal(existsSync(join(root, bundlePath)), false);
+    } else {
+      assert.throws(invoke, new RegExp(`interrupted.*${targetStage}`));
+      assert.ok(existsSync(join(root, journalPath)));
+      assert.ok(existsSync(join(root, claimPath)));
+      const recovered = recoverMigration({ cwd: root, journalPath });
+      assert.equal(recovered.status, "recovered");
+      assert.deepEqual(fixtureFileHashes(root), before);
+      assert.equal(recoverMigration({ cwd: root, journalPath }).status, "already-recovered");
+      assert.equal(existsSync(join(root, claimPath)), false);
+      assert.equal(existsSync(join(root, journalPath)), false);
     }
-    assert.equal(existsSync(join(root, ".model-artifacts/system/logs/model-artifact-migration/active.claim.json")), false);
-    assert.equal(existsSync(join(root, planned.planPath.replace(/-plan\.json$/, "-apply-journal.json"))), false);
   }
+});
+
+test("interrupted apply recovery resumes record-by-record and restores the full fixture", () => {
+  const root = fixture();
+  completeV1Authority(root);
+  write(root, "README.md", "See .model-artifacts/specs/demo/2026-05-01_1200-spec.md\n");
+  const planned = planMigration({ cwd: root, generatedAt: "2026-05-01T13:00:00.000Z" });
+  const before = fixtureFileHashes(root);
+  const journalPath = planned.planPath.replace(/-plan\.json$/, "-apply-journal.json");
+  assert.throws(() => applyMigration({
+    cwd: root,
+    planPath: planned.planPath,
+    fault(stage) { if (stage === "source-removed") throw new Error("publish-interrupted"); },
+  }), /publish-interrupted/);
+  let injected = false;
+  assert.throws(() => recoverMigration({
+    cwd: root,
+    journalPath,
+    fault(stage) { if (stage === "recovery-record-restored" && !injected) { injected = true; throw new Error("recovery-interrupted"); } },
+  }), /recovery-interrupted/);
+  assert.ok(existsSync(join(root, journalPath)));
+  assert.ok(existsSync(join(root, ".model-artifacts/system/logs/model-artifact-migration/active.claim.json")));
+  assert.ok(existsSync(join(root, planned.planPath.replace(/-plan\.json$/, "-transaction"))));
+  assert.equal(recoverMigration({ cwd: root, journalPath }).status, "recovered");
+  assert.deepEqual(fixtureFileHashes(root), before);
+  assert.equal(recoverMigration({ cwd: root, journalPath }).status, "already-recovered");
+});
+
+test("complete authority apply publishes the validated transformed graph and rollback restores exact v1 bytes", () => {
+  const root = fixture();
+  const sources = completeV1Authority(root);
+  const referenced = ".model-artifacts/specs/demo/2026-05-01_1200-spec.md";
+  write(root, "README.md", `See ${referenced}\n`);
+  const originals = new Map([...sources, "README.md"].map((path) => [path, readFileSync(join(root, path))]));
+  const planned = planMigration({ cwd: root, generatedAt: "2026-05-01T13:00:00.000Z" });
+  const treeBefore = fixtureFileHashes(root);
+
+  const applied = applyMigration({ cwd: root, planPath: planned.planPath, ownerToken: "owner-a" });
+  assert.equal(applied.status, "applied");
+  for (const move of planned.plan.moves) {
+    assert.equal(existsSync(join(root, move.source)), false);
+    assert.equal(sha(readFileSync(join(root, move.destination), "utf8")), planned.plan.expectedPostTransformHashes[move.destination]);
+  }
+  assert.equal(readFileSync(join(root, "README.md"), "utf8"), `See .model-artifacts/initiatives/demo/specs/2026-05-01_1200-spec.md\n`);
+
+  const ledger = JSON.parse(readFileSync(join(root, applied.ledgerPath), "utf8"));
+  assert.equal(ledger.state, "applied");
+  assert.ok(existsSync(join(root, ledger.bundlePath)));
+  const rolled = rollbackMigration({ cwd: root, ledgerPath: applied.ledgerPath, ownerToken: "owner-b" });
+  assert.equal(rolled.status, "rolled-back");
+  for (const [path, bytes] of originals) assert.deepEqual(readFileSync(join(root, path)), bytes);
+  for (const move of planned.plan.moves) assert.equal(existsSync(join(root, move.destination)), false);
+  assert.deepEqual(fixtureFileHashes(root), treeBefore);
+});
+
+test("complete authority rollback refuses modified v2 bytes and finalize irreversibly removes payloads", () => {
+  const modifiedRoot = fixture();
+  completeV1Authority(modifiedRoot);
+  const modifiedPlan = planMigration({ cwd: modifiedRoot, generatedAt: "2026-05-01T13:00:00.000Z" });
+  const modifiedApply = applyMigration({ cwd: modifiedRoot, planPath: modifiedPlan.planPath });
+  writeFileSync(join(modifiedRoot, modifiedPlan.plan.moves[0]!.destination), "changed\n", "utf8");
+  assert.throws(() => rollbackMigration({ cwd: modifiedRoot, ledgerPath: modifiedApply.ledgerPath }), /destination hash mismatch/);
+
+  const root = fixture();
+  completeV1Authority(root);
+  const planned = planMigration({ cwd: root, generatedAt: "2026-05-01T13:00:00.000Z" });
+  const applied = applyMigration({ cwd: root, planPath: planned.planPath });
+  const before = JSON.parse(readFileSync(join(root, applied.ledgerPath), "utf8"));
+  assert.ok(existsSync(join(root, before.bundlePath)));
+  assert.throws(() => finalizeMigration({
+    cwd: root,
+    ledgerPath: applied.ledgerPath,
+    fault(stage) { if (stage === "finalize-marked") throw new Error("finalize-interrupted"); },
+  }), /finalize-interrupted/);
+  assert.ok(existsSync(join(root, before.bundlePath)));
+  const finalized = finalizeMigration({ cwd: root, ledgerPath: applied.ledgerPath });
+  assert.equal(finalized.status, "finalized");
+  assert.equal(existsSync(join(root, before.bundlePath)), false);
+  assert.ok(existsSync(join(root, finalized.reportPath)));
+  assert.equal(finalizeMigration({ cwd: root, ledgerPath: applied.ledgerPath }).status, "already-finalized");
+  assert.throws(() => rollbackMigration({ cwd: root, ledgerPath: applied.ledgerPath }), /finalized/);
+
+  const removedRoot = fixture();
+  completeV1Authority(removedRoot);
+  const removedPlan = planMigration({ cwd: removedRoot, generatedAt: "2026-05-01T13:01:00.000Z" });
+  const removedApply = applyMigration({ cwd: removedRoot, planPath: removedPlan.planPath });
+  const removedLedgerAbsolute = join(removedRoot, removedApply.ledgerPath);
+  const removedLedger = JSON.parse(readFileSync(removedLedgerAbsolute, "utf8"));
+  assert.throws(() => finalizeMigration({
+    cwd: removedRoot,
+    ledgerPath: removedApply.ledgerPath,
+    fault(stage) { if (stage === "finalize-payloads-removed") throw new Error("finalize-remove-interrupted"); },
+  }), /finalize-remove-interrupted/);
+  assert.equal(JSON.parse(readFileSync(removedLedgerAbsolute, "utf8")).state, "finalizing");
+  assert.equal(existsSync(join(removedRoot, removedLedger.bundlePath)), false);
+  assert.equal(existsSync(join(removedRoot, removedApply.ledgerPath.replace(/-ledger\.json$/, "-finalize-report.md"))), false);
+  const resumed = finalizeMigration({ cwd: removedRoot, ledgerPath: removedApply.ledgerPath });
+  assert.equal(resumed.status, "finalized");
+  assert.equal(JSON.parse(readFileSync(removedLedgerAbsolute, "utf8")).state, "finalized");
+  assert.ok(existsSync(join(removedRoot, resumed.reportPath)));
+  assert.equal(finalizeMigration({ cwd: removedRoot, ledgerPath: removedApply.ledgerPath }).status, "already-finalized");
+  assert.throws(() => rollbackMigration({ cwd: removedRoot, ledgerPath: removedApply.ledgerPath }), /finalized/);
 });
 
 test("migration rollback is reverse, hash-gated, conflict-safe, and idempotent", () => {
@@ -560,10 +691,25 @@ test("partial rollback is reverse-ordered and retains exact blocked-recovery evi
   assert.equal(existsSync(join(root, sourceB)), true);
   assert.equal(existsSync(join(root, planned.plan.moves.find((move) => move.source === sourceB)!.destination)), false);
   assert.ok(existsSync(join(root, ".model-artifacts/system/logs/model-artifact-migration/active.claim.json")));
-  assert.ok(existsSync(join(root, applied.ledgerPath.replace(/-ledger\.json$/, "-rollback-journal.json"))));
+  const journalPath = applied.ledgerPath.replace(/-ledger\.json$/, "-rollback-journal.json");
+  assert.ok(existsSync(join(root, journalPath)));
+  let recoveryInjected = false;
+  assert.throws(() => recoverMigration({
+    cwd: root,
+    journalPath,
+    fault(stage) { if (stage === "recovery-record-restored" && !recoveryInjected) { recoveryInjected = true; throw new Error("rollback-recovery-injected"); } },
+  }), /rollback-recovery-injected/);
+  assert.ok(existsSync(join(root, journalPath)));
+  assert.ok(existsSync(join(root, ".model-artifacts/system/logs/model-artifact-migration/active.claim.json")));
+  assert.equal(recoverMigration({ cwd: root, journalPath }).status, "recovered");
+  assert.equal(recoverMigration({ cwd: root, journalPath }).status, "already-recovered");
+  assert.ok(existsSync(join(root, sourceA)));
+  assert.ok(existsSync(join(root, sourceB)));
+  assert.equal(existsSync(join(root, planned.plan.moves[0]!.destination)), false);
+  assert.equal(existsSync(join(root, planned.plan.moves[1]!.destination)), false);
 });
 
-test("/artifacts command audits, plans, applies, and rolls back without an LLM", async () => {
+test("/artifacts command audits, plans, applies, rolls back, recovers, and finalizes without an LLM", async () => {
   const root = fixture();
   write(root, ".model-artifacts/reports/2026-05-01_1201-a.md", "# a\nTopic: demo\n");
   const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void>; getArgumentCompletions?: (prefix: string) => Array<{ value: string }> | null }>();
@@ -583,6 +729,16 @@ test("/artifacts command audits, plans, applies, and rolls back without an LLM",
   assert.match(notifications.at(-1)!.message, /status: rolled-back/);
   await command.handler(`apply ${planPath}`, ctx);
   assert.match(notifications.at(-1)!.message, /status: conflict/);
+
+  const finalizeRoot = fixture();
+  write(finalizeRoot, ".model-artifacts/reports/2026-05-01_1201-a.md", "# a\nTopic: demo\n");
+  const finalizeCtx = { ...ctx, cwd: finalizeRoot };
+  await command.handler("plan", finalizeCtx);
+  const finalizePlanPath = notifications.at(-1)!.message.match(/plan: (\.model-artifacts\/\S+-plan\.json)/)![1]!;
+  await command.handler(`apply ${finalizePlanPath}`, finalizeCtx);
+  const finalizeLedgerPath = notifications.at(-1)!.message.match(/ledger: (\.model-artifacts\/\S+-ledger\.json)/)![1]!;
+  await command.handler(`finalize ${finalizeLedgerPath}`, finalizeCtx);
+  assert.match(notifications.at(-1)!.message, /status: finalized/);
   await command.handler("apply", ctx);
   assert.equal(notifications.at(-1)!.type, "warning");
   assert.match(notifications.at(-1)!.message, /Usage: \/artifacts/);
@@ -608,7 +764,7 @@ test("/artifacts plan reports a clean zero-move inventory as up-to-date", async 
 
 test("pi-artifacts README documents dry-run adoption, protected authority, and recovery", () => {
   const readme = readFileSync(join(process.cwd(), "extensions/pi-artifacts/README.md"), "utf8");
-  for (const required of ["/artifacts audit", "/artifacts plan", "/artifacts apply", "/artifacts rollback", "Protected authority", "Claims are never auto-reaped", ".pi/model-artifacts-migration.json"]) assert.match(readme, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+  for (const required of ["/artifacts audit", "/artifacts plan", "/artifacts apply", "/artifacts recover", "/artifacts rollback", "/artifacts finalize", "Protected authority", "Claims are never auto-reaped", ".pi/model-artifacts-migration.json"]) assert.match(readme, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
   assert.match(readFileSync(join(process.cwd(), "catalog/gentic-inventory.json"), "utf8"), /"pi-artifacts"/);
 });
 

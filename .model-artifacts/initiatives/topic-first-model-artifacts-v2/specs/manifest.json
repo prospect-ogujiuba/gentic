@@ -15,8 +15,8 @@
     "contractRoot": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3"
   },
   "activeContract": {
-    "id": "P03-C02",
-    "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3/phases/03-migration-engine/03.02-transaction.md"
+    "id": "P04-C01",
+    "path": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/plans/revisions/r3/phases/04-gentic-rollout/04.01-gentic-rollout.md"
   },
   "approval": {
     "decision": "approved",
@@ -72,7 +72,7 @@
       "findingPath": ".model-artifacts/initiatives/topic-first-model-artifacts-v2/findings/2026-09-01_2008-cross-cutting-migration-risk.md"
     }
   },
-  "updatedAt": "2026-09-04T09:40:00Z",
+  "updatedAt": "2026-09-04T14:38:44.026Z",
   "piSweMigration": {
     "schemaVersion": 1,
     "operation": "normalize-manifest-metadata",

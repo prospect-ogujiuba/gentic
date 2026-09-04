@@ -10,6 +10,7 @@ import {
   readFileSync,
   realpathSync,
   renameSync,
+  rmSync,
   unlinkSync,
   writeFileSync,
   writeSync,
@@ -26,39 +27,45 @@ const PLAN_KEYS = new Set(["schemaVersion", "generatedAt", "durationMs", "projec
 const PLAN_BLOCKER_CODES = new Set<MigrationPlanBlocker["code"]>(["inventory-diagnostic", "unsafe-entry", "missing-identity", "destination-exists", "duplicate-destination", "destination-case-collision", "reference-cycle", "stale-source", "stale-reference", "affected-bytes-limit", "reference-limit", "rewrite-limit", "staging-bytes-limit", "rollback-bytes-limit", "no-moves"]);
 const SHA256_PATTERN = /^sha256:[a-f0-9]{64}$/;
 
-export type TransactionFaultStage = "claim-acquired" | "journal-prepared" | "before-destination" | "destination-written" | "source-removed" | "ledger-written" | "rollback-source-restored";
+export type TransactionFaultStage = "preflight-complete" | "staging-complete" | "claim-acquired" | "journal-prepared" | "before-destination" | "destination-written" | "source-removed" | "ledger-written" | "recovery-record-restored" | "rollback-source-restored" | "finalize-marked" | "finalize-payloads-removed";
 export type TransactionFault = (stage: TransactionFaultStage, move?: MigrationMove) => void;
 
-export type ApplyMigrationOptions = {
-  cwd: string;
+export type ApplyMigrationOptions = { cwd: string; planPath: string; ownerToken?: string; fault?: TransactionFault };
+export type ApplyMigrationResult = { status: "applied" | "already-applied"; ledgerPath: string; moved: number };
+export type RollbackMigrationOptions = { cwd: string; ledgerPath: string; ownerToken?: string; fault?: TransactionFault };
+export type RollbackMigrationResult = { status: "rolled-back" | "already-rolled-back"; ledgerPath: string; restored: number };
+export type RecoverMigrationOptions = { cwd: string; journalPath: string; fault?: TransactionFault };
+export type RecoverMigrationResult = { status: "recovered" | "already-recovered"; journalPath: string; restored: number };
+export type FinalizeMigrationOptions = { cwd: string; ledgerPath: string; ownerToken?: string; fault?: TransactionFault };
+export type FinalizeMigrationResult = { status: "finalized" | "already-finalized"; ledgerPath: string; reportPath: string; removedPayloads: number };
+
+type Claim = { schemaVersion: 1; ownerToken: string; operation: "apply" | "rollback" | "finalize"; identity: string; createdAt: string };
+type TransactionRecord = {
+  kind: "move" | "rewrite";
+  source: string;
+  destination: string;
+  originalHash: string;
+  expectedHash: string;
+  originalPayload: string;
+  stagedPayload: string;
+};
+type PreparedBundle = { bundlePath: string; records: TransactionRecord[] };
+type ApplyJournal = { schemaVersion: 2; operation: "apply"; planPath: string; planFingerprint: string; bundlePath: string; stage: "prepared" | "publishing" | "committed"; completed: number[]; current?: number };
+type RollbackJournal = { schemaVersion: 2; operation: "rollback"; ledgerPath: string; bundlePath: string; stage: "prepared" | "restoring" | "committed"; restored: number[]; current?: number };
+type MigrationLedger = {
+  schemaVersion: 2;
+  projectRoot: string;
   planPath: string;
-  ownerToken?: string;
-  fault?: TransactionFault;
+  planFingerprint: string;
+  state: "applied" | "rolled-back" | "finalizing" | "finalized";
+  appliedAt: string;
+  rolledBackAt?: string;
+  finalizedAt?: string;
+  finalizeReportPath?: string;
+  bundlePath: string;
+  moves: MigrationMove[];
+  records: TransactionRecord[];
 };
-
-export type ApplyMigrationResult = {
-  status: "applied" | "already-applied";
-  ledgerPath: string;
-  moved: number;
-};
-
-export type RollbackMigrationOptions = {
-  cwd: string;
-  ledgerPath: string;
-  ownerToken?: string;
-  fault?: TransactionFault;
-};
-
-export type RollbackMigrationResult = {
-  status: "rolled-back" | "already-rolled-back";
-  ledgerPath: string;
-  restored: number;
-};
-
-type Claim = { schemaVersion: 1; ownerToken: string; operation: "apply" | "rollback"; identity: string; createdAt: string };
-type ApplyJournal = { schemaVersion: 1; operation: "apply"; planPath: string; planFingerprint: string; stage: "prepared" | "copying" | "copied" | "moved" | "committed"; completed: MigrationMove[]; current?: MigrationMove };
-type RollbackJournal = { schemaVersion: 1; operation: "rollback"; ledgerPath: string; stage: "prepared" | "restoring" | "restored" | "committed"; restored: MigrationMove[]; current?: MigrationMove };
-type MigrationLedger = { schemaVersion: 1; projectRoot: string; planPath: string; planFingerprint: string; state: "applied" | "rolled-back"; appliedAt: string; rolledBackAt?: string; moves: MigrationMove[] };
 
 export function loadMigrationPlan(cwd: string, planPath: string): MigrationPlan {
   const root = realpathSync(resolve(cwd));
@@ -104,58 +111,61 @@ export function loadMigrationPlan(cwd: string, planPath: string): MigrationPlan 
 export function applyMigration(options: ApplyMigrationOptions): ApplyMigrationResult {
   const root = realpathSync(resolve(options.cwd));
   const plan = loadMigrationPlan(root, options.planPath);
-  if (plan.rewrites.length > 0 || plan.authorityUnits.some((unit) => unit !== "isolated")) {
-    throw new Error("complete-authority apply is assigned to P03-C02; review this read-only plan without applying it");
-  }
   const ledgerPath = ledgerPathForPlan(options.planPath);
   const ledgerAbsolute = resolveProjectPath(root, ledgerPath);
   if (existsSync(ledgerAbsolute)) {
     const ledger = loadLedger(root, ledgerPath);
     validateLedgerAgainstPlan(ledger, plan);
-    if (ledger.state === "applied") return { status: "already-applied", ledgerPath, moved: ledger.moves.length };
+    if (ledger.state === "applied" || ledger.state === "finalizing" || ledger.state === "finalized") return { status: "already-applied", ledgerPath, moved: ledger.moves.length };
     throw new Error("migration plan was already rolled back; create a new plan before applying again");
   }
   validatePlanIdentity(root, plan);
-  const ownerToken = options.ownerToken ?? randomUUID();
-  const claim = acquireClaim(root, { schemaVersion: 1, ownerToken, operation: "apply", identity: plan.fingerprint, createdAt: new Date().toISOString() });
+  options.fault?.("preflight-complete");
+  const journalPath = journalPathForPlan(options.planPath);
+  const journalAbsolute = resolveProjectPath(root, journalPath);
+  if (existsSync(journalAbsolute)) throw new Error(`unfinished migration journal requires recovery: ${journalPath}`);
+  const claim = acquireClaim(root, { schemaVersion: 1, ownerToken: options.ownerToken ?? randomUUID(), operation: "apply", identity: plan.fingerprint, createdAt: new Date().toISOString() });
   try {
     options.fault?.("claim-acquired");
   } catch (error) {
     releaseClaim(root, claim);
     throw error;
   }
-  const journalPath = journalPathForPlan(options.planPath);
-  const journalAbsolute = resolveProjectPath(root, journalPath);
-  if (existsSync(journalAbsolute)) {
-    releaseClaim(root, claim);
-    throw new Error(`unfinished migration journal requires recovery: ${journalPath}`);
-  }
-  let journal: ApplyJournal = { schemaVersion: 1, operation: "apply", planPath: options.planPath, planFingerprint: plan.fingerprint, stage: "prepared", completed: [] };
+
+  let bundle: PreparedBundle | undefined;
+  let journal: ApplyJournal | undefined;
   try {
-    writeJsonExclusive(journalAbsolute, journal);
+    bundle = prepareBundle(root, options.planPath, plan);
+    options.fault?.("staging-complete");
+    journal = { schemaVersion: 2, operation: "apply", planPath: options.planPath, planFingerprint: plan.fingerprint, bundlePath: bundle.bundlePath, stage: "prepared", completed: [] };
+    writeJournalExclusive(journalAbsolute, journal);
     options.fault?.("journal-prepared");
-    for (const move of plan.moves) {
+    for (const [index, record] of bundle.records.entries()) {
       assertClaim(root, claim);
-      validateMoveBeforeWrite(root, move);
-      journal = { ...journal, stage: "copying", current: move };
-      writeJsonAtomic(journalAbsolute, journal);
+      journal = { ...journal, stage: "publishing", current: index };
+      writeJournalAtomic(journalAbsolute, journal);
+      const move = plan.moves.find((candidate) => candidate.source === record.source);
       options.fault?.("before-destination", move);
-      writeDestinationExclusive(root, move);
-      journal = { ...journal, stage: "copied" };
-      writeJsonAtomic(journalAbsolute, journal);
+      publishRecord(root, record);
       options.fault?.("destination-written", move);
-      assertClaim(root, claim);
-      const source = resolveProjectPath(root, move.source);
-      if (hashFile(source) !== move.sourceHash) throw new Error(`source hash mismatch before removal: ${move.source}`);
-      unlinkSync(source);
-      journal = { ...journal, stage: "moved", completed: [...journal.completed, move], current: undefined };
-      writeJsonAtomic(journalAbsolute, journal);
+      journal = { ...journal, completed: [...journal.completed, index], current: undefined };
+      writeJournalAtomic(journalAbsolute, journal);
       options.fault?.("source-removed", move);
     }
     assertClaim(root, claim);
     journal = { ...journal, stage: "committed", current: undefined };
-    writeJsonAtomic(journalAbsolute, journal);
-    const ledger: MigrationLedger = { schemaVersion: 1, projectRoot: root, planPath: options.planPath, planFingerprint: plan.fingerprint, state: "applied", appliedAt: new Date().toISOString(), moves: plan.moves };
+    writeJournalAtomic(journalAbsolute, journal);
+    const ledger: MigrationLedger = {
+      schemaVersion: 2,
+      projectRoot: root,
+      planPath: options.planPath,
+      planFingerprint: plan.fingerprint,
+      state: "applied",
+      appliedAt: new Date().toISOString(),
+      bundlePath: bundle.bundlePath,
+      moves: plan.moves,
+      records: bundle.records,
+    };
     writeJsonExclusive(ledgerAbsolute, ledger);
     options.fault?.("ledger-written");
     unlinkSync(journalAbsolute);
@@ -167,15 +177,52 @@ export function applyMigration(options: ApplyMigrationOptions): ApplyMigrationRe
       releaseClaim(root, claim);
       return { status: "applied", ledgerPath, moved: plan.moves.length };
     }
-    try {
-      rollbackApplyJournal(root, journal);
-      if (existsSync(journalAbsolute)) unlinkSync(journalAbsolute);
+    if (!journal) {
+      if (bundle && existsSync(resolveProjectPath(root, bundle.bundlePath))) rmSync(resolveProjectPath(root, bundle.bundlePath), { recursive: true, force: true });
       releaseClaim(root, claim);
-    } catch (recoveryError) {
-      throw new Error(`blocked recovery: ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}; original: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
     }
-    throw error;
+    throw new Error(`migration interrupted at ${journal.stage}; journal retained at ${journalPath}: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+export function recoverMigration(options: RecoverMigrationOptions): RecoverMigrationResult {
+  const root = realpathSync(resolve(options.cwd));
+  const journalAbsolute = resolveProjectPath(root, options.journalPath);
+  const recoveryPath = recoveryPathForJournal(options.journalPath);
+  const recoveryAbsolute = resolveProjectPath(root, recoveryPath);
+  if (!existsSync(journalAbsolute)) {
+    if (existsSync(recoveryAbsolute)) {
+      const recovered = JSON.parse(readFileSync(recoveryAbsolute, "utf8")) as { restored: number };
+      return { status: "already-recovered", journalPath: options.journalPath, restored: recovered.restored };
+    }
+    throw new Error(`recovery journal does not exist: ${options.journalPath}`);
+  }
+  const journal = loadJournal(root, options.journalPath);
+  const claim = loadActiveClaim(root);
+  if (journal.operation === "apply") {
+    if (claim.operation !== "apply" || claim.identity !== journal.planFingerprint) throw new Error("recovery claim does not match apply journal");
+    const plan = loadMigrationPlan(root, journal.planPath);
+    if (plan.fingerprint !== journal.planFingerprint) throw new Error("recovery journal plan fingerprint mismatch");
+    if (journal.bundlePath !== journal.planPath.replace(/-plan\.json$/, "-transaction")) throw new Error("recovery journal bundle does not match plan identity");
+    const bundle = loadPreparedBundle(root, journal.bundlePath, journal.planFingerprint);
+    validateRecordsAgainstPlan(bundle.records, bundle.bundlePath, plan);
+    restorePreimages(root, bundle.records, plan.moves, options.fault);
+    rmSync(resolveProjectPath(root, journal.bundlePath), { recursive: true, force: true });
+    writeJsonExclusive(recoveryAbsolute, { schemaVersion: 1, operation: "apply-recovery", journalPath: options.journalPath, planFingerprint: journal.planFingerprint, restored: bundle.records.length, recoveredAt: new Date().toISOString() });
+    unlinkSync(journalAbsolute);
+    releaseClaim(root, claim);
+    return { status: "recovered", journalPath: options.journalPath, restored: bundle.records.length };
+  }
+  if (claim.operation !== "rollback") throw new Error("recovery claim does not match rollback journal");
+  const ledger = loadLedger(root, journal.ledgerPath);
+  restoreForRollback(root, ledger.records, journal, journalAbsolute, ledger.moves, options.fault);
+  const completed: MigrationLedger = { ...ledger, state: "rolled-back", rolledBackAt: new Date().toISOString() };
+  writeJsonAtomic(resolveProjectPath(root, journal.ledgerPath), completed);
+  writeJsonExclusive(recoveryAbsolute, { schemaVersion: 1, operation: "rollback-recovery", journalPath: options.journalPath, restored: ledger.records.length, recoveredAt: new Date().toISOString() });
+  unlinkSync(journalAbsolute);
+  releaseClaim(root, claim);
+  return { status: "recovered", journalPath: options.journalPath, restored: ledger.records.length };
 }
 
 export function rollbackMigration(options: RollbackMigrationOptions): RollbackMigrationResult {
@@ -183,9 +230,10 @@ export function rollbackMigration(options: RollbackMigrationOptions): RollbackMi
   const ledger = loadLedger(root, options.ledgerPath);
   const plan = loadMigrationPlan(root, ledger.planPath);
   validateLedgerAgainstPlan(ledger, plan);
-  if (ledger.state === "rolled-back") return { status: "already-rolled-back", ledgerPath: options.ledgerPath, restored: ledger.moves.length };
+  if (ledger.state === "finalized" || ledger.state === "finalizing") throw new Error("migration is finalized; rollback payloads were irreversibly removed");
+  if (ledger.state === "rolled-back") return { status: "already-rolled-back", ledgerPath: options.ledgerPath, restored: ledger.records.length };
   if (ledger.projectRoot !== root) throw new Error(`ledger project root mismatch: ${ledger.projectRoot}`);
-  for (const move of ledger.moves) validateMoveBeforeRollback(root, move);
+  validateAppliedRecords(root, ledger.records);
   const claim = acquireClaim(root, { schemaVersion: 1, ownerToken: options.ownerToken ?? randomUUID(), operation: "rollback", identity: ledger.planFingerprint, createdAt: new Date().toISOString() });
   const journalPath = rollbackJournalPath(options.ledgerPath);
   const journalAbsolute = resolveProjectPath(root, journalPath);
@@ -193,33 +241,63 @@ export function rollbackMigration(options: RollbackMigrationOptions): RollbackMi
     releaseClaim(root, claim);
     throw new Error(`unfinished rollback journal requires recovery: ${journalPath}`);
   }
-  let journal: RollbackJournal = { schemaVersion: 1, operation: "rollback", ledgerPath: options.ledgerPath, stage: "prepared", restored: [] };
-  writeJsonExclusive(journalAbsolute, journal);
+  let journal: RollbackJournal = { schemaVersion: 2, operation: "rollback", ledgerPath: options.ledgerPath, bundlePath: ledger.bundlePath, stage: "prepared", restored: [] };
+  writeJournalExclusive(journalAbsolute, journal);
   try {
-    for (const move of [...ledger.moves].reverse()) {
+    for (const index of ledger.records.map((_, index) => index).reverse()) {
       assertClaim(root, claim);
-      validateMoveBeforeRollback(root, move);
-      journal = { ...journal, stage: "restoring", current: move };
-      writeJsonAtomic(journalAbsolute, journal);
-      restoreDestinationToSource(root, move);
-      journal = { ...journal, stage: "restored", restored: [...journal.restored, move], current: undefined };
-      writeJsonAtomic(journalAbsolute, journal);
-      options.fault?.("rollback-source-restored", move);
+      journal = { ...journal, stage: "restoring", current: index };
+      writeJournalAtomic(journalAbsolute, journal);
+      restoreRecord(root, ledger.records[index]!);
+      journal = { ...journal, restored: [...journal.restored, index], current: undefined };
+      writeJournalAtomic(journalAbsolute, journal);
+      options.fault?.("rollback-source-restored", plan.moves.find((move) => move.source === ledger.records[index]!.source));
     }
-    assertClaim(root, claim);
     journal = { ...journal, stage: "committed", current: undefined };
-    writeJsonAtomic(journalAbsolute, journal);
+    writeJournalAtomic(journalAbsolute, journal);
     const completed: MigrationLedger = { ...ledger, state: "rolled-back", rolledBackAt: new Date().toISOString() };
     writeJsonAtomic(resolveProjectPath(root, options.ledgerPath), completed);
     unlinkSync(journalAbsolute);
     releaseClaim(root, claim);
-    return { status: "rolled-back", ledgerPath: options.ledgerPath, restored: ledger.moves.length };
+    return { status: "rolled-back", ledgerPath: options.ledgerPath, restored: ledger.records.length };
   } catch (error) {
     throw new Error(`blocked rollback recovery; journal retained at ${journalPath}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
+export function finalizeMigration(options: FinalizeMigrationOptions): FinalizeMigrationResult {
+  const root = realpathSync(resolve(options.cwd));
+  let ledger = loadLedger(root, options.ledgerPath);
+  const reportPath = finalizeReportPath(options.ledgerPath);
+  if (ledger.state === "finalized") return { status: "already-finalized", ledgerPath: options.ledgerPath, reportPath: ledger.finalizeReportPath ?? reportPath, removedPayloads: 0 };
+  if (ledger.state !== "applied" && ledger.state !== "finalizing") throw new Error("only an applied migration can be finalized");
+  validateAppliedRecords(root, ledger.records);
+  const claim = acquireClaim(root, { schemaVersion: 1, ownerToken: options.ownerToken ?? randomUUID(), operation: "finalize", identity: ledger.planFingerprint, createdAt: new Date().toISOString() });
+  try {
+    const finalizedAt = ledger.finalizedAt ?? new Date().toISOString();
+    if (ledger.state === "applied") {
+      ledger = { ...ledger, state: "finalizing", finalizedAt, finalizeReportPath: reportPath };
+      writeJsonAtomic(resolveProjectPath(root, options.ledgerPath), ledger);
+      options.fault?.("finalize-marked");
+    }
+    const bundleAbsolute = resolveProjectPath(root, ledger.bundlePath);
+    if (existsSync(bundleAbsolute)) rmSync(bundleAbsolute, { recursive: true, force: false });
+    options.fault?.("finalize-payloads-removed");
+    if (!existsSync(resolveProjectPath(root, reportPath))) {
+      writeFileSync(resolveProjectPath(root, reportPath), `# Model-artifact migration finalized\n\n- Ledger: \`${options.ledgerPath}\`\n- Plan fingerprint: \`${ledger.planFingerprint}\`\n- Finalized: ${finalizedAt}\n- Removed rollback payloads: ${ledger.records.length}\n- Rollback: permanently unavailable\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
+    }
+    const completed: MigrationLedger = { ...ledger, state: "finalized" };
+    writeJsonAtomic(resolveProjectPath(root, options.ledgerPath), completed);
+    releaseClaim(root, claim);
+    return { status: "finalized", ledgerPath: options.ledgerPath, reportPath, removedPayloads: ledger.records.length };
+  } catch (error) {
+    if (existsSync(resolveProjectPath(root, CLAIM_PATH))) releaseClaim(root, claim);
+    throw error;
+  }
+}
+
 function validatePlanIdentity(root: string, plan: MigrationPlan): void {
+  if (!plan.eligible || plan.blockers.length > 0 || plan.moves.length === 0) throw new Error("migration plan is not eligible for apply");
   if (plan.projectRoot !== root) throw new Error(`plan project root mismatch: ${plan.projectRoot}`);
   const currentConfig = fingerprint(loadMigrationConfig(root));
   if (currentConfig !== plan.configFingerprint) throw new Error(`plan config fingerprint mismatch: expected ${plan.configFingerprint}, observed ${currentConfig}`);
@@ -231,6 +309,12 @@ function validatePlanIdentity(root: string, plan: MigrationPlan): void {
     sources.add(move.source);
     destinations.add(move.destination);
     validateMoveBeforeWrite(root, move);
+  }
+  for (const rewrite of plan.rewrites) {
+    const path = resolveProjectFile(root, rewrite.path);
+    requireRegularNoSymlink(path, "migration rewrite source");
+    const observed = hashFile(path);
+    if (observed !== rewrite.sourceHash) throw new Error(`rewrite hash mismatch for ${rewrite.path}: expected ${rewrite.sourceHash}, observed ${observed}`);
   }
 }
 
@@ -244,58 +328,240 @@ function validateMoveBeforeWrite(root: string, move: MigrationMove): void {
   if (existsSync(destination)) throw new Error(`destination already exists: ${move.destination}`);
 }
 
-function validateMoveBeforeRollback(root: string, move: MigrationMove): void {
-  const source = resolveProjectPath(root, move.source);
-  if (existsSync(source)) throw new Error(`original source already exists: ${move.source}`);
-  const destination = resolveProjectPath(root, move.destination);
-  requireRegularNoSymlink(destination, "migration destination");
-  const observed = hashFile(destination);
-  if (observed !== move.sourceHash) throw new Error(`destination hash mismatch for ${move.destination}: expected ${move.sourceHash}, observed ${observed}`);
-  validateSafeParent(root, source);
-}
-
-function writeDestinationExclusive(root: string, move: MigrationMove): void {
-  const source = resolveProjectPath(root, move.source);
-  const destination = resolveProjectPath(root, move.destination);
-  ensureSafeParent(root, destination);
-  const bytes = readFileSync(source);
-  const handle = openSync(destination, "wx", 0o600);
+function prepareBundle(root: string, planPath: string, plan: MigrationPlan): PreparedBundle {
+  const bundlePath = planPath.replace(/-plan\.json$/, "-transaction");
+  const bundleAbsolute = resolveProjectPath(root, bundlePath);
+  if (existsSync(bundleAbsolute)) throw new Error(`transaction bundle already exists: ${bundlePath}`);
+  ensureSafeParent(root, bundleAbsolute);
+  mkdirSync(join(bundleAbsolute, "originals"), { recursive: true, mode: 0o700 });
+  mkdirSync(join(bundleAbsolute, "staged"), { recursive: true, mode: 0o700 });
+  const moveBySource = new Map(plan.moves.map((move) => [move.source, move]));
+  const rewriteByPath = new Map(plan.rewrites.map((rewrite) => [rewrite.path, rewrite]));
+  const records: TransactionRecord[] = [];
   try {
-    writeSync(handle, bytes);
-    fsyncSync(handle);
-  } finally {
-    closeSync(handle);
+    const paths = [...plan.moves.map((move) => move.source), ...plan.rewrites.filter((rewrite) => !moveBySource.has(rewrite.path)).map((rewrite) => rewrite.path)];
+    for (const [index, path] of paths.entries()) {
+      const move = moveBySource.get(path);
+      const rewrite = rewriteByPath.get(path);
+      const original = resolveProjectFile(root, path);
+      const originalPayload = `${bundlePath}/originals/${String(index).padStart(6, "0")}.bin`;
+      const stagedPayload = `${bundlePath}/staged/${String(index).padStart(6, "0")}.bin`;
+      copyFileSync(original, resolveProjectPath(root, originalPayload), constants.COPYFILE_EXCL);
+      const transformed = rewrite ? transformBytes(readFileSync(original), rewrite, plan) : readFileSync(original);
+      writeBufferExclusive(resolveProjectPath(root, stagedPayload), transformed);
+      const expectedHash = move ? plan.expectedPostTransformHashes[move.destination]! : rewrite!.expectedHash;
+      if (hashFile(resolveProjectPath(root, originalPayload)) !== (move?.sourceHash ?? rewrite!.sourceHash)) throw new Error(`rollback payload hash mismatch: ${path}`);
+      if (hashFile(resolveProjectPath(root, stagedPayload)) !== expectedHash) throw new Error(`staged transform hash mismatch: ${path}`);
+      records.push({ kind: move ? "move" : "rewrite", source: path, destination: move?.destination ?? path, originalHash: move?.sourceHash ?? rewrite!.sourceHash, expectedHash, originalPayload, stagedPayload });
+    }
+    validateStagedGraph(root, plan, records);
+    writeJsonExclusive(join(bundleAbsolute, "bundle.json"), { schemaVersion: 1, planFingerprint: plan.fingerprint, records });
+    return { bundlePath, records };
+  } catch (error) {
+    rmSync(bundleAbsolute, { recursive: true, force: true });
+    throw error;
   }
-  const observed = hashFile(destination);
-  if (observed !== move.sourceHash) throw new Error(`destination hash mismatch after write: ${move.destination}`);
 }
 
-function restoreDestinationToSource(root: string, move: MigrationMove): void {
-  const source = resolveProjectPath(root, move.source);
-  const destination = resolveProjectPath(root, move.destination);
-  ensureSafeParent(root, source);
-  copyFileSync(destination, source, constants.COPYFILE_EXCL);
-  if (hashFile(source) !== move.sourceHash) {
+function transformBytes(bytes: Buffer, rewrite: MigrationRewrite, plan: MigrationPlan): Buffer {
+  let content = bytes.toString("utf8");
+  for (const replacement of rewrite.replacements) content = replaceExactReferences(content, replacement.from, replacement.to);
+  if (/^\.model-artifacts\/specs\/.+\/manifest\.json$/.test(rewrite.path)) {
+    const parsed = JSON.parse(content) as Record<string, unknown>;
+    if (parsed.schemaVersion === 1) parsed.schemaVersion = 2;
+    replaceContractRoots(parsed, new Map(plan.moves.map((move) => [move.source, move.destination])));
+    content = `${JSON.stringify(parsed, null, 2)}\n`;
+  }
+  if (rewrite.path.endsWith(".json")) {
+    const parsed = JSON.parse(content) as unknown;
+    replaceHashPointers(parsed, (path, previous) => plan.expectedPostTransformHashes[path] ?? previous);
+    content = `${JSON.stringify(parsed, null, 2)}\n`;
+  }
+  return Buffer.from(content);
+}
+
+function validateStagedGraph(root: string, plan: MigrationPlan, records: TransactionRecord[]): void {
+  for (const record of records) {
+    const staged = resolveProjectPath(root, record.stagedPayload);
+    if (hashFile(staged) !== record.expectedHash) throw new Error(`staged graph hash mismatch: ${record.destination}`);
+    const rewrite = plan.rewrites.find((item) => item.path === record.source);
+    const content = readFileSync(staged, "utf8");
+    for (const replacement of rewrite?.replacements ?? []) if (replaceExactReferences(content, replacement.from, replacement.to) !== content) throw new Error(`staged graph retains legacy reference: ${record.source}`);
+    if (/\/specs\/manifest\.json$/.test(record.destination) && (JSON.parse(content) as { schemaVersion?: number }).schemaVersion !== 2) throw new Error(`staged manifest is not schema v2: ${record.destination}`);
+  }
+}
+
+function publishRecord(root: string, record: TransactionRecord): void {
+  const source = resolveProjectFile(root, record.source);
+  const destination = resolveProjectFile(root, record.destination);
+  requireRegularNoSymlink(source, "migration source");
+  if (hashFile(source) !== record.originalHash) throw new Error(`source changed before publish: ${record.source}`);
+  if (record.kind === "move") {
+    ensureSafeParent(root, destination);
+    copyFileSync(resolveProjectPath(root, record.stagedPayload), destination, constants.COPYFILE_EXCL);
+    if (hashFile(destination) !== record.expectedHash) { unlinkSync(destination); throw new Error(`destination hash mismatch after write: ${record.destination}`); }
     unlinkSync(source);
-    throw new Error(`restored source hash mismatch: ${move.source}`);
+    return;
   }
-  unlinkSync(destination);
+  replaceFromPayload(root, record.stagedPayload, record.source, record.expectedHash);
 }
 
-function rollbackApplyJournal(root: string, journal: ApplyJournal): void {
-  const candidates = [...journal.completed];
-  if (journal.current) candidates.push(journal.current);
-  for (const move of candidates.reverse()) {
-    const source = resolveProjectPath(root, move.source);
-    const destination = resolveProjectPath(root, move.destination);
-    const sourceExists = existsSync(source);
-    const destinationExists = existsSync(destination);
-    if (sourceExists && hashFile(source) !== move.sourceHash) throw new Error(`source changed during recovery: ${move.source}`);
-    if (destinationExists && hashFile(destination) !== move.sourceHash) throw new Error(`destination changed during recovery: ${move.destination}`);
-    if (!sourceExists && destinationExists) restoreDestinationToSource(root, move);
-    else if (sourceExists && destinationExists) unlinkSync(destination);
-    else if (!sourceExists && !destinationExists) throw new Error(`both source and destination are missing: ${move.source}`);
+function validateAppliedRecords(root: string, records: TransactionRecord[]): void {
+  for (const record of records) {
+    const output = resolveProjectFile(root, record.destination);
+    requireRegularNoSymlink(output, "migration destination");
+    const observed = hashFile(output);
+    if (observed !== record.expectedHash) throw new Error(`destination hash mismatch for ${record.destination}: expected ${record.expectedHash}, observed ${observed}`);
+    if (record.kind === "move" && existsSync(resolveProjectFile(root, record.source))) throw new Error(`original source already exists: ${record.source}`);
   }
+}
+
+function restoreRecord(root: string, record: TransactionRecord): void {
+  const originalPayload = resolveProjectPath(root, record.originalPayload);
+  requireRegularNoSymlink(originalPayload, "rollback payload");
+  if (hashFile(originalPayload) !== record.originalHash) throw new Error(`rollback payload hash mismatch: ${record.source}`);
+  if (record.kind === "move") {
+    const source = resolveProjectFile(root, record.source);
+    const destination = resolveProjectFile(root, record.destination);
+    if (existsSync(source)) {
+      if (hashFile(source) !== record.originalHash) throw new Error(`source changed during rollback: ${record.source}`);
+    } else {
+      ensureSafeParent(root, source);
+      copyFileSync(originalPayload, source, constants.COPYFILE_EXCL);
+    }
+    if (existsSync(destination)) {
+      if (hashFile(destination) !== record.expectedHash) throw new Error(`destination hash mismatch for ${record.destination}`);
+      unlinkSync(destination);
+    }
+    return;
+  }
+  const output = resolveProjectFile(root, record.source);
+  if (hashFile(output) !== record.expectedHash && hashFile(output) !== record.originalHash) throw new Error(`rewrite changed during rollback: ${record.source}`);
+  replaceFromPayload(root, record.originalPayload, record.source, record.originalHash);
+}
+
+function restorePreimages(root: string, records: TransactionRecord[], moves: MigrationMove[], fault?: TransactionFault): void {
+  for (const record of [...records].reverse()) {
+    const source = resolveProjectFile(root, record.source);
+    const destination = resolveProjectFile(root, record.destination);
+    if (record.kind === "move") {
+      if (existsSync(source) && hashFile(source) !== record.originalHash) throw new Error(`source changed during recovery: ${record.source}`);
+      if (existsSync(destination) && hashFile(destination) !== record.expectedHash) throw new Error(`destination changed during recovery: ${record.destination}`);
+      if (!existsSync(source)) {
+        ensureSafeParent(root, source);
+        copyFileSync(resolveProjectPath(root, record.originalPayload), source, constants.COPYFILE_EXCL);
+      }
+      if (existsSync(destination)) unlinkSync(destination);
+    } else {
+      if (!existsSync(source)) throw new Error(`rewrite source missing during recovery: ${record.source}`);
+      const observed = hashFile(source);
+      if (observed !== record.originalHash && observed !== record.expectedHash) throw new Error(`rewrite changed during recovery: ${record.source}`);
+      if (observed !== record.originalHash) replaceFromPayload(root, record.originalPayload, record.source, record.originalHash);
+    }
+    fault?.("recovery-record-restored", moves.find((move) => move.source === record.source));
+  }
+}
+
+function restoreForRollback(root: string, records: TransactionRecord[], journal: RollbackJournal, journalAbsolute: string, moves: MigrationMove[], fault?: TransactionFault): void {
+  for (const index of records.map((_, index) => index).reverse()) {
+    if (journal.restored.includes(index)) continue;
+    const record = records[index]!;
+    restoreRecord(root, record);
+    journal = { ...journal, stage: "restoring", restored: [...journal.restored, index], current: undefined };
+    writeJournalAtomic(journalAbsolute, journal);
+    fault?.("recovery-record-restored", moves.find((move) => move.source === record.source));
+  }
+}
+
+function replaceFromPayload(root: string, payloadPath: string, targetPath: string, expectedHash: string): void {
+  const target = resolveProjectFile(root, targetPath);
+  ensureSafeParent(root, target);
+  const temporary = `${target}.tmp-${process.pid}-${randomUUID()}`;
+  copyFileSync(resolveProjectPath(root, payloadPath), temporary, constants.COPYFILE_EXCL);
+  if (hashFile(temporary) !== expectedHash) { unlinkSync(temporary); throw new Error(`payload hash mismatch for ${targetPath}`); }
+  renameSync(temporary, target);
+}
+
+function writeBufferExclusive(path: string, bytes: Buffer): void {
+  const handle = openSync(path, "wx", 0o600);
+  try { writeSync(handle, bytes); fsyncSync(handle); } finally { closeSync(handle); }
+}
+
+function loadPreparedBundle(root: string, bundlePath: string, expectedFingerprint?: string): PreparedBundle {
+  const bundleAbsolute = resolveProjectPath(root, bundlePath);
+  requireRegularNoSymlink(join(bundleAbsolute, "bundle.json"), "transaction bundle index");
+  const value = JSON.parse(readFileSync(join(bundleAbsolute, "bundle.json"), "utf8")) as { schemaVersion?: number; planFingerprint?: string; records?: unknown[] };
+  if (Object.keys(value).sort().join(",") !== "planFingerprint,records,schemaVersion" || value.schemaVersion !== 1 || typeof value.planFingerprint !== "string" || !Array.isArray(value.records)) throw new Error("transaction bundle is malformed");
+  if (expectedFingerprint && value.planFingerprint !== expectedFingerprint) throw new Error("transaction bundle plan fingerprint mismatch");
+  return { bundlePath, records: value.records.map((record) => parseTransactionRecord(record, root)) };
+}
+
+function loadJournal(root: string, journalPath: string): ApplyJournal | RollbackJournal {
+  if (!/-apply-journal\.json$|-rollback-journal\.json$/.test(journalPath)) throw new Error(`recovery journal path is invalid: ${journalPath}`);
+  const value = JSON.parse(readFileSync(resolveProjectPath(root, journalPath), "utf8")) as Record<string, unknown>;
+  if (value.schemaVersion !== 2 || (value.operation !== "apply" && value.operation !== "rollback")) throw new Error("recovery journal is malformed");
+  const allowed = value.operation === "apply"
+    ? new Set(["schemaVersion", "operation", "planPath", "planFingerprint", "bundlePath", "stage", "completed", "current"])
+    : new Set(["schemaVersion", "operation", "ledgerPath", "bundlePath", "stage", "restored", "current"]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) throw new Error("recovery journal is malformed");
+  const indexes = value.operation === "apply" ? value.completed : value.restored;
+  if (!Array.isArray(indexes) || indexes.some((index) => !Number.isSafeInteger(index) || (index as number) < 0) || (value.current !== undefined && (!Number.isSafeInteger(value.current) || (value.current as number) < 0))) throw new Error("recovery journal is malformed");
+  if (typeof value.bundlePath !== "string") throw new Error("recovery journal is malformed");
+  resolveProjectPath(root, value.bundlePath);
+  if (value.operation === "apply" && (typeof value.planPath !== "string" || typeof value.planFingerprint !== "string")) throw new Error("recovery journal is malformed");
+  if (value.operation === "rollback" && typeof value.ledgerPath !== "string") throw new Error("recovery journal is malformed");
+  return value as ApplyJournal | RollbackJournal;
+}
+
+function loadActiveClaim(root: string): Claim {
+  const absolute = resolveProjectPath(root, CLAIM_PATH);
+  requireRegularNoSymlink(absolute, "migration claim");
+  const value = JSON.parse(readFileSync(absolute, "utf8")) as Claim;
+  if (Object.keys(value).sort().join(",") !== "createdAt,identity,operation,ownerToken,schemaVersion" || value.schemaVersion !== 1 || !["apply", "rollback", "finalize"].includes(value.operation)
+    || typeof value.ownerToken !== "string" || typeof value.identity !== "string" || typeof value.createdAt !== "string") throw new Error("migration claim is malformed");
+  return value;
+}
+
+function replaceContractRoots(value: unknown, relocation: Map<string, string>): void {
+  if (Array.isArray(value)) { value.forEach((child) => replaceContractRoots(child, relocation)); return; }
+  if (!value || typeof value !== "object") return;
+  const object = value as Record<string, unknown>;
+  if (typeof object.contractRoot === "string") {
+    const contractRoot = object.contractRoot;
+    const roots = [...relocation].flatMap(([source, destination]) => {
+      if (!source.startsWith(`${contractRoot}/`)) return [];
+      const suffix = source.slice(contractRoot.length);
+      return [destination.slice(0, -suffix.length)];
+    });
+    if (new Set(roots).size === 1) object.contractRoot = roots[0];
+  }
+  Object.values(object).forEach((child) => replaceContractRoots(child, relocation));
+}
+
+function replaceHashPointers(value: unknown, replacement: (path: string, previous: string) => string): void {
+  if (Array.isArray(value)) { value.forEach((child) => replaceHashPointers(child, replacement)); return; }
+  if (!value || typeof value !== "object") return;
+  const object = value as Record<string, unknown>;
+  if (typeof object.path === "string" && typeof object.contentHash === "string") object.contentHash = replacement(object.path, object.contentHash);
+  Object.values(object).forEach((child) => replaceHashPointers(child, replacement));
+}
+
+function replaceExactReferences(content: string, from: string, to: string): string {
+  let cursor = 0;
+  let output = "";
+  let changed = false;
+  while (cursor < content.length) {
+    const index = content.indexOf(from, cursor);
+    if (index < 0) { output += content.slice(cursor); break; }
+    const before = content[index - 1];
+    const after = content[index + from.length];
+    const validBefore = before === undefined || /[\s"'`()<>\[\]{},:;]/.test(before);
+    const validAfter = after === undefined || /[\s"'`()<>\[\]{},:;]/.test(after);
+    output += content.slice(cursor, index);
+    if (validBefore && validAfter) { output += to; changed = true; } else output += from;
+    cursor = index + from.length;
+  }
+  return changed ? output : content;
 }
 
 function acquireClaim(root: string, claim: Claim): Claim {
@@ -328,9 +594,26 @@ function loadLedger(root: string, ledgerPath: string): MigrationLedger {
   const absolute = resolveProjectPath(root, ledgerPath);
   requireRegularNoSymlink(absolute, "migration ledger");
   const value = JSON.parse(readFileSync(absolute, "utf8")) as Partial<MigrationLedger>;
-  if (value.schemaVersion !== 1 || (value.state !== "applied" && value.state !== "rolled-back") || !Array.isArray(value.moves)
-    || typeof value.projectRoot !== "string" || typeof value.planPath !== "string" || typeof value.planFingerprint !== "string" || typeof value.appliedAt !== "string") throw new Error("migration ledger is malformed or unsupported");
-  return { ...value, moves: value.moves.map((move) => parseMove(move, root)) } as MigrationLedger;
+  const allowedKeys = new Set(["schemaVersion", "projectRoot", "planPath", "planFingerprint", "state", "appliedAt", "rolledBackAt", "finalizedAt", "finalizeReportPath", "bundlePath", "moves", "records"]);
+  if (Object.keys(value).some((key) => !allowedKeys.has(key)) || value.schemaVersion !== 2 || !["applied", "rolled-back", "finalizing", "finalized"].includes(value.state ?? "") || !Array.isArray(value.moves) || !Array.isArray(value.records)
+    || typeof value.bundlePath !== "string" || typeof value.projectRoot !== "string" || typeof value.planPath !== "string" || typeof value.planFingerprint !== "string" || typeof value.appliedAt !== "string") throw new Error("migration ledger is malformed or unsupported");
+  resolveProjectPath(root, value.bundlePath);
+  const records = value.records.map((record) => parseTransactionRecord(record, root));
+  return { ...value, moves: value.moves.map((move) => parseMove(move, root)), records } as MigrationLedger;
+}
+
+function parseTransactionRecord(value: unknown, root: string): TransactionRecord {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("transaction record is malformed");
+  const record = value as Record<string, unknown>;
+  if (Object.keys(record).sort().join(",") !== "destination,expectedHash,kind,originalHash,originalPayload,source,stagedPayload"
+    || (record.kind !== "move" && record.kind !== "rewrite") || typeof record.source !== "string" || typeof record.destination !== "string"
+    || typeof record.originalHash !== "string" || !SHA256_PATTERN.test(record.originalHash) || typeof record.expectedHash !== "string" || !SHA256_PATTERN.test(record.expectedHash)
+    || typeof record.originalPayload !== "string" || typeof record.stagedPayload !== "string") throw new Error("transaction record is malformed");
+  resolveProjectFile(root, record.source as string);
+  resolveProjectFile(root, record.destination as string);
+  resolveProjectPath(root, record.originalPayload as string);
+  resolveProjectPath(root, record.stagedPayload as string);
+  return record as TransactionRecord;
 }
 
 function validatePlanRelationships(
@@ -492,6 +775,11 @@ function validateProjectRelativePath(root: string, path: string, label: string):
   projectRelative(root, resolve(root, ...path.split("/")));
 }
 
+function resolveProjectFile(root: string, path: string): string {
+  validateProjectRelativePath(root, path, "transaction path");
+  return resolve(root, ...path.split("/"));
+}
+
 function validateSafeParent(root: string, target: string): void {
   const relative = toPosix(projectRelative(root, dirname(target)));
   let current = root;
@@ -523,6 +811,30 @@ function ensureSafeParent(root: string, target: string): void {
 function validateLedgerAgainstPlan(ledger: MigrationLedger, plan: MigrationPlan): void {
   if (ledger.projectRoot !== plan.projectRoot || ledger.planFingerprint !== plan.fingerprint || ledger.planPath.length === 0) throw new Error("migration ledger does not match plan identity");
   if (JSON.stringify(ledger.moves) !== JSON.stringify(plan.moves)) throw new Error("migration ledger moves do not match the saved plan");
+  if (ledger.bundlePath !== ledger.planPath.replace(/-plan\.json$/, "-transaction")) throw new Error("migration ledger bundle does not match plan identity");
+  validateRecordsAgainstPlan(ledger.records, ledger.bundlePath, plan);
+}
+
+function validateRecordsAgainstPlan(records: TransactionRecord[], bundlePath: string, plan: MigrationPlan): void {
+  const moveBySource = new Map(plan.moves.map((move) => [move.source, move]));
+  const rewriteByPath = new Map(plan.rewrites.map((rewrite) => [rewrite.path, rewrite]));
+  const paths = [...plan.moves.map((move) => move.source), ...plan.rewrites.filter((rewrite) => !moveBySource.has(rewrite.path)).map((rewrite) => rewrite.path)];
+  if (records.length !== paths.length) throw new Error("migration ledger records do not match the saved plan");
+  for (const [index, path] of paths.entries()) {
+    const move = moveBySource.get(path);
+    const rewrite = rewriteByPath.get(path);
+    const record = records[index];
+    const expected: TransactionRecord = {
+      kind: move ? "move" : "rewrite",
+      source: path,
+      destination: move?.destination ?? path,
+      originalHash: move?.sourceHash ?? rewrite!.sourceHash,
+      expectedHash: move ? plan.expectedPostTransformHashes[move.destination]! : rewrite!.expectedHash,
+      originalPayload: `${bundlePath}/originals/${String(index).padStart(6, "0")}.bin`,
+      stagedPayload: `${bundlePath}/staged/${String(index).padStart(6, "0")}.bin`,
+    };
+    if (JSON.stringify(record) !== JSON.stringify(expected)) throw new Error("migration ledger records do not match the saved plan");
+  }
 }
 
 function requireRegularNoSymlink(path: string, label: string): void {
@@ -536,13 +848,40 @@ function hashFile(path: string): string {
 }
 
 function writeJsonExclusive(path: string, value: unknown): void {
-  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
+  const handle = openSync(path, "wx", 0o600);
+  try {
+    writeSync(handle, `${JSON.stringify(value, null, 2)}\n`, undefined, "utf8");
+    fsyncSync(handle);
+  } finally {
+    closeSync(handle);
+  }
 }
 
 function writeJsonAtomic(path: string, value: unknown): void {
   const temporary = `${path}.tmp-${process.pid}-${randomUUID()}`;
   writeJsonExclusive(temporary, value);
   renameSync(temporary, path);
+}
+
+function writeJournalExclusive(path: string, value: ApplyJournal | RollbackJournal): void {
+  writeJsonExclusive(path, value);
+  appendJournalEvent(path, value);
+}
+
+function writeJournalAtomic(path: string, value: ApplyJournal | RollbackJournal): void {
+  writeJsonAtomic(path, value);
+  appendJournalEvent(path, value);
+}
+
+function appendJournalEvent(path: string, value: ApplyJournal | RollbackJournal): void {
+  const event = { recordedAt: new Date().toISOString(), operation: value.operation, stage: value.stage, current: value.current, completed: value.operation === "apply" ? value.completed : value.restored };
+  const handle = openSync(path.replace(/-journal\.json$/, "-journal-events.jsonl"), "a", 0o600);
+  try {
+    writeSync(handle, `${JSON.stringify(event)}\n`, undefined, "utf8");
+    fsyncSync(handle);
+  } finally {
+    closeSync(handle);
+  }
 }
 
 function ledgerPathForPlan(planPath: string): string {
@@ -555,4 +894,12 @@ function journalPathForPlan(planPath: string): string {
 
 function rollbackJournalPath(ledgerPath: string): string {
   return ledgerPath.replace(/-ledger\.json$/, "-rollback-journal.json");
+}
+
+function recoveryPathForJournal(journalPath: string): string {
+  return journalPath.replace(/-(?:apply|rollback)-journal\.json$/, "-recovery.json");
+}
+
+function finalizeReportPath(ledgerPath: string): string {
+  return ledgerPath.replace(/-ledger\.json$/, "-finalize-report.md");
 }

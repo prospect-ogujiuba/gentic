@@ -3,15 +3,15 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { auditArtifacts } from "../domain/inventory.ts";
 import { isNoopMigrationPlan } from "../domain/plan.ts";
 import { planMigration } from "../app/service.ts";
-import { applyMigration, rollbackMigration } from "../app/transaction.ts";
+import { applyMigration, finalizeMigration, recoverMigration, rollbackMigration } from "../app/transaction.ts";
 
-const ACTIONS = ["apply", "audit", "plan", "rollback"] as const;
-const USAGE = "Usage: /artifacts <audit|plan|apply <plan-path>|rollback <ledger-path>>";
+const ACTIONS = ["apply", "audit", "finalize", "plan", "recover", "rollback"] as const;
+const USAGE = "Usage: /artifacts <audit|plan|apply <plan-path>|recover <journal-path>|rollback <ledger-path>|finalize <ledger-path>>";
 const MAX_DETAILS = 8;
 
 export function registerArtifactsCommand(pi: ExtensionAPI): void {
   pi.registerCommand("artifacts", {
-    description: "Audit, plan, apply, or roll back deterministic legacy model-artifact migration",
+    description: "Audit, plan, apply, recover, roll back, or finalize deterministic model-artifact migration",
     getArgumentCompletions(prefix: string) {
       if (/\s/.test(prefix.trim())) return null;
       const normalized = prefix.trim();
@@ -51,9 +51,7 @@ export function registerArtifactsCommand(pi: ExtensionAPI): void {
             `report: ${result.reportPath}`,
             `fingerprint: ${result.plan.fingerprint}`,
             result.plan.eligible
-              ? result.plan.authorityUnits.some((unit) => unit !== "isolated")
-                ? "next: review the exact fingerprint; complete-authority apply follows in P03-C02"
-                : `next: /artifacts apply ${result.planPath}`
+              ? `next: review the exact fingerprint, then /artifacts apply ${result.planPath}`
               : noWork
                 ? "next: no migration needed"
                 : "next: resolve blockers and run /artifacts plan again",
@@ -67,17 +65,40 @@ export function registerArtifactsCommand(pi: ExtensionAPI): void {
             `status: ${result.status}`,
             `moved: ${result.moved}`,
             `ledger: ${result.ledgerPath}`,
-            `next: /artifacts rollback ${result.ledgerPath}`,
+            `rollback: /artifacts rollback ${result.ledgerPath}`,
+            `finalize: /artifacts finalize ${result.ledgerPath}`,
           ].join("\n"), "info");
           return;
         }
-        const result = rollbackMigration({ cwd: ctx.cwd, ledgerPath: tokens[1]! });
+        if (action === "recover") {
+          const result = recoverMigration({ cwd: ctx.cwd, journalPath: tokens[1]! });
+          ctx.ui.notify([
+            "model-artifact migration recovery",
+            `status: ${result.status}`,
+            `restored: ${result.restored}`,
+            `journal: ${result.journalPath}`,
+          ].join("\n"), "info");
+          return;
+        }
+        if (action === "rollback") {
+          const result = rollbackMigration({ cwd: ctx.cwd, ledgerPath: tokens[1]! });
+          ctx.ui.notify([
+            "model-artifact migration rollback",
+            `status: ${result.status}`,
+            `restored: ${result.restored}`,
+            `ledger: ${result.ledgerPath}`,
+          ].join("\n"), "info");
+          return;
+        }
+        const result = finalizeMigration({ cwd: ctx.cwd, ledgerPath: tokens[1]! });
         ctx.ui.notify([
-          "model-artifact migration rollback",
+          "model-artifact migration finalize",
           `status: ${result.status}`,
-          `restored: ${result.restored}`,
+          `removed-payloads: ${result.removedPayloads}`,
           `ledger: ${result.ledgerPath}`,
-        ].join("\n"), "info");
+          `report: ${result.reportPath}`,
+          "rollback: permanently unavailable",
+        ].join("\n"), "warning");
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const status = /already exists|claim|mismatch|changed|conflict|rolled back/i.test(message) ? "conflict" : "blocked";
