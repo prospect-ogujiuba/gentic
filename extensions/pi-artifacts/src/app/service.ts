@@ -6,13 +6,20 @@ import { createMigrationPlan, fingerprint, isNoopMigrationPlan, type MigrationPl
 import { projectRelative, toPosix } from "../domain/normalize.ts";
 import type { ArtifactInventory } from "../domain/types.ts";
 
-const MIGRATION_LOG_DIRECTORY = ".model-artifacts/logs/model-artifact-migration";
+const MIGRATION_LOG_DIRECTORY = ".model-artifacts/system/logs/model-artifact-migration";
 
 export type PlanMigrationOptions = {
   cwd: string;
   generatedAt?: string;
   maxFiles?: number;
   maxBytes?: number;
+  maxReferenceFiles?: number;
+  maxReferenceBytes?: number;
+  maxAffectedBytes?: number;
+  maxReferences?: number;
+  maxRewriteRecords?: number;
+  maxStagingBytes?: number;
+  maxRollbackBytes?: number;
 };
 
 export type PlanMigrationResult = {
@@ -24,10 +31,24 @@ export type PlanMigrationResult = {
 
 export function planMigration(options: PlanMigrationOptions): PlanMigrationResult {
   const root = realpathSync(resolve(options.cwd));
-  const inventory = auditArtifacts({ cwd: root, maxFiles: options.maxFiles, maxBytes: options.maxBytes });
+  const inventory = auditArtifacts({
+    cwd: root,
+    maxFiles: options.maxFiles,
+    maxBytes: options.maxBytes,
+    maxReferenceFiles: options.maxReferenceFiles,
+    maxReferenceBytes: options.maxReferenceBytes,
+  });
   const config = loadMigrationConfig(root);
   const generatedAt = options.generatedAt ?? new Date().toISOString();
-  const plan = createMigrationPlan(inventory, { generatedAt, configFingerprint: fingerprint(config) });
+  const plan = createMigrationPlan(inventory, {
+    generatedAt,
+    configFingerprint: fingerprint(config),
+    maxAffectedBytes: options.maxAffectedBytes,
+    maxReferences: options.maxReferences,
+    maxRewriteRecords: options.maxRewriteRecords,
+    maxStagingBytes: options.maxStagingBytes,
+    maxRollbackBytes: options.maxRollbackBytes,
+  });
   const timestamp = sortableTimestamp(generatedAt);
   const id = plan.fingerprint.slice("sha256:".length, "sha256:".length + 12);
   const directory = ensureSafeDirectory(root, MIGRATION_LOG_DIRECTORY);
@@ -62,7 +83,13 @@ export function renderPlanReport(plan: MigrationPlan, planPath: string): string 
     "",
     "## Summary",
     "",
+    `- authority units: ${plan.authorityUnits.length}`,
     `- eligible moves: ${plan.moves.length}`,
+    `- rewrite records: ${plan.rewrites.length}`,
+    `- affected bytes: ${plan.bounds.affectedBytes}`,
+    `- staging bytes: ${plan.bounds.stagingBytes}`,
+    `- rollback bytes: ${plan.bounds.rollbackBytes}`,
+    `- planning duration ms: ${plan.durationMs}`,
     `- blockers: ${plan.blockers.length}`,
     "",
     "## Blockers",
@@ -73,7 +100,9 @@ export function renderPlanReport(plan: MigrationPlan, planPath: string): string 
     "## Next action",
     "",
     plan.eligible
-      ? `Review the JSON plan, then run \`/artifacts apply ${planPath}\`.`
+      ? plan.authorityUnits.some((unit) => unit !== "isolated")
+        ? "Review the JSON plan, then continue with P03-C02 transactional apply implementation; this complete-authority plan is intentionally read-only."
+        : `Review the JSON plan, then run \`/artifacts apply ${planPath}\`.`
       : isNoopMigrationPlan(plan)
         ? "No migration is needed; all discovered artifacts are already canonical or protected."
         : "Resolve every blocker and generate a new plan. This plan cannot be applied.",

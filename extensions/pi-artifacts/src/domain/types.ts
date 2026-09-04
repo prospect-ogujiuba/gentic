@@ -21,6 +21,10 @@ export type ArtifactInventoryEntry = {
   bytes: number;
   contentHash?: string;
   destination?: string;
+  topic?: string;
+  authorityUnit?: "initiative" | "system" | "isolated";
+  referenceSites?: string[];
+  referenceSiteHashes?: Record<string, string>;
 };
 
 export type ArtifactInventory = {
@@ -38,4 +42,6 @@ export type AuditArtifactsOptions = {
   cwd: string;
   maxFiles?: number;
   maxBytes?: number;
+  maxReferenceFiles?: number;
+  maxReferenceBytes?: number;
 };

@@ -17,7 +17,7 @@ export function projectRelative(root: string, target: string): string {
 }
 
 export function resolveProjectPath(root: string, source: string): string {
-  if (isAbsolute(source) || source.includes("\\")) throw new Error(`source must be a project-relative .model-artifacts path: ${source}`);
+  if (isAbsolute(source) || source.includes("\\") || /[\u0000-\u001f\u007f]/.test(source)) throw new Error(`source must be a project-relative .model-artifacts path: ${source}`);
   const normalized = posix.normalize(source);
   if (!normalized.startsWith(".model-artifacts/") || normalized.includes("..") || normalized !== source) {
     throw new Error(`source must be a project-relative .model-artifacts path: ${source}`);

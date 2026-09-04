@@ -38,13 +38,22 @@ export function registerArtifactsCommand(pi: ExtensionAPI): void {
             "model-artifact migration plan",
             `status: ${result.plan.eligible ? "planned" : noWork ? "up-to-date" : "blocked"}`,
             `eligible: ${result.plan.eligible ? "yes" : noWork ? "not-applicable" : "no"}`,
+            `authority-units: ${result.plan.authorityUnits.length}`,
             `moves: ${result.plan.moves.length}`,
+            `rewrites: ${result.plan.rewrites.length}`,
+            `affected-bytes: ${result.plan.bounds.affectedBytes}`,
+            `staging-bytes: ${result.plan.bounds.stagingBytes}`,
+            `rollback-bytes: ${result.plan.bounds.rollbackBytes}`,
+            `duration-ms: ${result.plan.durationMs}`,
             `blockers: ${noWork ? 0 : result.plan.blockers.length}`,
+            `claim: none`,
             `plan: ${result.planPath}`,
             `report: ${result.reportPath}`,
             `fingerprint: ${result.plan.fingerprint}`,
             result.plan.eligible
-              ? `next: /artifacts apply ${result.planPath}`
+              ? result.plan.authorityUnits.some((unit) => unit !== "isolated")
+                ? "next: review the exact fingerprint; complete-authority apply follows in P03-C02"
+                : `next: /artifacts apply ${result.planPath}`
               : noWork
                 ? "next: no migration needed"
                 : "next: resolve blockers and run /artifacts plan again",
@@ -98,6 +107,7 @@ function formatAudit(inventory: ReturnType<typeof auditArtifacts>): string {
     `invalid: ${inventory.totals.invalid}`,
     ...details,
     ...(actionable.length > details.length ? [`- … ${actionable.length - details.length} additional entries omitted`] : []),
-    `next: ${inventory.totals["legacy-movable"] > 0 ? "/artifacts plan" : "add explicit mappings for ambiguous legacy Markdown files, then audit again"}`,
+    `claim: ${inventory.diagnostics.some((item) => /active migration claim/.test(item)) ? "active-blocker" : "none"}`,
+    `next: ${inventory.diagnostics.length ? "resolve blockers, recovery state, or mixed authority before planning" : inventory.totals["legacy-movable"] > 0 ? "/artifacts plan" : "add explicit mappings for ambiguous legacy Markdown files, then audit again"}`,
   ].join("\n");
 }

@@ -1,6 +1,6 @@
 # pi-artifacts
 
-`pi-artifacts` safely organizes legacy `.model-artifacts` files into Gentic's canonical kind/topic/timestamp layout. It is deterministic code, not an LLM classification workflow.
+`pi-artifacts` safely plans legacy `.model-artifacts` relocation into Gentic's canonical topic-first layout. It is deterministic code, not an LLM classification workflow.
 
 ## Anatomy
 
@@ -14,15 +14,16 @@
 
 `src/domain/` owns path normalization, bounded inventory, classification, canonical plan records, and fingerprints. `src/app/` owns plan persistence and transactional apply/rollback. `src/pi/commands.ts` is the thin Pi command adapter.
 
-## Canonical destination
+## Canonical destinations
 
-Migrated Markdown files use:
+Initiative and system artifacts use:
 
 ```text
-.model-artifacts/<kind>/<topic>/YYYY-MM-DD_HHMM-<short-name>.md
+.model-artifacts/initiatives/<topic>/<kind>/YYYY-MM-DD_HHMM-<short-name>.md
+.model-artifacts/system/<logs|reports>/YYYY-MM-DD_HHMM-<short-name>.md
 ```
 
-Approved kinds are `reports`, `plans`, `findings`, `logs`, `specs`, and `todo`. Topic segments and short names are kebab-case.
+Initiative kinds are exactly `specs`, `plans`, `todo`, `findings`, `reports`, and `logs`. Canonical pi-swe contract filenames, `manifest.json`, and `contracts.json` remain stable exceptions. Topic segments and generated short names are kebab-case. `docs/plans/` is curated documentation only, never generated authority.
 
 ## Safe workflow
 
@@ -31,20 +32,21 @@ Run the workflow independently in each project:
 ```text
 /artifacts audit
 /artifacts plan
-/artifacts apply .model-artifacts/logs/model-artifact-migration/<timestamp>-<id>-plan.json
-/artifacts rollback .model-artifacts/logs/model-artifact-migration/<timestamp>-<id>-ledger.json
+/artifacts apply .model-artifacts/system/logs/model-artifact-migration/<timestamp>-<id>-plan.json
+/artifacts rollback .model-artifacts/system/logs/model-artifact-migration/<timestamp>-<id>-ledger.json
 ```
 
 - `audit` is read-only and reports canonical-valid, legacy-movable, protected, ambiguous, and invalid entries.
-- `plan` is read-only with respect to candidates. It writes a reviewable JSON plan and bounded Markdown report under `.model-artifacts/logs/model-artifact-migration/`.
-- `apply` is the only migration action. It requires an exact eligible saved plan.
+- `plan` is read-only with respect to candidates. It writes a reviewable JSON plan and bounded Markdown report under `.model-artifacts/system/logs/model-artifact-migration/`.
+- A complete kind-first topic is one migration authority unit. The plan includes sorted old→new paths, exact reference rewrites, source and expected post-transform hashes, bounds, rollback storage, blockers, and a semantic fingerprint.
+- `apply` is the only migration action. Isolated legacy mappings remain supported; complete-authority apply/recovery/finalize is intentionally assigned to `P03-C02` and is refused by this planning slice.
 - `rollback` requires the exact terminal ledger written by apply.
 
 Dry-run audit/plan is always the first step. Review the plan before applying it. For several projects, run audit in every project first, then apply one project at a time; transactions are deliberately not cross-repository.
 
 ## Deterministic inference
 
-Destination fields use this precedence:
+For isolated legacy Markdown, destination fields use this precedence:
 
 1. exact project configuration mapping;
 2. approved kind/topic evidence already present in the path;
@@ -76,15 +78,15 @@ The schema is closed. Sources must be exact project-relative `.model-artifacts/.
 
 ## Protected authority and conservative blockers
 
-The extension never automatically moves or rewrites:
+Planning never mutates candidates. It blocks:
 
-- canonical manifests;
-- active specs, plans, contract roots, indexed contracts, completion verification, or implementation reviews reachable from canonical state;
-- migration plans, journals, claims, and ledgers;
-- symlinks or paths outside the selected project;
-- legacy candidates with inbound textual references.
+- mixed kind-first/topic-first authority for one topic;
+- incomplete, unsupported, stale, ambiguous, or cross-topic authority;
+- collisions, unsafe paths, symlinks, and bound violations;
+- active migration claims or records that require recovery;
+- isolated legacy candidates with inbound textual references.
 
-Automatic reference rewriting, canonical content-hash regeneration, deletion, and deduplication are intentionally omitted. Resolve references manually or update explicit mappings, then generate a new plan.
+Protected canonical v1 files become migratable only when the manifest, active spec/plan, contract index, indexed contracts, and recorded verification/review paths form one complete, hash-valid authority unit. Exact reference and structured content-hash rewrites are planned in dependency order; cycles block.
 
 ## Transaction and recovery
 
@@ -105,8 +107,8 @@ Conflicting or changed bytes block recovery rather than being overwritten.
 
 ## Bounds and compatibility
 
-- Maximum inventory: 10,000 artifact entries.
-- Maximum aggregate candidate bytes: 64 MiB.
-- Text reference scanning skips common dependency/build directories and files above 1 MiB.
+- Maximum inventory: 10,000 artifact entries; maximum aggregate candidate bytes: 64 MiB.
+- Reference scanning defaults to 20,000 files and 256 MiB, skips common dependency/build directories, and ignores individual files above 1 MiB.
+- Planning separately bounds affected bytes, references, rewrite records, and rollback bytes; reports include counts and storage estimates.
 - Non-Markdown legacy files are inventoried but not migrated.
 - No model-callable mutation tool or custom TUI is registered.

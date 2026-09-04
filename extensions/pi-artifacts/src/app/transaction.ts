@@ -15,14 +15,16 @@ import {
   writeSync,
   constants,
 } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, posix, resolve } from "node:path";
 
 import { loadMigrationConfig } from "../domain/inventory.ts";
-import { fingerprint, type MigrationMove, type MigrationPlan, type MigrationPlanBlocker } from "../domain/plan.ts";
+import { fingerprint, type MigrationMove, type MigrationPlan, type MigrationPlanBlocker, type MigrationPlanBounds, type MigrationRewrite } from "../domain/plan.ts";
 import { projectRelative, resolveProjectPath, toPosix } from "../domain/normalize.ts";
 
-const CLAIM_PATH = ".model-artifacts/logs/model-artifact-migration/active.claim.json";
-const PLAN_KEYS = new Set(["schemaVersion", "generatedAt", "projectRoot", "configPath", "configFingerprint", "moves", "blockers", "eligible", "fingerprint"]);
+const CLAIM_PATH = ".model-artifacts/system/logs/model-artifact-migration/active.claim.json";
+const PLAN_KEYS = new Set(["schemaVersion", "generatedAt", "durationMs", "projectRoot", "configPath", "configFingerprint", "moves", "rewrites", "expectedPostTransformHashes", "authorityUnits", "bounds", "blockers", "eligible", "fingerprint"]);
+const PLAN_BLOCKER_CODES = new Set<MigrationPlanBlocker["code"]>(["inventory-diagnostic", "unsafe-entry", "missing-identity", "destination-exists", "duplicate-destination", "destination-case-collision", "reference-cycle", "stale-source", "stale-reference", "affected-bytes-limit", "reference-limit", "rewrite-limit", "staging-bytes-limit", "rollback-bytes-limit", "no-moves"]);
+const SHA256_PATTERN = /^sha256:[a-f0-9]{64}$/;
 
 export type TransactionFaultStage = "claim-acquired" | "journal-prepared" | "before-destination" | "destination-written" | "source-removed" | "ledger-written" | "rollback-source-restored";
 export type TransactionFault = (stage: TransactionFaultStage, move?: MigrationMove) => void;
@@ -60,7 +62,7 @@ type MigrationLedger = { schemaVersion: 1; projectRoot: string; planPath: string
 
 export function loadMigrationPlan(cwd: string, planPath: string): MigrationPlan {
   const root = realpathSync(resolve(cwd));
-  if (!/^\.model-artifacts\/logs\/model-artifact-migration\/.+-plan\.json$/.test(planPath)) throw new Error(`plan path must name a saved migration plan: ${planPath}`);
+  if (!/^\.model-artifacts\/(?:system\/)?logs\/model-artifact-migration\/.+-plan\.json$/.test(planPath)) throw new Error(`plan path must name a saved migration plan: ${planPath}`);
   const absolute = resolveProjectPath(root, planPath);
   requireRegularNoSymlink(absolute, "migration plan");
   const raw: unknown = JSON.parse(readFileSync(absolute, "utf8"));
@@ -68,21 +70,43 @@ export function loadMigrationPlan(cwd: string, planPath: string): MigrationPlan 
   const object = raw as Record<string, unknown>;
   if (object.schemaVersion !== 1) throw new Error(`unsupported migration plan schemaVersion: ${String(object.schemaVersion)}`);
   for (const key of Object.keys(object)) if (!PLAN_KEYS.has(key)) throw new Error(`unknown migration plan key: ${key}`);
-  if (typeof object.generatedAt !== "string" || typeof object.projectRoot !== "string" || (object.configPath !== null && typeof object.configPath !== "string")
-    || typeof object.configFingerprint !== "string" || typeof object.eligible !== "boolean" || typeof object.fingerprint !== "string") throw new Error("migration plan scalar fields are invalid");
-  if (!Array.isArray(object.moves) || !Array.isArray(object.blockers)) throw new Error("migration plan moves and blockers must be arrays");
-  const moves = object.moves.map(parseMove);
-  const blockers = object.blockers.map(parseBlocker);
-  const logical = { schemaVersion: 1 as const, projectRoot: object.projectRoot, configPath: object.configPath, configFingerprint: object.configFingerprint, moves, blockers };
+  if (typeof object.generatedAt !== "string" || !Number.isSafeInteger(object.durationMs) || (object.durationMs as number) < 0 || typeof object.projectRoot !== "string" || (object.configPath !== null && typeof object.configPath !== "string")
+    || typeof object.configFingerprint !== "string" || !SHA256_PATTERN.test(object.configFingerprint) || typeof object.eligible !== "boolean" || typeof object.fingerprint !== "string" || !SHA256_PATTERN.test(object.fingerprint)) throw new Error("migration plan scalar fields are invalid");
+  if (object.configPath !== null) validateProjectRelativePath(root, object.configPath, "config path");
+  if (!Array.isArray(object.moves) || !Array.isArray(object.rewrites) || !Array.isArray(object.authorityUnits) || !Array.isArray(object.blockers)
+    || !object.expectedPostTransformHashes || typeof object.expectedPostTransformHashes !== "object" || Array.isArray(object.expectedPostTransformHashes)
+    || !object.bounds || typeof object.bounds !== "object" || Array.isArray(object.bounds)) throw new Error("migration plan collections are invalid");
+  const moves = object.moves.map((value) => parseMove(value, root));
+  const rewrites = object.rewrites.map((value) => parseRewrite(value, root));
+  const expectedPostTransformHashes = parseExpectedHashes(object.expectedPostTransformHashes, root);
+  const authorityUnits = object.authorityUnits.map(parseAuthorityUnit);
+  const bounds = parseBounds(object.bounds);
+  const blockers = object.blockers.map((value) => parseBlocker(value, root));
+  const logical = {
+    schemaVersion: 1 as const,
+    projectRoot: object.projectRoot,
+    configPath: object.configPath,
+    configFingerprint: object.configFingerprint,
+    moves,
+    rewrites,
+    expectedPostTransformHashes,
+    authorityUnits,
+    bounds,
+    blockers,
+  };
+  validatePlanRelationships(moves, rewrites, expectedPostTransformHashes, authorityUnits, bounds, blockers);
   const expected = fingerprint(logical);
   if (object.fingerprint !== expected) throw new Error(`migration plan fingerprint mismatch: expected ${expected}, observed ${object.fingerprint}`);
   if (object.eligible !== (blockers.length === 0) || moves.length === 0) throw new Error("migration plan eligibility does not match its moves and blockers");
-  return { ...logical, generatedAt: object.generatedAt, eligible: object.eligible, fingerprint: object.fingerprint };
+  return { ...logical, generatedAt: object.generatedAt, durationMs: object.durationMs, eligible: object.eligible, fingerprint: object.fingerprint } as MigrationPlan;
 }
 
 export function applyMigration(options: ApplyMigrationOptions): ApplyMigrationResult {
   const root = realpathSync(resolve(options.cwd));
   const plan = loadMigrationPlan(root, options.planPath);
+  if (plan.rewrites.length > 0 || plan.authorityUnits.some((unit) => unit !== "isolated")) {
+    throw new Error("complete-authority apply is assigned to P03-C02; review this read-only plan without applying it");
+  }
   const ledgerPath = ledgerPathForPlan(options.planPath);
   const ledgerAbsolute = resolveProjectPath(root, ledgerPath);
   if (existsSync(ledgerAbsolute)) {
@@ -300,28 +324,172 @@ function releaseClaim(root: string, expected: Claim): void {
 }
 
 function loadLedger(root: string, ledgerPath: string): MigrationLedger {
-  if (!/^\.model-artifacts\/logs\/model-artifact-migration\/.+-ledger\.json$/.test(ledgerPath)) throw new Error(`ledger path is invalid: ${ledgerPath}`);
+  if (!/^\.model-artifacts\/(?:system\/)?logs\/model-artifact-migration\/.+-ledger\.json$/.test(ledgerPath)) throw new Error(`ledger path is invalid: ${ledgerPath}`);
   const absolute = resolveProjectPath(root, ledgerPath);
   requireRegularNoSymlink(absolute, "migration ledger");
   const value = JSON.parse(readFileSync(absolute, "utf8")) as Partial<MigrationLedger>;
   if (value.schemaVersion !== 1 || (value.state !== "applied" && value.state !== "rolled-back") || !Array.isArray(value.moves)
     || typeof value.projectRoot !== "string" || typeof value.planPath !== "string" || typeof value.planFingerprint !== "string" || typeof value.appliedAt !== "string") throw new Error("migration ledger is malformed or unsupported");
-  return { ...value, moves: value.moves.map(parseMove) } as MigrationLedger;
+  return { ...value, moves: value.moves.map((move) => parseMove(move, root)) } as MigrationLedger;
 }
 
-function parseMove(value: unknown): MigrationMove {
+function validatePlanRelationships(
+  moves: MigrationMove[],
+  rewrites: MigrationRewrite[],
+  expectedHashes: Record<string, string>,
+  authorityUnits: string[],
+  bounds: MigrationPlanBounds,
+  blockers: MigrationPlanBlocker[],
+): void {
+  const sortedMoves = [...moves].sort((a, b) => a.source.localeCompare(b.source) || a.destination.localeCompare(b.destination));
+  if (JSON.stringify(moves) !== JSON.stringify(sortedMoves) || new Set(moves.map((move) => move.source)).size !== moves.length) {
+    throw new Error("migration move ordering or uniqueness is invalid");
+  }
+  const destinationCounts = new Map<string, number>();
+  for (const move of moves) destinationCounts.set(move.destination, (destinationCounts.get(move.destination) ?? 0) + 1);
+  for (const move of moves) {
+    const duplicated = (destinationCounts.get(move.destination) ?? 0) > 1;
+    const blocked = blockers.some((blocker) => blocker.code === "duplicate-destination" && blocker.source === move.source);
+    if (duplicated !== blocked) throw new Error("migration move destination collision records are invalid");
+  }
+  const foldedDestinations = new Map<string, MigrationMove[]>();
+  for (const move of moves) {
+    const folded = move.destination.toLocaleLowerCase("en-US");
+    foldedDestinations.set(folded, [...(foldedDestinations.get(folded) ?? []), move]);
+  }
+  for (const group of foldedDestinations.values()) {
+    const collides = group.length > 1 && new Set(group.map((move) => move.destination)).size > 1;
+    for (const move of group) {
+      const blocked = blockers.some((blocker) => blocker.code === "destination-case-collision" && blocker.source === move.source);
+      if (collides !== blocked) throw new Error("migration case-fold collision records are invalid");
+    }
+  }
+  const sortedRewrites = [...rewrites].sort((a, b) => a.path.localeCompare(b.path));
+  if (JSON.stringify(rewrites) !== JSON.stringify(sortedRewrites) || new Set(rewrites.map((rewrite) => rewrite.path)).size !== rewrites.length) throw new Error("migration rewrite ordering or uniqueness is invalid");
+  const sortedUnits = [...new Set(authorityUnits)].sort();
+  if (JSON.stringify(authorityUnits) !== JSON.stringify(sortedUnits)) throw new Error("migration authority unit ordering or uniqueness is invalid");
+  const sortedBlockers = [...blockers].sort((a, b) => a.source.localeCompare(b.source) || a.code.localeCompare(b.code) || a.message.localeCompare(b.message));
+  if (JSON.stringify(blockers) !== JSON.stringify(sortedBlockers)) throw new Error("migration blocker ordering is invalid");
+
+  const relocation = new Map(moves.map((move) => [move.source, move.destination]));
+  const moveBySource = new Map(moves.map((move) => [move.source, move]));
+  const rewriteByPath = new Map(rewrites.map((rewrite) => [rewrite.path, rewrite]));
+  const expectedKeys = Object.keys(expectedHashes).sort();
+  const destinationKeys = [...new Set(moves.map((move) => move.destination))].sort();
+  if (JSON.stringify(expectedKeys) !== JSON.stringify(destinationKeys)) throw new Error("migration expected hash keys do not match move destinations");
+
+  for (const rewrite of rewrites) {
+    const moved = moveBySource.get(rewrite.path);
+    if (moved && (moved.sourceHash !== rewrite.sourceHash || moved.bytes !== rewrite.sourceBytes || ((destinationCounts.get(moved.destination) ?? 0) === 1 && expectedHashes[moved.destination] !== rewrite.expectedHash))) {
+      throw new Error(`migration rewrite relationship is invalid: ${rewrite.path}`);
+    }
+    if (!moved && rewrite.replacements.length === 0) throw new Error(`migration rewrite relationship is invalid: ${rewrite.path}`);
+    const seen = new Set<string>();
+    for (const replacement of rewrite.replacements) {
+      if (relocation.get(replacement.from) !== replacement.to || seen.has(replacement.from)) throw new Error(`migration rewrite relationship is invalid: ${rewrite.path}`);
+      seen.add(replacement.from);
+    }
+  }
+  for (const move of moves) {
+    if ((destinationCounts.get(move.destination) ?? 0) > 1) continue;
+    const rewrite = rewriteByPath.get(move.source);
+    const expected = rewrite?.expectedHash ?? move.sourceHash;
+    if (expectedHashes[move.destination] !== expected) throw new Error(`migration expected hash relationship is invalid: ${move.destination}`);
+  }
+
+  const externalRewrites = rewrites.filter((rewrite) => !moveBySource.has(rewrite.path));
+  const affectedBytes = moves.reduce((sum, move) => sum + move.bytes, 0) + externalRewrites.reduce((sum, rewrite) => sum + rewrite.sourceBytes, 0);
+  const rollbackBytes = affectedBytes;
+  const stagingBytes = moves.reduce((sum, move) => sum + (rewriteByPath.get(move.source)?.expectedBytes ?? move.bytes), 0)
+    + externalRewrites.reduce((sum, rewrite) => sum + rewrite.expectedBytes, 0);
+  const references = rewrites.reduce((sum, rewrite) => sum + rewrite.replacements.length, 0);
+  if (bounds.affectedBytes !== affectedBytes || bounds.rollbackBytes !== rollbackBytes || bounds.stagingBytes !== stagingBytes || bounds.references !== references || bounds.rewriteRecords !== rewrites.length) {
+    throw new Error("migration bounds counts do not match plan records");
+  }
+
+  const limits: Array<[boolean, MigrationPlanBlocker["code"]]> = [
+    [bounds.affectedBytes > bounds.maxAffectedBytes, "affected-bytes-limit"],
+    [bounds.references > bounds.maxReferences, "reference-limit"],
+    [bounds.rewriteRecords > bounds.maxRewriteRecords, "rewrite-limit"],
+    [bounds.stagingBytes > bounds.maxStagingBytes, "staging-bytes-limit"],
+    [bounds.rollbackBytes > bounds.maxRollbackBytes, "rollback-bytes-limit"],
+  ];
+  for (const [exceeded, code] of limits) {
+    if (blockers.some((blocker) => blocker.code === code) !== exceeded) throw new Error(`migration bounds blocker does not match counts: ${code}`);
+  }
+}
+
+function parseMove(value: unknown, root: string): MigrationMove {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("migration move must be an object");
   const move = value as Record<string, unknown>;
   const keys = Object.keys(move).sort().join(",");
-  if (keys !== "bytes,destination,reason,source,sourceHash" || typeof move.source !== "string" || typeof move.destination !== "string" || typeof move.sourceHash !== "string" || typeof move.bytes !== "number" || typeof move.reason !== "string") throw new Error("migration move is malformed");
+  if (keys !== "bytes,destination,reason,source,sourceHash" || typeof move.source !== "string" || typeof move.destination !== "string" || typeof move.sourceHash !== "string" || !SHA256_PATTERN.test(move.sourceHash)
+    || !Number.isSafeInteger(move.bytes) || (move.bytes as number) < 0 || typeof move.reason !== "string") throw new Error("migration move is malformed");
+  resolveProjectPath(root, move.source);
+  resolveProjectPath(root, move.destination);
   return move as MigrationMove;
 }
 
-function parseBlocker(value: unknown): MigrationPlanBlocker {
+function parseRewrite(value: unknown, root: string): MigrationRewrite {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("migration rewrite must be an object");
+  const rewrite = value as Record<string, unknown>;
+  if (Object.keys(rewrite).sort().join(",") !== "expectedBytes,expectedHash,path,replacements,sourceBytes,sourceHash" || typeof rewrite.path !== "string" || typeof rewrite.sourceHash !== "string" || !SHA256_PATTERN.test(rewrite.sourceHash)
+    || typeof rewrite.expectedHash !== "string" || !SHA256_PATTERN.test(rewrite.expectedHash) || !Number.isSafeInteger(rewrite.sourceBytes) || (rewrite.sourceBytes as number) < 0
+    || !Number.isSafeInteger(rewrite.expectedBytes) || (rewrite.expectedBytes as number) < 0 || !Array.isArray(rewrite.replacements)) throw new Error("migration rewrite is malformed");
+  validateProjectRelativePath(root, rewrite.path, "rewrite path");
+  const replacements = rewrite.replacements.map((replacement) => {
+    if (!replacement || typeof replacement !== "object" || Array.isArray(replacement)) throw new Error("migration rewrite replacement is malformed");
+    const object = replacement as Record<string, unknown>;
+    if (Object.keys(object).sort().join(",") !== "from,to" || typeof object.from !== "string" || typeof object.to !== "string") throw new Error("migration rewrite replacement is malformed");
+    resolveProjectPath(root, object.from);
+    resolveProjectPath(root, object.to);
+    return { from: object.from, to: object.to };
+  });
+  return { path: rewrite.path, sourceHash: rewrite.sourceHash, expectedHash: rewrite.expectedHash, sourceBytes: rewrite.sourceBytes as number, expectedBytes: rewrite.expectedBytes as number, replacements };
+}
+
+function parseExpectedHashes(value: unknown, root: string): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("migration expected hash records are malformed");
+  const result: Record<string, string> = {};
+  for (const [path, hash] of Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b))) {
+    resolveProjectPath(root, path);
+    if (typeof hash !== "string" || !SHA256_PATTERN.test(hash)) throw new Error(`migration expected hash record is malformed: ${path}`);
+    result[path] = hash;
+  }
+  return result;
+}
+
+function parseAuthorityUnit(value: unknown): string {
+  if (value === "isolated" || value === "system") return value;
+  if (typeof value !== "string" || !/^initiative:[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/.test(value)) throw new Error("migration authority unit is malformed");
+  return value;
+}
+
+function parseBounds(value: unknown): MigrationPlanBounds {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("migration bounds are malformed");
+  const bounds = value as Record<string, unknown>;
+  const expectedKeys = "affectedBytes,maxAffectedBytes,maxReferences,maxRewriteRecords,maxRollbackBytes,maxStagingBytes,references,rewriteRecords,rollbackBytes,stagingBytes";
+  if (Object.keys(bounds).sort().join(",") !== expectedKeys) throw new Error("migration bounds are malformed");
+  for (const key of Object.keys(bounds)) {
+    const number = bounds[key];
+    const isMaximum = key.startsWith("max");
+    if (!Number.isSafeInteger(number) || (number as number) < (isMaximum ? 1 : 0)) throw new Error(`migration bounds field is malformed: ${key}`);
+  }
+  return bounds as MigrationPlanBounds;
+}
+
+function parseBlocker(value: unknown, root: string): MigrationPlanBlocker {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("migration blocker must be an object");
   const blocker = value as Record<string, unknown>;
-  if (Object.keys(blocker).sort().join(",") !== "code,message,source" || typeof blocker.code !== "string" || typeof blocker.source !== "string" || typeof blocker.message !== "string") throw new Error("migration blocker is malformed");
+  if (Object.keys(blocker).sort().join(",") !== "code,message,source" || typeof blocker.code !== "string" || !PLAN_BLOCKER_CODES.has(blocker.code as MigrationPlanBlocker["code"])
+    || typeof blocker.source !== "string" || typeof blocker.message !== "string") throw new Error("migration blocker is malformed");
+  validateProjectRelativePath(root, blocker.source, "blocker source");
   return blocker as MigrationPlanBlocker;
+}
+
+function validateProjectRelativePath(root: string, path: string, label: string): void {
+  if (!path || isAbsolute(path) || path.includes("\\") || /[\u0000-\u001f\u007f]/.test(path) || posix.normalize(path) !== path || path === ".." || path.startsWith("../")) throw new Error(`${label} is not project-relative: ${path}`);
+  projectRelative(root, resolve(root, ...path.split("/")));
 }
 
 function validateSafeParent(root: string, target: string): void {
