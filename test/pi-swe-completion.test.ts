@@ -20,6 +20,135 @@ import {
 import { CORE_SPECIALIST_IDS } from "../extensions/pi-swe/src/domain/readiness.ts";
 import { resolveCanonicalCompletionRequest } from "../extensions/pi-swe/src/completion-resolution.ts";
 import { inspectCanonicalInitiative } from "../extensions/pi-swe/src/planning.ts";
+import { registerSweTools } from "../extensions/pi-swe/src/pi/tools.ts";
+
+test("pi-swe registers the concise swe_complete tool schema", () => {
+  const tools: any[] = [];
+  const pi = {
+    capabilities: new Map(),
+    on() {},
+    registerCommand() {},
+    registerTool(tool: any) { tools.push(tool); },
+    getCommands: () => [],
+    getAllTools: () => [],
+  };
+
+  piSwe(pi as never, { cwd: process.cwd() } as never);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0]?.name, "swe_complete");
+  assert.deepEqual(tools[0]?.parameters.required, ["confirm"]);
+  assert.equal(tools[0]?.parameters.properties.next.type, "string");
+  assert.deepEqual(tools[0]?.parameters.properties.next.enum, ["clear", "advance"]);
+  assert.equal(tools[0]?.parameters.properties.topic.type, "string");
+  assert.equal(tools[0]?.parameters.properties.contractId.type, "string");
+  assert.equal(tools[0]?.parameters.properties.confirm.type, "boolean");
+});
+
+test("swe_complete refuses before resolver I/O unless confirm is true", async () => {
+  let resolveCalls = 0;
+  let completeCalls = 0;
+  const tool = captureSweCompleteTool({
+    resolve() {
+      resolveCalls += 1;
+      throw new Error("resolver must not run");
+    },
+    complete() {
+      completeCalls += 1;
+      throw new Error("transaction must not run");
+    },
+  });
+
+  const result = await tool.execute("call", { confirm: false }, undefined, undefined, { cwd: "/missing" });
+
+  assert.equal(resolveCalls, 0);
+  assert.equal(completeCalls, 0);
+  assert.equal(result.details.status, "rejected");
+  assert.match(result.content[0].text, /confirm must be true/);
+});
+
+test("swe_complete defaults to advance, delegates once, and preserves clear and result statuses", async () => {
+  const nextValues: string[] = [];
+  const transactionResults = [
+    { status: "completed", contractId: "01", requestId: "sha256:ok", readyContractIds: [], activeContractId: null, phaseProgress: "P01:1/1" },
+    { status: "conflict", contractId: "01", message: "owned", artifact: "lock" },
+  ];
+  let completeCalls = 0;
+  const tool = captureSweCompleteTool({
+    resolve(input: any) {
+      nextValues.push(input.nextActiveContract);
+      return {
+        status: "resolved",
+        request: {
+          cwd: input.cwd,
+          topic: "demo",
+          contractId: "01",
+          expectedPlanRevision: 1,
+          expectedContractPath: ".model-artifacts/initiatives/demo/plans/contract.md",
+          expectedPreCompletionContentHash: `sha256:${"1".repeat(64)}`,
+          verification: { path: ".model-artifacts/initiatives/demo/reports/verification.md", contentHash: `sha256:${"2".repeat(64)}` },
+          review: { path: ".model-artifacts/initiatives/demo/reports/review.md", contentHash: `sha256:${"3".repeat(64)}`, decision: "approve" },
+          nextActiveContract: input.nextActiveContract,
+        },
+      };
+    },
+    complete() {
+      return transactionResults[completeCalls++] as any;
+    },
+  });
+
+  const advanced = await tool.execute("advance", { confirm: true }, undefined, undefined, { cwd: "/repo" });
+  const cleared = await tool.execute("clear", { confirm: true, next: "clear" }, undefined, undefined, { cwd: "/repo" });
+
+  assert.deepEqual(nextValues, ["advance", "clear"]);
+  assert.equal(completeCalls, 2);
+  assert.equal(advanced.details.status, "completed");
+  assert.equal(advanced.details.topic, "demo");
+  assert.equal(cleared.details.status, "conflict");
+  assert.match(cleared.content[0].text, /status: conflict/);
+});
+
+test("swe_complete maps resolver rejection without invoking the transaction", async () => {
+  let completeCalls = 0;
+  const tool = captureSweCompleteTool({
+    resolve() {
+      return { status: "rejected", contractId: "01", message: "ambiguous evidence", artifact: ".model-artifacts/initiatives/demo/reports" };
+    },
+    complete() {
+      completeCalls += 1;
+      throw new Error("transaction must not run");
+    },
+  });
+
+  const result = await tool.execute("call", { confirm: true }, undefined, undefined, { cwd: "/repo" });
+
+  assert.equal(completeCalls, 0);
+  assert.equal(result.details.status, "rejected");
+  assert.equal(result.details.artifact, ".model-artifacts/initiatives/demo/reports");
+  assert.ok(result.content[0].text.length < 1024);
+  assert.doesNotMatch(result.content[0].text, /report body/);
+});
+
+test("swe_complete resolves and completes a valid canonical contract through the guarded transaction", async () => {
+  const fixture = writeCompletionResolutionFixture();
+  const tool = captureSweCompleteTool({ resolve: resolveCanonicalCompletionRequest, complete: completeCanonicalContract });
+
+  const result = await tool.execute(
+    "call",
+    { topic: "demo", contractId: "01", confirm: true },
+    undefined,
+    undefined,
+    { cwd: fixture.cwd },
+  );
+
+  assert.equal(result.details.status, "completed");
+  assert.equal(result.details.topic, "demo");
+  assert.equal(result.details.contractId, "01");
+  assert.equal(result.details.contractPath, fixture.contractPath);
+  assert.equal(result.details.planRevision, 1);
+  assert.equal(existsSync(join(fixture.cwd, completionJournalPath("demo"))), false);
+  assert.equal(JSON.parse(readFileSync(join(fixture.cwd, fixture.indexPath), "utf8")).contracts[1].status, "complete");
+});
 
 test("pi-swe resolves an explicit active contract and its exact evidence chain", () => {
   const fixture = writeCompletionResolutionFixture();
@@ -602,6 +731,7 @@ test("/swe complete invokes the explicit guarded action and reports status", asy
     capabilities: new Map(),
     on() {},
     registerCommand(name: string, command: { handler: Function }) { commands.set(name, command); },
+    registerTool() {},
     getCommands: () => [],
     getAllTools: () => [],
   };
@@ -962,6 +1092,13 @@ function rewriteReviewEnvelope(fixture: ReturnType<typeof writeCompletionFixture
   const envelope = JSON.parse(match[1]);
   mutate(envelope);
   writeFileSync(absolute, content.replace(match[1], JSON.stringify(envelope)), "utf8");
+}
+
+function captureSweCompleteTool(deps: any): any {
+  let tool: any;
+  registerSweTools({ registerTool(value: any) { tool = value; } } as never, deps);
+  assert.ok(tool);
+  return tool;
 }
 
 function write(cwd: string, path: string, content: string): void {

@@ -3,6 +3,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { createRuntime } from "./src/app/runtime.ts";
 import { registerSweCommands } from "./src/pi/commands.ts";
 import { registerSweEvents } from "./src/pi/events.ts";
+import { registerSweTools } from "./src/pi/tools.ts";
 
 export const PI_SWE_EXTENSION_ID = "pi-swe";
 export const PI_SWE_EXTENSION_NAME = "Pi SWE";
@@ -24,4 +25,5 @@ export default function piSwe(pi: ExtensionAPI, initialCtx?: ExtensionContext): 
 
   registerSweEvents(pi, runtime);
   registerSweCommands(pi, runtime);
+  registerSweTools(pi);
 }

@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "initiativeId": "swe-completion-tool",
   "topic": "swe-completion-tool",
-  "initiativeState": "executing",
+  "initiativeState": "finalizing",
   "activeSpec": {
     "revision": 1,
     "path": ".model-artifacts/initiatives/swe-completion-tool/specs/2026-09-04_1627-initiative-spec-r1.md",
@@ -13,10 +13,6 @@
     "path": ".model-artifacts/initiatives/swe-completion-tool/plans/2026-09-04_1627-plan-index-r3.md",
     "contentHash": "sha256:7de975d94ef2e6e778f7dcc98dac4aa2fa327fd005e0bda737652bcb1acee6fb",
     "contractRoot": ".model-artifacts/initiatives/swe-completion-tool/plans/revisions/r3"
-  },
-  "activeContract": {
-    "id": "P02-C01",
-    "path": ".model-artifacts/initiatives/swe-completion-tool/plans/revisions/r3/phases/02-tool-surface/02.01-tool-surface.md"
   },
   "approval": {
     "decision": "approved",
@@ -69,5 +65,5 @@
       "findingPath": ".model-artifacts/initiatives/swe-completion-tool/findings/2026-09-04_1627-completion-safety-compatibility.md"
     }
   },
-  "updatedAt": "2026-09-04T23:20:28.067Z"
+  "updatedAt": "2026-09-05T01:37:31.330Z"
 }

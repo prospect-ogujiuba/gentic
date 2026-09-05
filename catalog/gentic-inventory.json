@@ -374,6 +374,7 @@
         "extensions/pi-swe/src/capabilities.ts",
         "extensions/pi-swe/src/classify.ts",
         "extensions/pi-swe/src/commands.ts",
+        "extensions/pi-swe/src/completion-resolution.ts",
         "extensions/pi-swe/src/completion.ts",
         "extensions/pi-swe/src/config.ts",
         "extensions/pi-swe/src/config/index.ts",
@@ -396,6 +397,7 @@
         "extensions/pi-swe/src/orchestrate.ts",
         "extensions/pi-swe/src/pi/commands.ts",
         "extensions/pi-swe/src/pi/events.ts",
+        "extensions/pi-swe/src/pi/tools.ts",
         "extensions/pi-swe/src/planning.ts",
         "extensions/pi-swe/src/policy.ts",
         "extensions/pi-swe/src/runtime.ts",
@@ -406,7 +408,9 @@
         "commands": [
           "swe"
         ],
-        "tools": [],
+        "tools": [
+          "swe_complete"
+        ],
         "events": [
           "agent_settled",
           "session_info_changed",

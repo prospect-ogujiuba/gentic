@@ -16,9 +16,11 @@ test("package discovery sees pi-swe extension", () => {
   assert.equal(existsSync(join(root, "extensions/pi-swe/index.ts")), true);
   assert.equal(existsSync(join(root, "extensions/pi-swe/src/pi/commands.ts")), true);
   assert.equal(existsSync(join(root, "extensions/pi-swe/src/pi/events.ts")), true);
+  assert.equal(existsSync(join(root, "extensions/pi-swe/src/pi/tools.ts")), true);
   const entrypoint = readFileSync(join(root, "extensions/pi-swe/index.ts"), "utf8");
   assert.match(entrypoint, /\.\/src\/pi\/commands\.ts/);
   assert.match(entrypoint, /\.\/src\/pi\/events\.ts/);
+  assert.match(entrypoint, /\.\/src\/pi\/tools\.ts/);
   assert.equal(metadata.id, "pi-swe");
 });
 
@@ -27,6 +29,7 @@ test("pi-swe registers runtime event wiring and /swe command", async () => {
   const handlers = new Map<string, Function>();
   const commands = new Map<string, { handler: Function; getArgumentCompletions?: Function }>();
   const notifications: Array<{ message: string; type?: string }> = [];
+  const tools: Array<{ name: string }> = [];
   const todoProvider = {
     getActiveTodo: () => ({ id: "todo-1", title: "Implement adapter", acceptanceCriteria: ["peer context"], definitionOfDone: ["tests pass"] }),
     getTodoScope: () => ({ files: ["extensions/pi-swe/index.ts"] }),
@@ -40,6 +43,7 @@ test("pi-swe registers runtime event wiring and /swe command", async () => {
     registerCommand(name: string, command: { handler: Function }) {
       commands.set(name, command);
     },
+    registerTool(tool: { name: string }) { tools.push(tool); },
     getCommands() {
       return [{ name: "todo" }];
     },
@@ -52,6 +56,7 @@ test("pi-swe registers runtime event wiring and /swe command", async () => {
   assert.equal(piSwe(pi as never, ctx as never), undefined);
   assert.deepEqual([...handlers.keys()], ["session_start", "session_tree", "session_info_changed", "session_shutdown", "turn_start", "agent_settled", "tool_call", "tool_result"]);
   assert.equal(commands.has("swe"), true);
+  assert.deepEqual(tools.map((tool) => tool.name), ["swe_complete"]);
 
   handlers.get("session_start")?.({ type: "session_start" }, ctx);
   handlers.get("turn_start")?.({ type: "turn_start" }, ctx);
@@ -83,6 +88,7 @@ test("/swe orchestrate is guidance-only and preserves existing command behavior"
     registerCommand(name: string, command: { handler: Function; getArgumentCompletions?: Function }) {
       commands.set(name, command);
     },
+    registerTool() {},
     getCommands() {
       return [];
     },
@@ -195,6 +201,7 @@ test("/swe orchestrate subcommands provide deterministic guidance-only handoffs"
     registerCommand(name: string, command: { handler: Function; getArgumentCompletions?: Function }) {
       commands.set(name, command);
     },
+    registerTool() {},
     getCommands() {
       return [];
     },
@@ -227,6 +234,7 @@ function registerSweForCommandTest(cwd: string) {
   const pi = {
     capabilities: new Map(), on() {},
     registerCommand(name: string, command: { handler: Function; getArgumentCompletions?: Function }) { commands.set(name, command); },
+    registerTool() {},
     getCommands() { return []; }, getAllTools() { return []; },
   };
   piSwe(pi as never, { cwd, sessionId: "test", hasUI: true, ui: { notify() {} } } as never);

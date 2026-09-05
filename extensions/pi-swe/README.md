@@ -18,10 +18,10 @@ The extension may read optional peer capabilities such as `pi-todo` when they ar
 ## Orientation block
 
 - **What it does:** observes planning/inspection/change/verification signals, maintains per-turn SWE state, issues advisory workflow warnings, exposes SWE status/config, and provides staged SWE skills.
-- **Commands/tools it registers:** `/swe status`, `/swe config`, guidance-only `/swe orchestrate`, and explicit guarded `/swe complete`; no model-callable tool is registered by `pi-swe`. Stage guidance is discovered natively from `skills/` and invoked as `/skill:swe-*`.
+- **Commands/tools it registers:** `/swe status`, `/swe config`, guidance-only `/swe orchestrate`, explicit guarded `/swe complete`, and the concise model-callable `swe_complete` tool. Stage guidance is discovered natively from `skills/` and invoked as `/skill:swe-*`.
 - **Pi events it listens to:** `session_start` loads config and reconstructs active-branch state; `session_tree` reconstructs after navigation; `turn_start` resets turn-local state; `tool_call` classifies inspection/code-change/todo-completion facts; `tool_result` classifies verification facts; `agent_settled` persists required cross-turn state; `session_shutdown` clears runtime state.
 - **State/config files it reads/writes:** reads project `.pi/pi-swe.json`, global `~/.pi/agent/pi-swe.json`, defaults, and `pi-swe.schema.json`; persists only active plan/stage in versioned `gentic.swe.state` custom entries and reconstructs them from `sessionManager.getBranch()`; inspected/changed paths, warnings, peer context, and verification evidence remain turn-local.
-- **Internal module map:** `index.ts` wires events and `/swe`; `src/config/` loads config; `src/domain/classify.ts` extracts workflow facts; `src/domain/state.ts` tracks active plan, inspected/changed paths, and verification; `src/domain/policy.ts` evaluates advisory warnings; `src/capabilities.ts` reads optional peer capability surfaces; `src/domain/evidence.ts`, `src/domain/tdd.ts`, and `src/domain/dsa.ts` hold focused helpers; `docs/`, `skills/`, and `references/` provide resource guidance.
+- **Internal module map:** `index.ts` wires events, `/swe`, and `swe_complete`; `src/config/` loads config; `src/domain/classify.ts` extracts workflow facts; `src/domain/state.ts` tracks active plan, inspected/changed paths, and verification; `src/domain/policy.ts` evaluates advisory warnings; `src/capabilities.ts` reads optional peer capability surfaces; `src/domain/evidence.ts`, `src/domain/tdd.ts`, and `src/domain/dsa.ts` hold focused helpers; `docs/`, `skills/`, and `references/` provide resource guidance.
 - **Tests to run:** `npm run test:swe` for the focused pi-swe suite, `npm run check` for package/anatomy discovery, or the full `npm test` suite when broader regression risk justifies it.
 - **Known boundaries/non-goals:** guidance is advisory unless config disables/enables checks; it does not import peer internals, replace explicit read-before-edit discipline, or reintroduce legacy `/sop`, `/tdd-rgr`, or `/dsa-advisor` surfaces.
 
@@ -38,6 +38,23 @@ The extension may read optional peer capabilities such as `pi-todo` when they ar
 
 Unknown future state-envelope versions are ignored. Failed commands, notes/manual evidence, and successful `nearby` checks remain visible evidence but do not satisfy final verification; only successful `focused` or `broad` command evidence clears `missing_verification`.
 
+## Completion tool
+
+`swe_complete` is the concise LLM-facing adapter for the existing guarded completion transaction:
+
+```json
+{
+  "topic": "my-initiative",
+  "contractId": "P01-C01",
+  "confirm": true,
+  "next": "advance"
+}
+```
+
+`confirm` is required and must be exactly `true`; refusal happens before canonical resolution or evidence scanning. `topic`, `contractId`, and `next` are optional, with `next` defaulting to `advance`. Omitted topic succeeds only when exactly one active canonical initiative exists, and omitted contract resolves only from that manifest's `activeContract`. The tool deterministically derives the active plan, contract path/hash, and exactly one current approving review → passing verification chain. Missing, ambiguous, stale, malformed, unsafe, symlinked, or oversized state/evidence rejects without mutation and reports a bounded artifact/reason.
+
+The tool does not verify, review, choose arbitrary ready work, run lifecycle stages, or weaken recovery/concurrency rules. It delegates exactly one valid derived request to `completeCanonicalContract`; `/swe complete` remains the explicit low-level/manual recovery and replay interface.
+
 ## Commands
 
 `pi-swe` owns the `/swe` runtime command namespace:
@@ -52,7 +69,7 @@ Unknown future state-envelope versions are ignored. Failed commands, notes/manua
 - `/swe status` reports canonical disposition, phase progress, active/ready contracts, blockers, runtime context, and current warnings.
 - `/swe config` reports the effective project/global/default configuration and config diagnostics.
 - `/swe orchestrate` is guidance-only: it reports artifact readiness, recommends the next lifecycle step, routes missing verification/review/finalize gates, and emits deterministic exception handoffs without running hidden multi-step work.
-- `/swe complete` is the sole mutation action. It validates the exact active plan/contract hash plus passing verification and approving implementation-review identities, then runs the recoverable journaled state transition. Before mutation it losslessly normalizes supported legacy contract-index and manifest metadata within layout-v2 authority; the same transaction writes the canonical schema-v2 contract index, records migration provenance and completion evidence, and advances readiness. Contract IDs remain unchanged and evidence stays bound to the original identity. Ambiguous migration, evidence drift, graph errors, and execution blockers reject before writes with artifact-specific diagnostics. Each report must contain one closed `Pi-SWE-Evidence: {...}` JSON line binding topic, contract ID/path/hash, plan revision, and overall decision; the review line also binds the verification path/hash and zero blocking findings. An owner-token-bound exclusive local claim prevents concurrent writers and every journal/target mutation revalidates it. Claim files are never auto-reaped; after a process crash, recovery reports the exact lock path for explicit removal only after the operator confirms its owner is gone. Exact repeats return `already-complete`; mismatches and unfinished/corrupt recovery state do not write or report success. Canonical filenames stay unchanged.
+- `/swe complete` is the explicit low-level mutation interface. It validates the exact active plan/contract hash plus passing verification and approving implementation-review identities, then calls the same recoverable journaled state transition used by `swe_complete`. Before mutation it losslessly normalizes supported legacy contract-index and manifest metadata within layout-v2 authority; the same transaction writes the canonical schema-v2 contract index, records migration provenance and completion evidence, and advances readiness. Contract IDs remain unchanged and evidence stays bound to the original identity. Ambiguous migration, evidence drift, graph errors, and execution blockers reject before writes with artifact-specific diagnostics. Each report must contain one closed `Pi-SWE-Evidence: {...}` JSON line binding topic, contract ID/path/hash, plan revision, and overall decision; the review line also binds the verification path/hash and zero blocking findings. An owner-token-bound exclusive local claim prevents concurrent writers and every journal/target mutation revalidates it. Claim files are never auto-reaped; after a process crash, recovery reports the exact lock path for explicit removal only after the operator confirms its owner is gone. Exact repeats return `already-complete`; mismatches and unfinished/corrupt recovery state do not write or report success. Canonical filenames stay unchanged.
 
 ## Stage skills
 
