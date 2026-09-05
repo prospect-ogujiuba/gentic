@@ -28,6 +28,7 @@ test("Gentic package resources validate as one collision-free native surface", (
   assert.equal(inventory.themes.length, 12);
   assert.ok(inventory.prompts.includes("prompts/add-prompt.md"));
   assert.ok(inventory.skills.includes("skills/add-skill/SKILL.md"));
+  assert.ok(inventory.skills.includes("skills/swe-complete/SKILL.md"));
   assert.equal(inventory.prompts.some((path) => path.startsWith("extensions/pi-swe/")), false);
   assert.equal(inventory.extensions.some((path) => /pi-(prompts|skills)\//.test(path)), false);
   assert.deepEqual(APPROVED_ARTIFACT_KINDS, ["reports", "plans", "findings", "logs", "specs", "todo"]);

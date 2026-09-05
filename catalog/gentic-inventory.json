@@ -51,7 +51,8 @@
       "extensions/pi-swe/skills/swe-review/SKILL.md",
       "extensions/pi-swe/skills/swe-tdd/SKILL.md",
       "extensions/pi-swe/skills/swe-verify/SKILL.md",
-      "skills/add-skill/SKILL.md"
+      "skills/add-skill/SKILL.md",
+      "skills/swe-complete/SKILL.md"
     ],
     "prompts": [
       "extensions/pi-git/prompts/git-commit.md",
