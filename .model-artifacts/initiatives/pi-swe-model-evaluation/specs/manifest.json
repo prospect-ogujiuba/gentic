@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "initiativeId": "pi-swe-model-evaluation",
   "topic": "pi-swe-model-evaluation",
-  "initiativeState": "executing",
+  "initiativeState": "complete",
   "activeSpec": {
     "revision": 1,
     "path": ".model-artifacts/initiatives/pi-swe-model-evaluation/specs/2026-09-11_1213-initiative-spec-r1.md",
@@ -66,9 +66,5 @@
     "approvedAt": "2026-09-11T16:36:59.000Z",
     "blockingFindings": 0
   },
-  "activeContract": {
-    "id": "P03-C03",
-    "path": ".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r2/phases/03-scoring/03.03-cli-and-qualification.md"
-  },
-  "updatedAt": "2026-09-11T19:57:19.574Z"
+  "updatedAt": "2026-09-11T20:51:45.000Z"
 }

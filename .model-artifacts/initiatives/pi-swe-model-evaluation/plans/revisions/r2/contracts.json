@@ -87,7 +87,7 @@
       ],
       "planRevision": 2,
       "path": ".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r2/phases/03-scoring/03.03-cli-and-qualification.md",
-      "status": "pending",
+      "status": "complete",
       "contentHash": "sha256:bacd7aeb1c0a5e99ba5bb219351c98a8a1243a6fb993c7f2ab1f1106186a6dc6"
     }
   ],
@@ -251,6 +251,28 @@
         "readyContractIds": [
           "P03-C03"
         ]
+      }
+    },
+    "P03-C03": {
+      "schemaVersion": 1,
+      "requestId": "sha256:33e9d8da0638391b7f67b293714f396f33dcac605af98e9af03b31375ea59506",
+      "planRevision": 2,
+      "contractPath": ".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r2/phases/03-scoring/03.03-cli-and-qualification.md",
+      "preCompletionContentHash": "sha256:bacd7aeb1c0a5e99ba5bb219351c98a8a1243a6fb993c7f2ab1f1106186a6dc6",
+      "verification": {
+        "path": ".model-artifacts/initiatives/pi-swe-model-evaluation/reports/2026-09-11_2029-cli-qualification-verification.md",
+        "contentHash": "sha256:c5e6ea0d59c38a2ec4902ce0e79a02a95cef1fe7f743accd2f93f16defc73ca1"
+      },
+      "review": {
+        "path": ".model-artifacts/initiatives/pi-swe-model-evaluation/reports/2026-09-11_2036-cli-qualification-implementation-review.md",
+        "contentHash": "sha256:2a2372ab80a719faa87b0f4234d79e06864c454a613d48dcc15996fd7ebf2267",
+        "decision": "approve"
+      },
+      "completedAt": "2026-09-11T20:37:35.210Z",
+      "nextState": {
+        "initiativeState": "finalizing",
+        "activeContractId": null,
+        "readyContractIds": []
       }
     }
   }
