@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "initiativeId": "pi-swe-model-evaluation",
   "topic": "pi-swe-model-evaluation",
-  "initiativeState": "reviewing",
+  "initiativeState": "approved",
   "activeSpec": {
     "revision": 1,
     "path": ".model-artifacts/initiatives/pi-swe-model-evaluation/specs/2026-09-11_1213-initiative-spec-r1.md",
@@ -25,5 +25,14 @@
     "operations": {"status":"complete","rationale":"Budgets, retries, cleanup, provenance, and infrastructure classification were assessed and incorporated into r2.","findingPath":".model-artifacts/initiatives/pi-swe-model-evaluation/findings/2026-09-11_1214-security-operations-compatibility.md"},
     "compatibility": {"status":"complete","rationale":"Pinned SDK, event/tool preflight, exact model identities, and resource manifests were assessed and incorporated into r2.","findingPath":".model-artifacts/initiatives/pi-swe-model-evaluation/findings/2026-09-11_1214-security-operations-compatibility.md"}
   },
-  "updatedAt": "2026-09-11T16:16:00.000Z"
+  "approval": {
+    "decision": "approved",
+    "planRevision": 2,
+    "planPath": ".model-artifacts/initiatives/pi-swe-model-evaluation/plans/2026-09-11_1215-plan-index-r2.md",
+    "planContentHash": "sha256:09952f9955ee700626825a5550d33b948c2f6970085dcdf05255ab68ae317042",
+    "reviewPath": ".model-artifacts/initiatives/pi-swe-model-evaluation/reports/2026-09-11_1216-plan-review-r2.md",
+    "approvedAt": "2026-09-11T16:36:59.000Z",
+    "blockingFindings": 0
+  },
+  "updatedAt": "2026-09-11T16:36:59.000Z"
 }
