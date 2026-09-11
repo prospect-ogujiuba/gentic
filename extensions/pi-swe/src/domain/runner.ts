@@ -56,6 +56,7 @@ export type PiSweRunnerDispatch = {
   readonly stage: PiSweRunnerStage;
   readonly skill: `swe-${string}`;
   readonly identity: PiSweRunnerIdentity;
+  readonly deliveryStatus: "prepared" | "sent";
 };
 
 export type PiSweRunnerRecord = {
@@ -193,7 +194,14 @@ export function reducePiSweRunner(request: ReducePiSweRunnerRequest): PiSweRunne
   }
   const sequence = state.nextDispatchSequence;
   const token = `${state.runId}:${sequence}`;
-  const dispatch: PiSweRunnerDispatch = { sequence, token, stage: canonical.recommendation.stage, skill, identity: { ...canonical.identity } };
+  const dispatch: PiSweRunnerDispatch = {
+    sequence,
+    token,
+    stage: canonical.recommendation.stage,
+    skill,
+    identity: { ...canonical.identity },
+    deliveryStatus: "prepared",
+  };
   return {
     state: { ...state, pendingDispatch: dispatch, nextDispatchSequence: sequence + 1 },
     action: { kind: "dispatch-stage", stage: dispatch.stage, skill, dispatchToken: token, identity: dispatch.identity },
