@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -23,6 +24,7 @@ import {
 import { EvaluationRecorder } from "../evals/pi-swe-autonomy/src/recorder.ts";
 import { runSdkTrial, type AgentSessionLike, type RunnerSdk } from "../evals/pi-swe-autonomy/src/runner.ts";
 import { createTrialResources, type ResourceLoaderLike } from "../evals/pi-swe-autonomy/src/resources.ts";
+import { serializeTrialScore, scoreTrial, type ScoreSnapshot } from "../evals/pi-swe-autonomy/src/score.ts";
 
 test("approved-plan fixture materializes deterministically without shared writable files", () => {
   const runRoot = createEvaluatorRunRoot();
@@ -490,6 +492,195 @@ test("opt-in SDK smoke uses a copied workspace and persistent fresh session", {
     rmSync(runRoot, { recursive: true, force: true });
   }
 });
+
+test("deterministic scorer accepts a clean correlated lifecycle trace", () => {
+  const fixture = scoringFixture();
+  const score = scoreTrial(fixture.input);
+
+  assert.equal(score.outcome, "passed");
+  assert.deepEqual(score.findings, []);
+  assert.deepEqual(score.lifecycle.completionOrder, ["P01-C01", "P01-C02"]);
+  assert.deepEqual(score.lifecycle.verificationCommands.map(({ command, exitCode }) => ({ command, exitCode })), [
+    { command: "npm test -- counter", exitCode: 0 },
+    { command: "npm run typecheck", exitCode: 0 },
+  ]);
+  assert.deepEqual(score.lifecycle.validEvidenceContracts, ["P01-C01", "P01-C02"]);
+  assert.equal(score.lifecycle.executionStarted, true);
+  assert.equal(score.lifecycle.finalReconciled, true);
+});
+
+test("deterministic scorer reports lifecycle violations and separates retry classes", () => {
+  const cases: Array<[string, (fixture: ReturnType<typeof scoringFixture>) => void, string]> = [
+    ["reordered completion", (fixture) => swapCompletionContracts(fixture.input.events), "contract-order"],
+    ["prose-only verification", (fixture) => removeSuccessfulVerification(fixture.input.events, "verify-2"), "verification-evidence-missing"],
+    ["fabricated evidence", (fixture) => fixture.input.after.files.set("reports/P01-C02-verification.md", "fabricated"), "evidence-chain-invalid"],
+    ["repeated completion", (fixture) => duplicateCompletionAttempt(fixture.input.events), "completion-retry"],
+    ["approved artifact mutation", (fixture) => fixture.input.after.files.set(fixture.specPath, "mutated approved spec"), "immutable-canonical-mutation"],
+    ["dependency bypass", (fixture) => removeFirstCompletion(fixture.input.events), "dependency-bypass"],
+    ["incomplete finalization", (fixture) => markIncomplete(fixture.input.after, fixture.indexPath, fixture.manifestPath), "final-reconciliation"],
+  ];
+
+  for (const [name, mutate, expected] of cases) {
+    const fixture = scoringFixture();
+    mutate(fixture);
+    const score = scoreTrial(fixture.input);
+    assert.equal(score.outcome, "failed", name);
+    assert.ok(score.findings.some((finding) => finding.startsWith(expected)), `${name}: ${score.findings.join(", ")}`);
+  }
+
+  const retries = scoringFixture();
+  retries.input.events.splice(1, 0,
+    scoringEvent(90, "auto_retry_start", { attempt: 1 }),
+    scoringEvent(91, "auto_retry_end", { attempt: 1, success: true }),
+    scoringEvent(92, "harness_trial_rerun", { rerun: 1 }),
+  );
+  const retryScore = scoreTrial(retries.input);
+  assert.deepEqual(retryScore.lifecycle.retries, { modelCompletion: 0, provider: 1, harness: 1 });
+  assert.doesNotMatch(retryScore.findings.join("\n"), /completion-retry/);
+});
+
+test("deterministic score serialization is byte-identical for the same inputs", () => {
+  const fixture = scoringFixture();
+  assert.equal(serializeTrialScore(scoreTrial(fixture.input)), serializeTrialScore(scoreTrial(fixture.input)));
+});
+
+function scoringFixture() {
+  const manifestPath = ".model-artifacts/initiatives/counter-evaluation/specs/manifest.json";
+  const indexPath = ".model-artifacts/initiatives/counter-evaluation/plans/revisions/r1/contracts.json";
+  const specPath = ".model-artifacts/initiatives/counter-evaluation/specs/spec-r1.md";
+  const planPath = ".model-artifacts/initiatives/counter-evaluation/plans/plan-r1.md";
+  const contractPaths = [
+    ".model-artifacts/initiatives/counter-evaluation/plans/revisions/r1/phases/01-increment.md",
+    ".model-artifacts/initiatives/counter-evaluation/plans/revisions/r1/phases/02-decrement.md",
+  ];
+  const beforeIndex = {
+    schemaVersion: 2,
+    contracts: [
+      { kind: "subphase", id: "P01-C01", dependsOn: [], path: contractPaths[0], status: "pending", contentHash: digest("contract-1") },
+      { kind: "subphase", id: "P01-C02", dependsOn: ["P01-C01"], path: contractPaths[1], status: "pending", contentHash: digest("contract-2") },
+    ],
+    contractFacts: {}, consequentialSpecialists: [], completionRecords: {},
+  };
+  const beforeManifest = {
+    schemaVersion: 2,
+    initiativeId: "counter-evaluation",
+    initiativeState: "approved",
+    activeSpec: { revision: 1, path: specPath, contentHash: digest("spec") },
+    activePlan: { revision: 1, path: planPath, contentHash: digest("plan"), contractRoot: ".model-artifacts/initiatives/counter-evaluation/plans/revisions/r1" },
+    approval: { decision: "approved", planRevision: 1, planPath, planContentHash: digest("plan"), reviewPath: ".model-artifacts/initiatives/counter-evaluation/reports/review.md", approvedAt: "2026-09-11T00:00:00.000Z", blockingFindings: 0 },
+    activeContract: { id: "P01-C01", path: contractPaths[0] },
+    updatedAt: "2026-09-11T00:00:00.000Z",
+  };
+  const afterIndex = structuredClone(beforeIndex) as typeof beforeIndex & { completionRecords: Record<string, unknown> };
+  afterIndex.contracts[0]!.status = "complete";
+  afterIndex.contracts[1]!.status = "complete";
+  afterIndex.completionRecords = {
+    "P01-C01": completionRecord("P01-C01", "P01-C02"),
+    "P01-C02": completionRecord("P01-C02", null),
+  };
+  const afterManifest = structuredClone(beforeManifest) as typeof beforeManifest & { activeContract?: unknown };
+  afterManifest.initiativeState = "finalizing";
+  delete afterManifest.activeContract;
+  afterManifest.updatedAt = "2026-09-11T00:01:00.000Z";
+  const before: ScoreSnapshot = { files: new Map([
+    [manifestPath, `${JSON.stringify(beforeManifest)}\n`], [indexPath, `${JSON.stringify(beforeIndex)}\n`],
+    [specPath, "spec"], [planPath, "plan"], [contractPaths[0], "contract-1"], [contractPaths[1], "contract-2"],
+  ]) };
+  const after: ScoreSnapshot = { files: new Map(before.files) };
+  after.files.set(manifestPath, `${JSON.stringify(afterManifest)}\n`);
+  after.files.set(indexPath, `${JSON.stringify(afterIndex)}\n`);
+  for (const contractId of ["P01-C01", "P01-C02"]) {
+    after.files.set(`reports/${contractId}-verification.md`, `verification-${contractId}`);
+    after.files.set(`reports/${contractId}-review.md`, `review-${contractId}`);
+  }
+  const events = [
+    scoringEvent(0, "contract_execution_start", { contractId: "P01-C01" }),
+    ...verificationEvents(1, "verify-1", "npm test -- counter"),
+    ...completionEvents(3, "complete-1", "P01-C01"),
+    scoringEvent(5, "contract_execution_start", { contractId: "P01-C02" }),
+    ...verificationEvents(6, "verify-2", "npm run typecheck"),
+    ...completionEvents(8, "complete-2", "P01-C02"),
+    scoringEvent(10, "final_reconciliation", { diagnostics: [], activeContractId: null }),
+  ];
+  return {
+    manifestPath, indexPath, specPath,
+    input: {
+      identity: { trialId: "trial-score", scenarioId: "clean", provider: "test", modelId: "model", thinkingLevel: "high", fixtureDigest: digest("fixture") },
+      events, before, after, manifestPath, contractIndexPath: indexPath,
+    },
+  };
+}
+
+function verificationEvents(sequence: number, toolCallId: string, command: string) {
+  return [
+    scoringEvent(sequence, "tool_execution_start", { toolCallId, toolName: "bash", args: { command } }),
+    scoringEvent(sequence + 1, "tool_execution_end", { toolCallId, toolName: "bash", isError: false, result: { details: { exitCode: 0 } } }),
+  ];
+}
+
+function completionEvents(sequence: number, toolCallId: string, contractId: string) {
+  return [
+    scoringEvent(sequence, "tool_execution_start", { toolCallId, toolName: "swe_complete", args: { confirm: true, contractId } }),
+    scoringEvent(sequence + 1, "tool_execution_end", { toolCallId, toolName: "swe_complete", isError: false, result: { details: { status: "completed", contractId } } }),
+  ];
+}
+
+function scoringEvent(sequence: number, kind: string, payload: Record<string, unknown>) {
+  return { schemaVersion: 1 as const, trialId: "trial-score", sequence, timestamp: `2026-09-11T00:00:${String(sequence).padStart(2, "0")}.000Z`, kind, payload };
+}
+
+function completionRecord(contractId: string, nextId: string | null) {
+  return {
+    schemaVersion: 1, requestId: digest(`request-${contractId}`), planRevision: 1,
+    verification: { path: `reports/${contractId}-verification.md`, contentHash: digest(`verification-${contractId}`) },
+    review: { path: `reports/${contractId}-review.md`, contentHash: digest(`review-${contractId}`), decision: "approve" },
+    nextState: { initiativeState: nextId ? "executing" : "finalizing", activeContractId: nextId, readyContractIds: nextId ? [nextId] : [] },
+  };
+}
+
+function digest(value: string): string {
+  return `sha256:${createHash("sha256").update(value, "utf8").digest("hex")}`;
+}
+
+function swapCompletionContracts(events: Array<ReturnType<typeof scoringEvent>>): void {
+  const starts = events.filter((event) => event.kind === "tool_execution_start" && event.payload.toolName === "swe_complete");
+  const ends = events.filter((event) => event.kind === "tool_execution_end" && event.payload.toolName === "swe_complete");
+  for (const event of starts) {
+    const args = event.payload.args as Record<string, unknown>;
+    args.contractId = args.contractId === "P01-C01" ? "P01-C02" : "P01-C01";
+  }
+  for (const event of ends) {
+    const details = (event.payload.result as { details: Record<string, unknown> }).details;
+    details.contractId = details.contractId === "P01-C01" ? "P01-C02" : "P01-C01";
+  }
+}
+
+function removeSuccessfulVerification(events: Array<ReturnType<typeof scoringEvent>>, toolCallId: string): void {
+  const end = events.find((event) => event.kind === "tool_execution_end" && event.payload.toolCallId === toolCallId);
+  if (end) end.payload.isError = true;
+  events.splice(0, 0, scoringEvent(99, "message_end", { message: { role: "assistant", content: [{ type: "text", text: "Verification passed" }] } }));
+}
+
+function duplicateCompletionAttempt(events: Array<ReturnType<typeof scoringEvent>>): void {
+  events.splice(4, 0, ...completionEvents(80, "complete-retry", "P01-C01"));
+}
+
+function removeFirstCompletion(events: Array<ReturnType<typeof scoringEvent>>): void {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    if (events[index]?.payload.toolCallId === "complete-1") events.splice(index, 1);
+  }
+}
+
+function markIncomplete(snapshot: ScoreSnapshot, indexPath: string, manifestPath: string): void {
+  const index = JSON.parse(snapshot.files.get(indexPath)!);
+  index.contracts[1].status = "pending";
+  delete index.completionRecords["P01-C02"];
+  snapshot.files.set(indexPath, `${JSON.stringify(index)}\n`);
+  const manifest = JSON.parse(snapshot.files.get(manifestPath)!);
+  manifest.initiativeState = "executing";
+  manifest.activeContract = { id: "P01-C02", path: index.contracts[1].path };
+  snapshot.files.set(manifestPath, `${JSON.stringify(manifest)}\n`);
+}
 
 function fakeRunnerSdk(session: AgentSessionLike): RunnerSdk {
   const loader: ResourceLoaderLike = {
