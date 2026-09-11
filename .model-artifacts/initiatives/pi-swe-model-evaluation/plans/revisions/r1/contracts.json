@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 2,
+  "contracts": [
+    {"kind":"phase","id":"P01","dependsOn":[],"planRevision":1,"path":".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r1/phases/01-foundation/00-phase-index.md","status":"pending","contentHash":"sha256:9a4a983e06b8a61baa976ca989323e17c37c78286c5a6f6ea780cadb3173cc43"},
+    {"kind":"subphase","parentId":"P01","id":"P01-C01","dependsOn":[],"planRevision":1,"path":".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r1/phases/01-foundation/01.01-fixture-and-schema.md","status":"pending","contentHash":"sha256:43a66e9dfc07492f459f40fc960a8a941bde8eb69e63b2e46f12649c61a28e82"},
+    {"kind":"phase","id":"P02","dependsOn":["P01-C01"],"planRevision":1,"path":".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r1/phases/02-runner/00-phase-index.md","status":"pending","contentHash":"sha256:f7ac0eaf160cdf2a9ed06ea94e03aa7fcd340e48aee2d64e71b4e8cc190159a2"},
+    {"kind":"subphase","parentId":"P02","id":"P02-C01","dependsOn":["P01-C01"],"planRevision":1,"path":".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r1/phases/02-runner/02.01-sdk-runner.md","status":"pending","contentHash":"sha256:0224b250ec12cb60ee28d3847db8221e4c50e14499779524689647e5a6475e7e"},
+    {"kind":"phase","id":"P03","dependsOn":["P02-C01"],"planRevision":1,"path":".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r1/phases/03-scoring/00-phase-index.md","status":"pending","contentHash":"sha256:b68a6bdc2ad49f21401355dedfc9a011c2810abfdc125d27c7cc22d8e44aa460"},
+    {"kind":"subphase","parentId":"P03","id":"P03-C01","dependsOn":["P02-C01"],"planRevision":1,"path":".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r1/phases/03-scoring/03.01-deterministic-scorer.md","status":"pending","contentHash":"sha256:cea562a501b1107880793472fd235cc3e41f45fc453cb2a37f3382e92ba968f5"},
+    {"kind":"subphase","parentId":"P03","id":"P03-C02","dependsOn":["P03-C01"],"planRevision":1,"path":".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r1/phases/03-scoring/03.02-scenario-matrix.md","status":"pending","contentHash":"sha256:0654f334fdb3966a6dee50044f56886e245accd16f2d006c7177b54f03bc5b96"},
+    {"kind":"subphase","parentId":"P03","id":"P03-C03","dependsOn":["P03-C02"],"planRevision":1,"path":".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r1/phases/03-scoring/03.03-cli-and-qualification.md","status":"pending","contentHash":"sha256:6f61f135c97b043ddda6d420709ff215c8aec31138c2cef83aa1f8340cfe54e4"}
+  ],
+  "contractFacts": {
+    "P01":{"entryInputsAvailable":true,"capabilitiesAvailable":true,"applicability":"applicable","acceptanceDefined":true,"verificationDefined":true},
+    "P01-C01":{"entryInputsAvailable":true,"capabilitiesAvailable":true,"applicability":"applicable","acceptanceDefined":true,"verificationDefined":true},
+    "P02":{"entryInputsAvailable":true,"capabilitiesAvailable":true,"applicability":"applicable","acceptanceDefined":true,"verificationDefined":true},
+    "P02-C01":{"entryInputsAvailable":true,"capabilitiesAvailable":true,"applicability":"applicable","acceptanceDefined":true,"verificationDefined":true},
+    "P03":{"entryInputsAvailable":true,"capabilitiesAvailable":true,"applicability":"applicable","acceptanceDefined":true,"verificationDefined":true},
+    "P03-C01":{"entryInputsAvailable":true,"capabilitiesAvailable":true,"applicability":"applicable","acceptanceDefined":true,"verificationDefined":true},
+    "P03-C02":{"entryInputsAvailable":true,"capabilitiesAvailable":true,"applicability":"applicable","acceptanceDefined":true,"verificationDefined":true},
+    "P03-C03":{"entryInputsAvailable":true,"capabilitiesAvailable":true,"applicability":"applicable","acceptanceDefined":true,"verificationDefined":true}
+  },
+  "consequentialSpecialists":["compatibility","dsa","operations","security","tdd"],
+  "completionRecords":{}
+}
