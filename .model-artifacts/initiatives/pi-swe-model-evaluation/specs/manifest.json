@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "initiativeId": "pi-swe-model-evaluation",
   "topic": "pi-swe-model-evaluation",
-  "initiativeState": "approved",
+  "initiativeState": "executing",
   "activeSpec": {
     "revision": 1,
     "path": ".model-artifacts/initiatives/pi-swe-model-evaluation/specs/2026-09-11_1213-initiative-spec-r1.md",
@@ -15,15 +15,47 @@
     "contractRoot": ".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r2"
   },
   "specialists": {
-    "diagnosis": {"status":"not-required","rationale":"New evaluation capability; no defect diagnosis is needed."},
-    "dsa": {"status":"complete","rationale":"Record representation, deterministic reduction, and persistence were assessed and incorporated into r2.","findingPath":".model-artifacts/initiatives/pi-swe-model-evaluation/findings/2026-09-11_1214-dsa-decision.md"},
-    "tdd": {"status":"complete","rationale":"Observable behaviors, Red order, test levels, and live-smoke boundary were incorporated into r2.","findingPath":".model-artifacts/initiatives/pi-swe-model-evaluation/findings/2026-09-11_1214-tdd-plan.md"},
-    "security": {"status":"complete","rationale":"Sandbox, credential, trace, path, and cleanup boundaries were assessed and incorporated into r2.","findingPath":".model-artifacts/initiatives/pi-swe-model-evaluation/findings/2026-09-11_1214-security-operations-compatibility.md"},
-    "migration": {"status":"not-required","rationale":"Additive evaluator with no existing persisted schema migration."},
-    "performance": {"status":"not-required","rationale":"Initial workload is bounded; measure before specialized persistence or indexing."},
-    "accessibility-ux": {"status":"not-required","rationale":"CLI and machine-readable reports only; no interactive UI."},
-    "operations": {"status":"complete","rationale":"Budgets, retries, cleanup, provenance, and infrastructure classification were assessed and incorporated into r2.","findingPath":".model-artifacts/initiatives/pi-swe-model-evaluation/findings/2026-09-11_1214-security-operations-compatibility.md"},
-    "compatibility": {"status":"complete","rationale":"Pinned SDK, event/tool preflight, exact model identities, and resource manifests were assessed and incorporated into r2.","findingPath":".model-artifacts/initiatives/pi-swe-model-evaluation/findings/2026-09-11_1214-security-operations-compatibility.md"}
+    "diagnosis": {
+      "status": "not-required",
+      "rationale": "New evaluation capability; no defect diagnosis is needed."
+    },
+    "dsa": {
+      "status": "complete",
+      "rationale": "Record representation, deterministic reduction, and persistence were assessed and incorporated into r2.",
+      "findingPath": ".model-artifacts/initiatives/pi-swe-model-evaluation/findings/2026-09-11_1214-dsa-decision.md"
+    },
+    "tdd": {
+      "status": "complete",
+      "rationale": "Observable behaviors, Red order, test levels, and live-smoke boundary were incorporated into r2.",
+      "findingPath": ".model-artifacts/initiatives/pi-swe-model-evaluation/findings/2026-09-11_1214-tdd-plan.md"
+    },
+    "security": {
+      "status": "complete",
+      "rationale": "Sandbox, credential, trace, path, and cleanup boundaries were assessed and incorporated into r2.",
+      "findingPath": ".model-artifacts/initiatives/pi-swe-model-evaluation/findings/2026-09-11_1214-security-operations-compatibility.md"
+    },
+    "migration": {
+      "status": "not-required",
+      "rationale": "Additive evaluator with no existing persisted schema migration."
+    },
+    "performance": {
+      "status": "not-required",
+      "rationale": "Initial workload is bounded; measure before specialized persistence or indexing."
+    },
+    "accessibility-ux": {
+      "status": "not-required",
+      "rationale": "CLI and machine-readable reports only; no interactive UI."
+    },
+    "operations": {
+      "status": "complete",
+      "rationale": "Budgets, retries, cleanup, provenance, and infrastructure classification were assessed and incorporated into r2.",
+      "findingPath": ".model-artifacts/initiatives/pi-swe-model-evaluation/findings/2026-09-11_1214-security-operations-compatibility.md"
+    },
+    "compatibility": {
+      "status": "complete",
+      "rationale": "Pinned SDK, event/tool preflight, exact model identities, and resource manifests were assessed and incorporated into r2.",
+      "findingPath": ".model-artifacts/initiatives/pi-swe-model-evaluation/findings/2026-09-11_1214-security-operations-compatibility.md"
+    }
   },
   "approval": {
     "decision": "approved",
@@ -34,5 +66,9 @@
     "approvedAt": "2026-09-11T16:36:59.000Z",
     "blockingFindings": 0
   },
-  "updatedAt": "2026-09-11T16:36:59.000Z"
+  "activeContract": {
+    "id": "P02-C01",
+    "path": ".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r2/phases/02-runner/02.01-sdk-runner.md"
+  },
+  "updatedAt": "2026-09-11T17:09:55.938Z"
 }

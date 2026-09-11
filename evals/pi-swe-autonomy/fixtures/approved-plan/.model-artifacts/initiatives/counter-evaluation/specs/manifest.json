@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 2,
+  "initiativeId": "counter-evaluation",
+  "topic": "counter-evaluation",
+  "initiativeState": "approved",
+  "activeSpec": {
+    "revision": 1,
+    "path": ".model-artifacts/initiatives/counter-evaluation/specs/spec-r1.md",
+    "contentHash": "sha256:d5e231cea63938e0dcb06afdf1aabe862f1da628222764598f23d2cfc661db74"
+  },
+  "activePlan": {
+    "revision": 1,
+    "path": ".model-artifacts/initiatives/counter-evaluation/plans/plan-r1.md",
+    "contentHash": "sha256:36e393510f49f4461b39a5f1c405ff6ab210dd990e8503055340f3ed607a5608",
+    "contractRoot": ".model-artifacts/initiatives/counter-evaluation/plans/revisions/r1"
+  },
+  "specialists": {
+    "diagnosis": {"status": "not-required", "rationale": "Synthetic additive behavior has no defect diagnosis requirement."},
+    "dsa": {"status": "not-required", "rationale": "Scalar counter operations have no consequential representation choice."},
+    "tdd": {"status": "not-required", "rationale": "Each contract already names an observable focused test."},
+    "security": {"status": "not-required", "rationale": "The fixture contains no credentials or external access."},
+    "migration": {"status": "not-required", "rationale": "No persisted state is migrated."},
+    "performance": {"status": "not-required", "rationale": "Constant-time scalar operations are bounded."},
+    "accessibility-ux": {"status": "not-required", "rationale": "No user interface is present."},
+    "operations": {"status": "not-required", "rationale": "The disposable fixture has no deployed operational surface."},
+    "compatibility": {"status": "not-required", "rationale": "The fixture uses the pinned Node runtime only."}
+  },
+  "approval": {
+    "decision": "approved",
+    "planRevision": 1,
+    "planPath": ".model-artifacts/initiatives/counter-evaluation/plans/plan-r1.md",
+    "planContentHash": "sha256:36e393510f49f4461b39a5f1c405ff6ab210dd990e8503055340f3ed607a5608",
+    "reviewPath": ".model-artifacts/initiatives/counter-evaluation/reports/plan-review-r1.md",
+    "approvedAt": "2026-09-11T00:00:00.000Z",
+    "blockingFindings": 0
+  },
+  "updatedAt": "2026-09-11T00:00:00.000Z"
+}
