@@ -63,7 +63,7 @@
       ],
       "planRevision": 2,
       "path": ".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r2/phases/03-scoring/03.01-deterministic-scorer.md",
-      "status": "pending",
+      "status": "complete",
       "contentHash": "sha256:6c1a6ee6277acce646337cb7f45067eafe60274fbc81b41276fce7f94f379e03"
     },
     {
@@ -202,6 +202,30 @@
         "activeContractId": "P03-C01",
         "readyContractIds": [
           "P03-C01"
+        ]
+      }
+    },
+    "P03-C01": {
+      "schemaVersion": 1,
+      "requestId": "sha256:5f605e3c7266fffaf8af84c03410e3149b60a0d9c81540160192631e0120ef78",
+      "planRevision": 2,
+      "contractPath": ".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r2/phases/03-scoring/03.01-deterministic-scorer.md",
+      "preCompletionContentHash": "sha256:6c1a6ee6277acce646337cb7f45067eafe60274fbc81b41276fce7f94f379e03",
+      "verification": {
+        "path": ".model-artifacts/initiatives/pi-swe-model-evaluation/reports/2026-09-11_1916-deterministic-scorer-verification-r2.md",
+        "contentHash": "sha256:79c58859e9c1b34d34f82dd96345fa7cc6ec1771583767149b9cace176fe7268"
+      },
+      "review": {
+        "path": ".model-artifacts/initiatives/pi-swe-model-evaluation/reports/2026-09-11_1917-deterministic-scorer-implementation-review-r2.md",
+        "contentHash": "sha256:a69cbffe42d86e33cfafa81556156ecbd6d0cb479b53b071b931c599ecf86849",
+        "decision": "approve"
+      },
+      "completedAt": "2026-09-11T19:17:59.723Z",
+      "nextState": {
+        "initiativeState": "executing",
+        "activeContractId": "P03-C02",
+        "readyContractIds": [
+          "P03-C02"
         ]
       }
     }
