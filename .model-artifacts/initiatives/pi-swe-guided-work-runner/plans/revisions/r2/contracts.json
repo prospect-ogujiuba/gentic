@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 2,
+  "contracts": [
+    {"kind":"phase","id":"P01","dependsOn":[],"planRevision":2,"path":".model-artifacts/initiatives/pi-swe-guided-work-runner/plans/revisions/r2/phases/01-runner-foundation/00-phase-index.md","status":"pending","contentHash":"sha256:e8417939ab70f26d9e3903f812aef0e122a86ef85c33c6a13e2219887d552431"},
+    {"kind":"subphase","parentId":"P01","id":"P01-C01","dependsOn":[],"planRevision":2,"path":".model-artifacts/initiatives/pi-swe-guided-work-runner/plans/revisions/r2/phases/01-runner-foundation/01.01-runner-domain.md","status":"pending","contentHash":"sha256:19a6970f0afd615acebe5ef5d38469afba8582fbc4981cc4d79582003c6baa0b"},
+    {"kind":"subphase","parentId":"P01","id":"P01-C02","dependsOn":["P01-C01"],"planRevision":2,"path":".model-artifacts/initiatives/pi-swe-guided-work-runner/plans/revisions/r2/phases/01-runner-foundation/01.02-runner-persistence.md","status":"pending","contentHash":"sha256:33fe19106a7f7a7531becda4d1064ca91a0d29e29c08d422094e77894cccadc5"},
+    {"kind":"phase","id":"P02","dependsOn":["P01-C02"],"planRevision":2,"path":".model-artifacts/initiatives/pi-swe-guided-work-runner/plans/revisions/r2/phases/02-controlled-execution/00-phase-index.md","status":"pending","contentHash":"sha256:e99890dcbe6c070ec9de489a2297b95c2626ae628ee7b69617071b49fbe3596a"},
+    {"kind":"subphase","parentId":"P02","id":"P02-C01","dependsOn":["P01-C02"],"planRevision":2,"path":".model-artifacts/initiatives/pi-swe-guided-work-runner/plans/revisions/r2/phases/02-controlled-execution/02.01-command-and-checkpoint.md","status":"pending","contentHash":"sha256:4198d72e6940d596211fab556b2eb5bb2390245be025e391aaedbad6f9a37326"},
+    {"kind":"subphase","parentId":"P02","id":"P02-C02","dependsOn":["P02-C01"],"planRevision":2,"path":".model-artifacts/initiatives/pi-swe-guided-work-runner/plans/revisions/r2/phases/02-controlled-execution/02.02-settled-dispatch.md","status":"pending","contentHash":"sha256:9e4fdd411f0bb872f145a5f3fa5807deb82a5d48011f74ad840e8d4ab54441d6"},
+    {"kind":"phase","id":"P03","dependsOn":["P02-C02"],"planRevision":2,"path":".model-artifacts/initiatives/pi-swe-guided-work-runner/plans/revisions/r2/phases/03-operator-hardening/00-phase-index.md","status":"pending","contentHash":"sha256:4b457da2fb24a240bca4ce87d43855bea386ecd311cfd5637e64223fcfe4d14a"},
+    {"kind":"subphase","parentId":"P03","id":"P03-C01","dependsOn":["P02-C02"],"planRevision":2,"path":".model-artifacts/initiatives/pi-swe-guided-work-runner/plans/revisions/r2/phases/03-operator-hardening/03.01-qualification-and-docs.md","status":"pending","contentHash":"sha256:7aa5adfcf391a4c4c77ceee6f67084b2d807f08ab66ecd774619dfeff6a5fb0d"}
+  ],
+  "contractFacts": {
+    "P01":{"entryInputsAvailable":true,"capabilitiesAvailable":true,"applicability":"applicable","acceptanceDefined":true,"verificationDefined":true},
+    "P01-C01":{"entryInputsAvailable":true,"capabilitiesAvailable":true,"applicability":"applicable","acceptanceDefined":true,"verificationDefined":true},
+    "P01-C02":{"entryInputsAvailable":true,"capabilitiesAvailable":true,"applicability":"applicable","acceptanceDefined":true,"verificationDefined":true},
+    "P02":{"entryInputsAvailable":true,"capabilitiesAvailable":true,"applicability":"applicable","acceptanceDefined":true,"verificationDefined":true},
+    "P02-C01":{"entryInputsAvailable":true,"capabilitiesAvailable":true,"applicability":"applicable","acceptanceDefined":true,"verificationDefined":true},
+    "P02-C02":{"entryInputsAvailable":true,"capabilitiesAvailable":true,"applicability":"applicable","acceptanceDefined":true,"verificationDefined":true},
+    "P03":{"entryInputsAvailable":true,"capabilitiesAvailable":true,"applicability":"applicable","acceptanceDefined":true,"verificationDefined":true},
+    "P03-C01":{"entryInputsAvailable":true,"capabilitiesAvailable":true,"applicability":"applicable","acceptanceDefined":true,"verificationDefined":true}
+  },
+  "consequentialSpecialists":["compatibility","dsa","migration","operations","security","tdd"],
+  "completionRecords":{}
+}
