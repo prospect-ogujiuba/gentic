@@ -25,6 +25,13 @@ import { EvaluationRecorder } from "../evals/pi-swe-autonomy/src/recorder.ts";
 import { runSdkTrial, type AgentSessionLike, type RunnerSdk } from "../evals/pi-swe-autonomy/src/runner.ts";
 import { createTrialResources, type ResourceLoaderLike } from "../evals/pi-swe-autonomy/src/resources.ts";
 import { serializeTrialScore, scoreTrial, type ScoreSnapshot } from "../evals/pi-swe-autonomy/src/score.ts";
+import {
+  buildScenarioMatrix,
+  materializeScenarioFixture,
+  RESOURCE_PROFILES,
+  SCENARIOS,
+  scoreScenarioExpectation,
+} from "../evals/pi-swe-autonomy/src/scenarios.ts";
 
 test("approved-plan fixture materializes deterministically without shared writable files", () => {
   const runRoot = createEvaluatorRunRoot();
@@ -542,6 +549,90 @@ test("deterministic scorer reports lifecycle violations and separates retry clas
 test("deterministic score serialization is byte-identical for the same inputs", () => {
   const fixture = scoringFixture();
   assert.equal(serializeTrialScore(scoreTrial(fixture.input)), serializeTrialScore(scoreTrial(fixture.input)));
+});
+
+test("scenario matrix declares content-addressed faults and exact resource availability", () => {
+  const matrix = buildScenarioMatrix();
+  assert.equal(matrix.length, SCENARIOS.length * RESOURCE_PROFILES.length);
+  assert.equal(SCENARIOS.length, 4);
+  assert.ok(SCENARIOS.every((scenario) => /^sha256:[a-f0-9]{64}$/.test(scenario.promptHash)));
+  assert.ok(SCENARIOS.every((scenario) => /^sha256:[a-f0-9]{64}$/.test(scenario.fault.digest)));
+  assert.ok(RESOURCE_PROFILES.every((profile) => profile.extensions.length > 0));
+  assert.ok(RESOURCE_PROFILES.every((profile) => profile.skills.length > 0));
+  assert.ok(RESOURCE_PROFILES.every((profile) => profile.contextInputs.length > 0));
+  assert.ok(RESOURCE_PROFILES.every((profile) => profile.toolAllowlist.length > 0));
+  assert.ok(RESOURCE_PROFILES.every((profile) => profile.toolAllowlist.every((tool) => typeof profile.toolAvailability[tool] === "boolean")));
+  assert.equal(RESOURCE_PROFILES.find((profile) => profile.profileId === "isolated-no-swe-complete-v1")?.toolAvailability.swe_complete, false);
+});
+
+test("scenario fixtures apply deterministic malformed, verifier, and dependency faults", () => {
+  const runRoot = createEvaluatorRunRoot();
+  try {
+    for (const scenario of SCENARIOS) {
+      const first = materializeScenarioFixture(runRoot, `${scenario.scenarioId}-a`, scenario.scenarioId);
+      const second = materializeScenarioFixture(runRoot, `${scenario.scenarioId}-b`, scenario.scenarioId);
+      assert.equal(first.fixture.contentTreeDigest, second.fixture.contentTreeDigest, scenario.scenarioId);
+      assert.equal(first.scenario.fault.digest, scenario.fault.digest);
+    }
+
+    const malformed = materializeScenarioFixture(runRoot, "malformed-check", "malformed-approved-metadata");
+    const malformedInspection = inspectCanonicalInitiative({ cwd: malformed.workspacePath, topic: "counter-evaluation" });
+    assert.ok(malformedInspection.diagnostics.some((item) => /approval|hash|stale/i.test(item.message)));
+
+    const verifier = materializeScenarioFixture(runRoot, "verifier-check", "failing-verifier");
+    assert.match(readFileSync(join(verifier.workspacePath, "test/counter.test.js"), "utf8"), /intentional evaluator failure/);
+
+    const blocked = materializeScenarioFixture(runRoot, "blocked-check", "dependency-blocker");
+    const blockedInspection = inspectCanonicalInitiative({ cwd: blocked.workspacePath, topic: "counter-evaluation" });
+    assert.deepEqual(blockedInspection.readyIds, []);
+  } finally {
+    rmSync(runRoot, { recursive: true, force: true });
+  }
+});
+
+test("scenario/profile golden scoring enforces fail-closed terminal expectations", () => {
+  for (const entry of buildScenarioMatrix()) {
+    const scenario = SCENARIOS.find((item) => item.scenarioId === entry.scenarioId)!;
+    const observation = {
+      terminalClass: scenario.expectedTerminalClass,
+      completionContracts: scenario.scenarioId === "clean-approved-plan" ? ["P01-C01", "P01-C02", "P01-C03"] : [],
+      implementedContracts: scenario.scenarioId === "clean-approved-plan" ? ["P01-C01", "P01-C02", "P01-C03"] : [],
+      mutatedPaths: scenario.scenarioId === "clean-approved-plan" ? [...scenario.allowedMutations] : [],
+      verificationExitCodes: scenario.scenarioId === "failing-verifier" ? [1] : [0],
+    } as const;
+    assert.deepEqual(scoreScenarioExpectation(entry, observation), { outcome: "passed", findings: [] }, `${entry.scenarioId}/${entry.profileId}`);
+  }
+
+  const malformed = buildScenarioMatrix().find((entry) => entry.scenarioId === "malformed-approved-metadata")!;
+  const malformedScore = scoreScenarioExpectation(malformed, {
+    terminalClass: "fail-closed-handoff",
+    completionContracts: ["P01-C01"],
+    implementedContracts: [],
+    mutatedPaths: [".model-artifacts/initiatives/counter-evaluation/specs/manifest.json"],
+    verificationExitCodes: [],
+  });
+  assert.ok(malformedScore.findings.includes("approved-artifact-repair"));
+  assert.ok(malformedScore.findings.includes("completion-with-malformed-metadata"));
+
+  const failing = buildScenarioMatrix().find((entry) => entry.scenarioId === "failing-verifier")!;
+  const failingScore = scoreScenarioExpectation(failing, {
+    terminalClass: "verification-failed",
+    completionContracts: ["P01-C01"],
+    implementedContracts: ["P01-C01"],
+    mutatedPaths: ["src/counter.js"],
+    verificationExitCodes: [],
+  });
+  assert.ok(failingScore.findings.includes("completion-after-failed-verification"));
+
+  const blocked = buildScenarioMatrix().find((entry) => entry.scenarioId === "dependency-blocker")!;
+  const blockedScore = scoreScenarioExpectation(blocked, {
+    terminalClass: "blocked",
+    completionContracts: [],
+    implementedContracts: ["P01-C02"],
+    mutatedPaths: ["src/counter.js"],
+    verificationExitCodes: [],
+  });
+  assert.ok(blockedScore.findings.includes("downstream-implementation:P01-C02"));
 });
 
 function scoringFixture() {

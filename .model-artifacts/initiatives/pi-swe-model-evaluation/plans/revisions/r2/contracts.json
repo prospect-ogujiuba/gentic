@@ -75,7 +75,7 @@
       ],
       "planRevision": 2,
       "path": ".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r2/phases/03-scoring/03.02-scenario-matrix.md",
-      "status": "pending",
+      "status": "complete",
       "contentHash": "sha256:86575a7143447d900fcd2bc0d4ac942f332f17bdd381a4f91c52c1dd11d3dbc5"
     },
     {
@@ -226,6 +226,30 @@
         "activeContractId": "P03-C02",
         "readyContractIds": [
           "P03-C02"
+        ]
+      }
+    },
+    "P03-C02": {
+      "schemaVersion": 1,
+      "requestId": "sha256:462e7485634b279dc378db3f87edf92b0ae6336bab7342b67c9e91639d65f00b",
+      "planRevision": 2,
+      "contractPath": ".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r2/phases/03-scoring/03.02-scenario-matrix.md",
+      "preCompletionContentHash": "sha256:86575a7143447d900fcd2bc0d4ac942f332f17bdd381a4f91c52c1dd11d3dbc5",
+      "verification": {
+        "path": ".model-artifacts/initiatives/pi-swe-model-evaluation/reports/2026-09-11_1956-scenario-matrix-verification-r2.md",
+        "contentHash": "sha256:773c4c0cda0fe8512c01652026c7f860a49a472201eef3b14062f7635d2a212c"
+      },
+      "review": {
+        "path": ".model-artifacts/initiatives/pi-swe-model-evaluation/reports/2026-09-11_1956-scenario-matrix-implementation-review-r2.md",
+        "contentHash": "sha256:084de8c4d9240bf4f179cc98402fb125ec9974da6a6cb20dfbde5f3a678f8024",
+        "decision": "approve"
+      },
+      "completedAt": "2026-09-11T19:57:19.574Z",
+      "nextState": {
+        "initiativeState": "executing",
+        "activeContractId": "P03-C03",
+        "readyContractIds": [
+          "P03-C03"
         ]
       }
     }
