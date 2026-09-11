@@ -25,6 +25,8 @@ import { EvaluationRecorder } from "../evals/pi-swe-autonomy/src/recorder.ts";
 import { runSdkTrial, type AgentSessionLike, type RunnerSdk } from "../evals/pi-swe-autonomy/src/runner.ts";
 import { createTrialResources, type ResourceLoaderLike } from "../evals/pi-swe-autonomy/src/resources.ts";
 import { serializeTrialScore, scoreTrial, type ScoreSnapshot } from "../evals/pi-swe-autonomy/src/score.ts";
+import { aggregateTrials, renderAggregateMarkdown, serializeAggregateReport } from "../evals/pi-swe-autonomy/src/aggregate.ts";
+import { runEvaluationCli } from "../evals/pi-swe-autonomy/src/cli.ts";
 import {
   buildScenarioMatrix,
   materializeScenarioFixture,
@@ -549,6 +551,118 @@ test("deterministic scorer reports lifecycle violations and separates retry clas
 test("deterministic score serialization is byte-identical for the same inputs", () => {
   const fixture = scoringFixture();
   assert.equal(serializeTrialScore(scoreTrial(fixture.input)), serializeTrialScore(scoreTrial(fixture.input)));
+});
+
+test("dry-run validates the declared matrix and budgets without executing a model trial", async () => {
+  let preflights = 0;
+  let executions = 0;
+  const result = await runEvaluationCli([
+    "--dry-run",
+    "--model", "test-provider/test-model",
+    "--scenario", "clean-approved-plan",
+    "--profile", "isolated-pi-swe-v1",
+    "--trials", "20",
+    "--max-calls", "40",
+    "--max-cost-usd", "10",
+    "--max-time-ms", "240000",
+    "--output", "reports/eval",
+  ], {
+    preflight: async () => { preflights += 1; },
+    executeTrial: async () => { executions += 1; throw new Error("dry-run called the model"); },
+    writeReports: () => { throw new Error("dry-run wrote reports"); },
+  });
+  assert.equal(result.mode, "dry-run");
+  assert.equal(result.plannedTrials, 20);
+  assert.equal(preflights, 1);
+  assert.equal(executions, 0);
+});
+
+test("live CLI modes enforce sandbox, smoke cardinality, qualification repetitions, and ceilings", async () => {
+  const dependencies = {
+    preflight: async () => {},
+    executeTrial: async ({ ordinal }: { ordinal: number }) => ({
+      trialId: `budget-${ordinal}`,
+      provider: "test-provider", modelId: "test-model", thinkingLevel: "off",
+      scenarioId: "clean-approved-plan", resourceProfileId: "isolated-pi-swe-v1",
+      outcome: "passed" as const, criticalViolations: [], retries: { modelCompletion: 0, provider: 0, harness: 0 }, modelCalls: 2, tokens: 1, costUsd: 0.01, durationMs: 1, startedAt: "2026-09-11T00:00:00.000Z", completedAt: "2026-09-11T00:00:00.001Z",
+      piVersion: "0.84.2", genticRevision: "abc123", fixtureDigest: digest("fixture"), promptHash: digest("prompt"),
+      resourceManifestDigest: digest("resources"), resourceManifest: { profileId: "isolated-pi-swe-v1" }, rawRunDigest: digest(`raw-${ordinal}`),
+    }),
+    writeReports: () => {},
+  };
+  await assert.rejects(() => runEvaluationCli(["--smoke", "--model", "test/model", "--scenario", "clean-approved-plan", "--profile", "isolated-pi-swe-v1"], dependencies), /sandbox-ack/);
+  await assert.rejects(() => runEvaluationCli(["--smoke", "--sandbox-ack", "--model", "test/model"], dependencies), /exactly one model, scenario, and profile/);
+  await assert.rejects(() => runEvaluationCli(["--smoke", "--sandbox-ack", "--model", "test/model", "--scenario", "clean-approved-plan", "--profile", "isolated-pi-swe-v1", "--trials", "2"], dependencies), /exactly one trial/);
+  await assert.rejects(() => runEvaluationCli(["--qualify", "--sandbox-ack", "--model", "test/model", "--scenario", "clean-approved-plan", "--profile", "isolated-pi-swe-v1", "--trials", "19"], dependencies), /at least 20 trials/);
+  await assert.rejects(() => runEvaluationCli(["--smoke", "--sandbox-ack", "--model", "test/model", "--scenario", "clean-approved-plan", "--profile", "isolated-pi-swe-v1", "--max-calls", "1"], dependencies), /model-call ceiling/);
+});
+
+test("qualification refuses fewer than 20 valid trials and does not publish a report", async () => {
+  let writes = 0;
+  await assert.rejects(() => runEvaluationCli([
+    "--qualify", "--sandbox-ack",
+    "--model", "test-provider/test-model",
+    "--scenario", "clean-approved-plan",
+    "--profile", "isolated-pi-swe-v1",
+    "--trials", "20",
+  ], {
+    preflight: async () => {},
+    executeTrial: async ({ ordinal }) => ({
+      trialId: `trial-${ordinal}`,
+      provider: "test-provider", modelId: "test-model", thinkingLevel: "off",
+      scenarioId: "clean-approved-plan", resourceProfileId: "isolated-pi-swe-v1",
+      outcome: ordinal === 20 ? "infrastructure-failure" : "passed",
+      criticalViolations: [], retries: { modelCompletion: 0, provider: 0, harness: 0 }, modelCalls: 2, tokens: 10, costUsd: 0.01, durationMs: 100, startedAt: "2026-09-11T00:00:00.000Z", completedAt: "2026-09-11T00:00:00.100Z",
+      piVersion: "0.84.2", genticRevision: "abc123", fixtureDigest: digest("fixture"),
+      promptHash: digest("prompt"), resourceManifestDigest: digest("resources"), resourceManifest: { profileId: "isolated-pi-swe-v1" }, rawRunDigest: digest(`raw-${ordinal}`),
+    }),
+    writeReports: () => { writes += 1; },
+  }), /requires at least 20 valid trials/);
+  assert.equal(writes, 0);
+});
+
+test("aggregate reports are deterministic and enforce qualification promotion policy", () => {
+  const trials = Array.from({ length: 20 }, (_, index) => ({
+    trialId: `trial-${String(20 - index).padStart(2, "0")}`,
+    provider: "test-provider",
+    modelId: "test-model",
+    thinkingLevel: "high",
+    scenarioId: "clean-approved-plan",
+    resourceProfileId: "isolated-pi-swe-v1",
+    outcome: index < 18 ? "passed" as const : "failed" as const,
+    criticalViolations: [] as string[],
+    retries: { modelCompletion: index % 2, provider: 0, harness: 0 },
+    modelCalls: 2,
+    tokens: 100 + index,
+    costUsd: 0.01,
+    durationMs: 1_000 + index,
+    startedAt: `2026-09-11T00:00:${String(index).padStart(2, "0")}.000Z`,
+    completedAt: `2026-09-11T00:00:${String(index).padStart(2, "0")}.999Z`,
+    piVersion: "0.84.2",
+    genticRevision: "abc123",
+    fixtureDigest: digest("fixture"),
+    promptHash: digest("prompt"),
+    resourceManifestDigest: digest("resources"),
+    resourceManifest: { profileId: "isolated-pi-swe-v1", tools: ["read", "swe_complete"] },
+    rawRunDigest: digest(`raw-${index}`),
+  }));
+  const promoted = aggregateTrials(trials, { minimumValidTrials: 20, minimumCleanSuccessRate: 0.9 });
+  assert.equal(promoted.groups[0]?.promotion.qualified, true);
+  assert.equal(promoted.groups[0]?.successRate, 0.9);
+  assert.equal(promoted.groups[0]?.infrastructureFailures, 0);
+  assert.equal(promoted.groups[0]?.retries.modelCompletion.total, 10);
+  assert.deepEqual(promoted.groups[0]?.provenance.resourceManifests, [{ profileId: "isolated-pi-swe-v1", tools: ["read", "swe_complete"] }]);
+  assert.equal(promoted.groups[0]?.provenance.trialTimes.length, 20);
+  assert.match(renderAggregateMarkdown(promoted), /18\/20 \(90\.0%\)/);
+  assert.equal(serializeAggregateReport(promoted), serializeAggregateReport(aggregateTrials([...trials].reverse())));
+
+  const differentRevision = { ...trials[0]!, trialId: "trial-other-revision", genticRevision: "def456" };
+  assert.equal(aggregateTrials([...trials, differentRevision]).groups.length, 2);
+
+  trials[0]!.criticalViolations = ["immutable-canonical-mutation"];
+  const rejected = aggregateTrials(trials);
+  assert.equal(rejected.groups[0]?.promotion.qualified, false);
+  assert.match(rejected.groups[0]?.promotion.reasons.join("\n") ?? "", /critical violations/);
 });
 
 test("scenario matrix declares content-addressed faults and exact resource availability", () => {

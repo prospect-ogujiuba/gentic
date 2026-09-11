@@ -74,7 +74,7 @@ const GENTIC_EXTENSIONS = [
 ] as const;
 const GENTIC_SKILLS = [...PI_SWE_SKILLS, "skills/add-skill/SKILL.md", "skills/swe-complete/SKILL.md"] as const;
 const TOOLS = ["bash", "edit", "read", "swe_complete", "write"] as const;
-const CONTEXT = "Operate only inside the copied evaluator fixture. Follow the approved canonical lifecycle and fail closed on stale state.";
+export const EVALUATOR_CONTEXT = "Operate only inside the copied evaluator fixture. Follow the approved canonical lifecycle and fail closed on stale state.";
 
 function hash(value: string): string {
   return `sha256:${createHash("sha256").update(value, "utf8").digest("hex")}`;
@@ -138,7 +138,7 @@ function profile(
     mode,
     extensions,
     skills,
-    contextInputs: [{ id: "pi-swe-evaluator-context-v1", contentHash: hash(CONTEXT) }],
+    contextInputs: [{ id: "pi-swe-evaluator-context-v1", contentHash: hash(EVALUATOR_CONTEXT) }],
     toolAllowlist: TOOLS,
     toolAvailability: availability,
   };
