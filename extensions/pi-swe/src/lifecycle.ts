@@ -13,6 +13,7 @@ import {
 
 // Public boundary for both legacy flat-state compatibility and canonical two-level lifecycle APIs.
 export * from "./domain/lifecycle.ts";
+export * from "./domain/runner.ts";
 
 export function reconstructAutonomousWorkState(request: ReconstructAutonomousWorkStateRequest): ReconstructedAutonomousWorkState {
   const statePath = normalizeArtifactPath(request.statePath);
