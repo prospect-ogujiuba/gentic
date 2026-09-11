@@ -40,7 +40,7 @@
       ],
       "planRevision": 2,
       "path": ".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r2/phases/02-runner/02.01-sdk-runner.md",
-      "status": "pending",
+      "status": "complete",
       "contentHash": "sha256:e5fc973adfbe1873ba6411620b5a1ee8488193ad339b778edc30474f6e7739e9"
     },
     {
@@ -178,6 +178,30 @@
         "activeContractId": "P02-C01",
         "readyContractIds": [
           "P02-C01"
+        ]
+      }
+    },
+    "P02-C01": {
+      "schemaVersion": 1,
+      "requestId": "sha256:c812f7337d992317b495656f1129af249f3f998c18cb7dd9195d014b1f33c1c7",
+      "planRevision": 2,
+      "contractPath": ".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r2/phases/02-runner/02.01-sdk-runner.md",
+      "preCompletionContentHash": "sha256:e5fc973adfbe1873ba6411620b5a1ee8488193ad339b778edc30474f6e7739e9",
+      "verification": {
+        "path": ".model-artifacts/initiatives/pi-swe-model-evaluation/reports/2026-09-11_1858-sdk-runner-verification-r2.md",
+        "contentHash": "sha256:98d734d2a92bea6bd256a997b40f7ff5703ebef2c8fec98ae7e4e92fa6b9b254"
+      },
+      "review": {
+        "path": ".model-artifacts/initiatives/pi-swe-model-evaluation/reports/2026-09-11_1901-sdk-runner-implementation-review-r2.md",
+        "contentHash": "sha256:f11a685ec7840422f7b5b74da876d51358aeb9597259daf19ad8f6992669ae34",
+        "decision": "approve"
+      },
+      "completedAt": "2026-09-11T19:02:07.675Z",
+      "nextState": {
+        "initiativeState": "executing",
+        "activeContractId": "P03-C01",
+        "readyContractIds": [
+          "P03-C01"
         ]
       }
     }

@@ -67,8 +67,8 @@
     "blockingFindings": 0
   },
   "activeContract": {
-    "id": "P02-C01",
-    "path": ".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r2/phases/02-runner/02.01-sdk-runner.md"
+    "id": "P03-C01",
+    "path": ".model-artifacts/initiatives/pi-swe-model-evaluation/plans/revisions/r2/phases/03-scoring/03.01-deterministic-scorer.md"
   },
-  "updatedAt": "2026-09-11T17:09:55.938Z"
+  "updatedAt": "2026-09-11T19:02:07.675Z"
 }
