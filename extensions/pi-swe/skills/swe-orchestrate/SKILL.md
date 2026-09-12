@@ -7,6 +7,8 @@ description: Sequence existing pi-swe lifecycle skills from work orders, todos w
 
 Use this when a SWE flow needs a next-stage recommendation, resume decision, or deterministic handoff across existing `pi-swe` stages.
 
+`SWE Orchestrate` owns cross-contract stage selection. A direct/manual `swe-implement` request may coordinate the bounded implementation lifecycle for one approved contract using specialist, verification, review, and finalize handoffs. A guided work runner remains authoritative for its own plan and sequencing: recommend or execute only its assigned stage, and never replace, expand, or auto-advance runner-owned state.
+
 ## Workflow
 
 1. **Inspect work order and canonical state before chat** — for one exact topic, read `.model-artifacts/initiatives/<topic>/specs/manifest.json`, its active spec and active approved plan, `<activePlan.contractRoot>/contracts.json`, the exact active/ready contract when applicable, linked findings/evidence/reviews, and only then current todo/repository state.

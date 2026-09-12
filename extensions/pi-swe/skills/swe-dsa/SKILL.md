@@ -25,6 +25,17 @@ A material design change to representation, algorithm, persistence, complexity/m
 8. Pair the structure with the access pattern or algorithm that makes it useful.
 9. State migration, validation, and rollback advice before implementation.
 
+## Lifecycle handoff
+
+When called from direct/manual `swe-implement`, return one explicit disposition:
+
+- `proceed` — the recommendation is already inside the approved contract; identify the criterion, implementation constraint, affected paths, and validation check, then return to `swe-implement`.
+- `no-change` — explain why the existing representation/algorithm is adequate and return to `swe-implement`.
+- `measure-first` — identify the bounded measurement and decision threshold before implementation continues.
+- `return-to-plan` — name the material representation, algorithm, persistence, migration, or rollback change requiring a revised contract.
+
+DSA advice does not complete implementation or verification. When a guided work runner invoked DSA, return the disposition without advancing or rewriting its plan.
+
 ## Optional DSA decision artifact
 
 For consequential representation choices, non-obvious algorithm changes, persistent data migrations, performance-sensitive access patterns, or decisions likely to affect a phase handoff, write a short artifact under:

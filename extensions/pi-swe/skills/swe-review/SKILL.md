@@ -36,6 +36,16 @@ Use after implementation and verification for one exact contract/revision from t
 
 Implementation review works standalone. Todo may record the decision but neither todo nor a filename is approval.
 
+### Implementation lifecycle handoff
+
+Return exactly one lifecycle disposition with the review decision:
+
+- `approve-to-finalize` — verification is current and the exact implementation is approved; direct/manual `swe-implement` continues to `swe-finalize`.
+- `request-changes` — identify in-contract defects, affected criteria/paths, and required verification reruns; return to `swe-implement` for one bounded correction, then require full reverification and rereview.
+- `return-to-plan` — name the stale state, material drift, missing verifier, or contract change and stop implementation.
+
+Review does not apply its own requested code changes or treat previous verification as current after a correction. When a guided work runner invoked review, return the decision and disposition without advancing its plan.
+
 ## Review artifact
 
 A substantial review, multi-file/phase review, or any non-approval decision requires a durable artifact. Plan reviews and implementation reviews both use:

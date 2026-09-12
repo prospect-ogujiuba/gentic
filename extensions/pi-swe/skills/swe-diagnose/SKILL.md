@@ -19,6 +19,16 @@ For an approved execution contract, first read `.model-artifacts/initiatives/<to
 6. Fix only when the cause is credible, then regression-test the verified behavior.
 7. End with a smallest-slice fix plan and verification target.
 
+## Lifecycle handoff
+
+When called from direct/manual `swe-implement`, return one explicit disposition:
+
+- `cause-confirmed` — give the exact acceptance criterion, smallest in-contract fix slice, affected paths, and regression check, then return to `swe-implement`.
+- `unresolved` — preserve reproduction and hypothesis evidence and block implementation rather than guessing.
+- `return-to-plan` — name the material contract change, affected canonical paths, and required `swe-plan` revision.
+
+Diagnosis does not mark an implementation criterion complete. After a `cause-confirmed` fix, `swe-implement` must still run its focused check and later route through independent verification and review. When a guided work runner invoked diagnosis, return only this disposition to the runner and do not advance its plan.
+
 ## Durable diagnosis artifacts
 
 For trivial one-step diagnoses, keep the investigation in chat unless the user asks for a file.

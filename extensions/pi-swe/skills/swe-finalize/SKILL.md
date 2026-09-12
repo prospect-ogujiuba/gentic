@@ -27,6 +27,18 @@ Reconcile contract dispositions as `complete`, `blocked`, or `approved-deferred`
 
 Finalization is standalone and uses bounded retries: unresolved reconciliation conflicts stop with evidence rather than looping.
 
+## Lifecycle handoff
+
+For a direct/manual `swe-implement` lifecycle, return exactly one terminal disposition:
+
+- `complete` — current verification passes, implementation review approves, reconciliation succeeds, and the exact completion/commit/PR handoff is recorded.
+- `blocked` — an external dependency prevents reconciliation; preserve the exact evidence and next decision.
+- `return-to-verify` — acceptance evidence is missing, stale, partial, or gapped.
+- `return-to-review` — implementation approval is missing, stale, or requests changes.
+- `return-to-plan` — canonical state, scope, deferral, migration, or rollback requires revision.
+
+Finalization does not repair implementation defects or manufacture missing evidence. When a guided work runner invoked finalization, reconcile only the runner-assigned boundary and never alter its plan or select its next stage.
+
 ## Handoff artifact
 
 Skip the artifact for a single small change where the final chat response is sufficient and no evidence chain or residual risk needs to survive.

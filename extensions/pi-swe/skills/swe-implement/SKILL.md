@@ -1,11 +1,13 @@
 ---
 name: swe-implement
-description: Implement the smallest honest vertical SWE slice while preserving read-before-edit and surgical scope discipline.
+description: Coordinate the complete direct/manual implementation lifecycle for one approved SWE contract while preserving surgical scope and independent verification/review gates.
 ---
 
 # SWE Implement
 
 Use this only for one execution-ready contract from an active approved plan. A todo, chat instruction, plan filename, or contract filename may locate work but is not sufficient approval.
+
+For a direct/manual `/skill:swe-implement` request, this skill owns the bounded lifecycle from implementation through specialist execution guidance, verification, implementation review, and finalization handoff. When a guided work runner owns sequencing, perform only the runner-assigned stage and preserve its plan, state transitions, persistence, and next-stage decision; never replace, expand, or auto-advance a runner-owned plan.
 
 ## Execution gate
 
@@ -19,19 +21,21 @@ Validate every `contentHash`, revision, and pointer. The manifest approval must 
 
 Reject a stale revision, unsatisfied dependency, open blocker, missing verifier, mismatched hash/pointer, or conflicting change. Stop deterministically with the affected artifact/path, observed versus required state, and next action: refresh or revise via `/skill:swe-plan`, complete the named predecessor, resolve the blocker/verifier, or reconcile the conflicting path. Do not guess from chat or silently repair canonical state.
 
-## Workflow
+## Direct/manual lifecycle
 
-1. Restate the exact contract/revision, intended behavior, file scope and non-goals, acceptance criteria, and planned verification.
-2. Read only target files and dependencies the exact contract requires; umbrella plans remain background, not expanded scope.
-3. Build the smallest honest vertical slice through the relevant layers.
-4. Implement only the contract's acceptance criteria; preserve read-before-edit and surgical scope.
-5. Avoid opportunistic refactors, broad formatting, adjacent features, later contracts, or next-slice work.
-6. Update tests/docs only when required by this contract.
-7. Use bounded retries: after one repeated unexplained failure, stop, preserve the evidence, and hand off instead of thrashing.
-8. If implementation reveals scope drift, a material design change, a blocked follow-up, or a needed contract change, stop and return to plan revision; do not edit the approved contract in place.
-9. Stop at a verifiable boundary and hand the exact contract, diff scope, and acceptance criteria to `swe-verify`.
+For direct/manual use, keep one criterion ledger for the exact contract and follow these stages. A focused implementation check supports iteration but does not substitute for independent `swe-verify` evidence or implementation-review approval.
 
-This workflow remains standalone when todo or peer extensions are unavailable.
+1. **Frame the contract** — restate the exact contract/revision, intended behavior, file scope and non-goals, every acceptance criterion, and planned verification.
+2. **Read the slice** — read only target files and dependencies the exact contract requires; umbrella plans remain background, not expanded scope.
+3. **Route applicable specialist work** — follow incorporated specialist decisions. Use `swe-diagnose` when a failure lacks a credible cause, `swe-dsa` when an in-contract representation or algorithm choice needs implementation-time validation, and `swe-tdd` when the next behavior should be proven first. Specialist output returns here unless it identifies a material contract change, which returns to `swe-plan`.
+4. **Select the next criterion** — choose one unmet acceptance criterion and its smallest observable vertical behavior. Mark it `in-progress`; do not start later-contract work.
+5. **Implement and check** — build the smallest honest slice through the relevant layers, update tests/docs required by the contract, and run the focused planned check. Record the criterion, changed paths, check, and result as `implemented-check-pass`, `fail`, `partial`, or `gap`.
+6. **Repeat to contract coverage** — continue criteria one at a time until every in-scope criterion has an implementation result. Avoid opportunistic refactors, broad formatting, adjacent features, and future cases. Any unexplained repeated failure stops with preserved evidence rather than thrashing.
+7. **Verify independently** — after all criteria are implemented with focused checks, follow `swe-verify` to build the authoritative acceptance-to-evidence map and run risk-scaled checks. A verification failure that is an understood in-contract defect returns here for one bounded correction, followed by reverification; stale plans, missing verifiers, or material drift return to `swe-plan`.
+8. **Review independently** — after verification passes, follow `swe-review` in implementation-review mode. `request changes` returns here for one bounded in-contract correction, then requires reverification and rereview. `return to plan` stops implementation.
+9. **Finalize** — only after current verification passes and implementation review approves, follow `swe-finalize` to reconcile evidence, canonical/todo state, residual risk, and the completion handoff. Do not claim completion earlier.
+
+This workflow remains standalone when todo or peer extensions are unavailable. It coordinates existing skills through their documented handoffs; it does not create hidden autonomous execution or modify guided work runner behavior.
 
 ## Scope drift notes
 
@@ -57,6 +61,10 @@ For drift that should return to planning, say exactly where it belongs: `/skill:
 
 ## Success criteria
 
+- Every in-scope acceptance criterion has an implementation result and focused check or an explicit blocking handoff.
 - The change is narrow, coherent, and reversible.
-- The implementation can be verified directly.
-- Scope drift is either not present, explicitly deferred, or recorded with a user-visible handoff.
+- Applicable diagnosis, DSA, and TDD guidance is consumed without expanding the approved contract.
+- Independent verification passes and implementation review approves before finalization.
+- Any correction is followed by reverification and rereview where applicable.
+- Scope drift is either not present, explicitly deferred, or recorded with a user-visible return to plan.
+- Guided work runner plans and sequencing remain untouched.

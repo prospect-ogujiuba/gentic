@@ -33,6 +33,18 @@ Capture runtime Red, Green, and Refactor evidence for each executed behavior.
 6. **Verification** — map the cycle to its acceptance criterion and planned verification, then run focused and risk-justified nearby checks.
 7. Use bounded retries. If Red fails for the wrong reason or Green remains unexplained after one corrective attempt, preserve evidence and stop rather than thrash.
 
+## Lifecycle handoff
+
+When called from direct/manual `swe-implement`, complete one observable behavior cycle and return:
+
+- exact acceptance criterion and behavior;
+- Red, Green, and Refactor evidence;
+- focused and nearby check results;
+- changed paths;
+- disposition: `criterion-check-pass`, `blocked`, or `return-to-plan`.
+
+A passing TDD cycle updates the implementation criterion ledger but does not replace `swe-verify` or implementation review. `blocked` preserves the failing stage and evidence for `swe-implement`; behavior or design outside the approved contract returns to `swe-plan`. When a guided work runner invoked TDD, return only the cycle result and let the runner retain sequencing authority.
+
 ## Optional TDD cycle artifact
 
 For multi-cycle work, flaky/debug-heavy behavior, or changes where Red/Green/Refactor evidence must survive handoff, write a short artifact under:

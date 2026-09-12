@@ -25,6 +25,17 @@ Build an acceptance-to-evidence map: give every contract acceptance criterion an
 
 Verification remains standalone without todo or peer extensions.
 
+## Lifecycle handoff
+
+Return one explicit disposition after the complete acceptance-to-evidence map:
+
+- `pass-to-review` — every criterion and planned check passes with no gaps; direct/manual `swe-implement` continues to implementation-mode `swe-review`.
+- `fix-in-contract` — an understood defect is inside the approved contract; identify failed criteria, evidence, and affected paths, then return to `swe-implement` for one bounded correction and full reverification.
+- `blocked` — verification cannot proceed for an external or environmental reason; preserve the exact gap and evidence.
+- `return-to-plan` — the verifier, contract, design, or scope must change.
+
+Verification never performs the correction it discovers and never skips implementation review. When a guided work runner invoked verification, return the disposition to the runner without advancing or changing its plan.
+
 ## Durable verification artifacts
 
 When an artifact is warranted, write it under:

@@ -59,6 +59,17 @@ Each implementation contract records Goal, observable behavior, Scope and Non-go
 
 At plan time, `swe-tdd` chooses observable behaviors, test levels, characterization needs, Red ordering, and verification scope. Plan-time TDD does not claim Red evidence; Red evidence exists only after the test has actually run and failed during implementation.
 
+## Lifecycle handoff
+
+Return one explicit planning disposition:
+
+- `approve-to-implement` — identify the exact approved revision and first ready contract. For direct/manual work, hand that contract to `swe-implement`; do not perform implementation while planning.
+- `request-changes` — keep planning active and name the exact revision work required before another review.
+- `return-to-spec` — name the incomplete or contradictory outcomes/constraints that require specification revision.
+- `blocked` — preserve the unresolved specialist, dependency, verifier, or external decision and its exact next action.
+
+When a guided work runner requested planning/readiness, return only the disposition and canonical pointers to the runner. Never create, replace, expand, or auto-advance its plan.
+
 ## Output
 
 Return only:
