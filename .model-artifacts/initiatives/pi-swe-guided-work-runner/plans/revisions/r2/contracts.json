@@ -52,7 +52,7 @@
       ],
       "planRevision": 2,
       "path": ".model-artifacts/initiatives/pi-swe-guided-work-runner/plans/revisions/r2/phases/02-controlled-execution/02.01-command-and-checkpoint.md",
-      "status": "pending",
+      "status": "complete",
       "contentHash": "sha256:4198d72e6940d596211fab556b2eb5bb2390245be025e391aaedbad6f9a37326"
     },
     {
@@ -203,6 +203,30 @@
         "activeContractId": "P02-C01",
         "readyContractIds": [
           "P02-C01"
+        ]
+      }
+    },
+    "P02-C01": {
+      "schemaVersion": 1,
+      "requestId": "sha256:f3b6202c1ff8265e57b07071974c425abbd266863c8bd5f77aa830033239c06a",
+      "planRevision": 2,
+      "contractPath": ".model-artifacts/initiatives/pi-swe-guided-work-runner/plans/revisions/r2/phases/02-controlled-execution/02.01-command-and-checkpoint.md",
+      "preCompletionContentHash": "sha256:4198d72e6940d596211fab556b2eb5bb2390245be025e391aaedbad6f9a37326",
+      "verification": {
+        "path": ".model-artifacts/initiatives/pi-swe-guided-work-runner/reports/2026-09-12_1121-p02-c01-verification-r3.md",
+        "contentHash": "sha256:a97f661f4f12a6c7b332fb0c82d9ac910a23ff4d2711c298e412ab2363426f81"
+      },
+      "review": {
+        "path": ".model-artifacts/initiatives/pi-swe-guided-work-runner/reports/2026-09-12_1539-p02-c01-implementation-review-approved.md",
+        "contentHash": "sha256:31a515344d0e407cf9614dfb5c5a788ea55145f48685dfc58b3c3bdd3c43cab7",
+        "decision": "approve"
+      },
+      "completedAt": "2026-09-12T15:42:21.052Z",
+      "nextState": {
+        "initiativeState": "executing",
+        "activeContractId": "P02-C02",
+        "readyContractIds": [
+          "P02-C02"
         ]
       }
     }
