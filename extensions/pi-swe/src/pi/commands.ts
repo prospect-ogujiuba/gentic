@@ -1,14 +1,23 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+import {
+  pausePersistedPiSweRunner,
+  persistPiSweRunnerState,
+  readPiSweRunnerState,
+  stopPersistedPiSweRunner,
+} from "../app/runner-persistence.ts";
 import { refreshPeerContext, type PiSweRuntime } from "../app/runtime.ts";
 import { completeCanonicalContract, type CompleteCanonicalContractRequest, type CompleteCanonicalContractResult } from "../completion.ts";
+import { createPiSweRunner, type PiSweRunnerIdentity, type PiSweRunnerMode, type PiSweRunnerPolicy, type PiSweRunnerUntil } from "../domain/runner.ts";
 import { recommendGateAwareOrchestration, type GateAwareOrchestrationRecommendation } from "../orchestrate.ts";
 import { resolveInitiative, type InitiativeResolution } from "../planning.ts";
 
-const SUBCOMMANDS = ["status", "config", "orchestrate", "complete"] as const;
+const SUBCOMMANDS = ["status", "config", "orchestrate", "work", "complete"] as const;
 const ORCHESTRATE_ACTIONS = ["status", "start", "resume", "handoff"] as const;
+const WORK_ACTIONS = ["status", "start", "resume", "pause", "stop"] as const;
 const STATUS_USAGE = "Usage: /swe status [topic]";
 const ORCHESTRATE_USAGE = "Usage: /swe orchestrate <status|start|resume|handoff> [topic]";
+const WORK_USAGE = "Usage: /swe work <status|start|resume|pause|stop> [topic] [--mode guided|autonomous] [--until contract|initiative] [--max-turns 1..100] [--max-minutes 1..1440]";
 const COMPLETE_USAGE = "Usage: /swe complete <topic> <contract-id> <plan-revision> <contract-path> <contract-hash> <verification-path> <verification-hash> <review-path> <review-hash> approve [clear|advance]";
 const MAX_SUMMARY_ITEMS = 8;
 
@@ -44,6 +53,11 @@ export function registerSweCommands(pi: ExtensionAPI, runtime: PiSweRuntime): vo
         ctx.ui.notify(formatOrchestrate(parsed.action, resolution, recommendation), orchestrationNotificationType(resolution, recommendation));
         return;
       }
+      if (parsed.subcommand === "work") {
+        const result = handleSweWork(runtime, parsed.workTokens ?? [], ctx);
+        ctx.ui.notify(result.message, result.ok ? "info" : "warning");
+        return;
+      }
       if (parsed.subcommand === "complete") {
         const cwd = typeof ctx.cwd === "string" ? ctx.cwd : undefined;
         const request = cwd ? parseCompleteRequest(cwd, parsed.completeTokens ?? []) : undefined;
@@ -55,7 +69,7 @@ export function registerSweCommands(pi: ExtensionAPI, runtime: PiSweRuntime): vo
         ctx.ui.notify(formatCompletion(result), result.status === "completed" || result.status === "already-complete" ? "info" : "warning");
         return;
       }
-      ctx.ui.notify(`${STATUS_USAGE}\nUsage: /swe config\n${ORCHESTRATE_USAGE}\n${COMPLETE_USAGE}`, "warning");
+      ctx.ui.notify(`${STATUS_USAGE}\nUsage: /swe config\n${ORCHESTRATE_USAGE}\n${WORK_USAGE}\n${COMPLETE_USAGE}`, "warning");
     },
   });
 }
@@ -135,20 +149,205 @@ function completeSweArgument(prefix: string): Array<{ value: string; label: stri
   if (actionMatch) {
     return ORCHESTRATE_ACTIONS.filter((action) => action.startsWith(actionMatch[1] ?? "")).map((action) => ({ value: `orchestrate ${action}`, label: action }));
   }
-  if (/^orchestrate\s+\S+\s+/.test(normalized) || /^status\s+/.test(normalized) || /^complete\s+/.test(normalized)) return [];
+  const workMatch = normalized.match(/^work\s+(\S*)$/);
+  if (workMatch) {
+    return WORK_ACTIONS.filter((action) => action.startsWith(workMatch[1] ?? "")).map((action) => ({ value: `work ${action}`, label: action }));
+  }
+  if (/^orchestrate\s+\S+\s+/.test(normalized) || /^work\s+\S+\s+/.test(normalized) || /^status\s+/.test(normalized) || /^complete\s+/.test(normalized)) return [];
   return SUBCOMMANDS.filter((value) => value.startsWith(normalized)).map((value) => ({ value, label: value }));
 }
 
-function parseSweArguments(args: string): { subcommand?: string; action?: OrchestrateAction; topic?: string; completeTokens?: string[] } {
+function parseSweArguments(args: string): { subcommand?: string; action?: OrchestrateAction; topic?: string; completeTokens?: string[]; workTokens?: string[] } {
   const tokens = args.trim().split(/\s+/).filter(Boolean);
   const subcommand = tokens[0] ?? "status";
   if (subcommand === "status") return { subcommand, topic: tokens.slice(1).join(" ") || undefined };
   if (subcommand === "config") return { subcommand, topic: tokens.slice(1).join(" ") || undefined };
   if (subcommand === "complete") return { subcommand, completeTokens: tokens.slice(1) };
+  if (subcommand === "work") return { subcommand, workTokens: tokens.slice(1) };
   if (subcommand !== "orchestrate") return { subcommand };
   const actionToken = tokens[1];
   const action = actionToken === undefined ? "status" : ORCHESTRATE_ACTIONS.find((candidate) => candidate === actionToken);
   return { subcommand, action, topic: action ? tokens.slice(actionToken === undefined ? 1 : 2).join(" ") || undefined : undefined };
+}
+
+type SweWorkAction = (typeof WORK_ACTIONS)[number];
+type SweWorkRequest = {
+  action: SweWorkAction;
+  topic?: string;
+  mode: PiSweRunnerMode;
+  until: PiSweRunnerUntil;
+  policy: PiSweRunnerPolicy;
+};
+type SweWorkContext = { cwd?: string; sessionId?: string; isIdle?: () => boolean };
+
+function handleSweWork(runtime: PiSweRuntime, tokens: readonly string[], ctx: SweWorkContext): { ok: boolean; message: string } {
+  const parsed = parseSweWorkArguments(tokens);
+  if ("error" in parsed) return { ok: false, message: `${WORK_USAGE}\nreason: ${parsed.error}` };
+  if (!ctx.cwd) return { ok: false, message: `${WORK_USAGE}\nreason: run from a repository cwd` };
+
+  const operatorOnly = parsed.action === "status" || parsed.action === "pause" || parsed.action === "stop";
+  let resolution: InitiativeResolution | undefined;
+  let topic = operatorOnly ? parsed.topic : undefined;
+  if (!topic) {
+    resolution = resolveForCommand(runtime, ctx.cwd, parsed.topic);
+    if (resolution.sourceMode !== "canonical") {
+      return { ok: false, message: `${WORK_USAGE}\n${formatResolutionSummary(resolution).join("\n")}` };
+    }
+    topic = resolution.topic;
+  }
+  if (parsed.action === "status") return formatSweWorkState(ctx.cwd, topic);
+
+  const ownerToken = typeof ctx.sessionId === "string" && ctx.sessionId.trim() === ctx.sessionId && ctx.sessionId.length <= 256 ? ctx.sessionId : undefined;
+  if (!ownerToken) return { ok: false, message: `${WORK_USAGE}\nreason: a bounded session owner identity is required` };
+  if ((parsed.action === "start" || parsed.action === "resume") && ctx.isIdle?.() !== true) {
+    return { ok: false, message: `${WORK_USAGE}\nreason: start and resume require an idle Pi session` };
+  }
+
+  const current = readPiSweRunnerState(ctx.cwd, topic);
+  if (current.diagnostics.length) return { ok: false, message: formatRunnerDiagnostics(topic, current.diagnostics) };
+  if (parsed.action === "pause" || parsed.action === "stop") {
+    if (!current.snapshot) return { ok: false, message: `pi-swe work\ntopic: ${topic}\nstatus: inactive\nreason: no persisted runner exists` };
+    if (current.snapshot.ownerToken !== ownerToken) return { ok: false, message: `pi-swe work\ntopic: ${topic}\nreason: runner is owned by ${current.snapshot.ownerToken}` };
+    const diagnostics = parsed.action === "pause"
+      ? pausePersistedPiSweRunner(ctx.cwd, topic, ownerToken)
+      : stopPersistedPiSweRunner(ctx.cwd, topic, ownerToken);
+    if (diagnostics.length) return { ok: false, message: formatRunnerDiagnostics(topic, diagnostics) };
+    return formatSweWorkState(ctx.cwd, topic);
+  }
+
+  if (!resolution || resolution.sourceMode !== "canonical") {
+    return { ok: false, message: `${WORK_USAGE}\nreason: start and resume require fresh canonical authority` };
+  }
+  const recommendation = recommendGateAwareOrchestration({ resolution });
+  if (recommendation.stage === "blocked-handoff") {
+    return { ok: false, message: `pi-swe work\ntopic: ${topic}\nstatus: blocked\nreason: ${recommendation.reason}\nblockers: ${bounded(recommendation.blockingReasons)}` };
+  }
+  const identity = canonicalRunnerIdentity(resolution, recommendation.activeContract);
+  if (!identity) return { ok: false, message: `pi-swe work\ntopic: ${topic}\nreason: exact approved selected contract identity is unavailable` };
+
+  if (parsed.action === "start") {
+    if (current.snapshot && current.snapshot.runner.status !== "stopped" && current.snapshot.runner.status !== "complete") {
+      return { ok: false, message: `pi-swe work\ntopic: ${topic}\nreason: runner ${current.snapshot.runner.runId} is already ${current.snapshot.runner.status}` };
+    }
+    const runner = createPiSweRunner({
+      runId: `${ownerToken}:${Date.now()}`,
+      mode: parsed.mode,
+      until: parsed.until,
+      identity,
+      policy: parsed.policy,
+      startedAtMs: Date.now(),
+    });
+    const diagnostics = persistPiSweRunnerState(ctx.cwd, { topic, ownerToken, runner });
+    if (diagnostics.length) return { ok: false, message: formatRunnerDiagnostics(topic, diagnostics) };
+    return formatSweWorkState(ctx.cwd, topic);
+  }
+
+  if (!current.snapshot) return { ok: false, message: `pi-swe work\ntopic: ${topic}\nreason: no persisted runner exists to resume` };
+  if (current.snapshot.ownerToken !== ownerToken) return { ok: false, message: `pi-swe work\ntopic: ${topic}\nreason: runner is owned by ${current.snapshot.ownerToken}` };
+  if (current.snapshot.runner.status === "running") return formatSweWorkState(ctx.cwd, topic);
+  if (current.snapshot.runner.status === "stopped" || current.snapshot.runner.status === "complete") {
+    return { ok: false, message: `pi-swe work\ntopic: ${topic}\nreason: ${current.snapshot.runner.status} runner cannot resume; start a new run` };
+  }
+  if (!sameRunnerIdentity(current.snapshot.runner.identity, identity)) {
+    return { ok: false, message: `pi-swe work\ntopic: ${topic}\nreason: persisted runner identity is stale` };
+  }
+  const runner = { ...current.snapshot.runner, status: "running" as const, terminalReason: undefined };
+  const diagnostics = persistPiSweRunnerState(ctx.cwd, { topic, ownerToken, runner });
+  if (diagnostics.length) return { ok: false, message: formatRunnerDiagnostics(topic, diagnostics) };
+  return formatSweWorkState(ctx.cwd, topic);
+}
+
+function parseSweWorkArguments(tokens: readonly string[]): SweWorkRequest | { error: string } {
+  const action = WORK_ACTIONS.find((candidate) => candidate === tokens[0]);
+  if (!action) return { error: "a valid work action is required" };
+  let topic: string | undefined;
+  let mode: PiSweRunnerMode = "guided";
+  let until: PiSweRunnerUntil = "contract";
+  let maxTurns = 12;
+  let maxMinutes = 30;
+  const seen = new Set<string>();
+  for (let index = 1; index < tokens.length; index += 1) {
+    const token = tokens[index]!;
+    if (!token.startsWith("--")) {
+      if (topic) return { error: "only one exact topic may be selected" };
+      topic = token;
+      continue;
+    }
+    if (!["--mode", "--until", "--max-turns", "--max-minutes"].includes(token)) return { error: `unknown option ${token}` };
+    if (seen.has(token)) return { error: `duplicate option ${token}` };
+    seen.add(token);
+    const value = tokens[++index];
+    if (!value || value.startsWith("--")) return { error: `missing value for ${token}` };
+    if (token === "--mode") {
+      if (value !== "guided" && value !== "autonomous") return { error: "mode must be guided or autonomous" };
+      mode = value;
+    } else if (token === "--until") {
+      if (value !== "contract" && value !== "initiative") return { error: "until must be contract or initiative" };
+      until = value;
+    } else {
+      const number = Number(value);
+      const maximum = token === "--max-turns" ? 100 : 1_440;
+      if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(number) || number > maximum) return { error: `${token} must be between 1 and ${maximum}` };
+      if (token === "--max-turns") maxTurns = number;
+      else maxMinutes = number;
+    }
+  }
+  if (action !== "start" && seen.size) return { error: "policy options are accepted only when starting a new run" };
+  return { action, topic, mode, until, policy: { maxTurns, maxRetries: 2, maxElapsedMs: maxMinutes * 60_000 } };
+}
+
+function canonicalRunnerIdentity(
+  resolution: Extract<InitiativeResolution, { sourceMode: "canonical" }>,
+  selected?: GateAwareOrchestrationRecommendation["activeContract"],
+): PiSweRunnerIdentity | undefined {
+  const manifest = resolution.inspection.manifest;
+  const manifestActive = manifest && "activeContract" in manifest ? manifest.activeContract : undefined;
+  const contract = selected ?? manifestActive;
+  if (!manifest?.activePlan || !contract) return undefined;
+  const indexed = resolution.inspection.contractIndex?.contracts.find((candidate) => candidate.id === contract.id && candidate.path === contract.path);
+  if (!indexed?.contentHash || !/^sha256:[a-f0-9]{64}$/.test(indexed.contentHash)) return undefined;
+  return {
+    topic: resolution.topic,
+    planRevision: manifest.activePlan.revision,
+    contractId: contract.id,
+    contractPath: contract.path,
+    contractHash: indexed.contentHash as `sha256:${string}`,
+  };
+}
+
+function sameRunnerIdentity(left: PiSweRunnerIdentity, right: PiSweRunnerIdentity): boolean {
+  return left.topic === right.topic && left.planRevision === right.planRevision && left.contractId === right.contractId
+    && left.contractPath === right.contractPath && left.contractHash === right.contractHash;
+}
+
+function formatSweWorkState(cwd: string, topic: string): { ok: boolean; message: string } {
+  const current = readPiSweRunnerState(cwd, topic);
+  if (current.diagnostics.length) return { ok: false, message: formatRunnerDiagnostics(topic, current.diagnostics) };
+  const snapshot = current.snapshot;
+  if (!snapshot) return { ok: true, message: `pi-swe work\ntopic: ${topic}\nstatus: inactive\nstage: none\nstop reason: none` };
+  const runner = snapshot.runner;
+  return {
+    ok: true,
+    message: [
+      "pi-swe work",
+      `topic: ${topic}`,
+      `status: ${runner.status}`,
+      `owner: ${snapshot.ownerToken}`,
+      `run: ${runner.runId}`,
+      `mode: ${runner.mode}`,
+      `until: ${runner.until}`,
+      `stage: ${runner.pendingDispatch?.stage ?? "await-evaluation"}`,
+      `identity: plan r${runner.identity.planRevision}, contract ${runner.identity.contractId}, ${runner.identity.contractPath}, ${runner.identity.contractHash}`,
+      `policy: max-turns=${runner.policy.maxTurns}, max-retries=${runner.policy.maxRetries}, max-elapsed-ms=${runner.policy.maxElapsedMs}${runner.policy.maxProviderUnits === undefined ? "" : `, max-provider-units=${runner.policy.maxProviderUnits}`}`,
+      `counters: turns=${runner.turnCount}, retries=${runner.retryCount}, next-dispatch=${runner.nextDispatchSequence}, accepted-dispatch=${runner.lastAcceptedDispatchSequence}`,
+      `recovery: ${current.recovery ?? "inactive"}`,
+      `stop reason: ${runner.terminalReason ?? "none"}`,
+    ].join("\n"),
+  };
+}
+
+function formatRunnerDiagnostics(topic: string, diagnostics: readonly { code: string; message: string; path: string }[]): string {
+  return `pi-swe work\ntopic: ${topic}\nstatus: blocked\ndiagnostics: ${diagnostics.map((item) => `${item.code}: ${item.message} (${item.path})`).join("; ")}`;
 }
 
 function parseCompleteRequest(cwd: string, tokens: readonly string[]): CompleteCanonicalContractRequest | undefined {

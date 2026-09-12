@@ -35,14 +35,15 @@ test("pi-swe registers the concise swe_complete tool schema", () => {
 
   piSwe(pi as never, { cwd: process.cwd() } as never);
 
-  assert.equal(tools.length, 1);
-  assert.equal(tools[0]?.name, "swe_complete");
-  assert.deepEqual(tools[0]?.parameters.required, ["confirm"]);
-  assert.equal(tools[0]?.parameters.properties.next.type, "string");
-  assert.deepEqual(tools[0]?.parameters.properties.next.enum, ["clear", "advance"]);
-  assert.equal(tools[0]?.parameters.properties.topic.type, "string");
-  assert.equal(tools[0]?.parameters.properties.contractId.type, "string");
-  assert.equal(tools[0]?.parameters.properties.confirm.type, "boolean");
+  assert.equal(tools.length, 2);
+  assert.deepEqual(tools.map((tool) => tool.name), ["swe_checkpoint", "swe_complete"]);
+  const complete = tools.find((tool) => tool.name === "swe_complete");
+  assert.deepEqual(complete?.parameters.required, ["confirm"]);
+  assert.equal(complete?.parameters.properties.next.type, "string");
+  assert.deepEqual(complete?.parameters.properties.next.enum, ["clear", "advance"]);
+  assert.equal(complete?.parameters.properties.topic.type, "string");
+  assert.equal(complete?.parameters.properties.contractId.type, "string");
+  assert.equal(complete?.parameters.properties.confirm.type, "boolean");
 });
 
 test("swe_complete refuses before resolver I/O unless confirm is true", async () => {
