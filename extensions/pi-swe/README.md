@@ -18,9 +18,9 @@ The extension may read optional peer capabilities such as `pi-todo` when they ar
 ## Orientation block
 
 - **What it does:** observes planning/inspection/change/verification signals, maintains per-turn SWE state, issues advisory workflow warnings, exposes SWE status/config, and provides staged SWE skills.
-- **Commands/tools it registers:** `/swe status`, `/swe config`, guidance-only `/swe orchestrate`, explicit guarded `/swe complete`, and the concise model-callable `swe_complete` tool. Stage guidance is discovered natively from `skills/` and invoked as `/skill:swe-*`.
-- **Pi events it listens to:** `session_start` loads config and reconstructs active-branch state; `session_tree` reconstructs after navigation; `turn_start` resets turn-local state; `tool_call` classifies inspection/code-change/todo-completion facts; `tool_result` classifies verification facts; `agent_settled` persists required cross-turn state; `session_shutdown` clears runtime state.
-- **State/config files it reads/writes:** reads project `.pi/pi-swe.json`, global `~/.pi/agent/pi-swe.json`, defaults, and `pi-swe.schema.json`; persists only active plan/stage in versioned `gentic.swe.state` custom entries and reconstructs them from `sessionManager.getBranch()`; inspected/changed paths, warnings, peer context, and verification evidence remain turn-local.
+- **Commands/tools it registers:** `/swe status`, `/swe config`, `/swe work <status|start|resume|pause|stop>`, guidance-only `/swe orchestrate`, explicit guarded `/swe complete`, and the model-callable `swe_checkpoint` and `swe_complete` tools. Stage guidance is discovered natively from `skills/` and invoked as `/skill:swe-*`.
+- **Pi events it listens to:** `session_start` loads config and reconstructs active-branch state; `session_tree` reconstructs after navigation; `turn_start` resets turn-local state; `tool_call` classifies inspection/code-change/todo-completion facts; `tool_result` classifies verification facts; `agent_settled` persists state and advances only a valid checkpoint-gated runner continuation; `session_shutdown` clears runtime state.
+- **State/config files it reads/writes:** reads project `.pi/pi-swe.json`, global `~/.pi/agent/pi-swe.json`, defaults, and `pi-swe.schema.json`; persists active plan/stage in versioned `gentic.swe.state` entries and one owner-bound runner record under `.model-artifacts/system/logs/pi-swe/<topic>/runner.json`. Inspected/changed paths, warnings, peer context, and verification evidence remain turn-local.
 - **Internal module map:** `index.ts` wires events, `/swe`, and `swe_complete`; `src/config/` loads config; `src/domain/classify.ts` extracts workflow facts; `src/domain/state.ts` tracks active plan, inspected/changed paths, and verification; `src/domain/policy.ts` evaluates advisory warnings; `src/capabilities.ts` reads optional peer capability surfaces; `src/domain/evidence.ts`, `src/domain/tdd.ts`, and `src/domain/dsa.ts` hold focused helpers; `docs/`, `skills/`, and `references/` provide resource guidance.
 - **Tests to run:** `npm run test:swe` for the focused pi-swe suite, `npm run check` for package/anatomy discovery, or the full `npm test` suite when broader regression risk justifies it.
 - **Known boundaries/non-goals:** guidance is advisory unless config disables/enables checks; it does not import peer internals, replace explicit read-before-edit discipline, or reintroduce legacy `/sop`, `/tdd-rgr`, or `/dsa-advisor` surfaces.
@@ -33,7 +33,7 @@ The extension may read optional peer capabilities such as `pi-todo` when they ar
 | `session_tree` | Reconstruct from the selected branch; abandoned branch state is ignored. |
 | `session_info_changed` | Refresh peer/session-derived context. |
 | `turn_start` | Clear inspected paths, changed paths, verification evidence, and warnings while preserving active plan/stage. |
-| `agent_settled` | Append a version-1 active plan/stage snapshot when state exists. |
+| `agent_settled` | Persist session state, then queue at most one bounded expanded stage-skill prompt when the owner-bound runner has a valid accepted checkpoint and fresh canonical authority. |
 | `session_shutdown` | Clear runtime state and advisory UI. |
 
 Unknown future state-envelope versions are ignored. Failed commands, notes/manual evidence, and successful `nearby` checks remain visible evidence but do not satisfy final verification; only successful `focused` or `broad` command evidence clears `missing_verification`.
@@ -62,12 +62,15 @@ The tool does not verify, review, choose arbitrary ready work, run lifecycle sta
 ```text
 /swe status
 /swe config
+/swe work <status|start|resume|pause|stop> [topic] [--mode guided|autonomous] [--until contract|initiative] [--max-turns 1..100] [--max-minutes 1..1440]
 /swe orchestrate [status|start|resume|handoff]
 /swe complete <topic> <contract-id> <plan-revision> <contract-path> <contract-hash> <verification-path> <verification-hash> <review-path> <review-hash> approve [clear|advance]
 ```
 
 - `/swe status` reports canonical disposition, phase progress, active/ready contracts, blockers, runtime context, and current warnings.
 - `/swe config` reports the effective project/global/default configuration and config diagnostics.
+- `/swe work status` is read-only. `start` creates one owner-bound run only after exact canonical approval/readiness checks; it defaults to guided mode, contract scope, and bounded configured policy. `resume`, `pause`, and `stop` require the same session owner. Only an explicit `--mode autonomous` enables autonomous mode, and neither mode bypasses plan approval, replanning, unsafe/external-operation, missing-capability, evidence, review, or completion gates.
+- Each dispatched `/skill:swe-*` prompt contains the exact topic, plan revision, contract ID/path/hash, stage, dispatch token, required reads, and `swe_checkpoint` obligation. Intent is persisted before sending. A missing/stale/duplicate/contradictory checkpoint or uncertain delivery stops without a duplicate prompt. `--until contract` stops after disposition; `--until initiative` may continue serially to the next dependency-ready contract and finalization.
 - `/swe orchestrate` is guidance-only: it reports artifact readiness, recommends the next lifecycle step, routes missing verification/review/finalize gates, and emits deterministic exception handoffs without running hidden multi-step work.
 - `/swe complete` is the explicit low-level mutation interface. It validates the exact active plan/contract hash plus passing verification and approving implementation-review identities, then calls the same recoverable journaled state transition used by `swe_complete`. Before mutation it losslessly normalizes supported legacy contract-index and manifest metadata within layout-v2 authority; the same transaction writes the canonical schema-v2 contract index, records migration provenance and completion evidence, and advances readiness. Contract IDs remain unchanged and evidence stays bound to the original identity. Ambiguous migration, evidence drift, graph errors, and execution blockers reject before writes with artifact-specific diagnostics. Each report must contain one closed `Pi-SWE-Evidence: {...}` JSON line binding topic, contract ID/path/hash, plan revision, and overall decision; the review line also binds the verification path/hash and zero blocking findings. An owner-token-bound exclusive local claim prevents concurrent writers and every journal/target mutation revalidates it. Claim files are never auto-reaped; after a process crash, recovery reports the exact lock path for explicit removal only after the operator confirms its owner is gone. Exact repeats return `already-complete`; mismatches and unfinished/corrupt recovery state do not write or report success. Canonical filenames stay unchanged.
 
@@ -200,15 +203,16 @@ Config is loaded from project, global, then defaults. The schema is `extensions/
   "enabled": true,
   "mode": "advisory",
   "stages": {},
-  "surgicalChange": { "maxFiles": 5 }
+  "surgicalChange": { "maxFiles": 5 },
+  "runner": { "maxTurns": 12, "maxRetries": 2, "maxMinutes": 30 }
 }
 ```
 
-`mode` may be `off`, `advisory`, or `enforced`.
+`mode` may be `off`, `advisory`, or `enforced`. Runner policy is bounded to `maxTurns` 1–100, `maxRetries` 0–10, and `maxMinutes` 1–1440. Project values override global values field-by-field; invalid or unknown runner fields emit diagnostics and fall back safely. Configuration cannot select autonomous mode: autonomy always requires an explicit `/swe work start ... --mode autonomous` invocation.
 
 ## Resource invocation migration
 
-The mirrored `/swe-*` prompt templates were removed. Use the canonical skill commands `/skill:swe-*`; arguments after the command are appended to the loaded skill. Runtime `/swe status`, `/swe config`, and guidance-only `/swe orchestrate` remain; `/swe complete` is a narrowly guarded canonical disposition action, not a prompt alias or autonomous runner.
+The mirrored `/swe-*` prompt templates were removed. Use the canonical skill commands `/skill:swe-*`; arguments after the command are appended to the loaded skill. Runtime `/swe status`, `/swe config`, owner-bound `/swe work`, and guidance-only `/swe orchestrate` remain; `/swe complete` is a narrowly guarded canonical disposition action, not a prompt alias or autonomous runner.
 
 ### Programming SOP → pi-swe stages
 

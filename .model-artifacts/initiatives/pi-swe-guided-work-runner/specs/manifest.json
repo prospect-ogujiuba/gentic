@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "initiativeId": "pi-swe-guided-work-runner",
   "topic": "pi-swe-guided-work-runner",
-  "initiativeState": "executing",
+  "initiativeState": "complete",
   "activeSpec": {
     "revision": 1,
     "path": ".model-artifacts/initiatives/pi-swe-guided-work-runner/specs/2026-09-11_1922-initiative-spec-r1.md",
@@ -13,10 +13,6 @@
     "path": ".model-artifacts/initiatives/pi-swe-guided-work-runner/plans/2026-09-11_1924-plan-index-r2.md",
     "contentHash": "sha256:9c56a764f9d960ce9aab78269afb6dd0b3c26aec8a6397996c236b6c4f890aab",
     "contractRoot": ".model-artifacts/initiatives/pi-swe-guided-work-runner/plans/revisions/r2"
-  },
-  "activeContract": {
-    "id": "P03-C01",
-    "path": ".model-artifacts/initiatives/pi-swe-guided-work-runner/plans/revisions/r2/phases/03-operator-hardening/03.01-qualification-and-docs.md"
   },
   "approval": {
     "decision": "approved",
@@ -71,5 +67,5 @@
       "findingPath": ".model-artifacts/initiatives/pi-swe-guided-work-runner/findings/2026-09-11_1923-security-operations-compatibility.md"
     }
   },
-  "updatedAt": "2026-09-12T16:06:14.041Z"
+  "updatedAt": "2026-09-12T21:14:00.000Z"
 }

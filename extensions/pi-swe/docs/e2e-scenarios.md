@@ -297,6 +297,25 @@ Goal: prove human-readable progress comes from canonical state rather than renam
 
 Expected result: the filename is unchanged; `contracts.json`, completion records, and status project `complete`, phase progress, and the next ready contract.
 
+## Scenario 19: Fresh-session guided work runner qualification
+
+Goal: prove operator control, exact authority, checkpoint-gated settled continuation, bounded recovery, and explicit autonomy without making live-provider work part of default CI.
+
+Use a disposable repository copy with one approved layout-v2 initiative and a dependency-ready active contract. Run provider-backed steps only after explicitly selecting and authorizing the provider/model and its possible spend.
+
+1. Start a fresh Pi session in the disposable copy and run `/swe work status <topic>`. Confirm no runner or prompt is created.
+2. Run `/swe work start <topic>`. Confirm the persisted runner is owner-bound, `guided`, `until: contract`, and uses the effective bounded `runner` policy. Confirm exactly one expanded `/skill:swe-implement` prompt names the current plan/contract path/hash and dispatch token.
+3. Let the stage report one valid `swe_checkpoint`, then wait for `agent_settled`. Confirm exactly one next canonical skill is queued. Repeat the settled observation and confirm no duplicate prompt is queued.
+4. Run `/swe work pause <topic>`, then `/swe work resume <topic>` only from the owning session. Confirm pause wins before continuation and resume never repeats a sent dispatch token. Run `/swe work stop <topic>` and confirm later settled events queue nothing.
+5. Start a new run with `--until initiative --max-turns 3 --max-minutes 10`. Exercise implement → verify → review → guarded completion and confirm only the next dependency-ready contract can continue. Confirm finalization remains checkpoint-gated.
+6. In separate disposable runs, verify ambiguous topic selection, stale plan/hash, missing verifier/capability, conflicting changes, unsafe operation, external side effect, exhausted retry/turn/time budget, malformed checkpoint, and non-owner resume all stop or pause with diagnostics and no follow-up.
+7. Run `/swe work start <topic> --mode autonomous` only as an explicit operator action. Confirm autonomous mode still stops at every plan, evidence, destructive/external, capability, and human-only gate.
+8. Restart Pi between persisted-prepared, sent, checkpoint-accepted, and completion-journal boundaries. Confirm recovery never duplicates a stage prompt or completion transaction.
+
+Expected result: safe in-contract stages proceed serially from fresh canonical inspection; operator pause/stop and every declared gate win; configured defaults remain guided and bounded; autonomous mode is explicit; crash recovery is fail-closed and exactly-once.
+
+Automated qualification uses `test/pi-swe-dispatch.test.ts`, `test/pi-swe-work.test.ts`, runner domain/persistence/config tests, `npm run test:swe`, `npm run typecheck`, `npm run check:pi-api`, `npm run check:resources`, and `npm run check:model-artifacts`. Record any authorized live-provider run separately; absence of authorization is not permission to start one.
+
 ## Complete-version checklist
 
 - [x] Standalone `/swe status` and `/swe config` commands are documented.
@@ -305,6 +324,7 @@ Expected result: the filename is unchanged; `contracts.json`, completion records
 - [x] No-`pi-todo` and with-`pi-todo` scenarios are documented.
 - [x] Feature, bug, DSA, exception, resume, and finalize-gate orchestration scenarios are documented.
 - [x] `/swe orchestrate [status|start|resume|handoff]` is documented as guidance-only orchestration inside the existing `/swe` namespace.
+- [x] Owner-bound `/swe work` status/start/resume/pause/stop, guided defaults, explicit autonomy, budgets, checkpoints, settled continuation, recovery, and fresh-session qualification are documented.
 - [x] Concise `swe_complete` input, exact confirmation, optional inference constraints, fail-closed evidence derivation, and non-autonomous behavior are documented.
 - [x] Explicit `/swe complete` machine-state disposition, schema-v1 compatibility migration to contract-index schema v2, reload idempotency, stable canonical filenames, and staged recovery are documented.
 - [x] Manifest-approved revision selection, next-contract progression, plan review/revision, stale approval rejection, legacy inspection/migration handoff, two-initiative ambiguity, blocked handoff, and approved deferral are documented.

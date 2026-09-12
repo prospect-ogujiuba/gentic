@@ -41,6 +41,31 @@
         }
       },
       "default": { "maxFiles": 5 }
+    },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxTurns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 12
+        },
+        "maxRetries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10,
+          "default": 2
+        },
+        "maxMinutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1440,
+          "default": 30
+        }
+      },
+      "default": { "maxTurns": 12, "maxRetries": 2, "maxMinutes": 30 }
     }
   }
 }

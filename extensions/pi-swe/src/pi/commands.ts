@@ -188,7 +188,7 @@ type SweWorkRequest = {
 type SweWorkContext = { cwd?: string; sessionId?: string; sessionManager?: { getSessionId(): string }; isIdle?: () => boolean };
 
 function handleSweWork(runtime: PiSweRuntime, tokens: readonly string[], ctx: SweWorkContext): { ok: boolean; message: string } {
-  const parsed = parseSweWorkArguments(tokens);
+  const parsed = parseSweWorkArguments(tokens, runtime.config.runner);
   if ("error" in parsed) return { ok: false, message: `${WORK_USAGE}\nreason: ${parsed.error}` };
   if (!ctx.cwd) return { ok: false, message: `${WORK_USAGE}\nreason: run from a repository cwd` };
 
@@ -265,14 +265,17 @@ function handleSweWork(runtime: PiSweRuntime, tokens: readonly string[], ctx: Sw
   return formatSweWorkState(ctx.cwd, topic);
 }
 
-function parseSweWorkArguments(tokens: readonly string[]): SweWorkRequest | { error: string } {
+function parseSweWorkArguments(
+  tokens: readonly string[],
+  defaults: PiSweRuntime["config"]["runner"],
+): SweWorkRequest | { error: string } {
   const action = WORK_ACTIONS.find((candidate) => candidate === tokens[0]);
   if (!action) return { error: "a valid work action is required" };
   let topic: string | undefined;
   let mode: PiSweRunnerMode = "guided";
   let until: PiSweRunnerUntil = "contract";
-  let maxTurns = 12;
-  let maxMinutes = 30;
+  let maxTurns = defaults.maxTurns;
+  let maxMinutes = defaults.maxMinutes;
   const seen = new Set<string>();
   for (let index = 1; index < tokens.length; index += 1) {
     const token = tokens[index]!;
@@ -301,7 +304,7 @@ function parseSweWorkArguments(tokens: readonly string[]): SweWorkRequest | { er
     }
   }
   if (action !== "start" && seen.size) return { error: "policy options are accepted only when starting a new run" };
-  return { action, topic, mode, until, policy: { maxTurns, maxRetries: 2, maxElapsedMs: maxMinutes * 60_000 } };
+  return { action, topic, mode, until, policy: { maxTurns, maxRetries: defaults.maxRetries, maxElapsedMs: maxMinutes * 60_000 } };
 }
 
 function canonicalRunnerIdentity(

@@ -529,7 +529,7 @@ test("pi-swe end-to-end docs cover scenarios, migration, and omitted legacy surf
   const scenarios = readFileSync(scenariosPath, "utf8");
   const docs = `${readme}\n${scenarios}`;
 
-  for (const command of ["/skill:swe-plan", "/skill:swe-diagnose", "/skill:swe-implement", "/skill:swe-verify", "/skill:swe-review", "/skill:swe-finalize", "/skill:swe-tdd", "/skill:swe-dsa", "/swe orchestrate", "/swe complete"]) {
+  for (const command of ["/skill:swe-plan", "/skill:swe-diagnose", "/skill:swe-implement", "/skill:swe-verify", "/skill:swe-review", "/skill:swe-finalize", "/skill:swe-tdd", "/skill:swe-dsa", "/swe work", "/swe orchestrate", "/swe complete"]) {
     assert.match(readme, new RegExp(command.replace("/", "\\/")));
   }
 
@@ -560,6 +560,10 @@ test("pi-swe end-to-end docs cover scenarios, migration, and omitted legacy surf
     "Blocked handoff",
     "Approved deferral",
     "Stable filename status projection",
+    "Fresh-session guided work runner qualification",
+    "/swe work start <topic> --mode autonomous",
+    "agent_settled",
+    "maxRetries",
   ]) {
     assert.match(docs, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
   }

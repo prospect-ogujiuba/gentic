@@ -65,7 +65,7 @@ function commandHarness(cwd: string, idle = true) {
     isIdle: () => idle,
     ui: { notify: (message: string, type?: string) => notifications.push({ message, type }) },
   };
-  return { swe: commands.get("swe")!, ctx, notifications };
+  return { swe: commands.get("swe")!, ctx, notifications, runtime };
 }
 
 test("/swe work conservatively authorizes start and reports exact persisted policy", async () => {
@@ -90,6 +90,20 @@ test("/swe work conservatively authorizes start and reports exact persisted poli
   await swe.handler("work start guided-runner", ctx);
   assert.equal(readPiSweRunnerState(cwd, "guided-runner").snapshot?.runner.runId, runId, "busy start must not replace the active run");
 
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test("/swe work uses bounded configured policy defaults without enabling implicit autonomy", async () => {
+  const cwd = canonicalFixture();
+  const { swe, ctx, runtime } = commandHarness(cwd);
+  runtime.config = { ...runtime.config, runner: { maxTurns: 8, maxRetries: 3, maxMinutes: 45 } };
+
+  await swe.handler("work start guided-runner", ctx);
+
+  const started = readPiSweRunnerState(cwd, "guided-runner").snapshot?.runner;
+  assert.equal(started?.mode, "guided");
+  assert.equal(started?.until, "contract");
+  assert.deepEqual(started?.policy, { maxTurns: 8, maxRetries: 3, maxElapsedMs: 45 * 60_000 });
   rmSync(cwd, { recursive: true, force: true });
 });
 

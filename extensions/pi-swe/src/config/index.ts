@@ -20,6 +20,11 @@ export type PiSweConfig = {
   surgicalChange?: {
     maxFiles?: number;
   };
+  runner?: {
+    maxTurns?: number;
+    maxRetries?: number;
+    maxMinutes?: number;
+  };
 };
 
 export type EffectivePiSweConfig = {
@@ -28,6 +33,7 @@ export type EffectivePiSweConfig = {
   mode: PiSweMode;
   stages: Record<PiSweStageCheckName, PiSweStageCheckConfig>;
   surgicalChange: { maxFiles: number };
+  runner: { maxTurns: number; maxRetries: number; maxMinutes: number };
 };
 
 export type PiSweConfigDiagnostic = {
@@ -64,6 +70,7 @@ export const DEFAULT_PI_SWE_CONFIG: Readonly<EffectivePiSweConfig> = Object.free
   mode: "advisory",
   stages: DEFAULT_PI_SWE_CHECKS,
   surgicalChange: { maxFiles: 5 },
+  runner: { maxTurns: 12, maxRetries: 2, maxMinutes: 30 },
 });
 
 export function loadEffectiveSweConfig(options: LoadEffectiveSweConfigOptions = {}): LoadEffectiveSweConfigResult {
@@ -108,6 +115,7 @@ function mergeConfig(...configs: Array<PiSweConfig | EffectivePiSweConfig | unde
     if (config.mode !== undefined) merged.mode = config.mode;
     if (config.stages !== undefined) merged.stages = { ...(merged.stages ?? {}), ...config.stages };
     if (config.surgicalChange !== undefined) merged.surgicalChange = { ...(merged.surgicalChange ?? {}), ...config.surgicalChange };
+    if (config.runner !== undefined) merged.runner = { ...(merged.runner ?? {}), ...config.runner };
   }
 
   return merged;
@@ -115,7 +123,7 @@ function mergeConfig(...configs: Array<PiSweConfig | EffectivePiSweConfig | unde
 
 function normalizeConfigInput(input: Record<string, unknown>, diagnostics: PiSweConfigDiagnostic[], path: string): PiSweConfig {
   const normalized: PiSweConfig = {};
-  const known = new Set(["$schema", "version", "enabled", "mode", "stages", "surgicalChange"]);
+  const known = new Set(["$schema", "version", "enabled", "mode", "stages", "surgicalChange", "runner"]);
 
   for (const key of Object.keys(input)) {
     if (!known.has(key)) diagnostics.push({ path, message: `unknown pi-swe config field '${key}' ignored` });
@@ -139,6 +147,9 @@ function normalizeConfigInput(input: Record<string, unknown>, diagnostics: PiSwe
   if (isPlainObject(input.surgicalChange)) normalized.surgicalChange = normalizeSurgicalChange(input.surgicalChange as Record<string, unknown>, diagnostics, path);
   else if (input.surgicalChange !== undefined) diagnostics.push({ path, message: "invalid 'surgicalChange'; expected object" });
 
+  if (isPlainObject(input.runner)) normalized.runner = normalizeRunner(input.runner as Record<string, unknown>, diagnostics, path);
+  else if (input.runner !== undefined) diagnostics.push({ path, message: "invalid 'runner'; expected object" });
+
   return normalized;
 }
 
@@ -151,6 +162,7 @@ function normalizeConfig(config: PiSweConfig, diagnostics: PiSweConfigDiagnostic
     mode: normalized.mode ?? DEFAULT_PI_SWE_CONFIG.mode,
     stages: { ...DEFAULT_PI_SWE_CONFIG.stages, ...(normalized.stages ?? {}) },
     surgicalChange: { ...DEFAULT_PI_SWE_CONFIG.surgicalChange, ...(normalized.surgicalChange ?? {}) },
+    runner: { ...DEFAULT_PI_SWE_CONFIG.runner, ...(normalized.runner ?? {}) },
   };
 }
 
@@ -178,6 +190,20 @@ function normalizeSurgicalChange(surgicalChange: Record<string, unknown>, diagno
   if (Number.isInteger(surgicalChange.maxFiles) && Number(surgicalChange.maxFiles) >= 1) normalized.maxFiles = Number(surgicalChange.maxFiles);
   else if (surgicalChange.maxFiles !== undefined) diagnostics.push({ path, message: "invalid 'surgicalChange.maxFiles'; expected integer >= 1" });
 
+  return normalized;
+}
+
+function normalizeRunner(runner: Record<string, unknown>, diagnostics: PiSweConfigDiagnostic[], path: string): PiSweConfig["runner"] {
+  const normalized: NonNullable<PiSweConfig["runner"]> = {};
+  const bounds = { maxTurns: [1, 100], maxRetries: [0, 10], maxMinutes: [1, 1_440] } as const;
+  for (const key of Object.keys(runner)) {
+    if (!(key in bounds)) diagnostics.push({ path, message: `unknown runner field '${key}' ignored` });
+  }
+  for (const [key, [minimum, maximum]] of Object.entries(bounds) as Array<[keyof typeof bounds, readonly [number, number]]>) {
+    const value = runner[key];
+    if (Number.isInteger(value) && Number(value) >= minimum && Number(value) <= maximum) normalized[key] = Number(value);
+    else if (value !== undefined) diagnostics.push({ path, message: `invalid 'runner.${key}'; expected integer ${minimum}..${maximum}` });
+  }
   return normalized;
 }
 

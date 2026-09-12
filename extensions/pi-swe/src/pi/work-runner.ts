@@ -104,7 +104,7 @@ export async function settlePiSweRunner(
     }
 
     try {
-      const prompt = dispatchPrompt(reduced.action.skill, reduced.action.stage, reduced.action.dispatchToken, reduced.action.identity, recommendation.requiredReadPaths);
+      const prompt = dispatchPrompt(reduced.action.skill, reduced.action.stage, reduced.action.dispatchToken, reduced.action.identity, reduced.state, recommendation.requiredReadPaths);
       if (typeof pi.sendUserMessage !== "function") throw new Error("sendUserMessage is unavailable");
       pi.sendUserMessage(prompt, { expandPromptTemplates: true });
     } catch {
@@ -200,8 +200,16 @@ function canonicalIdentity(
   return { topic: resolution.topic, planRevision: manifest.activePlan.revision, contractId: active.id, contractPath: active.path, contractHash: contract.contentHash as `sha256:${string}` };
 }
 
-function dispatchPrompt(skill: string, stage: string, token: string, identity: PiSweRunnerIdentity, reads: readonly string[]): string {
-  const prompt = `/skill:${skill} Execute only canonical ${identity.topic} plan r${identity.planRevision} contract ${identity.contractId} at ${identity.contractPath} (${identity.contractHash}); stage ${stage}; first re-read ${[`.model-artifacts/initiatives/${identity.topic}/specs/manifest.json`, ...reads].filter((value, index, all) => all.indexOf(value) === index).join(", ")}; before ending call swe_checkpoint exactly once with runId ${token.slice(0, token.lastIndexOf(":"))} and dispatchToken ${token}, this exact canonical identity and bounded evidence. Stop for any human gate, unsafe/external action, stale state, missing capability, or scope drift.`;
+function dispatchPrompt(
+  skill: string,
+  stage: string,
+  token: string,
+  identity: PiSweRunnerIdentity,
+  runner: Pick<PiSweRunnerRecord, "mode" | "until" | "policy">,
+  reads: readonly string[],
+): string {
+  const providerBudget = runner.policy.maxProviderUnits === undefined ? "" : `, maxProviderUnits=${runner.policy.maxProviderUnits}`;
+  const prompt = `/skill:${skill} Execute only canonical ${identity.topic} plan r${identity.planRevision} contract ${identity.contractId} at ${identity.contractPath} (${identity.contractHash}); stage ${stage}; mode ${runner.mode}; until ${runner.until}; policy maxTurns=${runner.policy.maxTurns}, maxRetries=${runner.policy.maxRetries}, maxElapsedMs=${runner.policy.maxElapsedMs}${providerBudget}; first re-read ${[`.model-artifacts/initiatives/${identity.topic}/specs/manifest.json`, ...reads].filter((value, index, all) => all.indexOf(value) === index).join(", ")}; before ending call swe_checkpoint exactly once with runId ${token.slice(0, token.lastIndexOf(":"))} and dispatchToken ${token}, this exact canonical identity and bounded evidence. Stop for any human gate, unsafe/external action, stale state, missing capability, or scope drift.`;
   if (prompt.length > MAX_PROMPT_LENGTH) throw new Error("runner dispatch prompt exceeds its bound");
   return prompt;
 }

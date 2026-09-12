@@ -49,6 +49,35 @@ test("pi-swe effective config lets project override global config", () => {
   assert.deepEqual(result.config.stages.scope, { enabled: true });
 });
 
+test("pi-swe effective config applies bounded runner policy overrides with project precedence", () => {
+  const cwd = tempDir();
+  const homeDir = tempDir();
+  mkdirSync(join(homeDir, ".pi", "agent"), { recursive: true });
+  mkdirSync(join(cwd, ".pi"), { recursive: true });
+  writeFileSync(join(homeDir, ".pi", "agent", "pi-swe.json"), JSON.stringify({ runner: { maxTurns: 20, maxRetries: 3, maxMinutes: 45 } }));
+  writeFileSync(join(cwd, ".pi", "pi-swe.json"), JSON.stringify({ runner: { maxTurns: 8 } }));
+
+  const result = loadEffectiveSweConfig({ cwd, homeDir });
+
+  assert.deepEqual(result.config.runner, { maxTurns: 8, maxRetries: 3, maxMinutes: 45 });
+  assert.deepEqual(result.diagnostics, []);
+});
+
+test("pi-swe effective config rejects unsafe runner policy values and unknown fields", () => {
+  const cwd = tempDir();
+  const homeDir = tempDir();
+  mkdirSync(join(cwd, ".pi"), { recursive: true });
+  writeFileSync(join(cwd, ".pi", "pi-swe.json"), JSON.stringify({ runner: { maxTurns: 0, maxRetries: 11, maxMinutes: 1441, mode: "autonomous" } }));
+
+  const result = loadEffectiveSweConfig({ cwd, homeDir });
+
+  assert.deepEqual(result.config.runner, DEFAULT_PI_SWE_CONFIG.runner);
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("unknown runner field 'mode'")));
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("invalid 'runner.maxTurns'")));
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("invalid 'runner.maxRetries'")));
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("invalid 'runner.maxMinutes'")));
+});
+
 test("pi-swe effective config supports disabled config", () => {
   const cwd = tempDir();
   const homeDir = tempDir();
@@ -101,4 +130,9 @@ test("pi-swe config resources remain top-level discoverable", () => {
 
   assert.equal(existsSync(join(extensionRoot, "prompts")), false, "mirrored SWE prompts should stay removed");
   assert.equal(existsSync(schemaPath), true, "pi-swe.schema.json should stay top-level for compatibility");
+  const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
+  assert.deepEqual(schema.properties.runner.default, { maxTurns: 12, maxRetries: 2, maxMinutes: 30 });
+  assert.deepEqual(schema.properties.runner.properties.maxTurns, { type: "integer", minimum: 1, maximum: 100, default: 12 });
+  assert.deepEqual(schema.properties.runner.properties.maxRetries, { type: "integer", minimum: 0, maximum: 10, default: 2 });
+  assert.deepEqual(schema.properties.runner.properties.maxMinutes, { type: "integer", minimum: 1, maximum: 1440, default: 30 });
 });

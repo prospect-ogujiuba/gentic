@@ -9,6 +9,7 @@ import { persistPiSweRunnerState, readPiSweRunnerState } from "../extensions/pi-
 import { createRuntime } from "../extensions/pi-swe/src/app/runtime.ts";
 import { createPiSweRunner, reducePiSweRunner } from "../extensions/pi-swe/src/domain/runner.ts";
 import { registerSweCommands } from "../extensions/pi-swe/src/pi/commands.ts";
+import { registerSweEvents } from "../extensions/pi-swe/src/pi/events.ts";
 import { settlePiSweRunner } from "../extensions/pi-swe/src/pi/work-runner.ts";
 
 const sha256 = (content: string) => `sha256:${createHash("sha256").update(content).digest("hex")}` as const;
@@ -84,6 +85,53 @@ test("work start kicks the initial dispatch while settled events own continuatio
   rmSync(cwd, { recursive: true, force: true });
 });
 
+test("registered agent_settled adapter queues one checkpoint-gated continuation across duplicate events", async () => {
+  const { cwd, topic } = fixture();
+  const initial = readPiSweRunnerState(cwd, topic, "session-1").snapshot!;
+  const dispatched = reducePiSweRunner({
+    state: initial.runner,
+    canonical: { identity: initial.runner.identity, recommendation: { stage: "implement", skill: "swe-implement", blockingReasons: [] } },
+    event: { kind: "evaluate" }, nowMs: 2,
+  });
+  const evidencePath = `.model-artifacts/initiatives/${topic}/logs/implementation.md`;
+  const evidence = "implemented through adapter\n";
+  writeFile(cwd, evidencePath, evidence);
+  const accepted = reducePiSweRunner({
+    state: dispatched.state,
+    canonical: { identity: initial.runner.identity, recommendation: { stage: "implement", skill: "swe-implement", blockingReasons: [] } },
+    event: { kind: "checkpoint", checkpoint: {
+      runId: initial.runner.runId, dispatchToken: dispatched.state.pendingDispatch!.token, ...initial.runner.identity,
+      stage: "implement", outcome: "completed", evidence: [{ path: evidencePath, sha256: sha256(evidence) }],
+    } }, nowMs: 3,
+  });
+  assert.deepEqual(persistPiSweRunnerState(cwd, { topic, ownerToken: "session-1", runner: { ...accepted.state, startedAtMs: Date.now() } }), []);
+
+  const handlers = new Map<string, Function>();
+  const sent: Array<{ content: string; options: unknown }> = [];
+  const notifications: string[] = [];
+  const pi = {
+    on(event: string, handler: Function) { handlers.set(event, handler); },
+    appendEntry() {},
+    sendUserMessage(content: string, options: unknown) { sent.push({ content, options }); },
+  };
+  const ctx = {
+    cwd, sessionManager: { getSessionId: () => "session-1" }, isIdle: () => true,
+    ui: { notify(message: string) { notifications.push(message); }, setWidget() {} },
+  };
+  registerSweEvents(pi as never, createRuntime(ctx as never));
+  const settled = handlers.get("agent_settled");
+  assert.ok(settled);
+
+  await settled!({ type: "agent_settled" }, ctx);
+  await settled!({ type: "agent_settled" }, ctx);
+
+  assert.equal(sent.length, 1, `${notifications.join("; ")} | ${JSON.stringify(readPiSweRunnerState(cwd, topic))}`);
+  assert.deepEqual(sent[0]?.options, { expandPromptTemplates: true });
+  assert.match(sent[0]?.content ?? "", /^\/skill:swe-verify /);
+  assert.match(sent[0]?.content ?? "", /swe_checkpoint/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
 test("settled dispatcher persists intent before one expanded canonical skill prompt", async () => {
   const { cwd, topic } = fixture();
   const sent: Array<{ content: string; options: unknown }> = [];
@@ -102,6 +150,9 @@ test("settled dispatcher persists intent before one expanded canonical skill pro
   assert.deepEqual(sent[0]?.options, { expandPromptTemplates: true });
   assert.match(sent[0]?.content ?? "", /^\/skill:swe-implement /);
   assert.match(sent[0]?.content ?? "", /P01-C01/);
+  assert.match(sent[0]?.content ?? "", /mode guided/);
+  assert.match(sent[0]?.content ?? "", /until contract/);
+  assert.match(sent[0]?.content ?? "", /maxTurns=6, maxRetries=2, maxElapsedMs=60000/);
   assert.match(sent[0]?.content ?? "", /swe_checkpoint/);
   assert.equal(readPiSweRunnerState(cwd, topic).snapshot?.runner.pendingDispatch?.deliveryStatus, "sent");
   rmSync(cwd, { recursive: true, force: true });
