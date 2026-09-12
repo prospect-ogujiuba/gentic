@@ -25,6 +25,9 @@ export type PiSweRunnerTerminalReason = PiSweRunnerHardStop
   | "invalid-canonical-identity"
   | "invalid-checkpoint"
   | "invalid-checkpoint-identity"
+  | "missing-checkpoint"
+  | "uncertain-dispatch"
+  | "completion-failed"
   | "retry-budget-exhausted"
   | "turn-budget-exhausted"
   | "time-budget-exhausted"
@@ -188,8 +191,8 @@ export function reducePiSweRunner(request: ReducePiSweRunnerRequest): PiSweRunne
   if (state.pendingDispatch) return { state, action: { kind: "none", reason: "awaiting-checkpoint" } };
 
   const skill = canonical.recommendation.skill;
-  if (!skill || canonical.recommendation.stage === "finalize") {
-    if (canonical.recommendation.stage === "finalize" && state.until === "initiative") return { state, action: { kind: "finalize" } };
+  const stage = canonical.recommendation.stage;
+  if (!skill) {
     return block(state, "human-only-decision", ["canonical recommendation is not a dispatchable skill stage"]);
   }
   const sequence = state.nextDispatchSequence;
@@ -197,7 +200,7 @@ export function reducePiSweRunner(request: ReducePiSweRunnerRequest): PiSweRunne
   const dispatch: PiSweRunnerDispatch = {
     sequence,
     token,
-    stage: canonical.recommendation.stage,
+    stage,
     skill,
     identity: { ...canonical.identity },
     deliveryStatus: "prepared",

@@ -15,8 +15,8 @@
     "contractRoot": ".model-artifacts/initiatives/pi-swe-guided-work-runner/plans/revisions/r2"
   },
   "activeContract": {
-    "id": "P02-C02",
-    "path": ".model-artifacts/initiatives/pi-swe-guided-work-runner/plans/revisions/r2/phases/02-controlled-execution/02.02-settled-dispatch.md"
+    "id": "P03-C01",
+    "path": ".model-artifacts/initiatives/pi-swe-guided-work-runner/plans/revisions/r2/phases/03-operator-hardening/03.01-qualification-and-docs.md"
   },
   "approval": {
     "decision": "approved",
@@ -71,5 +71,5 @@
       "findingPath": ".model-artifacts/initiatives/pi-swe-guided-work-runner/findings/2026-09-11_1923-security-operations-compatibility.md"
     }
   },
-  "updatedAt": "2026-09-12T15:42:21.052Z"
+  "updatedAt": "2026-09-12T16:06:14.041Z"
 }

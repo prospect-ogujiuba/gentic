@@ -13,6 +13,7 @@ import { reducePiSweRunner, type PiSweRunnerAction, type PiSweRunnerCanonicalVie
 import { recommendGateAwareOrchestration } from "../orchestrate.ts";
 import { resolveInitiative, type InitiativeResolution } from "../planning.ts";
 import { formatCompletion } from "./commands.ts";
+import { runnerFinalizationRecommendation } from "./work-runner.ts";
 
 export type SweCompleteInput = {
   readonly topic?: string;
@@ -118,14 +119,15 @@ function registerSweCheckpointTool(pi: ExtensionAPI): void {
       const rejected = (message: string) => checkpointToolResult("rejected", message, params);
       const resolution = resolveInitiative({ cwd: ctx.cwd, explicitTopic: params.topic });
       if (resolution.sourceMode !== "canonical") return rejected("checkpoint topic does not resolve to one canonical initiative");
-      const recommendation = recommendGateAwareOrchestration({ resolution });
-      const identity = canonicalCheckpointIdentity(resolution, recommendation.activeContract);
+      const recommendation = runnerFinalizationRecommendation(resolution, recommendGateAwareOrchestration({ resolution }));
+      const current = readPiSweRunnerState(ctx.cwd, params.topic);
+      if (current.diagnostics.length || !current.snapshot) return rejected(current.diagnostics[0]?.message ?? "active runner state is unavailable");
+      const identity = canonicalCheckpointIdentity(resolution, recommendation.activeContract)
+        ?? (recommendation.stage === "finalize" ? current.snapshot.runner.identity : undefined);
       if (!identity || !sameCheckpointIdentity(identity, params)) return rejected("checkpoint canonical identity is stale or invalid");
       const evidenceError = validateCheckpointEvidence(ctx.cwd, params.topic, params.evidence);
       if (evidenceError) return rejected(evidenceError);
 
-      const current = readPiSweRunnerState(ctx.cwd, params.topic);
-      if (current.diagnostics.length || !current.snapshot) return rejected(current.diagnostics[0]?.message ?? "active runner state is unavailable");
       const canonical: PiSweRunnerCanonicalView = {
         identity,
         recommendation: {

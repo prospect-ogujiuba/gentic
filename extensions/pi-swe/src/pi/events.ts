@@ -12,6 +12,7 @@ import {
   type PiSweRuntime,
 } from "../app/runtime.ts";
 import { classifyToolCall, classifyToolResult } from "../domain/classify.ts";
+import { settleOwnedPiSweRunners } from "./work-runner.ts";
 
 export function registerSweEvents(pi: ExtensionAPI, runtime: PiSweRuntime): void {
   pi.on("session_start", (_event, ctx) => {
@@ -35,8 +36,9 @@ export function registerSweEvents(pi: ExtensionAPI, runtime: PiSweRuntime): void
     resetTurnRuntime(runtime, ctx);
   });
 
-  pi.on("agent_settled", () => {
+  pi.on("agent_settled", async (_event, ctx) => {
     persistSessionRuntime(runtime, pi);
+    await settleOwnedPiSweRunners(pi, ctx);
   });
 
   pi.on("tool_call", (event, ctx) => {

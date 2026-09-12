@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { join, posix } from "node:path";
 
-import { compareContractIds } from "./domain/contract-graph.ts";
+import { compareContractIds, deriveEffectiveCompletion } from "./domain/contract-graph.ts";
 import type { PiSweContractState } from "./domain/lifecycle.ts";
 import type { InitiativeResolution } from "./planning.ts";
 
@@ -351,8 +351,9 @@ export function recommendGateAwareOrchestration(request: RecommendGateAwareOrche
   const selectedReady = sortedReady[0];
   if (manifest.initiativeState === "finalizing" || manifest.initiativeState === "complete") {
     const approvedDeferrals = new Set(inspection.gateEvaluation?.approvedDeferrals ?? []);
+    const effectivelyComplete = deriveEffectiveCompletion(inspection.contracts, approvedDeferrals);
     const undisposedContracts = inspection.contracts
-      .filter((contract) => contract.status !== "complete" && !approvedDeferrals.has(contract.id))
+      .filter((contract) => !effectivelyComplete.has(contract.id))
       .sort((left, right) => compareContractIds(left.id, right.id));
     if (active || sortedReady.length || undisposedContracts.length) {
       const dispositionIds = [...new Set([...(active ? [active.id] : []), ...sortedReady, ...undisposedContracts.map((contract) => contract.id)])].sort(compareContractIds);

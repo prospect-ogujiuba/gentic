@@ -11,6 +11,7 @@ import { completeCanonicalContract, type CompleteCanonicalContractRequest, type 
 import { createPiSweRunner, type PiSweRunnerIdentity, type PiSweRunnerMode, type PiSweRunnerPolicy, type PiSweRunnerUntil } from "../domain/runner.ts";
 import { recommendGateAwareOrchestration, type GateAwareOrchestrationRecommendation } from "../orchestrate.ts";
 import { resolveInitiative, type InitiativeResolution } from "../planning.ts";
+import { settleOwnedPiSweRunners } from "./work-runner.ts";
 
 const SUBCOMMANDS = ["status", "config", "orchestrate", "work", "complete"] as const;
 const ORCHESTRATE_ACTIONS = ["status", "start", "resume", "handoff"] as const;
@@ -54,8 +55,14 @@ export function registerSweCommands(pi: ExtensionAPI, runtime: PiSweRuntime): vo
         return;
       }
       if (parsed.subcommand === "work") {
-        const result = handleSweWork(runtime, parsed.workTokens ?? [], ctx);
+        const workTokens = parsed.workTokens ?? [];
+        const result = handleSweWork(runtime, workTokens, ctx);
         ctx.ui.notify(result.message, result.ok ? "info" : "warning");
+        if (result.ok && (workTokens[0] === "start" || workTokens[0] === "resume")
+          && typeof (ctx as { sessionManager?: { getSessionId?: unknown } }).sessionManager?.getSessionId === "function"
+          && typeof pi.sendUserMessage === "function") {
+          await settleOwnedPiSweRunners(pi, ctx);
+        }
         return;
       }
       if (parsed.subcommand === "complete") {
@@ -178,7 +185,7 @@ type SweWorkRequest = {
   until: PiSweRunnerUntil;
   policy: PiSweRunnerPolicy;
 };
-type SweWorkContext = { cwd?: string; sessionId?: string; isIdle?: () => boolean };
+type SweWorkContext = { cwd?: string; sessionId?: string; sessionManager?: { getSessionId(): string }; isIdle?: () => boolean };
 
 function handleSweWork(runtime: PiSweRuntime, tokens: readonly string[], ctx: SweWorkContext): { ok: boolean; message: string } {
   const parsed = parseSweWorkArguments(tokens);
@@ -197,7 +204,8 @@ function handleSweWork(runtime: PiSweRuntime, tokens: readonly string[], ctx: Sw
   }
   if (parsed.action === "status") return formatSweWorkState(ctx.cwd, topic);
 
-  const ownerToken = typeof ctx.sessionId === "string" && ctx.sessionId.trim() === ctx.sessionId && ctx.sessionId.length <= 256 ? ctx.sessionId : undefined;
+  const sessionId = ctx.sessionManager?.getSessionId() ?? ctx.sessionId;
+  const ownerToken = typeof sessionId === "string" && sessionId.trim() === sessionId && sessionId.length <= 256 ? sessionId : undefined;
   if (!ownerToken) return { ok: false, message: `${WORK_USAGE}\nreason: a bounded session owner identity is required` };
   if ((parsed.action === "start" || parsed.action === "resume") && ctx.isIdle?.() !== true) {
     return { ok: false, message: `${WORK_USAGE}\nreason: start and resume require an idle Pi session` };
