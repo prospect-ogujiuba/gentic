@@ -25,7 +25,7 @@ function activeState(entries: ReturnType<typeof normalizeLedgerEntry>[]) {
       state: { ...createContextPressureState(), level: "warning" as const },
       evaluation: { available: true, level: "warning" as const, remainingPercent: 20, shouldNotify: false },
     },
-    warnings: ["one", "two", "three", "four"],
+    warnings: ["credential=TOP_SECRET", "two", "three", "four"],
   };
 }
 
@@ -46,6 +46,7 @@ test("hud adapter returns bounded stable summary without raw paths or prompts", 
   assert.deepEqual(snapshot.contributors.map((entry) => entry.label), ["Discovered/Artifacts", "System"]);
   assert.equal(JSON.stringify(snapshot).includes("/home/user/private"), false);
   assert.equal(JSON.stringify(snapshot).includes("secret prompt args preview"), false);
+  assert.equal(JSON.stringify(snapshot).includes("TOP_SECRET"), false);
   assert.deepEqual(Object.keys(snapshot.pressure), ["available", "level", "remainingPercent"]);
   assert.equal(snapshot.warnings.length, 3);
   assert.equal(snapshot.truncatedWarnings >= 1, true);

@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "topic": "pi-context-pressure-guardrails",
+  "ownerToken": "01a09c70-2fd1-73ad-8a9c-4e45d9467a5b",
+  "runner": {
+    "version": 1,
+    "runId": "01a09c70-2fd1-73ad-8a9c-4e45d9467a5b:1789331008192",
+    "mode": "guided",
+    "until": "context",
+    "identity": {
+      "topic": "pi-context-pressure-guardrails",
+      "planRevision": 2,
+      "contractId": "P02-C01",
+      "contractPath": ".model-artifacts/initiatives/pi-context-pressure-guardrails/plans/revisions/r2/phases/02-operator-integration/02.01-surfaces-and-qualification.md",
+      "contractHash": "sha256:f1099cbc33f4237fa44cb1231b3b6f092fad6d05e3f745f024c63ca0d94432ef"
+    },
+    "policy": {
+      "maxRetries": 2
+    },
+    "startedAtMs": 1789331008192,
+    "status": "running",
+    "turnCount": 2,
+    "retryCount": 1,
+    "retryCounts": {
+      "r2/P02-C01:verify->implement:credential-warning-leaks-through-report-and-hud": 1
+    },
+    "nextDispatchSequence": 4,
+    "lastAcceptedDispatchSequence": 2,
+    "lastAcceptedCheckpointKey": "{\"runId\":\"01a09c70-2fd1-73ad-8a9c-4e45d9467a5b:1789331008192\",\"dispatchToken\":\"01a09c70-2fd1-73ad-8a9c-4e45d9467a5b:1789331008192:2\",\"topic\":\"pi-context-pressure-guardrails\",\"planRevision\":2,\"contractId\":\"P02-C01\",\"contractPath\":\".model-artifacts/initiatives/pi-context-pressure-guardrails/plans/revisions/r2/phases/02-operator-integration/02.01-surfaces-and-qualification.md\",\"contractHash\":\"sha256:f1099cbc33f4237fa44cb1231b3b6f092fad6d05e3f745f024c63ca0d94432ef\",\"stage\":\"verify\",\"outcome\":\"retry\",\"failureSignature\":\"credential-warning-leaks-through-report-and-hud\",\"evidence\":[{\"path\":\".model-artifacts/initiatives/pi-context-pressure-guardrails/reports/2026-09-13_2028-p02-c01-verification-credential-warning-gap.md\",\"sha256\":\"sha256:de923dad2cd409e9e84538d8606a6d34a50ede97ec66ff1f5b35c3e27902ab94\"}]}",
+    "pendingDispatch": {
+      "sequence": 3,
+      "token": "01a09c70-2fd1-73ad-8a9c-4e45d9467a5b:1789331008192:3",
+      "stage": "implement",
+      "skill": "swe-implement",
+      "identity": {
+        "topic": "pi-context-pressure-guardrails",
+        "planRevision": 2,
+        "contractId": "P02-C01",
+        "contractPath": ".model-artifacts/initiatives/pi-context-pressure-guardrails/plans/revisions/r2/phases/02-operator-integration/02.01-surfaces-and-qualification.md",
+        "contractHash": "sha256:f1099cbc33f4237fa44cb1231b3b6f092fad6d05e3f745f024c63ca0d94432ef"
+      },
+      "deliveryStatus": "sent"
+    }
+  }
+}

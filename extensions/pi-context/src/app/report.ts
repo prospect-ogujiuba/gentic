@@ -49,6 +49,14 @@ export type PiContextReportArtifact = {
 };
 
 const REPORT_DIR = path.join(".model-artifacts", "system", "reports", "pi-context");
+const SAFE_REPORT_WARNINGS = new Set([
+  "message usage.totalTokens is cumulative context usage and is excluded from entry tokens",
+  "compaction before/after token usage was not fully exposed by Pi",
+  "assistant message content was not exposed",
+  "effective system prompt was not exposed",
+  "tool prompt snippet was not exposed",
+  "package manifest content was not measured",
+]);
 const GROUP_ALIASES: Record<string, ContextSourceKind> = {
   system: "system",
   user: "user",
@@ -124,7 +132,7 @@ export function createPiContextReportSnapshot(state: PiContextSessionState | und
       currentTokens: usage?.tokens,
       currentTokenConfidence: usage?.tokenConfidence,
       compaction: latestCompactionStats(state.ledgerEntries),
-      warnings: state.warnings,
+      warnings: safeReportWarnings(state.warnings),
     }),
     pressure: pressureStatus(state),
   };
@@ -146,7 +154,7 @@ export function renderPiContextSummary(snapshot: PiContextReportSnapshot, reques
   if (groups.length === 0) lines.push("- no matching ledger entries");
   for (const group of groups) lines.push(`- ${group.label}: ${formatTokens(group.tokenCount, group.tokenConfidence)} (${formatBytes(group.byteCount)}, ${plural(group.entries.length, "entry", "entries")})`);
 
-  const warnings = uniqueStrings([...(snapshot.warnings ?? []), ...(request.warnings ?? [])]);
+  const warnings = uniqueStrings([...(snapshot.warnings ?? []), ...safeReportWarnings(request.warnings ?? [])]);
   if (warnings.length) {
     lines.push("Warnings:");
     for (const warning of warnings.slice(0, 4)) lines.push(`- ${warning}`);
@@ -224,6 +232,27 @@ export function renderPiContextJson(snapshot: PiContextReportSnapshot, groups: C
     groups: safeJsonGroups(filteredGroups(snapshot.groups, groups)),
   };
   return `${JSON.stringify(payload, null, 2)}\n`;
+}
+
+function safeReportWarnings(warnings: readonly string[]): string[] {
+  return warnings.map((warning, index) => safeReportWarning(warning, index));
+}
+
+function safeReportWarning(warning: string, index: number): string {
+  if (SAFE_REPORT_WARNINGS.has(warning)) return warning;
+  const normalized = warning.toLowerCase();
+  if (normalized.includes("unknown /pi-context option")) return "unknown /pi-context option ignored (details redacted)";
+  if (
+    normalized.includes("pi-context config")
+    || normalized.includes("pressure field")
+    || normalized.includes("pressure threshold")
+    || normalized.includes("unsupported version")
+    || normalized.includes("$schema")
+  ) return "pi-context configuration warning (details redacted)";
+  if (normalized.includes("before session_start")) return "pi-context lifecycle initialized after session_start";
+  if (normalized.includes("compaction")) return "pi-context compaction usage is incomplete";
+  if (normalized.includes("tool") && normalized.includes("reported an error")) return "pi-context tool error observed";
+  return `pi-context warning ${index + 1} (details redacted)`;
 }
 
 function safeJsonGroups(groups: ContextGroup[]): ContextGroup[] {

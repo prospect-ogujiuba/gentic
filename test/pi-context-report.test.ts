@@ -118,6 +118,20 @@ test("report filters only requested groups", () => {
   assert.match(text, /- Tools:/);
 });
 
+test("report warnings redact raw option and credential details", () => {
+  const credential = "credential=TOP_SECRET";
+  resetSessionState("test", at(0));
+  startSessionState({ reason: "test", at: at(0), metadata: { contextWindow: 1000 } });
+  const state = recordLedgerEntries({ at: at(1), entries: [], warnings: [credential] });
+  const snapshot = createPiContextReportSnapshot(state, { capturedAt: at(2) });
+  const request = parsePiContextReportArgs("summary --api-key=ARG_SECRET");
+
+  const outputs = [renderPiContextSummary(snapshot, request), renderPiContextMarkdown(snapshot), renderPiContextJson(snapshot)];
+  for (const output of outputs) assert.doesNotMatch(output, /TOP_SECRET|ARG_SECRET/i);
+  assert.deepEqual(JSON.parse(renderPiContextJson(snapshot)).warnings, ["pi-context warning 1 (details redacted)"]);
+  assert.match(outputs[0]!, /unknown \/pi-context option ignored \(details redacted\)/);
+});
+
 test("pi-context writes non-initiative reports in the layout-v2 system namespace", () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-context-report-"));
   const snapshot = createPiContextReportSnapshot(undefined, { capturedAt: "2026-05-13T02:05:06.000Z" });
