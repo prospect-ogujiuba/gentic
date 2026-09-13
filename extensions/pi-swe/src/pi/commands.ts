@@ -348,11 +348,11 @@ function handleSweWork(runtime: PiSweRuntime, tokens: readonly string[], ctx: Sw
   if (previous.status === "stopped" || previous.status === "complete") {
     return { ok: false, message: `pi-swe work\ntopic: ${topic}\nreason: ${previous.status} runner cannot resume; start a new run` };
   }
-  if (!sameRunnerIdentity(previous.identity, identity)) {
-    return { ok: false, message: `pi-swe work\ntopic: ${topic}\nreason: persisted runner identity is stale` };
-  }
   const exhaustedLegacyBudget = previous.terminalReason === "turn-budget-exhausted"
     || previous.terminalReason === "time-budget-exhausted";
+  if (!exhaustedLegacyBudget && !sameRunnerIdentity(previous.identity, identity)) {
+    return { ok: false, message: `pi-swe work\ntopic: ${topic}\nreason: persisted runner identity is stale` };
+  }
   if (current.snapshot.ownerToken !== ownerToken || exhaustedLegacyBudget) {
     const startedAtMs = Date.now();
     const runner = createPiSweRunner({

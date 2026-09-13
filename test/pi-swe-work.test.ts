@@ -212,7 +212,7 @@ test("/swe work pause, resume, and stop are explicit and idempotent", async () =
 
 test("/swe work resume replaces an exhausted legacy budget with current context defaults", async () => {
   const cwd = canonicalFixture();
-  const { swe, ctx } = commandHarness(cwd);
+  const { swe, ctx, notifications } = commandHarness(cwd);
   await swe.handler("work start guided-runner --until contract --max-turns 1 --max-minutes 30", ctx);
   const original = readPiSweRunnerState(cwd, "guided-runner", "session-1").snapshot!;
   assert.deepEqual(persistPiSweRunnerState(cwd, {
@@ -228,14 +228,54 @@ test("/swe work resume replaces an exhausted legacy budget with current context 
     },
   }), []);
 
+  const contractRoot = ".model-artifacts/initiatives/guided-runner/plans/revisions/r1";
+  const nextContractPath = `${contractRoot}/contracts/02.md`;
+  const nextContract = "# contract 02\n";
+  writeFile(cwd, nextContractPath, nextContract);
+  const indexPath = join(cwd, contractRoot, "contracts.json");
+  const index = JSON.parse(readFileSync(indexPath, "utf8"));
+  index.contracts[0].status = "complete";
+  index.contracts.push({ kind: "phase", id: "P01-C02", dependsOn: ["P01-C01"], planRevision: 1, path: nextContractPath, status: "pending", contentHash: sha256(nextContract) });
+  index.contractFacts["P01-C02"] = { entryInputsAvailable: true, capabilitiesAvailable: true, applicability: "applicable", acceptanceDefined: true, verificationDefined: true };
+  writeFileSync(indexPath, JSON.stringify(index), "utf8");
+  const manifestPath = join(cwd, ".model-artifacts/initiatives/guided-runner/specs/manifest.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.activeContract = { id: "P01-C02", path: nextContractPath };
+  writeFileSync(manifestPath, JSON.stringify(manifest), "utf8");
+
   await swe.handler("work resume guided-runner", ctx);
   const resumed = readPiSweRunnerState(cwd, "guided-runner", "session-1").snapshot!;
-  assert.notEqual(resumed.runner.runId, original.runner.runId);
+  assert.notEqual(resumed.runner.runId, original.runner.runId, notifications.at(-1)?.message);
+  assert.equal(resumed.runner.identity.contractId, "P01-C02");
   assert.equal(resumed.runner.until, "context");
   assert.deepEqual(resumed.runner.policy, { maxRetries: 2 });
   assert.equal(resumed.runner.turnCount, 0);
   assert.equal(resumed.runner.status, "running");
 
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test("/swe work resume rejects a non-exhausted stale runner identity", async () => {
+  const cwd = canonicalFixture();
+  const { swe, ctx, notifications } = commandHarness(cwd);
+  await swe.handler("work start guided-runner", ctx);
+  const original = readPiSweRunnerState(cwd, "guided-runner", "session-1").snapshot!;
+  assert.deepEqual(persistPiSweRunnerState(cwd, {
+    topic: "guided-runner",
+    ownerToken: "session-1",
+    runner: {
+      ...original.runner,
+      identity: { ...original.runner.identity, contractId: "P00-C01" },
+      status: "paused",
+      terminalReason: "operator-paused",
+    },
+  }), []);
+
+  await swe.handler("work resume guided-runner", ctx);
+  const unchanged = readPiSweRunnerState(cwd, "guided-runner", "session-1").snapshot!;
+  assert.equal(unchanged.runner.runId, original.runner.runId);
+  assert.equal(unchanged.runner.status, "paused");
+  assert.match(notifications.at(-1)?.message ?? "", /persisted runner identity is stale/);
   rmSync(cwd, { recursive: true, force: true });
 });
 
