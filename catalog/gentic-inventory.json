@@ -199,8 +199,10 @@
         "extensions/pi-context/src/app/index.ts",
         "extensions/pi-context/src/app/report.ts",
         "extensions/pi-context/src/app/session-state.ts",
+        "extensions/pi-context/src/config/index.ts",
         "extensions/pi-context/src/domain/index.ts",
         "extensions/pi-context/src/domain/ledger.ts",
+        "extensions/pi-context/src/domain/pressure.ts",
         "extensions/pi-context/src/domain/types.ts",
         "extensions/pi-context/src/pi/index.ts",
         "extensions/pi-context/src/pi/register.ts",
@@ -370,6 +372,7 @@
       "sourceFiles": [
         "extensions/pi-swe/index.ts",
         "extensions/pi-swe/src/app/evidence.ts",
+        "extensions/pi-swe/src/app/runner-persistence.ts",
         "extensions/pi-swe/src/app/runtime.ts",
         "extensions/pi-swe/src/app/state.ts",
         "extensions/pi-swe/src/capabilities.ts",
@@ -388,6 +391,7 @@
         "extensions/pi-swe/src/domain/lifecycle.ts",
         "extensions/pi-swe/src/domain/policy.ts",
         "extensions/pi-swe/src/domain/readiness.ts",
+        "extensions/pi-swe/src/domain/runner.ts",
         "extensions/pi-swe/src/domain/state.ts",
         "extensions/pi-swe/src/domain/tdd.ts",
         "extensions/pi-swe/src/dsa.ts",
@@ -399,6 +403,7 @@
         "extensions/pi-swe/src/pi/commands.ts",
         "extensions/pi-swe/src/pi/events.ts",
         "extensions/pi-swe/src/pi/tools.ts",
+        "extensions/pi-swe/src/pi/work-runner.ts",
         "extensions/pi-swe/src/planning.ts",
         "extensions/pi-swe/src/policy.ts",
         "extensions/pi-swe/src/runtime.ts",
@@ -410,6 +415,7 @@
           "swe"
         ],
         "tools": [
+          "swe_checkpoint",
           "swe_complete"
         ],
         "events": [
