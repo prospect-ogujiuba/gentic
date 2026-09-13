@@ -54,6 +54,36 @@ import { collectStaticInventoryFromBeforeAgentStart } from "./static-inventory.t
 
 export const MESSAGE_UPDATE_SAMPLE_RATE = 8;
 
+const PI_CONTEXT_COMPLETIONS = [
+  { value: "summary", label: "summary", description: "Show the maintained context summary · /pi-context summary [groups...]" },
+  { value: "artifact", label: "artifact", description: "Write an expanded Markdown report · /pi-context artifact [groups...]" },
+  { value: "open", label: "open", description: "Alias for writing an expanded report · /pi-context open [groups...]" },
+  { value: "json", label: "json", description: "Write deterministic JSON for downstream use · /pi-context json [groups...]" },
+  { value: "help", label: "help", description: "Show command syntax and group filters · /pi-context help" },
+  { value: "system", label: "system", description: "Include only system-context entries" },
+  { value: "user", label: "user", description: "Include only user-message context entries" },
+  { value: "project", label: "project", description: "Include only project-context entries" },
+  { value: "extensions", label: "extensions", description: "Include only extension-provided context entries" },
+  { value: "session", label: "session", description: "Include only session-context entries" },
+  { value: "tools", label: "tools", description: "Include only tool context entries" },
+  { value: "artifacts", label: "artifacts", description: "Include only discovered artifact entries" },
+  { value: "compaction", label: "compaction", description: "Include only compaction observations" },
+] as const;
+
+export function completePiContextArgument(prefix: string): Array<{ value: string; label: string; description: string }> {
+  const normalized = prefix.trimStart();
+  const trailingSpace = /\s$/.test(normalized);
+  const tokens = normalized.trim().split(/\s+/).filter(Boolean);
+  const query = trailingSpace ? "" : tokens.at(-1) ?? "";
+  const completed = trailingSpace ? tokens : tokens.slice(0, -1);
+  if (completed.includes("help")) return [];
+  const hasMode = completed.some((token) => ["summary", "artifact", "open", "json", "help"].includes(token));
+  return PI_CONTEXT_COMPLETIONS
+    .filter((item) => !completed.includes(item.value) && item.value.startsWith(query))
+    .filter((item) => !hasMode || !["summary", "artifact", "open", "json", "help"].includes(item.value))
+    .map((item) => ({ value: [...completed, item.value].join(" "), label: item.label, description: item.description }));
+}
+
 export function registerPiContext(pi: ExtensionAPI): void {
   let currentTurnId: string | undefined;
   let compactCount = 0;
@@ -74,11 +104,8 @@ export function registerPiContext(pi: ExtensionAPI): void {
   };
 
   pi.registerCommand("pi-context", {
-    description: "/pi-context [summary|artifact|open|json] [system|user|project|extensions|session|tools|artifacts|compaction] — inspect or export the context ledger",
-    getArgumentCompletions: (prefix) =>
-      ["summary", "artifact", "open", "json", "system", "user", "project", "extensions", "session", "tools", "artifacts", "compaction"]
-        .filter((value) => value.startsWith(prefix))
-        .map((value) => ({ value, label: value })),
+    description: "/pi-context [summary|artifact|open|json|help] [system|user|project|extensions|session|tools|artifacts|compaction] — inspect or export the context ledger",
+    getArgumentCompletions: completePiContextArgument,
     handler: async (args, ctx) => {
       ensureStarted(ctx, "context", "command:/pi-context");
       updateSessionState({ event: "context", reason: "command:/pi-context", metadata: readSessionMetadata(ctx), usageSnapshot: readUsageSnapshot(ctx) });

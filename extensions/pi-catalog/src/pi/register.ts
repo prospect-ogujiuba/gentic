@@ -18,6 +18,19 @@ import { PI_EXTENSION_EVENTS, SCHEMA_VERSION, type PiNativeCapabilityGroup } fro
 
 const capabilityGroups = Object.keys(PI_NATIVE_CAPABILITY_GROUPS) as PiNativeCapabilityGroup[];
 const catalogSections = ["summary", "surfaces", "events", ...capabilityGroups] as const;
+const SECTION_DESCRIPTIONS: Record<string, string> = {
+  summary: "Catalog version, source, and capability totals · /catalog summary",
+  surfaces: "Inspect Pi package surfaces · /catalog surfaces [id]",
+  events: "List extension lifecycle events · /catalog events",
+  commands: "List native command capabilities · /catalog commands",
+  tools: "List native tool capabilities · /catalog tools",
+  shortcuts: "List native shortcut capabilities · /catalog shortcuts",
+  flags: "List native CLI flag capabilities · /catalog flags",
+  providers: "List provider capabilities · /catalog providers",
+  renderers: "List custom renderer capabilities · /catalog renderers",
+  "markdown-transformers": "List markdown transformer capabilities · /catalog markdown-transformers",
+  "ui-surfaces": "List native UI surface capabilities · /catalog ui-surfaces",
+};
 
 function sectionText(section: CatalogSection, id?: string): string {
   if (section === "summary") return catalogText();
@@ -70,9 +83,9 @@ export function registerPiCatalog(pi: ExtensionAPI): void {
           description: surface.description,
         }));
       }
-      return ["surfaces", "events", ...capabilityGroups]
+      return ["summary", "surfaces", "events", ...capabilityGroups]
         .filter((value) => value.startsWith(section))
-        .map((value) => ({ value, label: value }));
+        .map((value) => ({ value, label: value, description: SECTION_DESCRIPTIONS[value] ?? `Inspect ${value}` }));
     },
     handler: async (args, ctx) => {
       const [section = "summary", id] = args.trim().split(/\s+/).filter(Boolean);

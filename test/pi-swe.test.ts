@@ -101,13 +101,9 @@ test("/swe orchestrate is guidance-only and preserves existing command behavior"
   piSwe(pi as never, ctx as never);
   const swe = commands.get("swe");
   assert.ok(swe);
-  assert.deepEqual(swe.getArgumentCompletions?.(""), [
-    { value: "status", label: "status" },
-    { value: "config", label: "config" },
-    { value: "orchestrate", label: "orchestrate" },
-    { value: "work", label: "work" },
-    { value: "complete", label: "complete" },
-  ]);
+  const rootCompletions = swe.getArgumentCompletions?.("") ?? [];
+  assert.deepEqual(rootCompletions.map((item: { value: string }) => item.value), ["status", "config", "orchestrate", "work", "complete"]);
+  assert.ok(rootCompletions.every((item: { description?: string }) => item.description?.includes("/swe")));
 
   await swe.handler("orchestrate", ctx);
   await swe.handler("status", ctx);
@@ -123,12 +119,14 @@ test("/swe status and orchestrate expose canonical topic, revision, gates, contr
   const cwd = writeCommandCanonicalFixture("team/demo");
   const { swe, notifications } = registerSweForCommandTest(cwd);
 
-  assert.deepEqual(swe.getArgumentCompletions?.("orchestrate "), [
-    { value: "orchestrate status", label: "status" },
-    { value: "orchestrate start", label: "start" },
-    { value: "orchestrate resume", label: "resume" },
-    { value: "orchestrate handoff", label: "handoff" },
+  const orchestrateCompletions = swe.getArgumentCompletions?.("orchestrate ") ?? [];
+  assert.deepEqual(orchestrateCompletions.map((item: { value: string }) => item.value), [
+    "orchestrate status",
+    "orchestrate start",
+    "orchestrate resume",
+    "orchestrate handoff",
   ]);
+  assert.ok(orchestrateCompletions.every((item: { description?: string }) => item.description?.includes("/swe orchestrate")));
 
   await swe.handler("  status   team/demo  ", { cwd, ui: { notify: (message: string, type?: string) => notifications.push({ message, type }) } });
   await swe.handler(" orchestrate   start   team/demo ", { cwd, ui: { notify: (message: string, type?: string) => notifications.push({ message, type }) } });

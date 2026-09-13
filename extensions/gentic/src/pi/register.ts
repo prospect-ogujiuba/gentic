@@ -7,10 +7,35 @@ import { packageSummary } from "../package-summary.ts";
 const ROOT = new URL("../../..", import.meta.url).pathname;
 const STATUS_KEY = "gentic";
 
+const GENTIC_COMMAND_COMPLETIONS = [
+  { value: "status", label: "status", description: "Show suite/resource status · /gentic status" },
+  { value: "commands", label: "commands", description: "List extension-owned runtime commands · /gentic commands" },
+  { value: "find", label: "find", description: "Search command names and descriptions · /gentic find <term>" },
+  { value: "run", label: "run", description: "Forward an extension command · /gentic run <command> [args]" },
+  { value: "reload", label: "reload", description: "Reload extensions, skills, prompts, themes, and settings · /gentic reload" },
+] as const;
+
 let lastSession = { startedAt: 0, cwd: "", resources: "unknown" };
 
 function extensionCommandCatalog(pi: ExtensionAPI) {
   return extensionCommands(pi.getCommands());
+}
+
+export function completeGenticArgument(pi: ExtensionAPI, prefix: string): Array<{ value: string; label: string; description: string }> {
+  const normalized = prefix.trimStart();
+  const runMatch = normalized.match(/^run\s+(\S*)$/);
+  if (runMatch) {
+    const query = runMatch[1] ?? "";
+    return extensionCommandCatalog(pi)
+      .filter((command) => command.name !== "gentic" && command.name.startsWith(query))
+      .map((command) => ({
+        value: `run ${command.name}`,
+        label: command.name,
+        description: command.description || `Run /${command.name}`,
+      }));
+  }
+  if (/^(?:find|run)\s+\S+/.test(normalized) || /\s/.test(normalized)) return [];
+  return GENTIC_COMMAND_COMPLETIONS.filter((item) => item.value.startsWith(normalized)).map((item) => ({ ...item }));
 }
 
 function statusText(pi: ExtensionAPI): string {
@@ -54,10 +79,7 @@ export function registerGentic(pi: ExtensionAPI): void {
 
   pi.registerCommand("gentic", {
     description: "/gentic [status|commands|find <term>|run <extension-command> [args]|reload] — inspect and route the Gentic suite",
-    getArgumentCompletions: (prefix) =>
-      ["status", "commands", "find", "run", "reload"]
-        .filter((value) => value.startsWith(prefix))
-        .map((value) => ({ value, label: value })),
+    getArgumentCompletions: (prefix) => completeGenticArgument(pi, prefix),
     handler: async (args, ctx) => {
       const [subcommand = "status", ...rest] = args.trim().split(/\s+/).filter(Boolean);
 

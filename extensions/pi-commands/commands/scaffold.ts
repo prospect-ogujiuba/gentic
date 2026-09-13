@@ -270,17 +270,60 @@ export function formatScaffoldApplyResult(result: ScaffoldApplyResult): string {
   return [`Applied scaffold: ${heading}`, `Project root: ${result.projectRoot}`, ...result.createdPaths.map((path) => `- created ${path}`)].join("\n");
 }
 
-function completions(prefix: string) {
-  const tokens = prefix.trimStart().split(/\s+/);
-  if (tokens.length <= 1 && !prefix.endsWith(" ")) {
-    return validKinds.filter((value) => value.startsWith(tokens[0] ?? "")).map((value) => ({ value, label: value }));
+const KIND_DESCRIPTIONS: Record<ScaffoldKind, string> = {
+  extension: "Create a minimal or layered Pi extension · /scaffold extension <name> [--minimal|--layered]",
+  tool: "Create an extension-backed model-callable tool · /scaffold tool <name>",
+  command: "Create a runtime slash command · /scaffold command <name>",
+  event: "Create an extension lifecycle event handler · /scaffold event <name>",
+  shortcut: "Create a keyboard shortcut extension · /scaffold shortcut <name>",
+  flag: "Create a CLI flag extension · /scaffold flag <name>",
+  provider: "Create a custom provider extension · /scaffold provider <name>",
+  widget: "Create a widget extension · /scaffold widget <name>",
+  footer: "Create a custom footer extension · /scaffold footer <name>",
+  overlay: "Create an overlay UI extension · /scaffold overlay <name>",
+  skill: "Create a simple or directory skill · /scaffold skill <name> [--simple|--directory]",
+  prompt: "Create a prompt template · /scaffold prompt <name>",
+  theme: "Create a Pi theme · /scaffold theme <name>",
+  primitive: "Create a Gentic primitive · /scaffold primitive <name>",
+};
+
+const OPTION_DESCRIPTIONS: Record<string, string> = {
+  "--minimal": "Generate the minimal extension variant",
+  "--layered": "Generate domain/app/Pi layered extension files",
+  "--simple": "Generate a single-file skill",
+  "--directory": "Generate a skill directory with supporting resources",
+  "--dry-run": "Preview files without writing (default)",
+  "--apply": "Write the scaffold after validation",
+};
+
+export function completeScaffoldArgument(prefix: string): Array<{ value: string; label: string; description: string }> {
+  const normalized = prefix.trimStart();
+  const trailingSpace = /\s$/.test(normalized);
+  const tokens = normalized.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0 || (tokens.length === 1 && !trailingSpace)) {
+    const query = tokens[0] ?? "";
+    return validKinds.filter((value) => value.startsWith(query)).map((value) => ({
+      value,
+      label: value,
+      description: KIND_DESCRIPTIONS[value],
+    }));
   }
+  if (tokens.length < 2 || (tokens.length === 2 && !trailingSpace)) return [];
   const kind = tokens[0];
-  const last = tokens.at(-1) ?? "";
+  const current = trailingSpace ? "" : tokens.at(-1) ?? "";
+  const completed = trailingSpace ? tokens : tokens.slice(0, -1);
   const values = kind === "extension" ? ["--minimal", "--layered", "--dry-run", "--apply"]
     : kind === "skill" ? ["--simple", "--directory", "--dry-run", "--apply"]
       : ["--dry-run", "--apply"];
-  return values.filter((value) => value.startsWith(last)).map((value) => ({ value: `${tokens.slice(0, -1).join(" ")} ${value}`.trim(), label: value }));
+  const exclusiveGroups = [
+    ["--minimal", "--layered"],
+    ["--simple", "--directory"],
+    ["--dry-run", "--apply"],
+  ];
+  return values
+    .filter((value) => !completed.includes(value) && value.startsWith(current))
+    .filter((value) => !exclusiveGroups.some((group) => group.includes(value) && group.some((member) => completed.includes(member))))
+    .map((value) => ({ value: [...completed, value].join(" "), label: value, description: OPTION_DESCRIPTIONS[value]! }));
 }
 
 export const scaffoldCommand: PiCommandModule = {
@@ -288,7 +331,7 @@ export const scaffoldCommand: PiCommandModule = {
   register(pi: ExtensionAPI): void {
     pi.registerCommand("scaffold", {
       description: "/scaffold <kind> <name> [variant] [--dry-run|--apply] — preview or apply native Pi scaffolds",
-      getArgumentCompletions: completions,
+      getArgumentCompletions: completeScaffoldArgument,
       handler: async (args, ctx) => {
         const parsed = parseScaffoldArgs(args);
         if (!parsed.ok) return ctx.ui.notify(parsed.message, "warning");

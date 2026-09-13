@@ -5,8 +5,48 @@ import { hudRuntime, type HudUiContext } from "./runtime.ts";
 
 const TEST_COMMAND_RE = /(^|\s)(npm|pnpm|yarn|bun)\s+(run\s+)?(test|check|lint|typecheck|build)(\s|$)|\b(vitest|jest|pytest|ruff|eslint|tsc)\b/i;
 const HUD_USAGE = "Usage: /pi-hud [open|show|hide|reset|mode off|widget-first|footer|placement footer|widget|both|toggle <component>|only <component>]";
+const HUD_COMMAND_COMPLETIONS = [
+  { value: "open", label: "open", description: "Open the detailed HUD modal · /pi-hud open" },
+  { value: "show", label: "show", description: "Show the HUD using widget-first mode if hidden · /pi-hud show" },
+  { value: "hide", label: "hide", description: "Disable persistent HUD display · /pi-hud hide" },
+  { value: "reset", label: "reset", description: "Restore default HUD mode and components · /pi-hud reset" },
+  { value: "mode", label: "mode", description: "Select display mode · /pi-hud mode <off|widget-first|footer>" },
+  { value: "placement", label: "placement", description: "Select HUD placement · /pi-hud placement <footer|widget|both>" },
+  { value: "toggle", label: "toggle", description: "Toggle one component · /pi-hud toggle <component>" },
+  { value: "only", label: "only", description: "Show only one component · /pi-hud only <component>" },
+] as const;
 
 type HudCommandContext = ExtensionCommandContext & HudUiContext;
+
+export function completeHudArgument(prefix: string): Array<{ value: string; label: string; description: string }> {
+  const normalized = prefix.trimStart();
+  const firstSpace = normalized.indexOf(" ");
+  if (firstSpace < 0) {
+    return HUD_COMMAND_COMPLETIONS.filter((item) => item.value.startsWith(normalized)).map((item) => ({ ...item }));
+  }
+  const command = normalized.slice(0, firstSpace);
+  const query = normalized.slice(firstSpace + 1).trim();
+  const values = command === "mode"
+    ? [
+        { value: "off", description: "Disable persistent HUD display" },
+        { value: "widget-first", description: "Keep Pi's native footer and render the HUD as a widget (default)" },
+        { value: "footer", description: "Replace Pi's native footer with the HUD" },
+      ]
+    : command === "placement"
+      ? [
+          { value: "footer", description: "Render in the footer" },
+          { value: "widget", description: "Render as a widget" },
+          { value: "both", description: "Render in both supported placements" },
+        ]
+      : command === "toggle" || command === "only"
+        ? COMPONENT_IDS.map((value) => ({ value, description: command === "toggle" ? `Toggle the ${value} component` : `Show only the ${value} component` }))
+        : [];
+  return values.filter((item) => item.value.startsWith(query)).map((item) => ({
+    value: `${command} ${item.value}`,
+    label: item.value,
+    description: item.description,
+  }));
+}
 
 export function cleanupHud(ctx: HudUiContext): void {
   hudRuntime.shutdown(ctx);
@@ -86,6 +126,7 @@ export function registerHudEventHandlers(pi: ExtensionAPI): void {
 export function registerHudCommand(pi: ExtensionAPI): void {
   pi.registerCommand("pi-hud", {
     description: "/pi-hud [open|show|hide|reset|mode <off|widget-first|footer>|placement <footer|widget|both>|toggle <component>|only <component>] — configure the Pi HUD",
+    getArgumentCompletions: completeHudArgument,
     handler: async (args, ctx) => handleHudCommand(args, ctx as HudCommandContext),
   });
 }

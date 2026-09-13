@@ -20,6 +20,15 @@ import { PiTodoEventStore } from "./store.ts";
 
 const STATUS_KEY = "todo";
 const TODO_COMMANDS = ["open", "list", "next", "graph", "history", "get", "split-check"];
+const TODO_COMMAND_COMPLETIONS = [
+  { value: "open", label: "open", description: "Open the interactive todo docket · /todo open" },
+  { value: "list", label: "list", description: "List current todo state · /todo list" },
+  { value: "next", label: "next", description: "Show the next dependency-ready todo · /todo next" },
+  { value: "get", label: "get", description: "Show one todo in detail · /todo get <id>" },
+  { value: "graph", label: "graph", description: "Show dependency relationships · /todo graph <id>" },
+  { value: "history", label: "history", description: "Show a todo's event history · /todo history <id>" },
+  { value: "split-check", label: "split-check", description: "Assess whether work should be split · /todo split-check <id>" },
+] as const;
 const REMINDER_KEYS_SYMBOL = Symbol.for("gentic.pi-todo.shown-reminder-keys");
 const shownDocketReminderKeys: Set<string> = ((globalThis as Record<PropertyKey, unknown>)[REMINDER_KEYS_SYMBOL] as Set<string> | undefined) ?? new Set<string>();
 (globalThis as Record<PropertyKey, unknown>)[REMINDER_KEYS_SYMBOL] = shownDocketReminderKeys;
@@ -481,10 +490,12 @@ async function executeTodoActionUnsafe(pi: ExtensionAPI, ctx: ExtensionContext, 
   return mutationResult(String(params.action), todo);
 }
 
-export function getTodoCommandCompletions(prefix: string) {
-  return TODO_COMMANDS
-    .filter((value) => value.startsWith(prefix))
-    .map((value) => ({ value, label: value }));
+export function getTodoCommandCompletions(prefix: string): Array<{ value: string; label: string; description: string }> {
+  const normalized = prefix.trimStart();
+  if (/\s/.test(normalized)) return [];
+  return TODO_COMMAND_COMPLETIONS
+    .filter((item) => item.value.startsWith(normalized))
+    .map((item) => ({ ...item }));
 }
 
 export async function executeTodoCommand(pi: ExtensionAPI, ctx: ExtensionCommandContext, args: string): Promise<void> {

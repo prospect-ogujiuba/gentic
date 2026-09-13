@@ -13,9 +13,28 @@ import { recommendGateAwareOrchestration, type GateAwareOrchestrationRecommendat
 import { resolveInitiative, type InitiativeResolution } from "../planning.ts";
 import { settleOwnedPiSweRunners } from "./work-runner.ts";
 
-const SUBCOMMANDS = ["status", "config", "orchestrate", "work", "complete"] as const;
 const ORCHESTRATE_ACTIONS = ["status", "start", "resume", "handoff"] as const;
 const WORK_ACTIONS = ["status", "start", "resume", "pause", "stop"] as const;
+const SUBCOMMAND_COMPLETIONS = [
+  { value: "status", label: "status", description: "Show canonical initiative, contract, gate, and runtime status · /swe status [topic]" },
+  { value: "config", label: "config", description: "Show effective pi-swe configuration and diagnostics · /swe config" },
+  { value: "orchestrate", label: "orchestrate", description: "Recommend one lifecycle stage without hidden execution · /swe orchestrate <action> [topic]" },
+  { value: "work", label: "work", description: "Control the owner-bound guided work runner · /swe work <action> [topic] [options]" },
+  { value: "complete", label: "complete", description: "Low-level guarded canonical disposition/recovery · /swe complete <exact evidence identity...>" },
+] as const;
+const ORCHESTRATE_COMPLETIONS = [
+  { value: "status", label: "status", description: "Report the next lifecycle recommendation · /swe orchestrate status [topic]" },
+  { value: "start", label: "start", description: "Recommend the first approved dependency-ready stage · /swe orchestrate start [topic]" },
+  { value: "resume", label: "resume", description: "Recommend a durable artifact-based resume stage · /swe orchestrate resume [topic]" },
+  { value: "handoff", label: "handoff", description: "Emit a bounded exception handoff · /swe orchestrate handoff [topic]" },
+] as const;
+const WORK_COMPLETIONS = [
+  { value: "status", label: "status", description: "Inspect persisted runner state without mutation · /swe work status [topic]" },
+  { value: "start", label: "start", description: "Start an approved owner-bound run · /swe work start [topic] [options]" },
+  { value: "resume", label: "resume", description: "Resume a paused owner-bound run · /swe work resume [topic]" },
+  { value: "pause", label: "pause", description: "Pause before the next continuation · /swe work pause [topic]" },
+  { value: "stop", label: "stop", description: "Stop the run; a stopped run cannot resume · /swe work stop [topic]" },
+] as const;
 const STATUS_USAGE = "Usage: /swe status [topic]";
 const ORCHESTRATE_USAGE = "Usage: /swe orchestrate <status|start|resume|handoff> [topic]";
 const WORK_USAGE = "Usage: /swe work <status|start|resume|pause|stop> [topic] [--mode guided|autonomous] [--until contract|initiative] [--max-turns 1..100] [--max-minutes 1..1440]";
@@ -150,18 +169,89 @@ export function formatOrchestrate(action: OrchestrateAction, resolution: Initiat
   ].join("\n");
 }
 
-function completeSweArgument(prefix: string): Array<{ value: string; label: string }> {
+type SweCompletion = { value: string; label: string; description: string };
+
+function completeWithPrefix(base: readonly string[], value: string, label: string, description: string): SweCompletion {
+  return { value: [...base, value].join(" "), label, description };
+}
+
+export function completeSweArgument(prefix: string): SweCompletion[] {
   const normalized = prefix.trimStart();
-  const actionMatch = normalized.match(/^orchestrate\s+(\S*)$/);
-  if (actionMatch) {
-    return ORCHESTRATE_ACTIONS.filter((action) => action.startsWith(actionMatch[1] ?? "")).map((action) => ({ value: `orchestrate ${action}`, label: action }));
+  const trailingSpace = /\s$/.test(normalized);
+  const tokens = normalized.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0 || (tokens.length === 1 && !trailingSpace)) {
+    const query = tokens[0] ?? "";
+    return SUBCOMMAND_COMPLETIONS.filter((item) => item.value.startsWith(query)).map((item) => ({ ...item }));
   }
-  const workMatch = normalized.match(/^work\s+(\S*)$/);
-  if (workMatch) {
-    return WORK_ACTIONS.filter((action) => action.startsWith(workMatch[1] ?? "")).map((action) => ({ value: `work ${action}`, label: action }));
+
+  const subcommand = tokens[0];
+  if (subcommand === "orchestrate") {
+    if (tokens.length === 1 || (tokens.length === 2 && !trailingSpace)) {
+      const query = trailingSpace ? "" : tokens[1] ?? "";
+      return ORCHESTRATE_COMPLETIONS.filter((item) => item.value.startsWith(query)).map((item) =>
+        completeWithPrefix(["orchestrate"], item.value, item.label, item.description));
+    }
+    return [];
   }
-  if (/^orchestrate\s+\S+\s+/.test(normalized) || /^work\s+\S+\s+/.test(normalized) || /^status\s+/.test(normalized) || /^complete\s+/.test(normalized)) return [];
-  return SUBCOMMANDS.filter((value) => value.startsWith(normalized)).map((value) => ({ value, label: value }));
+
+  if (subcommand === "work") {
+    if (tokens.length === 1 || (tokens.length === 2 && !trailingSpace)) {
+      const query = trailingSpace ? "" : tokens[1] ?? "";
+      return WORK_COMPLETIONS.filter((item) => item.value.startsWith(query)).map((item) =>
+        completeWithPrefix(["work"], item.value, item.label, item.description));
+    }
+    if (tokens[1] !== "start") return [];
+    const current = trailingSpace ? "" : tokens.at(-1) ?? "";
+    const completed = trailingSpace ? tokens : tokens.slice(0, -1);
+    const previous = completed.at(-1);
+    const valueSuggestions = previous === "--mode"
+      ? [
+          { value: "guided", description: "Checkpoint-driven mode with operator control (default)" },
+          { value: "autonomous", description: "Explicit autonomous opt-in; all safety and evidence gates remain" },
+        ]
+      : previous === "--until"
+        ? [
+            { value: "contract", description: "Stop after the selected contract is disposed (default)" },
+            { value: "initiative", description: "Continue serially through ready contracts and finalization" },
+          ]
+        : previous === "--max-turns"
+          ? [{ value: "12", description: "Maximum runner turns; valid range 1..100" }]
+          : previous === "--max-minutes"
+            ? [{ value: "30", description: "Maximum elapsed minutes; valid range 1..1440" }]
+            : undefined;
+    if (valueSuggestions) {
+      return valueSuggestions.filter((item) => item.value.startsWith(current)).map((item) =>
+        completeWithPrefix(completed, item.value, item.value, item.description));
+    }
+    if (current && !current.startsWith("-")) return [];
+    const options = [
+      { value: "--mode", description: "Execution mode · --mode <guided|autonomous>" },
+      { value: "--until", description: "Stopping scope · --until <contract|initiative>" },
+      { value: "--max-turns", description: "Turn budget · --max-turns <1..100>" },
+      { value: "--max-minutes", description: "Elapsed-time budget · --max-minutes <1..1440>" },
+    ];
+    return options
+      .filter((item) => !completed.includes(item.value) && item.value.startsWith(current))
+      .map((item) => completeWithPrefix(completed, item.value, item.value, item.description));
+  }
+
+  if (subcommand === "complete") {
+    const current = trailingSpace ? "" : tokens.at(-1) ?? "";
+    const completed = trailingSpace ? tokens : tokens.slice(0, -1);
+    if (completed.length === 10) {
+      return "approve".startsWith(current)
+        ? [completeWithPrefix(completed, "approve", "approve", "Confirm the review decision required by guarded completion")]
+        : [];
+    }
+    if (completed.length === 11 && completed.at(-1) === "approve") {
+      return [
+        { value: "clear", description: "Clear activeContract after completion" },
+        { value: "advance", description: "Advance to the next dependency-ready contract (default)" },
+      ].filter((item) => item.value.startsWith(current)).map((item) => completeWithPrefix(completed, item.value, item.value, item.description));
+    }
+  }
+
+  return [];
 }
 
 function parseSweArguments(args: string): { subcommand?: string; action?: OrchestrateAction; topic?: string; completeTokens?: string[]; workTokens?: string[] } {

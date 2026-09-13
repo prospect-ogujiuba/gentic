@@ -6,6 +6,14 @@ import { planMigration } from "../app/service.ts";
 import { applyMigration, finalizeMigration, recoverMigration, rollbackMigration } from "../app/transaction.ts";
 
 const ACTIONS = ["apply", "audit", "finalize", "plan", "recover", "rollback"] as const;
+const ACTION_COMPLETIONS = [
+  { value: "apply", label: "apply", description: "Apply an eligible migration plan · /artifacts apply <plan-path>" },
+  { value: "audit", label: "audit", description: "Inspect legacy/canonical artifact layout without writing · /artifacts audit" },
+  { value: "finalize", label: "finalize", description: "Finalize a verified migration · /artifacts finalize <ledger-path>" },
+  { value: "plan", label: "plan", description: "Create a deterministic migration plan · /artifacts plan" },
+  { value: "recover", label: "recover", description: "Recover an interrupted migration · /artifacts recover <journal-path>" },
+  { value: "rollback", label: "rollback", description: "Rollback an applied migration · /artifacts rollback <ledger-path>" },
+] as const;
 const USAGE = "Usage: /artifacts <audit|plan|apply <plan-path>|recover <journal-path>|rollback <ledger-path>|finalize <ledger-path>>";
 const MAX_DETAILS = 8;
 
@@ -15,7 +23,7 @@ export function registerArtifactsCommand(pi: ExtensionAPI): void {
     getArgumentCompletions(prefix: string) {
       if (/\s/.test(prefix.trim())) return null;
       const normalized = prefix.trim();
-      const matches = ACTIONS.filter((action) => action.startsWith(normalized)).map((action) => ({ value: action, label: action }));
+      const matches = ACTION_COMPLETIONS.filter((item) => item.value.startsWith(normalized)).map((item) => ({ ...item }));
       return matches.length ? matches : null;
     },
     handler: async (args, ctx) => {
