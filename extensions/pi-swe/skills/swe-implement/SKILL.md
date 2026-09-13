@@ -7,7 +7,13 @@ description: Coordinate the complete direct/manual implementation lifecycle for 
 
 Use this only for one execution-ready contract from an active approved plan. A todo, chat instruction, plan filename, or contract filename may locate work but is not sufficient approval.
 
-For a direct/manual `/skill:swe-implement` request, this skill owns the bounded lifecycle from implementation through specialist execution guidance, verification, implementation review, and finalization handoff. When a guided work runner owns sequencing, perform only the runner-assigned stage and preserve its plan, state transitions, persistence, and next-stage decision; never replace, expand, or auto-advance a runner-owned plan.
+For a direct/manual `/skill:swe-implement` request, this skill owns the bounded lifecycle from implementation through specialist execution guidance, verification, implementation review, and finalization handoff. When a guided work runner owns sequencing, perform only the runner-assigned stage and preserve its plan, state transitions, persistence, and next-stage decision; never replace or auto-advance a runner-owned plan.
+
+## Solvable-work rule
+
+Ordinary in-repository failures are work, not blockers, including failing tests, tooling defects, generated-artifact mismatches, stale fixtures, and integration defects. Notify the user when a material impediment appears and continue by diagnosing its root cause and making the smallest safe fix, even when a supporting path was not named in the expected-file list. Record that bounded supporting-path expansion in evidence and keep the approved product outcome unchanged.
+
+Only a material change to approved intent, behavior, design, acceptance criteria, safety boundaries, or external side effects requires return to plan. Stop only for a required human decision, unsafe or external action, stale canonical authority, or a genuinely missing capability. Never classify a repository defect as blocked merely because it appears during implementation or verification.
 
 ## Execution gate
 

@@ -125,11 +125,17 @@ test("artifact audit accepts canonical pi-swe stable filenames in layout v2", ()
     ".model-artifacts/initiatives/demo/plans/revisions/r1/contracts.json",
     ".model-artifacts/initiatives/demo/plans/revisions/r1/phases/01-demo/00-phase-index.md",
     ".model-artifacts/initiatives/demo/plans/revisions/r1/phases/01-demo/01.01-demo.md",
+    ".model-artifacts/system/logs/pi-swe/demo/runner.json",
   ];
   for (const path of paths) write(root, path, path.endsWith(".json") ? "{}\n" : "# Contract\n");
 
   const entries = new Map(auditArtifacts({ cwd: root }).entries.map((entry) => [entry.source, entry]));
   for (const path of paths) assert.notEqual(entries.get(path)?.classification, "invalid", path);
+  assert.equal(entries.get(".model-artifacts/system/logs/pi-swe/demo/runner.json")?.classification, "protected");
+
+  const unrelated = ".model-artifacts/system/logs/other/demo/runner.json";
+  write(root, unrelated, "{}\n");
+  assert.equal(auditArtifacts({ cwd: root }).entries.find((entry) => entry.source === unrelated)?.classification, "invalid");
 });
 
 test("artifact audit blocks mixed layout authority for one topic", () => {

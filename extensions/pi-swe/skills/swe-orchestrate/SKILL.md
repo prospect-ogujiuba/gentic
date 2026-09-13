@@ -7,7 +7,13 @@ description: Sequence existing pi-swe lifecycle skills from work orders, todos w
 
 Use this when a SWE flow needs a next-stage recommendation, resume decision, or deterministic handoff across existing `pi-swe` stages.
 
-`SWE Orchestrate` owns cross-contract stage selection. A direct/manual `swe-implement` request may coordinate the bounded implementation lifecycle for one approved contract using specialist, verification, review, and finalize handoffs. A guided work runner remains authoritative for its own plan and sequencing: recommend or execute only its assigned stage, and never replace, expand, or auto-advance runner-owned state.
+`SWE Orchestrate` owns cross-contract stage selection. A direct/manual `swe-implement` request may coordinate the bounded implementation lifecycle for one approved contract using specialist, verification, review, and finalize handoffs. A guided work runner remains authoritative for its own plan and sequencing: recommend or execute only its assigned stage, and never replace or auto-advance runner-owned state.
+
+## Solvable-work rule
+
+Ordinary in-repository failures are work, not blockers, including failing tests, tooling defects, generated-artifact mismatches, stale fixtures, and integration defects. Notify the user when a material impediment appears and continue by routing diagnosis and the smallest safe supporting fix within bounded retries. Record bounded supporting-path expansion while preserving the approved outcome and runner sequence.
+
+Only a material change to approved intent, behavior, design, acceptance criteria, safety boundaries, or external side effects requires return to plan. Stop only for a required human decision, unsafe or external action, stale canonical authority, or a genuinely missing capability. Do not turn a repository-owned defect into a human handoff.
 
 ## Workflow
 
@@ -19,7 +25,7 @@ Use this when a SWE flow needs a next-stage recommendation, resume decision, or 
 6. **Require mapped evidence and review** — route to `swe-verify` for acceptance-to-evidence mapping, then implementation review before contract disposition or finalization.
 7. **Reconcile before finalization** — use `swe-finalize` only when contract dispositions, approved deferrals, evidence, reviews, blockers, and residual risks can be reconciled.
 8. **Reconcile stage-boundary todo state** — when todo is available, treat it as the LLM's bounded work ledger, not as a second copy of the canonical plan. Use one active todo for the exact current planning outcome or implementation contract. Before final chat or routing onward, attach durable evidence and finish completed work; never leave it `ready`, `claimed`, or `in_progress`. Do not create nested stage scaffolds or pre-populate future contracts. Reconcile only the bounded current-work todo and proven duplicate/scaffold descendants created for this workflow. Among those workflow-owned entries, leave no stale completed-work state and at most one nonterminal handoff: the exact active item, or a truthfully external-blocked item with its reason. Preserve unrelated legitimate ledger entries unchanged; never finish, cancel, supersede, or block them merely to make the docket look clean. Canonical `contracts.json` remains the queue for later work.
-9. **Emit a deterministic exception handoff** — stale revision, dependency, blocker, missing verifier, scope drift, or conflicting changes stop work. Report observed/required state, exact paths, and the next skill/human decision; return to plan where the approved contract must change.
+9. **Emit a deterministic exception handoff only for true gates** — stale canonical revision, unsatisfied external dependency, required human decision, unsafe/external action, genuinely missing capability, material approved-intent drift, or irreconcilable conflicting changes stop work. Ordinary repository defects follow the solvable-work rule; report the issue, route the bounded fix, and continue. Return to plan only where the approved intent or contract behavior must change.
 10. **Bound retries** — after one unchanged readiness failure, stop and hand off rather than repeatedly rereading or mutating state.
 
 This guidance remains standalone without todo or peer extensions.

@@ -7,6 +7,12 @@ description: Assess data-structure and algorithm choices during SWE planning, im
 
 Use this for implementation-aware data-structure and algorithm advice inside the SWE workflow.
 
+## Solvable-work rule
+
+Ordinary in-repository failures are work, not blockers, including failing tests, tooling defects, generated-artifact mismatches, stale fixtures, and integration defects. Notify the user when a material impediment appears and continue by measuring, diagnosing, and recommending or applying the smallest safe supporting fix. Record bounded supporting-path expansion without changing the approved outcome.
+
+Only a material change to approved intent, behavior, design, acceptance criteria, safety boundaries, or external side effects requires return to plan. Stop only for a required human decision, unsafe or external action, stale canonical authority, or a genuinely missing capability.
+
 ## Execution boundary
 
 When invoked during execution, first read `.model-artifacts/initiatives/<topic>/specs/manifest.json`, the active approved plan, `<activePlan.contractRoot>/contracts.json`, and the exact contract/revision plus incorporated DSA finding. Validate `contentHash`, dependency/blocker state, acceptance criteria, and planned verification. Todo or a filename is not approval; stale state or a missing verifier yields a deterministic return to plan. The skill remains standalone.

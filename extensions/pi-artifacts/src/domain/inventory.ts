@@ -333,8 +333,9 @@ function classifyEntry(root: string, file: Discovered, config: MigrationConfig, 
   const withReferences = <T extends ArtifactInventoryEntry>(entry: T): T => ({ ...entry, referenceSites, referenceSiteHashes } as T);
   const v2 = parseV2Canonical(file.source);
   if (v2) {
-    const protectedByAuthority = authority.exact.has(file.source) || authority.prefixes.some((prefix) => file.source.startsWith(prefix));
-    return withReferences({ ...hashed(file, protectedByAuthority ? "protected" : "canonical-valid", [protectedByAuthority ? "canonical-authority" : "canonical-path"]), topic: v2.topic, authorityUnit: v2.unit });
+    const protectedByAuthority = v2.stableRuntime || authority.exact.has(file.source) || authority.prefixes.some((prefix) => file.source.startsWith(prefix));
+    const reason = v2.stableRuntime ? "stable-runtime-state" : protectedByAuthority ? "canonical-authority" : "canonical-path";
+    return withReferences({ ...hashed(file, protectedByAuthority ? "protected" : "canonical-valid", [reason]), topic: v2.topic, authorityUnit: v2.unit });
   }
   if (file.source.startsWith(".model-artifacts/initiatives/") || file.source.startsWith(".model-artifacts/system/")) {
     return withReferences({ ...hashed(file, "invalid", ["invalid-layout-v2-path"]) });
@@ -362,9 +363,11 @@ function classifyEntry(root: string, file: Discovered, config: MigrationConfig, 
   return withReferences({ ...hashed(file, "legacy-movable", [config.mappings[file.source] ? "explicit-mapping" : "deterministic-inference"]), destination, topic: mapping.topic, authorityUnit: "isolated" });
 }
 
-function parseV2Canonical(source: string): { topic?: string; unit: "initiative" | "system" } | undefined {
+function parseV2Canonical(source: string): { topic?: string; unit: "initiative" | "system"; stableRuntime?: boolean } | undefined {
   const parts = source.split("/");
   if (parts[0] !== ".model-artifacts") return undefined;
+  const stableRunner = source.match(/^\.model-artifacts\/system\/logs\/pi-swe\/(.+)\/runner\.json$/);
+  if (stableRunner?.[1] && isCanonicalTopic(stableRunner[1])) return { topic: stableRunner[1], unit: "system", stableRuntime: true };
   const stable = source.match(/^\.model-artifacts\/initiatives\/(.+)\/(?:specs\/manifest\.json|plans\/revisions\/r[1-9]\d*\/(?:contracts\.json|phases\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9][a-z0-9.-]*\.md))$/);
   if (stable?.[1] && isCanonicalTopic(stable[1])) return { topic: stable[1], unit: "initiative" };
   if (parts[1] === "initiatives" && parts.length >= 5 && parts.slice(2, -2).every((segment) => normalizeSegment(segment) === segment && segment.length > 0)

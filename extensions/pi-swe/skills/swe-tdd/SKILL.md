@@ -7,6 +7,12 @@ description: Behavior-first TDD workflow for SWE slices using Red, Green, Refact
 
 Use this for implementation, bug fixing, or refactoring when the next behavior should be proven before changing production code.
 
+## Solvable-work rule
+
+Ordinary in-repository failures are work, not blockers, including failing tests, tooling defects, generated-artifact mismatches, stale fixtures, and integration defects. Notify the user when a material impediment appears and continue by isolating the cause and completing the smallest safe Red/Green correction. Record bounded supporting-path expansion without changing the approved outcome.
+
+Only a material change to approved intent, behavior, design, acceptance criteria, safety boundaries, or external side effects requires return to plan. Stop only for a required human decision, unsafe or external action, stale canonical authority, or a genuinely missing capability.
+
 Compact references:
 
 - [RGR playbook](../../references/tdd-rgr/rgr-playbook.md)

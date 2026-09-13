@@ -413,6 +413,12 @@ test("execution lifecycle skills enforce approved contracts and evidence reconci
     "standalone",
   ]) assert.match(executionResources, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
 
+  for (const stage of ["implement", "verify", "review", "finalize", "tdd", "dsa", "diagnose", "orchestrate"] as const) {
+    assert.match(skills[stage], /solvable-work rule/i, stage);
+    assert.match(skills[stage], /ordinary in-repository[^.]*not blockers/i, stage);
+    assert.match(skills[stage], /notify[^.]*continue/i, stage);
+    assert.match(skills[stage], /material[^.]*intent[^.]*return to plan/i, stage);
+  }
   assert.match(skills.implement, /todo[^.]*not[^.]*approval|not sufficient approval/i);
   assert.match(skills.implement, /original contract[^.]*canonical contract[^.]*ID[^.]*path[^.]*revision[^.]*contentHash/i);
   assert.match(skills.implement, /todo[^.]*optional link/i);

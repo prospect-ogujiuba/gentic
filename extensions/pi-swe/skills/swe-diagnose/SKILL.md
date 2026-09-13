@@ -7,7 +7,13 @@ description: Diagnose bugs, failures, and regressions with reproduce-minimize-hy
 
 Use this when behavior is broken, failing, or regressing. Diagnosis may produce evidence or a candidate fix, but never grants implementation approval.
 
-For an approved execution contract, first read `.model-artifacts/initiatives/<topic>/specs/manifest.json`, the active approved plan, `<activePlan.contractRoot>/contracts.json`, and the exact contract/revision plus linked findings/current state. Validate `contentHash`, dependencies, blockers, acceptance criteria, and planned verification. A todo, filename, or diagnosis artifact is not approval. Stale state, a missing verifier, scope drift, or conflicting changes yields a deterministic return to plan with exact paths. Diagnosis remains standalone.
+## Solvable-work rule
+
+Ordinary in-repository failures are work, not blockers, including failing tests, tooling defects, generated-artifact mismatches, stale fixtures, and integration defects. Notify the user when a material impediment appears and continue through reproduction, root-cause confirmation, and the smallest safe fix or fix handoff. Record a bounded supporting-path expansion instead of abandoning the approved outcome.
+
+Only a material change to approved intent, behavior, design, acceptance criteria, safety boundaries, or external side effects requires return to plan. Stop only for a required human decision, unsafe or external action, stale canonical authority, or a genuinely missing capability.
+
+For an approved execution contract, first read `.model-artifacts/initiatives/<topic>/specs/manifest.json`, the active approved plan, `<activePlan.contractRoot>/contracts.json`, and the exact contract/revision plus linked findings/current state. Validate `contentHash`, dependencies, blockers, acceptance criteria, and planned verification. A todo, filename, or diagnosis artifact is not approval. Stale canonical state, a missing verifier capability, material approved-intent drift, or irreconcilable conflicting changes yields a deterministic return to plan with exact paths; ordinary supporting-path corrections follow the solvable-work rule. Diagnosis remains standalone.
 
 ## Workflow
 

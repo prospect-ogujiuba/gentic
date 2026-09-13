@@ -7,11 +7,17 @@ description: Finalize SWE work with concise explanation, reflection, verificatio
 
 Use this only when an initiative or explicitly bounded contract handoff is ready to reconcile, record, commit, or close.
 
+## Solvable-work rule
+
+Ordinary in-repository failures are work, not blockers, including failing tests, tooling defects, generated-artifact mismatches, stale fixtures, and integration defects. Notify the user when a material impediment appears and continue by routing or making the smallest safe supporting correction before reconciliation. Record bounded supporting-path expansion and preserve the approved outcome.
+
+Only a material change to approved intent, behavior, design, acceptance criteria, safety boundaries, or external side effects requires return to plan. Stop only for a required human decision, unsafe or external action, stale canonical authority, or a genuinely missing capability.
+
 ## Reconciliation gate
 
 Read `.model-artifacts/initiatives/<topic>/specs/manifest.json`, the active spec and active approved plan, `<activePlan.contractRoot>/contracts.json`, every in-scope exact contract/revision, incorporated findings, implementation notes, verification evidence, and implementation-review decisions. Validate current `contentHash` links and approval. Todo state or filenames may supplement this chain but cannot replace it.
 
-Reconcile contract dispositions as `complete`, `blocked`, or `approved-deferred`; acceptance-to-evidence outcomes; approved deferrals; review decisions; open blockers; residual risks; migration/rollback; and the next handoff. Do not finalize while required evidence is stale/missing, a review requests changes, a contract is undisposed, or a deferral lacks plan approval. A stale revision, missing verifier, scope drift, or conflicting change returns to plan with exact affected paths.
+Reconcile contract dispositions as `complete`, `blocked`, or `approved-deferred`; acceptance-to-evidence outcomes; approved deferrals; review decisions; open blockers; residual risks; migration/rollback; and the next handoff. Do not finalize while required evidence is stale/missing, a review requests changes, a contract is undisposed, or a deferral lacks plan approval. A stale canonical revision, genuinely missing verifier capability, material approved-intent drift, or irreconcilable conflicting change returns to plan with exact affected paths; ordinary repository corrections follow the solvable-work rule.
 
 ## Workflow
 

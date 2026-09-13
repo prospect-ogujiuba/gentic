@@ -7,6 +7,12 @@ description: Review plans or implementations with an explicit mode, actionable f
 
 Select exactly one mode before reviewing. Plan approval and post-implementation approval are distinct decisions and cannot substitute for each other.
 
+## Solvable-work rule
+
+Ordinary in-repository failures are work, not blockers, including failing tests, tooling defects, generated-artifact mismatches, stale fixtures, and integration defects. Notify the user when a material impediment appears and continue by identifying the smallest safe correction or supporting-path fix; use `request changes` rather than `return to plan` for repository-owned defects that preserve approved intent.
+
+Only a material change to approved intent, behavior, design, acceptance criteria, safety boundaries, or external side effects requires return to plan. Stop only for a required human decision, unsafe or external action, stale canonical authority, or a genuinely missing capability.
+
 ## Plan-review mode
 
 Use before implementation to assess the exact canonical spec and plan revisions.
@@ -31,7 +37,7 @@ Use after implementation and verification for one exact contract/revision from t
 3. Check correctness, edge cases, state transitions, compatibility, and applicable error, validation, security, data, performance, migration, rollback, operations, and UX risks.
 4. Reject unrelated churn; do not add adjacent features or silently edit the approved contract.
 5. Confirm the acceptance-to-evidence map is current and labels every criterion/check `pass`, `fail`, `partial`, or `gap`.
-6. Decide `approve`, `request changes`, or `return to plan`. Approve only when the in-scope diff satisfies the exact contract with current evidence. Request changes for in-contract defects. Return to plan for a stale revision, scope/material-design drift, missing verifier, incompatible dependency/blocker state, or conflicting changes.
+6. Decide `approve`, `request changes`, or `return to plan`. Approve only when the in-scope diff satisfies the exact contract with current evidence. Request changes for in-contract defects. Return to plan for a stale canonical revision, material approved-intent/design drift, genuinely missing verifier capability, incompatible dependency/blocker state, or irreconcilable conflicting changes; use request changes for solvable repository defects and bounded supporting-path fixes.
 7. Use bounded review/fix retries; repeated unresolved findings stop with a durable handoff.
 
 Implementation review works standalone. Todo may record the decision but neither todo nor a filename is approval.

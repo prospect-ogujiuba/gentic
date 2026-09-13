@@ -7,11 +7,17 @@ description: Verify SWE changes by compiling, running, testing, and recording ev
 
 Use this before claiming an exact contract is complete.
 
+## Solvable-work rule
+
+Ordinary in-repository failures are work, not blockers, including failing tests, tooling defects, generated-artifact mismatches, stale fixtures, and integration defects. Notify the user when a material impediment appears and continue by diagnosing its root cause; return an understood repository defect as `fix-in-contract` or route a bounded supporting fix rather than calling it external. Record any supporting-path expansion and preserve the approved product outcome.
+
+Only a material change to approved intent, behavior, design, acceptance criteria, safety boundaries, or external side effects requires return to plan. Stop only for a required human decision, unsafe or external action, stale canonical authority, or a genuinely missing capability. Never classify a repository-owned verifier or artifact defect as blocked merely because it appears during verification.
+
 ## Contract and evidence gate
 
 Read `.model-artifacts/initiatives/<topic>/specs/manifest.json`, the active approved plan, `<activePlan.contractRoot>/contracts.json`, the exact contract/revision, its incorporated findings, implementation notes/diff, and existing evidence before running checks. Confirm revision and `contentHash` links are current. A todo or filename does not prove approval.
 
-Build an acceptance-to-evidence map: give every contract acceptance criterion and every planned verification item a check, evidence location, and result of `pass`, `fail`, `partial`, or `gap`. A missing verifier, stale revision, contradictory planned check, or change outside the exact contract is a deterministic `return to plan` handoff; name the artifact/path and required correction rather than inventing coverage.
+Build an acceptance-to-evidence map: give every contract acceptance criterion and every planned verification item a check, evidence location, and result of `pass`, `fail`, `partial`, or `gap`. A genuinely missing verifier capability, stale canonical revision, contradictory planned check, or material change to approved intent is a deterministic `return to plan` handoff; name the artifact/path and required correction rather than inventing coverage. Repository-owned test, tooling, fixture, or artifact failures follow the solvable-work rule.
 
 ## Workflow
 
@@ -31,7 +37,7 @@ Return one explicit disposition after the complete acceptance-to-evidence map:
 
 - `pass-to-review` — every criterion and planned check passes with no gaps; direct/manual `swe-implement` continues to implementation-mode `swe-review`.
 - `fix-in-contract` — an understood defect is inside the approved contract; identify failed criteria, evidence, and affected paths, then return to `swe-implement` for one bounded correction and full reverification.
-- `blocked` — verification cannot proceed for an external or environmental reason; preserve the exact gap and evidence.
+- `blocked` — verification cannot proceed because of a genuine external dependency, unsafe action, required human decision, stale canonical authority, or missing capability; preserve the exact gap and evidence. Repository-owned tooling and generated-artifact defects are not external blockers.
 - `return-to-plan` — the verifier, contract, design, or scope must change.
 
 Verification never performs the correction it discovers and never skips implementation review. When a guided work runner invoked verification, return the disposition to the runner without advancing or changing its plan.
