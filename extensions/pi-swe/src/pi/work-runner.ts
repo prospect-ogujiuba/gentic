@@ -3,6 +3,8 @@ import { join } from "node:path";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
+import { getSessionState } from "../../../pi-context/src/app/index.ts";
+import { evaluateContextPressure } from "../../../pi-context/src/domain/pressure.ts";
 import {
   markPiSweRunnerDispatchSent,
   persistPiSweRunnerState,
@@ -40,7 +42,7 @@ export async function settleOwnedPiSweRunners(pi: ExtensionAPI, ctx: ExtensionCo
 
 export async function settlePiSweRunner(
   pi: Pick<ExtensionAPI, "sendUserMessage">,
-  ctx: Pick<ExtensionContext, "cwd" | "isIdle" | "ui"> & { readonly sessionId?: string; readonly sessionManager?: { getSessionId(): string } },
+  ctx: Pick<ExtensionContext, "cwd" | "isIdle" | "ui" | "getContextUsage"> & { readonly sessionId?: string; readonly sessionManager?: { getSessionId(): string } },
   topic: string,
   nowMs = Date.now(),
 ): Promise<void> {
@@ -91,6 +93,7 @@ export async function settlePiSweRunner(
         blockingReasons: recommendation.blockingReasons,
       },
       ...(recommendation.stage === "blocked-handoff" ? { hardStop: "human-only-decision" } : {}),
+      contextPressure: readContextPressure(ctx),
     };
     const reduced = reducePiSweRunner({ state: snapshot.runner, canonical, event: { kind: "evaluate" }, nowMs });
     const diagnostics = persistPiSweRunnerState(ctx.cwd, { topic, ownerToken: snapshot.ownerToken, runner: reduced.state });
@@ -209,9 +212,33 @@ function dispatchPrompt(
   reads: readonly string[],
 ): string {
   const providerBudget = runner.policy.maxProviderUnits === undefined ? "" : `, maxProviderUnits=${runner.policy.maxProviderUnits}`;
-  const prompt = `/skill:${skill} Execute only canonical ${identity.topic} plan r${identity.planRevision} contract ${identity.contractId} at ${identity.contractPath} (${identity.contractHash}); stage ${stage}; mode ${runner.mode}; until ${runner.until}; policy maxTurns=${runner.policy.maxTurns}, maxRetries=${runner.policy.maxRetries}, maxElapsedMs=${runner.policy.maxElapsedMs}${providerBudget}; first re-read ${[`.model-artifacts/initiatives/${identity.topic}/specs/manifest.json`, ...reads].filter((value, index, all) => all.indexOf(value) === index).join(", ")}; before ending call swe_checkpoint exactly once with runId ${token.slice(0, token.lastIndexOf(":"))} and dispatchToken ${token}, this exact canonical identity and bounded evidence; evidence paths must be under .model-artifacts/initiatives/${identity.topic}/ and match their sha256 hashes. Stop for any human gate, unsafe/external action, stale state, missing capability, or scope drift.`;
+  const maxTurns = runner.policy.maxTurns ?? "unlimited";
+  const maxElapsedMs = runner.policy.maxElapsedMs ?? "unlimited";
+  const prompt = `/skill:${skill} Execute only canonical ${identity.topic} plan r${identity.planRevision} contract ${identity.contractId} at ${identity.contractPath} (${identity.contractHash}); stage ${stage}; mode ${runner.mode}; until ${runner.until}; policy maxTurns=${maxTurns}, maxRetries=${runner.policy.maxRetries}, maxElapsedMs=${maxElapsedMs}${providerBudget}; first re-read ${[`.model-artifacts/initiatives/${identity.topic}/specs/manifest.json`, ...reads].filter((value, index, all) => all.indexOf(value) === index).join(", ")}; before ending call swe_checkpoint exactly once with runId ${token.slice(0, token.lastIndexOf(":"))} and dispatchToken ${token}, this exact canonical identity and bounded evidence; evidence paths must be under .model-artifacts/initiatives/${identity.topic}/ and match their sha256 hashes. Stop for any human gate, unsafe/external action, stale state, missing capability, or scope drift.`;
   if (prompt.length > MAX_PROMPT_LENGTH) throw new Error("runner dispatch prompt exceeds its bound");
   return prompt;
+}
+
+function readContextPressure(ctx: Pick<ExtensionContext, "getContextUsage">): "normal" | "warning" | "critical" | "unavailable" {
+  const shared = getSessionState() as unknown as {
+    pressure?: { evaluation?: { available?: boolean; level?: string } };
+  } | undefined;
+  const sharedEvaluation = shared?.pressure?.evaluation;
+  if (sharedEvaluation?.available
+    && (sharedEvaluation.level === "normal" || sharedEvaluation.level === "warning" || sharedEvaluation.level === "critical")) {
+    return sharedEvaluation.level;
+  }
+  let usage: ReturnType<ExtensionContext["getContextUsage"]>;
+  try { usage = ctx.getContextUsage(); } catch { return "unavailable"; }
+  const measured = evaluateContextPressure(usage ? {
+    tokens: usage.tokens ?? undefined,
+    contextWindow: usage.contextWindow,
+    percent: usage.percent ?? undefined,
+    tokenConfidence: "exact",
+  } : undefined);
+  return measured.available && (measured.level === "normal" || measured.level === "warning" || measured.level === "critical")
+    ? measured.level
+    : "unavailable";
 }
 
 function persistTerminal(cwd: string, snapshot: PiSweRunnerSnapshot, status: "paused" | "blocked" | "stopped" | "complete", terminalReason: PiSweRunnerTerminalReason): void {

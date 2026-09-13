@@ -20,7 +20,7 @@ function writeFile(cwd: string, path: string, content: string): void {
   writeFileSync(absolute, content, "utf8");
 }
 
-function fixture(seedRunner = true): { cwd: string; topic: string } {
+function fixture(seedRunner = true, until: "contract" | "context" | "initiative" = "contract"): { cwd: string; topic: string } {
   const cwd = mkdtempSync(join(tmpdir(), "pi-swe-dispatch-"));
   const topic = "guided-runner";
   const specPath = `.model-artifacts/initiatives/${topic}/specs/spec.md`;
@@ -57,7 +57,7 @@ function fixture(seedRunner = true): { cwd: string; topic: string } {
   }));
   const identity = { topic, planRevision: 1, contractId: "P01-C01", contractPath, contractHash: sha256(contract) };
   if (seedRunner) {
-    const runner = createPiSweRunner({ runId: "session-1:1", mode: "guided", until: "contract", identity, policy: { maxTurns: 6, maxRetries: 2, maxElapsedMs: 60_000 }, startedAtMs: 1 });
+    const runner = createPiSweRunner({ runId: "session-1:1", mode: "guided", until, identity, policy: { maxTurns: 6, maxRetries: 2, maxElapsedMs: 60_000 }, startedAtMs: 1 });
     assert.deepEqual(persistPiSweRunnerState(cwd, { topic, ownerToken: "session-1", runner }), []);
   }
   return { cwd, topic };
@@ -82,6 +82,31 @@ test("work start kicks the initial dispatch while settled events own continuatio
   assert.equal(sent.length, 1);
   assert.match(sent[0] ?? "", /^\/skill:swe-implement /);
   assert.equal(readPiSweRunnerState(cwd, topic).snapshot?.runner.pendingDispatch?.deliveryStatus, "sent");
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test("context-scoped work pauses before dispatch when exact context pressure is critical", async () => {
+  const { cwd, topic } = fixture(true, "context");
+  const sent: string[] = [];
+  const notifications: string[] = [];
+  await settlePiSweRunner(
+    { sendUserMessage(content: string) { sent.push(content); } } as never,
+    {
+      cwd,
+      sessionId: "session-1",
+      isIdle: () => true,
+      getContextUsage: () => ({ tokens: 95, contextWindow: 100, percent: 95 }),
+      ui: { notify(message: string) { notifications.push(message); } },
+    } as never,
+    topic,
+    2_000,
+  );
+
+  const runner = readPiSweRunnerState(cwd, topic).snapshot?.runner;
+  assert.equal(sent.length, 0);
+  assert.equal(runner?.status, "paused");
+  assert.equal(runner?.terminalReason, "context-pressure-critical");
+  assert.match(notifications.at(-1) ?? "", /context-pressure-critical/);
   rmSync(cwd, { recursive: true, force: true });
 });
 

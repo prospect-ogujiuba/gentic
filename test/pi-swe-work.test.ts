@@ -93,6 +93,54 @@ test("/swe work conservatively authorizes start and reports exact persisted poli
   rmSync(cwd, { recursive: true, force: true });
 });
 
+test("/swe work start transfers ownership only after the previous runner is terminal", async () => {
+  const cwd = canonicalFixture();
+  const ownerOne = commandHarness(cwd);
+  const ownerTwo = commandHarness(cwd);
+  ownerTwo.ctx.sessionId = "session-2";
+
+  await ownerOne.swe.handler("work start guided-runner", ownerOne.ctx);
+  const activeRunId = readPiSweRunnerState(cwd, "guided-runner").snapshot?.runner.runId;
+
+  await ownerTwo.swe.handler("work start guided-runner", ownerTwo.ctx);
+  const protectedRunner = readPiSweRunnerState(cwd, "guided-runner").snapshot;
+  assert.equal(protectedRunner?.ownerToken, "session-1");
+  assert.equal(protectedRunner?.runner.runId, activeRunId, "a non-owner must not replace an active run");
+
+  await ownerOne.swe.handler("work stop guided-runner", ownerOne.ctx);
+  await ownerTwo.swe.handler("work start guided-runner", ownerTwo.ctx);
+  const replacement = readPiSweRunnerState(cwd, "guided-runner", "session-2");
+  assert.deepEqual(replacement.diagnostics, []);
+  assert.equal(replacement.snapshot?.ownerToken, "session-2");
+  assert.match(replacement.snapshot?.runner.runId ?? "", /^session-2:/);
+  assert.equal(replacement.snapshot?.runner.status, "running");
+  assert.notEqual(replacement.snapshot?.runner.runId, activeRunId);
+
+  const completedRunner = { ...replacement.snapshot!.runner, status: "complete" as const, terminalReason: "initiative-complete" };
+  assert.deepEqual(persistPiSweRunnerState(cwd, { topic: "guided-runner", ownerToken: "session-2", runner: completedRunner }), []);
+  const ownerThree = commandHarness(cwd);
+  ownerThree.ctx.sessionId = "session-3";
+  await ownerThree.swe.handler("work start guided-runner", ownerThree.ctx);
+  assert.equal(readPiSweRunnerState(cwd, "guided-runner").snapshot?.ownerToken, "session-3");
+
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test("/swe work uses one context window by default without numeric turn or time limits", async () => {
+  const cwd = canonicalFixture();
+  const { swe, ctx, notifications } = commandHarness(cwd);
+
+  await swe.handler("work start guided-runner", ctx);
+
+  const started = readPiSweRunnerState(cwd, "guided-runner").snapshot?.runner;
+  assert.equal(started?.mode, "guided");
+  assert.equal(started?.until, "context");
+  assert.deepEqual(started?.policy, { maxRetries: 2 });
+  assert.match(notifications.at(-1)?.message ?? "", /max-turns=unlimited/);
+  assert.match(notifications.at(-1)?.message ?? "", /max-elapsed-ms=unlimited/);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
 test("/swe work uses bounded configured policy defaults without enabling implicit autonomy", async () => {
   const cwd = canonicalFixture();
   const { swe, ctx, runtime } = commandHarness(cwd);
@@ -102,7 +150,7 @@ test("/swe work uses bounded configured policy defaults without enabling implici
 
   const started = readPiSweRunnerState(cwd, "guided-runner").snapshot?.runner;
   assert.equal(started?.mode, "guided");
-  assert.equal(started?.until, "contract");
+  assert.equal(started?.until, "context");
   assert.deepEqual(started?.policy, { maxTurns: 8, maxRetries: 3, maxElapsedMs: 45 * 60_000 });
   rmSync(cwd, { recursive: true, force: true });
 });
@@ -149,7 +197,7 @@ test("/swe work pause, resume, and stop are explicit and idempotent", async () =
   const { swe, ctx } = commandHarness(cwd);
   await swe.handler("work start guided-runner", ctx);
   assert.equal(readPiSweRunnerState(cwd, "guided-runner").snapshot?.runner.mode, "guided");
-  assert.equal(readPiSweRunnerState(cwd, "guided-runner").snapshot?.runner.until, "contract");
+  assert.equal(readPiSweRunnerState(cwd, "guided-runner").snapshot?.runner.until, "context");
 
   await swe.handler("work pause guided-runner", ctx);
   await swe.handler("work pause guided-runner", ctx);
@@ -159,6 +207,85 @@ test("/swe work pause, resume, and stop are explicit and idempotent", async () =
   await swe.handler("work stop guided-runner", ctx);
   await swe.handler("work stop guided-runner", ctx);
   assert.equal(readPiSweRunnerState(cwd, "guided-runner").snapshot?.runner.status, "stopped");
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test("/swe work resume replaces an exhausted legacy budget with current context defaults", async () => {
+  const cwd = canonicalFixture();
+  const { swe, ctx } = commandHarness(cwd);
+  await swe.handler("work start guided-runner --until contract --max-turns 1 --max-minutes 30", ctx);
+  const original = readPiSweRunnerState(cwd, "guided-runner", "session-1").snapshot!;
+  assert.deepEqual(persistPiSweRunnerState(cwd, {
+    topic: "guided-runner",
+    ownerToken: "session-1",
+    runner: {
+      ...original.runner,
+      status: "paused",
+      turnCount: 1,
+      lastAcceptedDispatchSequence: 1,
+      nextDispatchSequence: 2,
+      terminalReason: "turn-budget-exhausted",
+    },
+  }), []);
+
+  await swe.handler("work resume guided-runner", ctx);
+  const resumed = readPiSweRunnerState(cwd, "guided-runner", "session-1").snapshot!;
+  assert.notEqual(resumed.runner.runId, original.runner.runId);
+  assert.equal(resumed.runner.until, "context");
+  assert.deepEqual(resumed.runner.policy, { maxRetries: 2 });
+  assert.equal(resumed.runner.turnCount, 0);
+  assert.equal(resumed.runner.status, "running");
+
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+test("/swe work resume safely starts a fresh run when a new session takes ownership", async () => {
+  const cwd = canonicalFixture();
+  const ownerOne = commandHarness(cwd);
+  await ownerOne.swe.handler("work start guided-runner", ownerOne.ctx);
+  const original = readPiSweRunnerState(cwd, "guided-runner", "session-1").snapshot!;
+  const prepared = reducePiSweRunner({
+    state: original.runner,
+    canonical: { identity: original.runner.identity, recommendation: { stage: "implement", skill: "swe-implement", blockingReasons: [] } },
+    event: { kind: "evaluate" },
+    nowMs: Date.now(),
+  }).state;
+  assert.deepEqual(persistPiSweRunnerState(cwd, { topic: "guided-runner", ownerToken: "session-1", runner: prepared }), []);
+  await ownerOne.swe.handler("work pause guided-runner", ownerOne.ctx);
+
+  const ownerTwo = commandHarness(cwd);
+  ownerTwo.ctx.sessionId = "session-2";
+  await ownerTwo.swe.handler("work resume guided-runner", ownerTwo.ctx);
+  const resumed = readPiSweRunnerState(cwd, "guided-runner", "session-2");
+  assert.deepEqual(resumed.diagnostics, []);
+  assert.equal(resumed.snapshot?.ownerToken, "session-2");
+  assert.match(resumed.snapshot?.runner.runId ?? "", /^session-2:/);
+  assert.notEqual(resumed.snapshot?.runner.runId, original.runner.runId);
+  assert.equal(resumed.snapshot?.runner.status, "running");
+  assert.equal(resumed.snapshot?.runner.pendingDispatch, undefined, "takeover must invalidate an old session's pending dispatch");
+  assert.equal(resumed.snapshot?.runner.turnCount, 0);
+  assert.equal(
+    persistPiSweRunnerState(cwd, { topic: "guided-runner", ownerToken: "session-1", runner: prepared })[0]?.code,
+    "owner_mismatch",
+    "the prior owner must not mutate the replacement run",
+  );
+
+  const ownerThree = commandHarness(cwd);
+  ownerThree.ctx.sessionId = "session-3";
+  await ownerThree.swe.handler("work resume guided-runner", ownerThree.ctx);
+  assert.equal(readPiSweRunnerState(cwd, "guided-runner").snapshot?.ownerToken, "session-3", "explicit resume must take over a running stale-session runner");
+
+  const ownedByThree = readPiSweRunnerState(cwd, "guided-runner", "session-3").snapshot!;
+  assert.deepEqual(persistPiSweRunnerState(cwd, {
+    topic: "guided-runner",
+    ownerToken: "session-3",
+    runner: { ...ownedByThree.runner, status: "blocked", terminalReason: "human-only-decision" },
+  }), []);
+  const ownerFour = commandHarness(cwd);
+  ownerFour.ctx.sessionId = "session-4";
+  await ownerFour.swe.handler("work resume guided-runner", ownerFour.ctx);
+  assert.equal(readPiSweRunnerState(cwd, "guided-runner").snapshot?.ownerToken, "session-4");
+
   rmSync(cwd, { recursive: true, force: true });
 });
 

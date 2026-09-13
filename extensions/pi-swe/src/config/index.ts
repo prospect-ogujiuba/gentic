@@ -33,7 +33,7 @@ export type EffectivePiSweConfig = {
   mode: PiSweMode;
   stages: Record<PiSweStageCheckName, PiSweStageCheckConfig>;
   surgicalChange: { maxFiles: number };
-  runner: { maxTurns: number; maxRetries: number; maxMinutes: number };
+  runner: { maxTurns?: number; maxRetries: number; maxMinutes?: number };
 };
 
 export type PiSweConfigDiagnostic = {
@@ -70,7 +70,7 @@ export const DEFAULT_PI_SWE_CONFIG: Readonly<EffectivePiSweConfig> = Object.free
   mode: "advisory",
   stages: DEFAULT_PI_SWE_CHECKS,
   surgicalChange: { maxFiles: 5 },
-  runner: { maxTurns: 12, maxRetries: 2, maxMinutes: 30 },
+  runner: { maxRetries: 2 },
 });
 
 export function loadEffectiveSweConfig(options: LoadEffectiveSweConfigOptions = {}): LoadEffectiveSweConfigResult {

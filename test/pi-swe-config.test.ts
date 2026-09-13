@@ -17,6 +17,7 @@ test("pi-swe effective config uses safe defaults when files are missing", () => 
   const result = loadEffectiveSweConfig({ cwd, homeDir });
 
   assert.deepEqual(result.config, DEFAULT_PI_SWE_CONFIG);
+  assert.equal(result.config.runner.maxTurns, undefined, "turns must be unlimited by default");
   assert.deepEqual(result.diagnostics, []);
 });
 
@@ -131,8 +132,8 @@ test("pi-swe config resources remain top-level discoverable", () => {
   assert.equal(existsSync(join(extensionRoot, "prompts")), false, "mirrored SWE prompts should stay removed");
   assert.equal(existsSync(schemaPath), true, "pi-swe.schema.json should stay top-level for compatibility");
   const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
-  assert.deepEqual(schema.properties.runner.default, { maxTurns: 12, maxRetries: 2, maxMinutes: 30 });
-  assert.deepEqual(schema.properties.runner.properties.maxTurns, { type: "integer", minimum: 1, maximum: 100, default: 12 });
+  assert.deepEqual(schema.properties.runner.default, { maxRetries: 2 });
+  assert.deepEqual(schema.properties.runner.properties.maxTurns, { type: "integer", minimum: 1, maximum: 100 });
   assert.deepEqual(schema.properties.runner.properties.maxRetries, { type: "integer", minimum: 0, maximum: 10, default: 2 });
-  assert.deepEqual(schema.properties.runner.properties.maxMinutes, { type: "integer", minimum: 1, maximum: 1440, default: 30 });
+  assert.deepEqual(schema.properties.runner.properties.maxMinutes, { type: "integer", minimum: 1, maximum: 1440 });
 });

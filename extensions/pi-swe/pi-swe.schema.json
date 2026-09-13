@@ -49,8 +49,7 @@
         "maxTurns": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 100,
-          "default": 12
+          "maximum": 100
         },
         "maxRetries": {
           "type": "integer",
@@ -61,11 +60,10 @@
         "maxMinutes": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 1440,
-          "default": 30
+          "maximum": 1440
         }
       },
-      "default": { "maxTurns": 12, "maxRetries": 2, "maxMinutes": 30 }
+      "default": { "maxRetries": 2 }
     }
   }
 }

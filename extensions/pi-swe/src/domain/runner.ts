@@ -8,7 +8,7 @@ import {
 export const PI_SWE_RUNNER_STATE_VERSION = 1 as const;
 
 export type PiSweRunnerMode = "guided" | "autonomous";
-export type PiSweRunnerUntil = "contract" | "initiative";
+export type PiSweRunnerUntil = "contract" | "context" | "initiative";
 export type PiSweRunnerStage = "specify" | "diagnose" | "plan" | "dsa-assess" | "tdd-plan" | "plan-review" | "plan-revise" | "implement" | "verify" | "implementation-review" | "finalize";
 export type PiSweRunnerHardStop =
   | "ambiguous-initiative"
@@ -32,6 +32,7 @@ export type PiSweRunnerTerminalReason = PiSweRunnerHardStop
   | "turn-budget-exhausted"
   | "time-budget-exhausted"
   | "provider-budget-exhausted"
+  | "context-pressure-critical"
   | "human-plan-revision-required"
   | "operator-paused"
   | "operator-stopped"
@@ -39,9 +40,9 @@ export type PiSweRunnerTerminalReason = PiSweRunnerHardStop
   | "initiative-complete";
 
 export type PiSweRunnerPolicy = {
-  readonly maxTurns: number;
+  readonly maxTurns?: number;
   readonly maxRetries: number;
-  readonly maxElapsedMs: number;
+  readonly maxElapsedMs?: number;
   readonly maxProviderUnits?: number;
 };
 
@@ -92,6 +93,7 @@ export type PiSweRunnerCanonicalView = {
   readonly recommendation: PiSweRunnerRecommendation;
   readonly hardStop?: PiSweRunnerHardStop;
   readonly providerUnitsUsed?: number;
+  readonly contextPressure?: "normal" | "warning" | "critical" | "unavailable";
 };
 
 export type PiSweRunnerEvidence = {
@@ -290,8 +292,9 @@ function acceptCheckpoint(state: PiSweRunnerRecord, canonical: PiSweRunnerCanoni
 }
 
 function exhaustedBudget(state: PiSweRunnerRecord, canonical: PiSweRunnerCanonicalView, nowMs: number): PiSweRunnerTerminalReason | undefined {
-  if (state.turnCount >= state.policy.maxTurns) return "turn-budget-exhausted";
-  if (!Number.isSafeInteger(nowMs) || nowMs - state.startedAtMs >= state.policy.maxElapsedMs) return "time-budget-exhausted";
+  if (state.until === "context" && canonical.contextPressure === "critical") return "context-pressure-critical";
+  if (state.policy.maxTurns !== undefined && state.turnCount >= state.policy.maxTurns) return "turn-budget-exhausted";
+  if (state.policy.maxElapsedMs !== undefined && (!Number.isSafeInteger(nowMs) || nowMs - state.startedAtMs >= state.policy.maxElapsedMs)) return "time-budget-exhausted";
   if (state.policy.maxProviderUnits !== undefined && (canonical.providerUnitsUsed ?? 0) >= state.policy.maxProviderUnits) return "provider-budget-exhausted";
   return undefined;
 }

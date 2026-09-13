@@ -62,6 +62,28 @@ export function persistPiSweRunnerState(
   cwd: string,
   value: Omit<PiSweRunnerSnapshot, "version">,
 ): PiSweRunnerPersistenceDiagnostic[] {
+  return persistRunnerState(cwd, value);
+}
+
+export function replaceTerminalPiSweRunnerState(
+  cwd: string,
+  value: Omit<PiSweRunnerSnapshot, "version">,
+): PiSweRunnerPersistenceDiagnostic[] {
+  return persistRunnerState(cwd, value, ["stopped", "complete"]);
+}
+
+export function replaceResumablePiSweRunnerState(
+  cwd: string,
+  value: Omit<PiSweRunnerSnapshot, "version">,
+): PiSweRunnerPersistenceDiagnostic[] {
+  return persistRunnerState(cwd, value, ["running", "paused", "blocked"]);
+}
+
+function persistRunnerState(
+  cwd: string,
+  value: Omit<PiSweRunnerSnapshot, "version">,
+  ownerReplacementStatuses: readonly PiSweRunnerRecord["status"][] = [],
+): PiSweRunnerPersistenceDiagnostic[] {
   const statePath = runnerStatePath(value.topic);
   if (!validTopic(value.topic) || !validOwnerToken(value.ownerToken) || !validRunner(value.runner, value.topic)) {
     return [diagnostic("invalid_state", "runner lease is malformed or mismatched", statePath)];
@@ -85,7 +107,8 @@ export function persistPiSweRunnerState(
       const existing = readPiSweRunnerState(cwd, value.topic);
       if (existing.diagnostics.length) return existing.diagnostics;
       if (!existing.snapshot) return [diagnostic("invalid_state", "existing runner lease is unreadable", statePath)];
-      if (existing.snapshot.ownerToken !== value.ownerToken) {
+      if (existing.snapshot.ownerToken !== value.ownerToken
+        && !ownerReplacementStatuses.includes(existing.snapshot.runner.status)) {
         return [diagnostic("owner_mismatch", `runner is owned by ${existing.snapshot.ownerToken}`, statePath)];
       }
     }
@@ -212,7 +235,7 @@ function validRunner(value: unknown, topic: string): value is PiSweRunnerRecord 
   if (!isRecord(value) || value.version !== PI_SWE_RUNNER_STATE_VERSION || !validIdentity(value.identity, topic)) return false;
   if (!validOwnerToken(value.runId)
     || (value.mode !== "guided" && value.mode !== "autonomous")
-    || (value.until !== "contract" && value.until !== "initiative")
+    || (value.until !== "contract" && value.until !== "context" && value.until !== "initiative")
     || !["running", "paused", "stopped", "blocked", "complete"].includes(String(value.status))
     || !isNonNegativeInteger(value.startedAtMs)
     || !validPolicy(value.policy)
@@ -247,9 +270,9 @@ function validIdentity(value: unknown, topic: string): boolean {
 
 function validPolicy(value: unknown): boolean {
   return isRecord(value)
-    && isPositiveInteger(value.maxTurns)
+    && (value.maxTurns === undefined || isPositiveInteger(value.maxTurns))
     && isNonNegativeInteger(value.maxRetries)
-    && isPositiveInteger(value.maxElapsedMs)
+    && (value.maxElapsedMs === undefined || isPositiveInteger(value.maxElapsedMs))
     && (value.maxProviderUnits === undefined || isNonNegativeInteger(value.maxProviderUnits));
 }
 

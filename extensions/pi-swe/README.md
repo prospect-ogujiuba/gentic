@@ -62,15 +62,15 @@ The tool does not verify, review, choose arbitrary ready work, run lifecycle sta
 ```text
 /swe status
 /swe config
-/swe work <status|start|resume|pause|stop> [topic] [--mode guided|autonomous] [--until contract|initiative] [--max-turns 1..100] [--max-minutes 1..1440]
+/swe work <status|start|resume|pause|stop> [topic] [--mode guided|autonomous] [--until contract|context|initiative] [--max-turns 1..100] [--max-minutes 1..1440]
 /swe orchestrate [status|start|resume|handoff]
 /swe complete <topic> <contract-id> <plan-revision> <contract-path> <contract-hash> <verification-path> <verification-hash> <review-path> <review-hash> approve [clear|advance]
 ```
 
 - `/swe status` reports canonical disposition, phase progress, active/ready contracts, blockers, runtime context, and current warnings.
 - `/swe config` reports the effective project/global/default configuration and config diagnostics.
-- `/swe work status` is read-only. `start` creates one owner-bound run only after exact canonical approval/readiness checks; it defaults to guided mode, contract scope, and bounded configured policy. `resume`, `pause`, and `stop` require the same session owner. Only an explicit `--mode autonomous` enables autonomous mode, and neither mode bypasses plan approval, replanning, unsafe/external-operation, missing-capability, evidence, review, or completion gates.
-- Each dispatched `/skill:swe-*` prompt contains the exact topic, plan revision, contract ID/path/hash, stage, dispatch token, required reads, and `swe_checkpoint` obligation. Intent is persisted before sending. A missing/stale/duplicate/contradictory checkpoint or uncertain delivery stops without a duplicate prompt. `--until contract` stops after disposition; `--until initiative` may continue serially to the next dependency-ready contract and finalization.
+- `/swe work status` is read-only. `start` creates one owner-bound run only after exact canonical approval/readiness checks; it defaults to guided mode and context-window scope, with no turn or elapsed-time limit unless explicitly configured. `resume` continues a same-session run or explicitly takes over a resumable run from a different session by issuing a fresh run identity and invalidating old pending dispatches; terminal runs still require `start`. `pause` and `stop` require the current owner. Only an explicit `--mode autonomous` enables autonomous mode, and neither mode bypasses plan approval, replanning, unsafe/external-operation, missing-capability, evidence, review, or completion gates.
+- Each dispatched `/skill:swe-*` prompt contains the exact topic, plan revision, contract ID/path/hash, stage, dispatch token, required reads, and `swe_checkpoint` obligation. Intent is persisted before sending. A missing/stale/duplicate/contradictory checkpoint or uncertain delivery stops without a duplicate prompt. `--until contract` stops after disposition; the default `--until context` continues serially through dependency-ready contracts until exact `pi-context` pressure becomes critical, then pauses before another dispatch; `--until initiative` continues through ready contracts and finalization regardless of context pressure. Unavailable or estimated pressure never causes a false stop.
 - `/swe orchestrate` is guidance-only: it reports artifact readiness, recommends the next lifecycle step, routes missing verification/review/finalize gates, and emits deterministic exception handoffs without running hidden multi-step work.
 - `/swe complete` is the explicit low-level mutation interface. It validates the exact active plan/contract hash plus passing verification and approving implementation-review identities, then calls the same recoverable journaled state transition used by `swe_complete`. Before mutation it losslessly normalizes supported legacy contract-index and manifest metadata within layout-v2 authority; the same transaction writes the canonical schema-v2 contract index, records migration provenance and completion evidence, and advances readiness. Contract IDs remain unchanged and evidence stays bound to the original identity. Ambiguous migration, evidence drift, graph errors, and execution blockers reject before writes with artifact-specific diagnostics. Each report must contain one closed `Pi-SWE-Evidence: {...}` JSON line binding topic, contract ID/path/hash, plan revision, and overall decision; the review line also binds the verification path/hash and zero blocking findings. An owner-token-bound exclusive local claim prevents concurrent writers and every journal/target mutation revalidates it. Claim files are never auto-reaped; after a process crash, recovery reports the exact lock path for explicit removal only after the operator confirms its owner is gone. Exact repeats return `already-complete`; mismatches and unfinished/corrupt recovery state do not write or report success. Canonical filenames stay unchanged.
 
@@ -204,11 +204,11 @@ Config is loaded from project, global, then defaults. The schema is `extensions/
   "mode": "advisory",
   "stages": {},
   "surgicalChange": { "maxFiles": 5 },
-  "runner": { "maxTurns": 12, "maxRetries": 2, "maxMinutes": 30 }
+  "runner": { "maxRetries": 2 }
 }
 ```
 
-`mode` may be `off`, `advisory`, or `enforced`. Runner policy is bounded to `maxTurns` 1–100, `maxRetries` 0–10, and `maxMinutes` 1–1440. Project values override global values field-by-field; invalid or unknown runner fields emit diagnostics and fall back safely. Configuration cannot select autonomous mode: autonomy always requires an explicit `/swe work start ... --mode autonomous` invocation.
+`mode` may be `off`, `advisory`, or `enforced`. Runner turns and elapsed time are unlimited by default so one uncompacted context window can carry as many contracts as pressure safely allows. Optional `maxTurns` (1–100) and `maxMinutes` (1–1440) restore explicit numeric limits; `maxRetries` remains bounded to 0–10 and defaults to 2. Project values override global values field-by-field; invalid or unknown runner fields emit diagnostics and fall back safely. Configuration cannot select autonomous mode: autonomy always requires an explicit `/swe work start ... --mode autonomous` invocation.
 
 ## Resource invocation migration
 

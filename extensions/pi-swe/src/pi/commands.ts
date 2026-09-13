@@ -4,6 +4,8 @@ import {
   pausePersistedPiSweRunner,
   persistPiSweRunnerState,
   readPiSweRunnerState,
+  replaceResumablePiSweRunnerState,
+  replaceTerminalPiSweRunnerState,
   stopPersistedPiSweRunner,
 } from "../app/runner-persistence.ts";
 import { refreshPeerContext, type PiSweRuntime } from "../app/runtime.ts";
@@ -31,13 +33,13 @@ const ORCHESTRATE_COMPLETIONS = [
 const WORK_COMPLETIONS = [
   { value: "status", label: "status", description: "Inspect persisted runner state without mutation · /swe work status [topic]" },
   { value: "start", label: "start", description: "Start an approved owner-bound run · /swe work start [topic] [options]" },
-  { value: "resume", label: "resume", description: "Resume a paused owner-bound run · /swe work resume [topic]" },
+  { value: "resume", label: "resume", description: "Resume or take over a resumable run · /swe work resume [topic]" },
   { value: "pause", label: "pause", description: "Pause before the next continuation · /swe work pause [topic]" },
   { value: "stop", label: "stop", description: "Stop the run; a stopped run cannot resume · /swe work stop [topic]" },
 ] as const;
 const STATUS_USAGE = "Usage: /swe status [topic]";
 const ORCHESTRATE_USAGE = "Usage: /swe orchestrate <status|start|resume|handoff> [topic]";
-const WORK_USAGE = "Usage: /swe work <status|start|resume|pause|stop> [topic] [--mode guided|autonomous] [--until contract|initiative] [--max-turns 1..100] [--max-minutes 1..1440]";
+const WORK_USAGE = "Usage: /swe work <status|start|resume|pause|stop> [topic] [--mode guided|autonomous] [--until contract|context|initiative] [--max-turns 1..100] [--max-minutes 1..1440]";
 const COMPLETE_USAGE = "Usage: /swe complete <topic> <contract-id> <plan-revision> <contract-path> <contract-hash> <verification-path> <verification-hash> <review-path> <review-hash> approve [clear|advance]";
 const MAX_SUMMARY_ITEMS = 8;
 
@@ -211,7 +213,8 @@ export function completeSweArgument(prefix: string): SweCompletion[] {
         ]
       : previous === "--until"
         ? [
-            { value: "contract", description: "Stop after the selected contract is disposed (default)" },
+            { value: "contract", description: "Stop after the selected contract is disposed" },
+            { value: "context", description: "Continue through contracts until context pressure is critical (default)" },
             { value: "initiative", description: "Continue serially through ready contracts and finalization" },
           ]
         : previous === "--max-turns"
@@ -226,7 +229,7 @@ export function completeSweArgument(prefix: string): SweCompletion[] {
     if (current && !current.startsWith("-")) return [];
     const options = [
       { value: "--mode", description: "Execution mode · --mode <guided|autonomous>" },
-      { value: "--until", description: "Stopping scope · --until <contract|initiative>" },
+      { value: "--until", description: "Stopping scope · --until <contract|context|initiative>" },
       { value: "--max-turns", description: "Turn budget · --max-turns <1..100>" },
       { value: "--max-minutes", description: "Elapsed-time budget · --max-minutes <1..1440>" },
     ];
@@ -335,21 +338,37 @@ function handleSweWork(runtime: PiSweRuntime, tokens: readonly string[], ctx: Sw
       policy: parsed.policy,
       startedAtMs: Date.now(),
     });
-    const diagnostics = persistPiSweRunnerState(ctx.cwd, { topic, ownerToken, runner });
+    const diagnostics = replaceTerminalPiSweRunnerState(ctx.cwd, { topic, ownerToken, runner });
     if (diagnostics.length) return { ok: false, message: formatRunnerDiagnostics(topic, diagnostics) };
     return formatSweWorkState(ctx.cwd, topic);
   }
 
   if (!current.snapshot) return { ok: false, message: `pi-swe work\ntopic: ${topic}\nreason: no persisted runner exists to resume` };
-  if (current.snapshot.ownerToken !== ownerToken) return { ok: false, message: `pi-swe work\ntopic: ${topic}\nreason: runner is owned by ${current.snapshot.ownerToken}` };
-  if (current.snapshot.runner.status === "running") return formatSweWorkState(ctx.cwd, topic);
-  if (current.snapshot.runner.status === "stopped" || current.snapshot.runner.status === "complete") {
-    return { ok: false, message: `pi-swe work\ntopic: ${topic}\nreason: ${current.snapshot.runner.status} runner cannot resume; start a new run` };
+  const previous = current.snapshot.runner;
+  if (previous.status === "stopped" || previous.status === "complete") {
+    return { ok: false, message: `pi-swe work\ntopic: ${topic}\nreason: ${previous.status} runner cannot resume; start a new run` };
   }
-  if (!sameRunnerIdentity(current.snapshot.runner.identity, identity)) {
+  if (!sameRunnerIdentity(previous.identity, identity)) {
     return { ok: false, message: `pi-swe work\ntopic: ${topic}\nreason: persisted runner identity is stale` };
   }
-  const runner = { ...current.snapshot.runner, status: "running" as const, terminalReason: undefined };
+  const exhaustedLegacyBudget = previous.terminalReason === "turn-budget-exhausted"
+    || previous.terminalReason === "time-budget-exhausted";
+  if (current.snapshot.ownerToken !== ownerToken || exhaustedLegacyBudget) {
+    const startedAtMs = Date.now();
+    const runner = createPiSweRunner({
+      runId: `${ownerToken}:${startedAtMs}`,
+      mode: previous.mode,
+      until: exhaustedLegacyBudget ? parsed.until : previous.until,
+      identity,
+      policy: exhaustedLegacyBudget ? parsed.policy : previous.policy,
+      startedAtMs,
+    });
+    const diagnostics = replaceResumablePiSweRunnerState(ctx.cwd, { topic, ownerToken, runner });
+    if (diagnostics.length) return { ok: false, message: formatRunnerDiagnostics(topic, diagnostics) };
+    return formatSweWorkState(ctx.cwd, topic);
+  }
+  if (previous.status === "running") return formatSweWorkState(ctx.cwd, topic);
+  const runner = { ...previous, status: "running" as const, terminalReason: undefined };
   const diagnostics = persistPiSweRunnerState(ctx.cwd, { topic, ownerToken, runner });
   if (diagnostics.length) return { ok: false, message: formatRunnerDiagnostics(topic, diagnostics) };
   return formatSweWorkState(ctx.cwd, topic);
@@ -363,7 +382,7 @@ function parseSweWorkArguments(
   if (!action) return { error: "a valid work action is required" };
   let topic: string | undefined;
   let mode: PiSweRunnerMode = "guided";
-  let until: PiSweRunnerUntil = "contract";
+  let until: PiSweRunnerUntil = "context";
   let maxTurns = defaults.maxTurns;
   let maxMinutes = defaults.maxMinutes;
   const seen = new Set<string>();
@@ -383,7 +402,7 @@ function parseSweWorkArguments(
       if (value !== "guided" && value !== "autonomous") return { error: "mode must be guided or autonomous" };
       mode = value;
     } else if (token === "--until") {
-      if (value !== "contract" && value !== "initiative") return { error: "until must be contract or initiative" };
+      if (value !== "contract" && value !== "context" && value !== "initiative") return { error: "until must be contract, context, or initiative" };
       until = value;
     } else {
       const number = Number(value);
@@ -394,7 +413,17 @@ function parseSweWorkArguments(
     }
   }
   if (action !== "start" && seen.size) return { error: "policy options are accepted only when starting a new run" };
-  return { action, topic, mode, until, policy: { maxTurns, maxRetries: defaults.maxRetries, maxElapsedMs: maxMinutes * 60_000 } };
+  return {
+    action,
+    topic,
+    mode,
+    until,
+    policy: {
+      ...(maxTurns === undefined ? {} : { maxTurns }),
+      maxRetries: defaults.maxRetries,
+      ...(maxMinutes === undefined ? {} : { maxElapsedMs: maxMinutes * 60_000 }),
+    },
+  };
 }
 
 function canonicalRunnerIdentity(
@@ -439,7 +468,7 @@ function formatSweWorkState(cwd: string, topic: string): { ok: boolean; message:
       `until: ${runner.until}`,
       `stage: ${runner.pendingDispatch?.stage ?? "await-evaluation"}`,
       `identity: plan r${runner.identity.planRevision}, contract ${runner.identity.contractId}, ${runner.identity.contractPath}, ${runner.identity.contractHash}`,
-      `policy: max-turns=${runner.policy.maxTurns}, max-retries=${runner.policy.maxRetries}, max-elapsed-ms=${runner.policy.maxElapsedMs}${runner.policy.maxProviderUnits === undefined ? "" : `, max-provider-units=${runner.policy.maxProviderUnits}`}`,
+      `policy: max-turns=${runner.policy.maxTurns ?? "unlimited"}, max-retries=${runner.policy.maxRetries}, max-elapsed-ms=${runner.policy.maxElapsedMs ?? "unlimited"}${runner.policy.maxProviderUnits === undefined ? "" : `, max-provider-units=${runner.policy.maxProviderUnits}`}`,
       `counters: turns=${runner.turnCount}, retries=${runner.retryCount}, next-dispatch=${runner.nextDispatchSequence}, accepted-dispatch=${runner.lastAcceptedDispatchSequence}`,
       `recovery: ${current.recovery ?? "inactive"}`,
       `stop reason: ${runner.terminalReason ?? "none"}`,

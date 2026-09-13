@@ -167,6 +167,24 @@ test("pi-swe runner keeps turn, retry, elapsed, and provider budgets isolated", 
   }
 });
 
+test("pi-swe context-scoped runner pauses at critical pressure without numeric limits", () => {
+  const state = runner({
+    until: "context",
+    policy: { maxRetries: 2 },
+    turnCount: 1_000,
+  });
+  const result = reducePiSweRunner({
+    state,
+    canonical: canonical("implement", { contextPressure: "critical" }),
+    event: { kind: "evaluate" },
+    nowMs: 999_999_999,
+  });
+
+  assert.equal(result.action.kind, "pause");
+  assert.equal(result.state.status, "paused");
+  assert.equal(result.state.terminalReason, "context-pressure-critical");
+});
+
 test("pi-swe runner applies retry transitions and human-only return-to-plan without duplicating lifecycle tables", () => {
   const verifying = reducePiSweRunner({ state: runner(), canonical: canonical("verify"), event: { kind: "evaluate" }, nowMs: 2_000 });
   const retry = reducePiSweRunner({
