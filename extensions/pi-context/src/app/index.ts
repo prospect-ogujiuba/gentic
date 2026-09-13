@@ -8,6 +8,7 @@ export {
   updateSessionState,
   type PiContextLifecycleEventType,
   type PiContextLifecycleRecord,
+  type PiContextPressureSnapshot,
   type PiContextSessionMetadata,
   type PiContextSessionState,
   type PiContextUsageSnapshot,

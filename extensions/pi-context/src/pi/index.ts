@@ -1,4 +1,8 @@
-export { registerPiContext, type PiContextObservedEvent } from "./register.ts";
+export {
+  registerPiContext,
+  type PiContextObservedEvent,
+  type RegisterPiContextOptions,
+} from "./register.ts";
 export {
   collectRuntimeCompaction,
   collectRuntimeInput,

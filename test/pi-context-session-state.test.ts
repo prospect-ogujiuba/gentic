@@ -55,3 +55,30 @@ test("compact clears in-memory ledger observations for the continuing session", 
   assert.deepEqual(state.ledgerEntries, []);
   assert.equal(getSessionState()?.lifecycleEvents.at(-1)?.type, "session_compact");
 });
+
+test("pressure state suppresses repeats, reconciles compaction, and resets", () => {
+  const exact = (remainingPercent: number) => ({
+    tokens: 100 - remainingPercent,
+    contextWindow: 100,
+    percent: 100 - remainingPercent,
+    tokenConfidence: "exact" as const,
+  });
+  let state = startSessionState({
+    reason: "startup",
+    at: "2026-05-13T01:00:00.000Z",
+    usageSnapshot: exact(25),
+    nowMs: 1_000,
+  });
+  assert.equal(state.pressure.evaluation?.notification, "warning");
+
+  state = updateSessionState({ event: "turn_end", usageSnapshot: exact(24), nowMs: 2_000 });
+  assert.equal(state.pressure.evaluation?.shouldNotify, false);
+
+  state = updateSessionState({ event: "session_compact", usageSnapshot: exact(40), nowMs: 3_000 });
+  assert.equal(state.pressure.state.level, "normal");
+  assert.equal(state.pressure.evaluation?.shouldNotify, false);
+
+  state = resetSessionState("shutdown", "2026-05-13T01:00:04.000Z");
+  assert.equal(state.pressure.state.level, "normal");
+  assert.equal(state.pressure.evaluation, undefined);
+});

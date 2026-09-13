@@ -1,4 +1,14 @@
-import { upsertLedgerEntry, type ContextLedgerEntry, type TokenConfidence } from "../domain/index.ts";
+import {
+  DEFAULT_CONTEXT_PRESSURE_POLICY,
+  createContextPressureState,
+  reduceContextPressure,
+  upsertLedgerEntry,
+  type ContextLedgerEntry,
+  type ContextPressureEvaluation,
+  type ContextPressurePolicy,
+  type ContextPressureState,
+  type TokenConfidence,
+} from "../domain/index.ts";
 
 export type PiContextLifecycleEventType =
   | "session_start"
@@ -55,6 +65,12 @@ export type PiContextSessionMetadata = {
   contextWindow?: number;
 };
 
+export type PiContextPressureSnapshot = {
+  policy: ContextPressurePolicy;
+  state: ContextPressureState;
+  evaluation?: ContextPressureEvaluation;
+};
+
 export type PiContextSessionState = {
   active: boolean;
   generation: number;
@@ -69,6 +85,7 @@ export type PiContextSessionState = {
   beforeFirstProviderRequest: boolean;
   firstProviderRequestAt?: string;
   resetReason?: string;
+  pressure: PiContextPressureSnapshot;
   warnings: string[];
 };
 
@@ -78,6 +95,8 @@ export type StartSessionStateInput = {
   previousSessionFile?: string;
   metadata?: PiContextSessionMetadata;
   usageSnapshot?: Omit<PiContextUsageSnapshot, "capturedAt" | "event">;
+  pressurePolicy?: ContextPressurePolicy;
+  nowMs?: number;
   warnings?: string[];
 };
 
@@ -87,6 +106,7 @@ export type UpdateSessionStateInput = {
   reason?: string;
   metadata?: PiContextSessionMetadata;
   usageSnapshot?: Omit<PiContextUsageSnapshot, "capturedAt" | "event">;
+  nowMs?: number;
   warnings?: string[];
 };
 
@@ -123,9 +143,10 @@ export function startSessionState(input: StartSessionStateInput): PiContextSessi
     usageSnapshots: [],
     lifecycleEvents: [{ type: "session_start", at, reason: input.reason }],
     beforeFirstProviderRequest: true,
+    pressure: createPressureSnapshot(input.pressurePolicy),
     warnings: uniqueStrings(input.warnings ?? []),
   };
-  if (input.usageSnapshot) recordUsageSnapshot("session_start", input.usageSnapshot, at);
+  if (input.usageSnapshot) recordUsageSnapshot("session_start", input.usageSnapshot, at, input.nowMs);
   return cloneState(currentState);
 }
 
@@ -141,6 +162,7 @@ export function resetSessionState(reason: string, at = new Date().toISOString())
     lifecycleEvents: [{ type: "session_shutdown", at, reason }],
     beforeFirstProviderRequest: true,
     resetReason: reason,
+    pressure: createPressureSnapshot(),
     warnings: [],
   };
   return cloneState(currentState);
@@ -160,7 +182,7 @@ export function updateSessionState(input: UpdateSessionStateInput): PiContextSes
     if (input.event === "session_compact") state.ledgerEntries = [];
   }
   if (input.warnings?.length) state.warnings = trimTail(uniqueStrings([...state.warnings, ...input.warnings]), MAX_WARNINGS);
-  if (input.usageSnapshot && input.event) recordUsageSnapshot(input.event, input.usageSnapshot, at);
+  if (input.usageSnapshot && input.event) recordUsageSnapshot(input.event, input.usageSnapshot, at, input.nowMs);
   return cloneState(state);
 }
 
@@ -178,9 +200,16 @@ export function recordUsageSnapshot(
   event: PiContextLifecycleEventType,
   snapshot: Omit<PiContextUsageSnapshot, "capturedAt" | "event">,
   at = new Date().toISOString(),
+  nowMs = Date.now(),
 ): PiContextSessionState {
   const state = ensureState(at);
   state.lastUpdatedAt = at;
+  const pressure = reduceContextPressure(state.pressure.state, snapshot, state.pressure.policy, nowMs);
+  state.pressure = {
+    policy: state.pressure.policy,
+    state: pressure.state,
+    evaluation: pressure.evaluation,
+  };
   state.usageSnapshots = trimTail(
     [
       ...state.usageSnapshots,
@@ -220,6 +249,7 @@ function ensureState(at: string): PiContextSessionState {
     usageSnapshots: [],
     lifecycleEvents: [{ type: "session_start", at, reason: "lazy" }],
     beforeFirstProviderRequest: true,
+    pressure: createPressureSnapshot(),
     warnings: ["session_start was not observed; state initialized lazily"],
   };
   return currentState;
@@ -243,8 +273,17 @@ function cloneState(state: PiContextSessionState): PiContextSessionState {
     })),
     usageSnapshots: state.usageSnapshots.map((snapshot) => ({ ...snapshot })),
     lifecycleEvents: state.lifecycleEvents.map((event) => ({ ...event })),
+    pressure: {
+      policy: state.pressure.policy,
+      state: state.pressure.state,
+      evaluation: state.pressure.evaluation ? { ...state.pressure.evaluation } : undefined,
+    },
     warnings: [...state.warnings],
   };
+}
+
+function createPressureSnapshot(policy: ContextPressurePolicy = DEFAULT_CONTEXT_PRESSURE_POLICY): PiContextPressureSnapshot {
+  return { policy, state: createContextPressureState() };
 }
 
 function uniqueStrings(values: string[]): string[] {
