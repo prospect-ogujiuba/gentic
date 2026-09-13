@@ -121,6 +121,7 @@ test("artifact audit recognizes layout-v2 initiative/system namespaces and reloc
 test("artifact audit accepts canonical pi-swe stable filenames in layout v2", () => {
   const root = fixture();
   const paths = [
+    ".model-artifacts/initiatives/demo/workflow.json",
     ".model-artifacts/initiatives/demo/specs/manifest.json",
     ".model-artifacts/initiatives/demo/plans/revisions/r1/contracts.json",
     ".model-artifacts/initiatives/demo/plans/revisions/r1/phases/01-demo/00-phase-index.md",
@@ -131,6 +132,7 @@ test("artifact audit accepts canonical pi-swe stable filenames in layout v2", ()
 
   const entries = new Map(auditArtifacts({ cwd: root }).entries.map((entry) => [entry.source, entry]));
   for (const path of paths) assert.notEqual(entries.get(path)?.classification, "invalid", path);
+  assert.equal(entries.get(".model-artifacts/initiatives/demo/workflow.json")?.classification, "protected");
   assert.equal(entries.get(".model-artifacts/system/logs/pi-swe/demo/runner.json")?.classification, "protected");
 
   const unrelated = ".model-artifacts/system/logs/other/demo/runner.json";

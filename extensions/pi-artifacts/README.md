@@ -23,7 +23,7 @@ Initiative and system artifacts use:
 .model-artifacts/system/<logs|reports>/YYYY-MM-DD_HHMM-<short-name>.md
 ```
 
-Initiative kinds are exactly `specs`, `plans`, `todo`, `findings`, `reports`, and `logs`. Canonical pi-swe contract filenames, `manifest.json`, and `contracts.json` remain stable exceptions. Topic segments and generated short names are kebab-case. `docs/plans/` is curated documentation only, never generated authority.
+Initiative kinds are exactly `specs`, `plans`, `todo`, `findings`, `reports`, and `logs`. Pi-swe `workflow.json` is stable authority; former contract files, `manifest.json`, and `contracts.json` remain accepted as migration history. Topic segments and generated short names are kebab-case. `docs/plans/` is curated documentation only, never generated authority.
 
 ## Safe workflow
 

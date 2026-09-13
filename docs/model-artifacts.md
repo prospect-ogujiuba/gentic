@@ -6,7 +6,7 @@ Gentic writes durable initiative artifacts only beneath:
 .model-artifacts/initiatives/<topic>/{specs,plans,todo,findings,reports,logs}/
 ```
 
-Non-initiative runtime, release, and migration records belong only beneath `.model-artifacts/system/logs/` or `.model-artifacts/system/reports/`. Generated Markdown uses `YYYY-MM-DD_HHMM-<short-name>.md`; canonical pi-swe contract filenames, `manifest.json`, and `contracts.json` are stable exceptions. Paths are project-relative POSIX paths with kebab-case topic segments. `docs/plans/` is curated human-facing documentation, never generated plan authority.
+Non-initiative runtime, release, and migration records belong only beneath `.model-artifacts/system/logs/` or `.model-artifacts/system/reports/`. Generated Markdown uses `YYYY-MM-DD_HHMM-<short-name>.md`. The lightweight pi-swe `workflow.json` is stable authority directly beneath its initiative topic; former `manifest.json`, `contracts.json`, and contract files remain accepted as read-only migration history. Paths are project-relative POSIX paths with kebab-case topic segments. `docs/plans/` is curated human-facing documentation, never generated plan authority.
 
 ## Compatibility window
 

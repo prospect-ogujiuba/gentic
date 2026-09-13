@@ -368,6 +368,8 @@ function parseV2Canonical(source: string): { topic?: string; unit: "initiative" 
   if (parts[0] !== ".model-artifacts") return undefined;
   const stableRunner = source.match(/^\.model-artifacts\/system\/logs\/pi-swe\/(.+)\/runner\.json$/);
   if (stableRunner?.[1] && isCanonicalTopic(stableRunner[1])) return { topic: stableRunner[1], unit: "system", stableRuntime: true };
+  const stableWorkflow = source.match(/^\.model-artifacts\/initiatives\/(.+)\/workflow\.json$/);
+  if (stableWorkflow?.[1] && isCanonicalTopic(stableWorkflow[1])) return { topic: stableWorkflow[1], unit: "initiative", stableRuntime: true };
   const stable = source.match(/^\.model-artifacts\/initiatives\/(.+)\/(?:specs\/manifest\.json|plans\/revisions\/r[1-9]\d*\/(?:contracts\.json|phases\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9][a-z0-9.-]*\.md))$/);
   if (stable?.[1] && isCanonicalTopic(stable[1])) return { topic: stable[1], unit: "initiative" };
   if (parts[1] === "initiatives" && parts.length >= 5 && parts.slice(2, -2).every((segment) => normalizeSegment(segment) === segment && segment.length > 0)

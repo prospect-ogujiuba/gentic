@@ -17,9 +17,7 @@ Gentic uses Pi's package manifest as the only resource loader. Resource director
 
 ## SWE canonical surface
 
-`pi-swe` owns runtime `/swe status`, `/swe config`, and `/swe orchestrate`. Lifecycle guidance is skill-only under `extensions/pi-swe/skills/`.
-
-Removed mirrored prompt invocations such as `/swe-plan` and `/swe-verify` migrate to `/skill:swe-plan` and `/skill:swe-verify`. The same rule applies to all nine `swe-*` lifecycle skills.
+`pi-swe` owns runtime `/swe` and the `swe_workflow` tool. It has no prompt or skill resources. Durable multi-step work uses one `.model-artifacts/initiatives/<topic>/workflow.json`; ordinary work uses Pi directly.
 
 ## Validation
 

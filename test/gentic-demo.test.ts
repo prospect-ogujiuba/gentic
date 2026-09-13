@@ -250,7 +250,7 @@ test("demo activates every Gentic-owned extension and exercises shared runtime p
 
   assert.ok(harness.sentUserMessages.some((message) => message.message === "/todo list"));
   assert.equal(harness.ctx.demoState.newSessionStarted, true);
-  assert.ok(harness.ctx.demoState.notifications.some((entry) => entry.message.includes("pi-swe status")));
+  assert.ok(harness.ctx.demoState.notifications.some((entry) => entry.message.includes("pi-swe")));
   assert.ok(harness.ctx.demoState.notifications.some((entry) => entry.message.includes("Pi package surfaces") || entry.message.includes("package manifest")));
   assert.equal(harness.ctx.demoState.status.has("todo"), true);
   assert.equal(harness.ctx.demoState.status.has("pi-catalog"), true);

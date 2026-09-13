@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pi-swe workflow",
+  "type": "object",
+  "required": ["version", "topic", "revision", "status", "goal", "tasks", "updatedAt"],
+  "properties": {
+    "version": { "const": 1 },
+    "topic": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*)*$" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "status": { "enum": ["draft", "active", "paused", "blocked", "complete"] },
+    "goal": { "type": "string", "minLength": 1 },
+    "plan": { "type": "string" },
+    "activeTask": { "type": "string" },
+    "tasks": { "type": "array", "minItems": 1, "items": { "type": "object" } },
+    "updatedAt": { "type": "string" },
+    "importedFrom": { "type": "object" }
+  },
+  "additionalProperties": false
+}

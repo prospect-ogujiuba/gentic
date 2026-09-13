@@ -49,7 +49,6 @@
     "test": "node --experimental-strip-types --test test/**/*.test.ts",
     "test:todo": "node --experimental-strip-types --test test/pi-todo*.test.ts",
     "test:swe": "node --experimental-strip-types --test test/pi-swe*.test.ts",
-    "eval:swe": "node --experimental-strip-types evals/pi-swe-autonomy/src/cli.ts",
     "test:permissions": "node --experimental-strip-types --test test/pi-permission*.test.ts",
     "test:primitives": "node --experimental-strip-types --test test/pi-primitives.test.ts"
   },

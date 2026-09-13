@@ -42,17 +42,7 @@
       "extensions/pi-todo/index.ts"
     ],
     "skills": [
-      "extensions/pi-swe/skills/swe-diagnose/SKILL.md",
-      "extensions/pi-swe/skills/swe-dsa/SKILL.md",
-      "extensions/pi-swe/skills/swe-finalize/SKILL.md",
-      "extensions/pi-swe/skills/swe-implement/SKILL.md",
-      "extensions/pi-swe/skills/swe-orchestrate/SKILL.md",
-      "extensions/pi-swe/skills/swe-plan/SKILL.md",
-      "extensions/pi-swe/skills/swe-review/SKILL.md",
-      "extensions/pi-swe/skills/swe-tdd/SKILL.md",
-      "extensions/pi-swe/skills/swe-verify/SKILL.md",
-      "skills/add-skill/SKILL.md",
-      "skills/swe-complete/SKILL.md"
+      "skills/add-skill/SKILL.md"
     ],
     "prompts": [
       "extensions/pi-git/prompts/git-commit.md",
@@ -371,71 +361,26 @@
       "entrypoint": "extensions/pi-swe/index.ts",
       "sourceFiles": [
         "extensions/pi-swe/index.ts",
-        "extensions/pi-swe/src/app/evidence.ts",
-        "extensions/pi-swe/src/app/runner-persistence.ts",
-        "extensions/pi-swe/src/app/runtime.ts",
-        "extensions/pi-swe/src/app/state.ts",
-        "extensions/pi-swe/src/capabilities.ts",
-        "extensions/pi-swe/src/classify.ts",
-        "extensions/pi-swe/src/commands.ts",
-        "extensions/pi-swe/src/completion-resolution.ts",
-        "extensions/pi-swe/src/completion.ts",
-        "extensions/pi-swe/src/config.ts",
-        "extensions/pi-swe/src/config/index.ts",
-        "extensions/pi-swe/src/domain/capabilities.ts",
-        "extensions/pi-swe/src/domain/classify.ts",
-        "extensions/pi-swe/src/domain/contract-graph.ts",
-        "extensions/pi-swe/src/domain/dsa.ts",
-        "extensions/pi-swe/src/domain/evidence.ts",
-        "extensions/pi-swe/src/domain/initiative.ts",
-        "extensions/pi-swe/src/domain/lifecycle.ts",
-        "extensions/pi-swe/src/domain/policy.ts",
-        "extensions/pi-swe/src/domain/readiness.ts",
-        "extensions/pi-swe/src/domain/runner.ts",
-        "extensions/pi-swe/src/domain/state.ts",
-        "extensions/pi-swe/src/domain/tdd.ts",
-        "extensions/pi-swe/src/dsa.ts",
-        "extensions/pi-swe/src/events.ts",
-        "extensions/pi-swe/src/evidence.ts",
-        "extensions/pi-swe/src/initiative.ts",
-        "extensions/pi-swe/src/lifecycle.ts",
-        "extensions/pi-swe/src/orchestrate.ts",
-        "extensions/pi-swe/src/pi/commands.ts",
-        "extensions/pi-swe/src/pi/events.ts",
-        "extensions/pi-swe/src/pi/tools.ts",
-        "extensions/pi-swe/src/pi/work-runner.ts",
-        "extensions/pi-swe/src/planning.ts",
-        "extensions/pi-swe/src/policy.ts",
-        "extensions/pi-swe/src/runtime.ts",
-        "extensions/pi-swe/src/state.ts",
-        "extensions/pi-swe/src/tdd.ts"
+        "extensions/pi-swe/src/command.ts",
+        "extensions/pi-swe/src/store.ts",
+        "extensions/pi-swe/src/tool.ts",
+        "extensions/pi-swe/src/workflow.ts"
       ],
       "registrations": {
         "commands": [
           "swe"
         ],
         "tools": [
-          "swe_checkpoint",
-          "swe_complete"
+          "swe_workflow"
         ],
-        "events": [
-          "agent_settled",
-          "session_info_changed",
-          "session_shutdown",
-          "session_start",
-          "session_tree",
-          "tool_call",
-          "tool_result",
-          "turn_start"
-        ],
+        "events": [],
         "shortcuts": [],
         "flags": [],
         "providers": [],
         "renderers": [],
         "markdownTransformers": 0,
         "uiSurfaces": [
-          "notify",
-          "setWidget"
+          "notify"
         ]
       }
     },
