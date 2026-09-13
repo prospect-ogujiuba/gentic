@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createPiContextHudSnapshot } from "../extensions/pi-context/src/app/index.ts";
-import { normalizeLedgerEntry } from "../extensions/pi-context/src/domain/index.ts";
+import { DEFAULT_CONTEXT_PRESSURE_POLICY, createContextPressureState, normalizeLedgerEntry } from "../extensions/pi-context/src/domain/index.ts";
 import { renderPiContextLedgerDetails, renderPiContextLedgerSummary } from "../extensions/pi-hud/src/ui/components/context.ts";
 import type { Theme } from "../extensions/pi-hud/types.ts";
 
@@ -20,6 +20,11 @@ function activeState(entries: ReturnType<typeof normalizeLedgerEntry>[]) {
     usageSnapshots: [],
     lifecycleEvents: [],
     beforeFirstProviderRequest: false,
+    pressure: {
+      policy: DEFAULT_CONTEXT_PRESSURE_POLICY,
+      state: { ...createContextPressureState(), level: "warning" as const },
+      evaluation: { available: true, level: "warning" as const, remainingPercent: 20, shouldNotify: false },
+    },
     warnings: ["one", "two", "three", "four"],
   };
 }
@@ -36,10 +41,12 @@ test("hud adapter returns bounded stable summary without raw paths or prompts", 
   );
 
   assert.equal(snapshot.available, true);
+  assert.deepEqual(snapshot.pressure, { available: true, level: "warning", remainingPercent: 20 });
   assert.equal(snapshot.contributors.length, 2);
   assert.deepEqual(snapshot.contributors.map((entry) => entry.label), ["Discovered/Artifacts", "System"]);
   assert.equal(JSON.stringify(snapshot).includes("/home/user/private"), false);
   assert.equal(JSON.stringify(snapshot).includes("secret prompt args preview"), false);
+  assert.deepEqual(Object.keys(snapshot.pressure), ["available", "level", "remainingPercent"]);
   assert.equal(snapshot.warnings.length, 3);
   assert.equal(snapshot.truncatedWarnings >= 1, true);
 });

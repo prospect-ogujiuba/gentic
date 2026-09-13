@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -7,6 +8,7 @@ import {
   type CompactionStats,
   type ContextGroup,
   type ContextLedgerEntry,
+  type ContextPressureAvailability,
   type ContextSnapshot,
   type ContextSourceKind,
   type TokenConfidence,
@@ -28,6 +30,16 @@ export type PiContextReportOptions = {
   capturedAt?: string;
   cwd?: string;
   reportDir?: string;
+};
+
+export type PiContextPressureStatus = {
+  available: boolean;
+  level: ContextPressureAvailability;
+  remainingPercent?: number;
+};
+
+export type PiContextReportSnapshot = ContextSnapshot & {
+  pressure: PiContextPressureStatus;
 };
 
 export type PiContextReportArtifact = {
@@ -91,33 +103,40 @@ export function parsePiContextReportArgs(args: string): PiContextReportRequest {
   return request;
 }
 
-export function createPiContextReportSnapshot(state: PiContextSessionState | undefined, options: PiContextReportOptions = {}): ContextSnapshot {
+export function createPiContextReportSnapshot(state: PiContextSessionState | undefined, options: PiContextReportOptions = {}): PiContextReportSnapshot {
   if (!state) {
-    return createContextSnapshot({
-      entries: [],
-      capturedAt: options.capturedAt,
-      warnings: ["pi-context session ledger is unavailable; no lifecycle hook has initialized it yet"],
-    });
+    return {
+      ...createContextSnapshot({
+        entries: [],
+        capturedAt: options.capturedAt,
+        warnings: ["pi-context session ledger is unavailable; no lifecycle hook has initialized it yet"],
+      }),
+      pressure: unavailablePressure(),
+    };
   }
 
   const usage = latestUsageSnapshot(state);
-  return createContextSnapshot({
-    entries: state.ledgerEntries,
-    capturedAt: options.capturedAt ?? state.lastUpdatedAt,
-    contextWindowTokens: usage?.contextWindow ?? latestContextWindow(state),
-    currentTokens: usage?.tokens,
-    currentTokenConfidence: usage?.tokenConfidence,
-    compaction: latestCompactionStats(state.ledgerEntries),
-    warnings: state.warnings,
-  });
+  return {
+    ...createContextSnapshot({
+      entries: state.ledgerEntries,
+      capturedAt: options.capturedAt ?? state.lastUpdatedAt,
+      contextWindowTokens: usage?.contextWindow ?? latestContextWindow(state),
+      currentTokens: usage?.tokens,
+      currentTokenConfidence: usage?.tokenConfidence,
+      compaction: latestCompactionStats(state.ledgerEntries),
+      warnings: state.warnings,
+    }),
+    pressure: pressureStatus(state),
+  };
 }
 
-export function renderPiContextSummary(snapshot: ContextSnapshot, request: Partial<Pick<PiContextReportRequest, "groups" | "warnings">> = {}): string {
+export function renderPiContextSummary(snapshot: PiContextReportSnapshot, request: Partial<Pick<PiContextReportRequest, "groups" | "warnings">> = {}): string {
   const groups = filteredGroups(snapshot.groups, request.groups ?? []);
   const lines = [
     "pi-context",
     snapshot.currentUsage ? `Context: ${formatUsage(snapshot.currentUsage)}` : `Total: ${formatTokens(snapshot.totals.tokenCount, snapshot.totals.tokenConfidence)} (${formatBytes(snapshot.totals.byteCount)})`,
     `Remaining: ${formatRemaining(snapshot)}`,
+    `Pressure: ${formatPressure(snapshot.pressure)}`,
     `Ledger inventory: ${formatTokens(snapshot.totals.tokenCount, snapshot.totals.tokenConfidence)} (${formatBytes(snapshot.totals.byteCount)})`,
     `Compaction: ${formatCompaction(snapshot.compaction)}`,
   ];
@@ -147,7 +166,7 @@ export function piContextHelpText(): string {
   ].join("\n");
 }
 
-export function writePiContextReportArtifact(snapshot: ContextSnapshot, request: Partial<Pick<PiContextReportRequest, "artifactFormat" | "groups">> = {}, options: PiContextReportOptions = {}): PiContextReportArtifact {
+export function writePiContextReportArtifact(snapshot: PiContextReportSnapshot, request: Partial<Pick<PiContextReportRequest, "artifactFormat" | "groups">> = {}, options: PiContextReportOptions = {}): PiContextReportArtifact {
   const format = request.artifactFormat ?? "markdown";
   const cwd = options.cwd ?? process.cwd();
   const relativeDir = options.reportDir ?? REPORT_DIR;
@@ -161,7 +180,7 @@ export function writePiContextReportArtifact(snapshot: ContextSnapshot, request:
   return { path: filePath, relativePath, format };
 }
 
-export function renderPiContextMarkdown(snapshot: ContextSnapshot, groups: ContextSourceKind[] = []): string {
+export function renderPiContextMarkdown(snapshot: PiContextReportSnapshot, groups: ContextSourceKind[] = []): string {
   const selectedGroups = filteredGroups(snapshot.groups, groups);
   const lines = [
     "# pi-context report",
@@ -172,6 +191,7 @@ export function renderPiContextMarkdown(snapshot: ContextSnapshot, groups: Conte
     "",
     snapshot.currentUsage ? `- Current context: ${formatUsage(snapshot.currentUsage)}` : `- Total: ${formatTokens(snapshot.totals.tokenCount, snapshot.totals.tokenConfidence)} (${formatBytes(snapshot.totals.byteCount)})`,
     `- Remaining: ${formatRemaining(snapshot)}`,
+    `- Pressure: ${formatPressure(snapshot.pressure)}`,
     `- Ledger inventory: ${formatTokens(snapshot.totals.tokenCount, snapshot.totals.tokenConfidence)} (${formatBytes(snapshot.totals.byteCount)})`,
     `- Compaction: ${formatCompaction(snapshot.compaction)}`,
     `- Ledger token detail: exact ${formatMaybeNumber(snapshot.totals.exactTokenCount)}, estimated ${formatMaybeNumber(snapshot.totals.estimatedTokenCount)}, unknown entries ${snapshot.totals.unknownTokenEntries}`, 
@@ -192,17 +212,69 @@ export function renderPiContextMarkdown(snapshot: ContextSnapshot, groups: Conte
   return `${lines.join("\n")}\n`;
 }
 
-export function renderPiContextJson(snapshot: ContextSnapshot, groups: ContextSourceKind[] = []): string {
+export function renderPiContextJson(snapshot: PiContextReportSnapshot, groups: ContextSourceKind[] = []): string {
   const payload = {
     schemaVersion: 1,
     generatedAt: snapshot.capturedAt,
     totals: snapshot.totals,
     remaining: snapshot.remaining,
+    pressure: snapshot.pressure,
     compaction: snapshot.compaction,
     warnings: snapshot.warnings,
-    groups: filteredGroups(snapshot.groups, groups),
+    groups: safeJsonGroups(filteredGroups(snapshot.groups, groups)),
   };
   return `${JSON.stringify(payload, null, 2)}\n`;
+}
+
+function safeJsonGroups(groups: ContextGroup[]): ContextGroup[] {
+  return groups.map((group) => ({
+    ...group,
+    entries: group.entries.map(safeJsonEntry),
+  }));
+}
+
+function safeJsonEntry(entry: ContextLedgerEntry): ContextLedgerEntry {
+  const metadata = entry.sourceMetadata;
+  return {
+    ...entry,
+    id: opaqueJsonId(entry.id),
+    label: sourceKindLabel(entry.kind),
+    origin: entry.origin === undefined ? undefined : "[redacted]",
+    turnIds: entry.turnIds.map(opaqueJsonId),
+    messageIds: entry.messageIds.map(opaqueJsonId),
+    toolCallIds: entry.toolCallIds.map(opaqueJsonId),
+    redaction: entry.redaction
+      ? { ...entry.redaction, reason: entry.redaction.reason === undefined ? undefined : "content redacted" }
+      : undefined,
+    sourceMetadata: metadata
+      ? {
+          ...metadata,
+          displayPath: metadata.displayPath === undefined ? undefined : "[redacted]",
+          source: metadata.source === undefined ? undefined : "[redacted]",
+          origin: metadata.origin === undefined ? undefined : "[redacted]",
+          paths: metadata.paths?.map(() => "[redacted]"),
+          warning: metadata.warning === undefined ? undefined : "warning redacted",
+        }
+      : undefined,
+  };
+}
+
+function opaqueJsonId(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+function pressureStatus(state: PiContextSessionState): PiContextPressureStatus {
+  const evaluation = state.pressure.evaluation;
+  if (!evaluation?.available || evaluation.remainingPercent === undefined) return unavailablePressure();
+  return {
+    available: true,
+    level: evaluation.level,
+    remainingPercent: evaluation.remainingPercent,
+  };
+}
+
+function unavailablePressure(): PiContextPressureStatus {
+  return { available: false, level: "unavailable" };
 }
 
 function filteredGroups(allGroups: ContextGroup[], groups: ContextSourceKind[]): ContextGroup[] {
@@ -268,6 +340,11 @@ function formatRemaining(snapshot: ContextSnapshot): string {
   const remaining = snapshot.remaining;
   if (remaining.remainingTokens === undefined || remaining.totalTokens === undefined) return `unknown (${remaining.tokenConfidence})`;
   return `${formatMaybeNumber(remaining.remainingTokens)} of ${formatMaybeNumber(remaining.totalTokens)} tokens ${remaining.tokenConfidence}`;
+}
+
+function formatPressure(pressure: PiContextPressureStatus): string {
+  if (!pressure.available || pressure.remainingPercent === undefined) return "unavailable";
+  return `${pressure.level} (${Number(pressure.remainingPercent.toFixed(2)).toLocaleString("en-US")}% remaining)`;
 }
 
 function formatCompaction(compaction: CompactionStats | undefined): string {

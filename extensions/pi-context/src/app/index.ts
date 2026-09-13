@@ -28,8 +28,10 @@ export {
   type PiContextArtifactFormat,
   type PiContextReportArtifact,
   type PiContextReportMode,
+  type PiContextPressureStatus,
   type PiContextReportOptions,
   type PiContextReportRequest,
+  type PiContextReportSnapshot,
 } from "./report.ts";
 
 export {

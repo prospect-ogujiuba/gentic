@@ -1,6 +1,6 @@
 import { sourceKindLabel, type ContextLedgerEntry, type ContextSnapshot, type ContextSourceKind, type TokenConfidence } from "../domain/index.ts";
 import type { PiContextSessionState } from "./session-state.ts";
-import { createPiContextReportSnapshot } from "./report.ts";
+import { createPiContextReportSnapshot, type PiContextPressureStatus } from "./report.ts";
 
 export type PiContextHudContributor = {
   kind: ContextSourceKind;
@@ -35,6 +35,7 @@ export type PiContextHudSnapshot = {
   totalBytes: number;
   contextWindowTokens?: number;
   remainingTokens?: number;
+  pressure: PiContextPressureStatus;
   tokenConfidence: TokenConfidence;
   largestGroup?: PiContextHudGroup;
   recentCompaction?: PiContextHudCompaction;
@@ -65,6 +66,7 @@ export function createPiContextHudSnapshot(state: PiContextSessionState | undefi
     totalBytes: snapshot.totals.byteCount,
     contextWindowTokens: snapshot.remaining.totalTokens,
     remainingTokens: snapshot.remaining.remainingTokens,
+    pressure: snapshot.pressure,
     tokenConfidence: snapshot.totals.tokenConfidence,
     largestGroup: largestGroup(snapshot),
     recentCompaction: snapshot.compaction

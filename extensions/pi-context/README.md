@@ -25,7 +25,29 @@ Earliest capture: Pi documents `session_start` as the first extension lifecycle 
 
 Use filters to keep terminal output small: `/pi-context tools`, `/pi-context extensions`, `/pi-context system session`, or `/pi-context artifacts`.
 
-Use `/pi-context artifact` (or `/pi-context open`) to write an expanded markdown report under `.model-artifacts/system/reports/pi-context/`. Use `/pi-context json` to write the same maintained snapshot as deterministic JSON for downstream tools and todo evidence.
+Use `/pi-context artifact` (or `/pi-context open`) to write an expanded markdown report under `.model-artifacts/system/reports/pi-context/`. Use `/pi-context json` to write the same maintained snapshot as deterministic JSON for downstream tools and todo evidence. Summary, markdown, JSON, and the HUD adapter expose the same maintained pressure level and remaining percentage.
+
+## Context-pressure guardrails
+
+Pressure guardrails are advisory only: they never compact, interrupt, dispatch work, switch models, or end a session. Defaults classify exact measured remaining context as `warning` at 25% and `critical` at 10%, with 5 percentage points of hysteresis. Notifications occur only on a downward transition; recovery above the applicable hysteresis boundary rearms that transition. Missing, invalid, or estimated-only usage is reported as `unavailable` and does not notify.
+
+Configure version 1 globally at `~/.pi/agent/pi-context.json` or per project at `.pi/pi-context.json`. Project values override global values field-by-field; invalid files, future versions, and invalid threshold ordering emit bounded diagnostics and fall back safely.
+
+```json
+{
+  "version": 1,
+  "pressure": {
+    "warningPercent": 25,
+    "criticalPercent": 10,
+    "hysteresisPercent": 5,
+    "repeatCooldownMs": 300000
+  }
+}
+```
+
+At `warning`, finish the current unit of work or compact soon. At `critical`, compact or start a new session before continuing. `/pi-context` remains available for inspection in every band. Pressure state and notifications contain only the level, numeric usage/policy values, and bounded diagnostics—never prompts, tool arguments/results, credentials, content previews, or source paths.
+
+Qualification scenario: start with exact measured usage above 30% remaining, cross 25% once, repeat samples in the warning band, cross 10% once, then recover above 30%. Expect one warning, one critical notification, no repeats, and matching summary/markdown/JSON/HUD pressure values. Repeat with estimated usage and expect `unavailable` with no notification.
 
 ## UI integration
 

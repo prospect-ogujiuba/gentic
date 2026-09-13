@@ -15,11 +15,17 @@ import {
   recordLedgerEntries,
   writePiContextReportArtifact,
 } from "../extensions/pi-context/src/app/index.ts";
-import { normalizeLedgerEntry } from "../extensions/pi-context/src/domain/index.ts";
+import { DEFAULT_CONTEXT_PRESSURE_POLICY, createContextPressureState, normalizeLedgerEntry } from "../extensions/pi-context/src/domain/index.ts";
 import { registerPiContext } from "../extensions/pi-context/src/pi/index.ts";
 
 const layoutV2 = JSON.parse(fs.readFileSync(new URL("./fixtures/model-artifacts-layout-v2.json", import.meta.url), "utf8"));
 const at = (minute: number) => `2026-05-13T02:${String(minute).padStart(2, "0")}:00.000Z`;
+const unavailablePressure = () => ({ policy: DEFAULT_CONTEXT_PRESSURE_POLICY, state: createContextPressureState() });
+const measuredPressure = (level: "normal" | "warning" | "critical", remainingPercent: number) => ({
+  policy: DEFAULT_CONTEXT_PRESSURE_POLICY,
+  state: { ...createContextPressureState(), level },
+  evaluation: { available: true, level, remainingPercent, shouldNotify: false },
+});
 
 test("report summary keeps grouped order and estimate labels", () => {
   const snapshot = createPiContextReportSnapshot(
@@ -37,6 +43,7 @@ test("report summary keeps grouped order and estimate labels", () => {
       usageSnapshots: [],
       lifecycleEvents: [],
       beforeFirstProviderRequest: false,
+      pressure: unavailablePressure(),
       warnings: [],
     },
     { capturedAt: at(4) },
@@ -61,6 +68,7 @@ test("report uses exact current usage for context and remaining", () => {
       usageSnapshots: [{ capturedAt: at(2), event: "context", tokens: 123, contextWindow: 1000, percent: 12.3, tokenConfidence: "exact" }],
       lifecycleEvents: [],
       beforeFirstProviderRequest: false,
+      pressure: measuredPressure("normal", 87.7),
       warnings: [],
     },
     { capturedAt: at(3) },
@@ -69,8 +77,15 @@ test("report uses exact current usage for context and remaining", () => {
   const text = renderPiContextSummary(snapshot);
   assert.match(text, /Context: 123 of 1,000 tokens exact/);
   assert.match(text, /Remaining: 877 of 1,000 tokens exact/);
+  assert.match(text, /Pressure: normal \(87\.7% remaining\)/);
   assert.match(text, /Ledger inventory: 100 tokens estimated/);
   assert.match(renderPiContextMarkdown(snapshot), /Current context: 123 of 1,000 tokens exact/);
+  assert.match(renderPiContextMarkdown(snapshot), /Pressure: normal \(87\.7% remaining\)/);
+  assert.deepEqual(JSON.parse(renderPiContextJson(snapshot)).pressure, {
+    available: true,
+    level: "normal",
+    remainingPercent: 87.7,
+  });
 });
 
 test("report filters only requested groups", () => {
@@ -92,6 +107,7 @@ test("report filters only requested groups", () => {
       usageSnapshots: [],
       lifecycleEvents: [],
       beforeFirstProviderRequest: false,
+      pressure: unavailablePressure(),
       warnings: [],
     },
     { capturedAt: at(3) },
@@ -129,6 +145,35 @@ test("markdown and json reports include details safe for todo evidence", () => {
   assert.match(renderPiContextMarkdown(snapshot), /\.model-artifacts\/initiatives\/pi-context\/todo\/phases\/06\.md/);
   const payload = JSON.parse(renderPiContextJson(snapshot));
   assert.equal(payload.groups[0].label, "Discovered/Artifacts");
+});
+
+test("json report preserves entry fields while redacting raw content and source paths", () => {
+  const rawPath = "/home/private/credential-source.txt";
+  const rawPrompt = "raw secret prompt";
+  resetSessionState("test", at(0));
+  startSessionState({ reason: "test", at: at(0), metadata: { contextWindow: 1000 } });
+  const state = recordLedgerEntries({
+    at: at(1),
+    entries: [normalizeLedgerEntry({
+      id: rawPath,
+      kind: "discovered",
+      label: rawPrompt,
+      origin: rawPath,
+      byteCount: 16,
+      seenAt: at(1),
+      turnIds: [rawPath],
+      sourceMetadata: { displayPath: rawPath, paths: [rawPath], warning: rawPrompt, resourceType: "artifact" },
+    })],
+  });
+
+  const payload = JSON.parse(renderPiContextJson(createPiContextReportSnapshot(state, { capturedAt: at(2) })));
+  const serialized = JSON.stringify(payload);
+  assert.doesNotMatch(serialized, /credential-source|raw secret prompt/);
+  assert.deepEqual(Object.keys(payload.groups[0].entries[0]).sort(), [
+    "byteCount", "firstSeenAt", "id", "kind", "label", "lastSeenAt", "messageIds", "origin", "sourceMetadata", "tokenConfidence", "tokenCount", "toolCallIds", "turnIds",
+  ]);
+  assert.equal(payload.groups[0].entries[0].label, "Discovered/Artifacts");
+  assert.equal(payload.groups[0].entries[0].sourceMetadata.displayPath, "[redacted]");
 });
 
 test("registered command writes json artifact from maintained snapshot", async () => {
