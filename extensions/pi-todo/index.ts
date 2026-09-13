@@ -89,7 +89,7 @@ export default function piTodo(pi: ExtensionAPI): void {
 
   pi.registerCommand("todo", {
     description:
-      "Open the Gentic todo dashboard. Observability: /todo list, /todo next, /todo graph <id>, /todo history <id>, /todo get <id>.",
+      "/todo [open|list|next|get <id>|graph <id>|history <id>|split-check <id>] — open or inspect the Gentic todo ledger",
     getArgumentCompletions: getTodoCommandCompletions,
     handler: async (args, ctx) => executeTodoCommand(pi, ctx, args),
   });

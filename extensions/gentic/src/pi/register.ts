@@ -53,7 +53,7 @@ export function registerGentic(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("gentic", {
-    description: "Gentic orchestrator: status, commands, find <term>, run <command>, reload",
+    description: "/gentic [status|commands|find <term>|run <extension-command> [args]|reload] — inspect and route the Gentic suite",
     getArgumentCompletions: (prefix) =>
       ["status", "commands", "find", "run", "reload"]
         .filter((value) => value.startsWith(prefix))

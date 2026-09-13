@@ -74,7 +74,7 @@ export function registerPiContext(pi: ExtensionAPI): void {
   };
 
   pi.registerCommand("pi-context", {
-    description: "Show the maintained context ledger summary or write report artifacts",
+    description: "/pi-context [summary|artifact|open|json] [system|user|project|extensions|session|tools|artifacts|compaction] — inspect or export the context ledger",
     getArgumentCompletions: (prefix) =>
       ["summary", "artifact", "open", "json", "system", "user", "project", "extensions", "session", "tools", "artifacts", "compaction"]
         .filter((value) => value.startsWith(prefix))

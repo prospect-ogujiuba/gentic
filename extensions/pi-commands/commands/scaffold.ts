@@ -287,7 +287,7 @@ export const scaffoldCommand: PiCommandModule = {
   name: "scaffold",
   register(pi: ExtensionAPI): void {
     pi.registerCommand("scaffold", {
-      description: "Preview or atomically apply native Pi scaffolds in the current project",
+      description: "/scaffold <kind> <name> [variant] [--dry-run|--apply] — preview or apply native Pi scaffolds",
       getArgumentCompletions: completions,
       handler: async (args, ctx) => {
         const parsed = parseScaffoldArgs(args);

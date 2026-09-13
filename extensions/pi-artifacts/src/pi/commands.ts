@@ -11,7 +11,7 @@ const MAX_DETAILS = 8;
 
 export function registerArtifactsCommand(pi: ExtensionAPI): void {
   pi.registerCommand("artifacts", {
-    description: "Audit, plan, apply, recover, roll back, or finalize deterministic model-artifact migration",
+    description: "/artifacts <audit|plan|apply <plan-path>|recover <journal-path>|rollback <ledger-path>|finalize <ledger-path>> — manage model-artifact migrations",
     getArgumentCompletions(prefix: string) {
       if (/\s/.test(prefix.trim())) return null;
       const normalized = prefix.trim();

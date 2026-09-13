@@ -22,7 +22,7 @@ export function registerPiGit(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("pi-git", {
-    description: "Show deterministic git scope for commit/push handoff",
+    description: "/pi-git — show deterministic git scope for commit/push handoff",
     handler: async (_args, ctx) => {
       const data = await snapshot(pi, ctx, ctx.signal);
       ctx.ui.notify(renderSnapshot(data), "info");

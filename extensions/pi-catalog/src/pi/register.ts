@@ -60,7 +60,7 @@ export function registerPiCatalog(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("catalog", {
-    description: "Pi catalog: surfaces [id], events, or a native capability group",
+    description: "/catalog [summary|surfaces [id]|events|commands|tools|shortcuts|flags|providers|renderers|markdown-transformers|ui-surfaces] — inspect native Pi capabilities",
     getArgumentCompletions: (prefix) => {
       const [section = "", id = ""] = prefix.trimStart().split(/\s+/, 2);
       if (section === "surfaces" && prefix.includes(" ")) {

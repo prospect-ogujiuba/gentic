@@ -43,7 +43,7 @@ export default function piMarathon(pi:ExtensionAPI):void{
     const data=entry.data as {text?:string;level?:string};const color=data.level==="error"?"error":data.level==="success"?"success":data.level==="warning"?"warning":"accent";
     return new Text(theme.fg(color,data.text??"Pi Marathon"),0,0);
   });
-  pi.registerCommand("marathon",{description:"Start and control durable, verifier-driven agent runs",handler:async(args:string,ctx:any)=>{await run(parseControl(args),ctx);}});
+  pi.registerCommand("marathon",{description:"/marathon <goal>|<status|list|tasks|inspect|failures|events|pause|resume|cancel> [run-id]|<steer|budget> [run-id] ...|<doctor|path> — control durable verifier-driven runs",handler:async(args:string,ctx:any)=>{await run(parseControl(args),ctx);}});
 
   const action=Type.Union(["start","status","list","tasks","inspect","failures","events","pause","resume","cancel","steer","budget","doctor","path"].map((value)=>Type.Literal(value)));
   pi.registerTool({

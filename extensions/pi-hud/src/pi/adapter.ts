@@ -85,7 +85,7 @@ export function registerHudEventHandlers(pi: ExtensionAPI): void {
 
 export function registerHudCommand(pi: ExtensionAPI): void {
   pi.registerCommand("pi-hud", {
-    description: "Configure and inspect the Visiplane-style Pi HUD",
+    description: "/pi-hud [open|show|hide|reset|mode <off|widget-first|footer>|placement <footer|widget|both>|toggle <component>|only <component>] — configure the Pi HUD",
     handler: async (args, ctx) => handleHudCommand(args, ctx as HudCommandContext),
   });
 }

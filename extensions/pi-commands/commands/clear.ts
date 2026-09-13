@@ -5,7 +5,7 @@ export const clearCommand: PiCommandModule = {
   name: "clear",
   register(pi: ExtensionAPI): void {
     pi.registerCommand("clear", {
-      description: "Start a new session (alias for /new)",
+      description: "/clear — start a new session (alias for /new)",
       handler: async (_args, ctx) => {
         await ctx.waitForIdle();
         await ctx.newSession({

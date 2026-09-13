@@ -26,7 +26,7 @@ type OrchestrateAction = (typeof ORCHESTRATE_ACTIONS)[number];
 
 export function registerSweCommands(pi: ExtensionAPI, runtime: PiSweRuntime): void {
   pi.registerCommand("swe", {
-    description: "Inspect pi-swe status/guidance or explicitly complete an evidenced canonical contract",
+    description: "/swe <status [topic]|config|orchestrate <status|start|resume|handoff> [topic]|work <status|start|resume|pause|stop> [topic] ...|complete ...> — manage canonical SWE workflows",
     getArgumentCompletions: completeSweArgument,
     handler: async (args, ctx) => {
       const parsed = parseSweArguments(args);
