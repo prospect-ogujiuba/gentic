@@ -54,13 +54,15 @@ export function resolveCanonicalCompletionRequest(
   if (!contractId) {
     return rejected("contract selection is missing: set manifest.activeContract or provide contractId", inspection.manifestPath);
   }
-  if (!manifest.activeContract
-    || manifest.activeContract.id !== contractId) {
+  if (manifest.activeContract && manifest.activeContract.id !== contractId) {
     return rejected(`contract ${contractId} is not the manifest activeContract`, inspection.manifestPath, contractId);
+  }
+  if (!manifest.activeContract && inspection.readyIds[0] !== contractId) {
+    return rejected(`contract ${contractId} is not the deterministic readiness-selected contract`, inspection.contractIndexPath!, contractId);
   }
 
   const indexed = inspection.contractIndex!.contracts.find((candidate) => candidate.id === contractId);
-  if (!indexed || indexed.path !== manifest.activeContract.path) {
+  if (!indexed || (manifest.activeContract && indexed.path !== manifest.activeContract.path)) {
     return rejected(`active contract ${contractId} is not bound to the active contract index`, inspection.contractIndexPath!, contractId);
   }
   if (indexed.kind !== "subphase") {

@@ -84,6 +84,36 @@ test("pi-swe runner deterministically dispatches a canonical stage and accepts i
   assert.equal(accepted.state.lastAcceptedDispatchSequence, 1);
 });
 
+test("pi-swe runner accepts an explicitly retried pending checkpoint after missing-checkpoint pause", () => {
+  const dispatched = reducePiSweRunner({ state: runner(), canonical: canonical(), event: { kind: "evaluate" }, nowMs: 2_000 });
+  const paused = { ...dispatched.state, status: "paused" as const, terminalReason: "missing-checkpoint" as const };
+  const recovered = reducePiSweRunner({
+    state: paused,
+    canonical: canonical(),
+    event: { kind: "checkpoint", checkpoint: {
+      runId: "run-1", dispatchToken: "run-1:1", ...identity, stage: "implement", outcome: "completed", evidence,
+    } },
+    nowMs: 3_000,
+  });
+
+  assert.deepEqual(recovered.action, { kind: "none", reason: "checkpoint-accepted" });
+  assert.equal(recovered.state.status, "running");
+  assert.equal(recovered.state.terminalReason, undefined);
+  assert.equal(recovered.state.pendingDispatch, undefined);
+  assert.equal(recovered.state.lastAcceptedDispatchSequence, 1);
+
+  const operatorPaused = { ...dispatched.state, status: "paused" as const, terminalReason: "operator-paused" as const };
+  const refused = reducePiSweRunner({
+    state: operatorPaused,
+    canonical: canonical(),
+    event: { kind: "checkpoint", checkpoint: {
+      runId: "run-1", dispatchToken: "run-1:1", ...identity, stage: "implement", outcome: "completed", evidence,
+    } },
+    nowMs: 3_000,
+  });
+  assert.deepEqual(refused.action, { kind: "none", reason: "runner-not-active" });
+});
+
 test("pi-swe runner treats an accepted duplicate checkpoint as an idempotent no-op and stale identity as blocked", () => {
   const dispatched = reducePiSweRunner({ state: runner(), canonical: canonical(), event: { kind: "evaluate" }, nowMs: 2_000 });
   const checkpoint = {

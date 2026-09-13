@@ -205,6 +205,10 @@ test("pi-swe completion resolution infers only one active canonical identity", (
   const omittedContract = resolveCanonicalCompletionRequest({ cwd: missingActive.cwd, topic: "demo", nextActiveContract: "advance" });
   assert.equal(omittedContract.status, "rejected");
   if (omittedContract.status === "rejected") assert.match(omittedContract.message, /activeContract/);
+
+  const explicitReady = resolveCanonicalCompletionRequest({ cwd: missingActive.cwd, topic: "demo", contractId: "01", nextActiveContract: "advance" });
+  assert.equal(explicitReady.status, "resolved", "an exact explicit contract may recover a missing activeContract when it is deterministically ready");
+  if (explicitReady.status === "resolved") assert.equal(completeCanonicalContract(explicitReady.request).status, "completed");
 });
 
 test("pi-swe completion resolution rejects active phase grouping nodes", () => {

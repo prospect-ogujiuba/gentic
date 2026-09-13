@@ -154,6 +154,7 @@ test("settled dispatcher persists intent before one expanded canonical skill pro
   assert.match(sent[0]?.content ?? "", /until contract/);
   assert.match(sent[0]?.content ?? "", /maxTurns=6, maxRetries=2, maxElapsedMs=60000/);
   assert.match(sent[0]?.content ?? "", /swe_checkpoint/);
+  assert.match(sent[0]?.content ?? "", /evidence paths must be under \.model-artifacts\/initiatives\/guided-runner\//);
   assert.equal(readPiSweRunnerState(cwd, topic).snapshot?.runner.pendingDispatch?.deliveryStatus, "sent");
   rmSync(cwd, { recursive: true, force: true });
 });

@@ -168,8 +168,13 @@ export function reducePiSweRunner(request: ReducePiSweRunnerRequest): PiSweRunne
   const { state, canonical, event, nowMs } = request;
   if (event.kind === "pause") return pause(state, "operator-paused");
   if (event.kind === "stop") return stop(state, "operator-stopped");
+  if (event.kind === "checkpoint") {
+    if (state.status === "running") return acceptCheckpoint(state, canonical, event.checkpoint);
+    if (state.status === "paused" && state.terminalReason === "missing-checkpoint" && state.pendingDispatch) {
+      return acceptCheckpoint({ ...state, status: "running", terminalReason: undefined }, canonical, event.checkpoint);
+    }
+  }
   if (state.status !== "running") return { state, action: { kind: "none", reason: "runner-not-active" } };
-  if (event.kind === "checkpoint") return acceptCheckpoint(state, canonical, event.checkpoint);
 
   const budgetReason = exhaustedBudget(state, canonical, nowMs);
   if (budgetReason) return pause(state, budgetReason);

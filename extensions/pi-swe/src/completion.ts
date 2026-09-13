@@ -559,7 +559,11 @@ function validateMutationGuards(
   if (contract.planRevision !== request.expectedPlanRevision) failures.push(`contract plan revision is stale`);
   if (contract.path !== request.expectedContractPath) failures.push(`contract path does not match the expected stable path`);
   if (contract.contentHash !== request.expectedPreCompletionContentHash) failures.push(`contract content hash is stale`);
-  if (manifest.activeContract?.id !== request.contractId || manifest.activeContract.path !== contract.path) failures.push(`activeContract does not name ${request.contractId}`);
+  if (manifest.activeContract) {
+    if (manifest.activeContract.id !== request.contractId || manifest.activeContract.path !== contract.path) failures.push(`activeContract does not name ${request.contractId}`);
+  } else if (readyIds[0] !== request.contractId) {
+    failures.push(`missing activeContract cannot be recovered because ${request.contractId} is not the deterministic readiness-selected contract`);
+  }
   if (contract.status !== "pending" && contract.status !== "in_progress") failures.push(`contract ${request.contractId} has conflicting status ${String(contract.status)}`);
   if (!readyIds.includes(request.contractId)) failures.push(`contract ${request.contractId} is not readiness-selected`);
   const effectivelyComplete = deriveEffectiveCompletion(contracts as ContractNode[], evidencedDeferralIds);
