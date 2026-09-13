@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 2,
+  "contracts": [
+    {
+      "kind": "phase",
+      "id": "P01",
+      "dependsOn": [],
+      "planRevision": 2,
+      "path": ".model-artifacts/initiatives/pi-context-pressure-guardrails/plans/revisions/r2/phases/01-pressure-policy/00-phase-index.md",
+      "status": "pending",
+      "contentHash": "sha256:4a3db792feeef31909aec91634b4b94108ddc6592a87c15b8bd277578ae680c1"
+    },
+    {
+      "kind": "subphase",
+      "parentId": "P01",
+      "id": "P01-C01",
+      "dependsOn": [],
+      "planRevision": 2,
+      "path": ".model-artifacts/initiatives/pi-context-pressure-guardrails/plans/revisions/r2/phases/01-pressure-policy/01.01-pressure-evaluator-and-config.md",
+      "status": "pending",
+      "contentHash": "sha256:5339d2a37b6b35b73317a7ba4fcf0cfb7c2c6ddf919ebfd191b17f091993f604"
+    },
+    {
+      "kind": "subphase",
+      "parentId": "P01",
+      "id": "P01-C02",
+      "dependsOn": [
+        "P01-C01"
+      ],
+      "planRevision": 2,
+      "path": ".model-artifacts/initiatives/pi-context-pressure-guardrails/plans/revisions/r2/phases/01-pressure-policy/01.02-runtime-pressure-notifications.md",
+      "status": "pending",
+      "contentHash": "sha256:c8cdf81882f1547cd5796ef7e3438324f4d164d400a499cd0d745870df2dfaf5"
+    },
+    {
+      "kind": "phase",
+      "id": "P02",
+      "dependsOn": [
+        "P01-C02"
+      ],
+      "planRevision": 2,
+      "path": ".model-artifacts/initiatives/pi-context-pressure-guardrails/plans/revisions/r2/phases/02-operator-integration/00-phase-index.md",
+      "status": "pending",
+      "contentHash": "sha256:2269b5bb8d2b09c3e9f6687221d6269bb2ac0c193fb82534a96efa1661ae4f5e"
+    },
+    {
+      "kind": "subphase",
+      "parentId": "P02",
+      "id": "P02-C01",
+      "dependsOn": [
+        "P01-C02"
+      ],
+      "planRevision": 2,
+      "path": ".model-artifacts/initiatives/pi-context-pressure-guardrails/plans/revisions/r2/phases/02-operator-integration/02.01-surfaces-and-qualification.md",
+      "status": "pending",
+      "contentHash": "sha256:f1099cbc33f4237fa44cb1231b3b6f092fad6d05e3f745f024c63ca0d94432ef"
+    }
+  ],
+  "contractFacts": {
+    "P01": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    },
+    "P01-C01": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    },
+    "P01-C02": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    },
+    "P02": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    },
+    "P02-C01": {
+      "entryInputsAvailable": true,
+      "capabilitiesAvailable": true,
+      "applicability": "applicable",
+      "acceptanceDefined": true,
+      "verificationDefined": true
+    }
+  },
+  "consequentialSpecialists": [
+    "accessibility-ux",
+    "compatibility",
+    "dsa",
+    "operations",
+    "security",
+    "tdd"
+  ],
+  "completionRecords": {}
+}
