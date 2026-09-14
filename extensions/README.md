@@ -83,7 +83,7 @@ extensions/foo/
     ui/        # widgets, modal/rendering/theme output
 ```
 
-`pi-todo` is the current layered example: `index.ts` wires Pi-facing registration while `src/app`, `src/domain`, `src/pi`, and `src/ui` separate workflow, rules, Pi persistence/adapters, and rendering.
+`pi-todo` is the minimal stateful example: `index.ts` wires a thin tool/command/status surface to a branch-reconstructed event core.
 
 ## README orientation fields
 

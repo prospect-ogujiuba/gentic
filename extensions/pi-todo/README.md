@@ -1,177 +1,28 @@
 # pi-todo
 
-pi-todo is the Gentic todo ledger extension. It keeps agents on durable, claimable work and blocks non-todo tools until work is active. When pi-swe is also enabled, the extensions use the explicit ownership contract documented under [pi-swe interoperability](#pi-swe-interoperability).
+pi-todo is a small branch-aware focus list. It keeps at most one todo active and leaves multi-step software workflow ownership to pi-swe.
 
-Deterministic agent defaults:
+## Public actions
 
-- Use `todo({ "action": "begin" })` when no todo is active. It returns active work or starts the next ready todo.
-- Use `todo({ "action": "finish", "summary": "..." })` to close active work. Existing attached evidence counts toward completion.
-- Use `create_artifact` or `note_artifact` for generated durable notes/reports/plans so pi-todo creates the `.model-artifacts/initiatives/<topic>/<kind>/...` path and attaches evidence automatically.
-- Use `record_artifact` only for existing files. Historical kind-first evidence remains readable in existing ledgers but cannot authorize a new write.
-- Artifact creation resolves beneath `ctx.cwd`, rejects unsafe paths, symlinks, collisions, v1-only write targets, and mixed v1/v2 topic authority, and rolls the file back if evidence publication fails.
-- Initiative kinds are exactly `specs`, `plans`, `todo`, `findings`, `reports`, and `logs`. pi-todo does not infer or create `.model-artifacts/system/` artifacts.
-
-## Lifecycle contract
-
-Canonical task states are `ready`, `claimed`, `in_progress`, `external_blocked`, `completed`, `verified`, `failed`, `cancelled`, and `superseded`. `completed`, `verified`, `failed`, `cancelled`, and `superseded` are terminal for scheduling; `completed` and `verified` count as done. Active work is `claimed` or `in_progress`. TUI open counts mean actionable non-terminal work and intentionally exclude `external_blocked`; blocked-external and historical terminal work are shown as separate counts. Stale is not a task state: expired claims return to `ready`, and stale split scaffolds are closed as `cancelled` with a reason.
-
-`external_blocked` is only for work waiting on an outside dependency, user decision, or external system. Internal planning friction (for example a task that needs refinement or splitting) stays actionable as `ready`; commands return repair guidance instead of forcing the task into a blocked state.
-
-Compatibility aliases are accepted for old ledgers and inputs: `proposed`/`pending` → `ready`, `done`/`needs_review` → `completed`, `blocked` → `external_blocked`, and `abandoned` → `cancelled` with abandonment preserved as a reason. Legal transitions are defined in `src/domain/lifecycle.ts` as `TODO_TRANSITIONS` and enforced by `TodoService` lifecycle actions.
-
-Runtime persistence uses `gentic.todo.event` envelopes with `version: 1`. Legacy unwrapped events are decoded for migration; malformed and unknown future versions are ignored. Reconstruction always reads `sessionManager.getBranch()`, so abandoned `/tree` branches cannot affect the active ledger. Compaction retains custom entries on the active branch and therefore does not change todo semantics. The mutating model tool declares sequential execution. `commandId` is an optional create/create_organized idempotency key; a retry returns the first persisted result. Dependency links reject self-edges and transitive cycles.
-
-| Pi lifecycle event | pi-todo behavior |
+| Action | Behavior |
 |---|---|
-| `session_start` | Reconstruct active-branch state and render the mode-appropriate docket. Reload preserves the last reminder key for deduplication. |
-| `session_tree` | Reconstruct/render from the new active branch. |
-| `session_info_changed` | Reconcile session title and docket. |
-| `turn_end` | Show at most one display-only actionable final reminder for the current todo revision. |
-| `agent_settled` | Refresh the display and deduplicate the same reminder after retries/follow-ups. |
-| `session_shutdown` | Dispose the TUI modal, clear status/widget/session-name state, and clear reminder memory except across reload replay. |
+| `create` | Add a ready todo with a concise title. |
+| `start` | Make one ready todo active. Fails while another todo is active. |
+| `finish` | Complete the selected or active todo. |
+| `block` | Mark the selected or active todo externally blocked with a reason. |
+| `unblock` | Return a blocked todo to ready. |
+| `list` | Inspect all todos reconstructed from the active session branch. |
 
-## Interaction and reminder policy
+The `/todo` command exposes the same operations. A compact footer status names active work or reports the open count. In TUI mode, a persistent themed docket restores the visual task summary, active focus chip, progress bar, indented checkbox rows, and blocked-reason rails. `/todo open` opens a responsive keyboard-navigable modal with open/all filtering, scrolling, and expandable details.
 
-Outside an active assessed pi-swe task, todo enforcement is unchanged: mutating or otherwise configured tools still require active work. Display hooks only reconstruct state; they never reconcile, transition, create, or close ledger entries.
+## State and ownership
 
-| Pi mode | Persistent display | Final reminder | `/todo open` |
-|---|---|---|---|
-| `tui` | Status text plus component-factory docket widget. | One concise notification per session + todo revision. | Fresh custom modal; disposed on close/replacement/shutdown. |
-| `rpc` | Status text plus string-array docket widget. | One supported fire-and-forget notification; no component factory. | Refreshes the RPC status/widget; no custom modal. |
-| `json` | No custom UI calls. | None. | No custom UI. |
-| `print` | No custom UI calls. | None. | No custom UI. |
+State is reconstructed in one pass over `sessionManager.getBranch()`. Mutations append `gentic.todo.event` version-1 custom entries. The presentation layer renders that state without adding lifecycle behavior. The runtime has no scheduler, dependencies, claims, leases, splitting, artifact writing, configuration scan, startup filesystem scan, reminder hooks, polling, or autonomous follow-up.
 
-Status text names the exact active, next, blocked, or completed todo and the action (`finish/block`, `start`, `unblock/cancel`, or `verify`). A final reminder names one exact todo and emits a copyable `next_call: todo({...})`; additional entries are summarized with a deterministic `todo({"action":"list"})` repair. Rendering and reminder replay never call `sendMessage`, set `triggerTurn`, or enqueue autonomous follow-up work. Repeated `turn_end`, assistant `message_start`, and `agent_settled` events share one reminder key, and reload replay retains that key to avoid duplicate notification/turn behavior.
+When an assessed pi-swe task is active, pi-swe is the lifecycle owner. `todo list` remains available; todo mutations are rejected. Conversely, pi-swe uses the shared lifecycle probe to reject activation while a todo is active.
 
-## Intake organization and splitting
+## Migration and rollback
 
-By default, `todo({ "action": "create", ... })` creates one explicit todo so progress stays aligned with the caller's intended unit of work.
+The lightweight reader accepts the essential version-1 events written by the former ledger: `todo.created`, `todo.started`, `todo.blocked`/`todo.external_blocked`, `todo.unblocked`, and `todo.completed`. Removed orchestration events are ignored. New events retain the same envelope and event names; completed events include an empty `evidence` array so the previous reader can consume them if the package revision is rolled back.
 
-Use `todo({ "action": "create_organized", ... })` or `todo({ "action": "create", "autoOrganize": true, ... })` when you intentionally want organized intake before persistence:
-
-- Atomic requests create one directly workable todo.
-- Compound requests are organized into a parent/container plus child todos in the same response. The parent records the decomposition and is not directly workable; start or begin a child todo instead.
-- Vague requests return clarification questions instead of creating an underspecified todo unless explicit fallback is requested.
-
-Use `todo({ "action": "split_check", "todoId": "..." })` to diagnose an already-created todo, and `todo({ "action": "split", "todoId": "...", "children": [...] })` when complexity is discovered after creation.
-
-## Configuration
-
-pi-todo reads `~/.pi/agent/pi-todo.json` and project `.pi/pi-todo.json`, with project values taking precedence. The `docket` and `enforcement` sections merge by field; if a project config supplies `enforcement.rules`, that rule list replaces the global rule list.
-
-```json
-{
-  "docket": {
-    "showCompletedFocus": false
-  },
-  "enforcement": {
-    "defaultAction": "requireTodo",
-    "bashReadonlyAllowlist": [
-      "pwd",
-      "ls",
-      "find",
-      "rg",
-      "grep",
-      "head",
-      "tail",
-      "wc",
-      "file",
-      "tree",
-      "du",
-      "stat",
-      "cd",
-      "git status",
-      "git diff",
-      "git log",
-      "git show",
-      "git branch",
-      "git rev-parse",
-      "git ls-files",
-      "git grep",
-      "git remote",
-      "git describe"
-    ],
-    "rules": [
-      { "pattern": "read", "action": "allow" },
-      { "pattern": "ctx_search", "action": "allow" },
-      { "pattern": "ctx_stats", "action": "allow" },
-      { "pattern": "ctx_doctor", "action": "allow" },
-      { "pattern": "context_mode_ctx_search", "action": "allow" },
-      { "pattern": "context_mode_ctx_stats", "action": "allow" },
-      { "pattern": "context_mode_ctx_doctor", "action": "allow" },
-      { "pattern": "web_search", "action": "allow" },
-      { "pattern": "code_search", "action": "allow" },
-      { "pattern": "fetch_content", "action": "allow" },
-      { "pattern": "get_search_content", "action": "allow" },
-      { "pattern": "edit", "action": "requireTodo" },
-      { "pattern": "write", "action": "requireTodo" },
-      { "pattern": "bash", "action": "requireTodo" }
-    ]
-  }
-}
-```
-
-Set `docket.showCompletedFocus` to `false` to hide the last completed task chip once all tasks are closed. The default is `true`, so the docket keeps showing the latest completed work for handoff visibility.
-
-`enforcement.defaultAction` is `requireTodo` by default, preserving strict behavior for mutating, executable, and unknown tools. The `swe_workflow` tool and the `todo` tool outside SWE execution are always allowed so agents can start their respective work. Add exact `enforcement.rules` to allow low-risk inspection tools before a todo is active: built-in tools such as `read`, safe context lookup/status tools such as `ctx_search`, `ctx_stats`, `ctx_doctor` and their `context_mode_ctx_*` equivalents, and third-party/search tools such as `web_search` or `code_search`. `enforcement.bashReadonlyAllowlist` is evaluated only for the `bash` tool and allows conservative one-line exploratory command chains before a todo is active. It rejects redirects, command substitution, shell pipes/backgrounding, unknown commands, mutating `find` actions, git write subcommands, and scripts. Set it to `[]` to disable pre-todo bash entirely. Keep mutating tools (`edit`, `write`), general command/code execution (`bash`, `ctx_execute`, `ctx_execute_file`, `context_mode_ctx_execute`, `context_mode_ctx_execute_file`, deploy tools), and broad third-party patterns at `requireTodo`; for non-bash rules, explicit `requireTodo` rules always take precedence over `allow` rules, even when the `allow` rule is more specific.
-
-### pi-swe interoperability
-
-An assessed, active pi-swe task owns the implementation lifecycle. SWE activation is rejected while any todo is active, including activation through `/swe work`. While SWE owns the lifecycle:
-
-- implementation tools bypass pi-todo's guard-todo creation;
-- `todo` actions `list`, `get`, `history`, and `graph` remain available for inspection;
-- `attach_evidence`, `finish`, `complete`, `block`, `cancel`, and `verify` remain available to clean up pre-existing todo state; and
-- all other todo actions are blocked so they cannot create or activate competing work.
-
-Ownership ends when pi-swe is paused, blocked, or complete. Malformed, unassessed, or checkpoint-free workflow files never disable normal todo enforcement.
-
-### Enforcement migration modes
-
-- **Strict (default/current behavior):** omit `enforcement` or set `defaultAction` to `requireTodo`. Use this for teams that want every non-`todo` tool to require active work unless an allow rule matches.
-- **Relaxed inspection-first:** keep `defaultAction: "requireTodo"`, then allow specific read-only or research tools. This reduces startup friction while preserving todo gates for mutating tools.
-- **Disabled/global allow:** set `defaultAction` to `allow` only when you explicitly want pi-todo to stop blocking tools before active work. Add `requireTodo` rules for any tools that must stay gated; the `todo` tool remains allowed either way. If any invalid enforcement entry is detected while the effective default action is `allow`, pi-todo fails closed by forcing the effective default action back to `requireTodo` and reports config diagnostics on the blocked tool path.
-
-Recommended relaxed allowlist:
-
-```json
-{
-  "enforcement": {
-    "defaultAction": "requireTodo",
-    "bashReadonlyAllowlist": ["pwd", "ls", "find", "rg", "grep", "cd", "git status", "git diff", "git log", "git show"],
-    "rules": [
-      { "pattern": "read", "action": "allow" },
-      { "pattern": "ctx_search", "action": "allow" },
-      { "pattern": "ctx_stats", "action": "allow" },
-      { "pattern": "ctx_doctor", "action": "allow" },
-      { "pattern": "context_mode_ctx_search", "action": "allow" },
-      { "pattern": "context_mode_ctx_stats", "action": "allow" },
-      { "pattern": "context_mode_ctx_doctor", "action": "allow" },
-      { "pattern": "web_search", "action": "allow" },
-      { "pattern": "code_search", "action": "allow" },
-      { "pattern": "fetch_content", "action": "allow" },
-      { "pattern": "get_search_content", "action": "allow" },
-      { "pattern": "edit", "action": "requireTodo" },
-      { "pattern": "write", "action": "requireTodo" },
-      { "pattern": "bash", "action": "requireTodo" }
-    ]
-  }
-}
-```
-
-Recommended disabled mode with mutating safeguards:
-
-```json
-{
-  "enforcement": {
-    "defaultAction": "allow",
-    "rules": [
-      { "pattern": "edit", "action": "requireTodo" },
-      { "pattern": "write", "action": "requireTodo" },
-      { "pattern": "bash", "action": "requireTodo" }
-    ]
-  }
-}
-```
-
-Migration note: existing users keep strict behavior automatically because the default remains `requireTodo`. To relax enforcement, add rules incrementally in project `.pi/pi-todo.json`; project `enforcement.rules` replace the global rule list, so copy any global allowlist entries you still need.
+Removed actions are intentionally unavailable. Before upgrading, finish or block any work that depends on scheduling, leases, splitting, or artifact actions. A code rollback restores the former surface without rewriting session history.

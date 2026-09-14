@@ -1,112 +1,18 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import {
-  activeTodo,
-  ensureActiveTodoForToolCall,
-  executeTodoAction,
-  executeTodoCommand,
-  getTodoCommandCompletions,
-  clearTodoInteractionState,
-  checkTodoDocketAtAgentEnd,
-  checkTodoDocketAtMessageStart,
-  checkTodoDocketBeforeFinalMessage,
-  todoState,
-  updateTodoWidget,
-} from "./src/pi/actions.ts";
-import { loadEffectiveTodoConfig } from "./src/config.ts";
-import { decideToolPolicy } from "./src/domain/policy.ts";
-import { resetTodoSessionNameMemory } from "./src/pi/session-name.ts";
-import { hasActiveSweWorkflow } from "./src/pi/swe-ownership.ts";
-import { disposeTodoModal } from "./src/ui/modal.ts";
-import { todoToolParameters } from "./src/pi/schema.ts";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
 import { registerTodoActivityProbe } from "../../src/lifecycle-coordination.ts";
+import { BranchTodoCore } from "./src/state-core.ts";
+import { registerLightweightTodoSurface } from "./src/thin-surface.ts";
 
 export default function piTodo(pi: ExtensionAPI): void {
   registerTodoActivityProbe(async (ctx) => {
-    const todo = activeTodo(await todoState(pi, ctx as ExtensionContext));
+    const core = new BranchTodoCore({
+      getBranch: () => ctx.sessionManager.getBranch() as never,
+      appendEntry: () => undefined,
+    });
+    const state = core.state();
+    const todo = state.activeTodoId ? state.todos[state.activeTodoId] : undefined;
     return todo ? { id: todo.id, title: todo.title } : undefined;
   });
-  let todoExecutionQueue: Promise<void> = Promise.resolve();
-  pi.on("session_start", async (event, ctx) => {
-    if (event.reason !== "reload") {
-      resetTodoSessionNameMemory();
-      clearTodoInteractionState(ctx);
-    }
-    await updateTodoWidget(pi, ctx);
-  });
-  pi.on("session_tree", async (_event, ctx) => updateTodoWidget(pi, ctx));
-  pi.on("session_info_changed", async (_event, ctx) => updateTodoWidget(pi, ctx));
-  pi.on("session_shutdown", (event, ctx) => {
-    disposeTodoModal();
-    clearTodoInteractionState(ctx, event.reason === "reload");
-    if (event.reason !== "reload") resetTodoSessionNameMemory();
-  });
-  pi.on("message_start", async (event, ctx) => checkTodoDocketAtMessageStart(pi, ctx, event));
-  pi.on("turn_end", async (_event, ctx) => checkTodoDocketBeforeFinalMessage(pi, ctx));
-  pi.on("agent_settled", async (_event, ctx) => checkTodoDocketAtAgentEnd(pi, ctx));
-  pi.on("tool_call", async (event, ctx) => {
-    // pi-swe is the sole lifecycle authority from workflow activation through completion.
-    // Inspection and cleanup of pre-existing todo work remain available, but new competing
-    // todo lifecycle work cannot be activated while an assessed SWE task owns execution.
-    const sweActive = hasActiveSweWorkflow(ctx.cwd);
-    if (event.toolName === "todo") {
-      const action = typeof event.input?.action === "string" ? event.input.action : "";
-      const allowedDuringSwe = ["list", "get", "history", "graph", "attach_evidence", "finish", "complete", "block", "cancel", "verify"].includes(action);
-      if (sweActive && !allowedDuringSwe) return { block: true, reason: "pi-swe lifecycle ownership: pause or complete the active SWE task before creating, starting, or restructuring todo work" };
-      return;
-    }
-    if (event.toolName === "swe_workflow" || sweActive) return;
-    const state = await todoState(pi, ctx);
-    if (activeTodo(state)) return;
-
-    const { config, diagnostics } = loadEffectiveTodoConfig({ cwd: ctx.cwd });
-    const decision = decideToolPolicy(event.toolName, config.enforcement, event.input);
-    if (decision.action === "allow") return;
-
-    const policySource = decision.reason === "rule" && decision.pattern ? `requireTodo rule '${decision.pattern}'` : "default requireTodo policy";
-    const diagnosticNote = diagnostics.length > 0
-      ? ` Config diagnostics: ${diagnostics.map((diagnostic) => `${diagnostic.path}: ${diagnostic.message}`).join("; ")}.`
-      : "";
-
-    const ensured = await ensureActiveTodoForToolCall(pi, ctx, event.toolName, event.input);
-    await updateTodoWidget(pi, ctx);
-    const activation = ensured.created
-      ? `created and started '${ensured.todo.title}' (${ensured.todo.id})`
-      : `started existing ready todo '${ensured.todo.title}' (${ensured.todo.id})`;
-    return {
-      block: true,
-      reason: `pi-todo enforcement: ${policySource}; no active todo existed, so pi-todo ${activation} before blocking. Retry the original ${event.toolName} call now; do not call todo begin/list/split first.${diagnosticNote}`,
-    };
-  });
-
-  pi.registerTool({
-    name: "todo",
-    label: "Todo",
-    description:
-      "Unified Gentic todo ledger tool with create/create_organized/update/split/split_check/begin/claim/start/block/complete/finish/attach_evidence/create_artifact/note_artifact/record_artifact/verify/reopen/list/get/history/graph actions.",
-    promptSnippet:
-      "Use todo first unless pi-swe has an active assessed workflow task, in which case pi-swe owns the lifecycle and todo must not be started. If no active todo, call todo action=begin; it deterministically returns active work or starts the next ready todo. If begin reports no ready todo for a new user request, create one with a concise verb-plus-outcome title derived from the user's intent, then start it before using other tools. Never use a tool name or literal shell command as the title. Prefer finish over complete when ending active work. Prefer create_artifact/note_artifact for generated notes, reports, plans, logs, TODO files, and artifacts so pi-todo creates a valid .model-artifacts/initiatives/<topic>/<kind>/ path and records evidence automatically. Use record_artifact only for files that already exist. Legacy kind-first topics are read-only until explicitly migrated, and mixed v1/v2 topics block writes. For TODO/planning artifacts use kind=todo with category such as pi-todo, pi-swe, or gentic and subcategory for phase sets like pi-swe-phases.",
-    parameters: todoToolParameters,
-    executionMode: "sequential",
-    async execute(_id, params, signal, onUpdate, ctx) {
-      signal?.throwIfAborted();
-      if (params.action === "graph" || params.action === "create_artifact" || params.action === "note_artifact") {
-        onUpdate?.({ content: [{ type: "text", text: `${params.action} in progress` }], details: undefined });
-      }
-      const run = todoExecutionQueue.then(async () => {
-        signal?.throwIfAborted();
-        const result = await executeTodoAction(pi, ctx, params);
-        signal?.throwIfAborted();
-        return result;
-      });
-      todoExecutionQueue = run.then(() => undefined, () => undefined);
-      return run;
-    },
-  });
-
-  pi.registerCommand("todo", {
-    description:
-      "/todo [open|list|next|get <id>|graph <id>|history <id>|split-check <id>] — open or inspect the Gentic todo ledger",
-    getArgumentCompletions: getTodoCommandCompletions,
-    handler: async (args, ctx) => executeTodoCommand(pi, ctx, args),
-  });
+  registerLightweightTodoSurface(pi);
 }

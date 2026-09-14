@@ -1,307 +1,114 @@
-import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
-} from "@earendil-works/pi-coding-agent";
-import { Key, matchesKey } from "@earendil-works/pi-tui";
-import { orderedDocketTodos } from "../app/query.ts";
-import { TodoService } from "../app/service.ts";
-import type { Todo, TodoState } from "../domain/types.ts";
-import { PiTodoEventStore } from "../pi/store.ts";
+import { Key, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
+
+import type { TodoCoreState } from "../state-core.ts";
+import { renderTodoDocketLines, orderedTodoItems } from "./docket.ts";
 import { padAnsi } from "./format.ts";
-import { renderTodoDocketLines } from "./docket.ts";
 import type { TodoTheme } from "./theme.ts";
 
-const TODO_MODAL_MAX_HEIGHT_RATIO = 0.85;
-let activeTodoModal: TodoModalComponent | undefined;
+type LightweightTodoModalOptions = {
+  state: TodoCoreState;
+  theme: TodoTheme;
+  requestRender: () => void;
+  close: () => void;
+  terminalRows: () => number;
+};
 
-function framed(
-  theme: TodoTheme,
-  width: number,
-  title: string,
-  body: string[],
-): string[] {
-  const inner = Math.max(32, width - 2);
-  const label = ` ${title} `;
-  const top =
-    theme.fg(
-      "border",
-      `╭${"─".repeat(Math.max(0, Math.floor((inner - label.length) / 2)))}`,
-    ) +
-    theme.fg("accent", label) +
-    theme.fg(
-      "border",
-      `${"─".repeat(Math.max(0, inner - label.length - Math.floor((inner - label.length) / 2)))}╮`,
-    );
-  return [
-    top,
-    ...body.map(
-      (line) =>
-        `${theme.fg("border", "│")}${padAnsi(line, inner)}${theme.fg("border", "│")}`,
-    ),
-    theme.fg("border", `╰${"─".repeat(inner)}╯`),
-  ];
-}
-
-class TodoModalComponent {
-  private theme: TodoTheme;
-  private state: TodoState;
-  private requestRender: () => void;
-  private closeModal: () => void;
-  private getRows: () => number;
-  private refreshState: () => Promise<TodoState>;
-  private pollTimer?: ReturnType<typeof setInterval>;
-  private refreshInFlight = false;
-  private cachedWidth?: number;
-  private cachedLines?: string[];
+export class LightweightTodoModal {
+  private readonly state: TodoCoreState;
+  private readonly theme: TodoTheme;
+  private readonly requestRender: () => void;
+  private readonly closeModal: () => void;
+  private readonly terminalRows: () => number;
+  private selectedIndex = 0;
   private scrollOffset = 0;
   private showAll = true;
-  private selectedIndex = 0;
-  private expandedTodoIds = new Set<string>();
-  private closed = false;
+  private readonly expanded = new Set<string>();
 
-  constructor(
-    theme: TodoTheme,
-    state: TodoState,
-    requestRender: () => void,
-    closeModal: () => void,
-    getRows: () => number,
-    refreshState: () => Promise<TodoState>,
-    pollMs = 750,
-  ) {
-    this.theme = theme;
-    this.state = state;
-    this.requestRender = requestRender;
-    this.closeModal = closeModal;
-    this.getRows = getRows;
-    this.refreshState = refreshState;
-    this.pollTimer = setInterval(() => void this.refresh(), pollMs);
-  }
-
-  async refresh(): Promise<void> {
-    if (this.closed || this.refreshInFlight) return;
-    this.refreshInFlight = true;
-    try {
-      const state = await this.refreshState();
-      if (!this.closed) this.update(state);
-    } finally {
-      this.refreshInFlight = false;
-    }
-  }
-
-  update(state: TodoState): void {
-    if (this.closed) return;
-    if (
-      state.lastEventId === this.state.lastEventId &&
-      Object.keys(state.todos).length === Object.keys(this.state.todos).length
-    )
-      return;
-    this.state = state;
-    this.clampSelection();
-    this.invalidate();
-    this.requestRender();
-  }
-
-  private rows(): Todo[] {
-    return orderedDocketTodos(this.state, this.showAll);
-  }
-
-  private clampSelection(): void {
-    this.selectedIndex = Math.max(
-      0,
-      Math.min(this.selectedIndex, Math.max(0, this.rows().length - 1)),
-    );
-  }
-
-  private toggleExpandAll(): void {
-    const ids = this.rows().map((todo) => todo.id);
-    if (ids.length === 0) return;
-    const allExpanded = ids.every((id) => this.expandedTodoIds.has(id));
-    if (allExpanded) {
-      for (const id of ids) this.expandedTodoIds.delete(id);
-      return;
-    }
-    for (const id of ids) this.expandedTodoIds.add(id);
-  }
-
-  private syncScrollToSelection(lines: string[], maxLines: number): void {
-    const selectedLine = lines.findIndex((line) => line.includes("› "));
-    if (selectedLine < 0) return;
-    const margin = 2;
-    if (selectedLine < this.scrollOffset + margin)
-      this.scrollOffset = Math.max(0, selectedLine - margin);
-    if (selectedLine >= this.scrollOffset + maxLines - margin)
-      this.scrollOffset = Math.max(0, selectedLine - maxLines + margin + 1);
-  }
-
-  render(width: number): string[] {
-    if (this.cachedLines && this.cachedWidth === width) return this.cachedLines;
-    this.clampSelection();
-    const bodyWidth = Math.max(30, width - 4);
-    const rows = this.rows();
-    const selectedTodoId = rows[this.selectedIndex]?.id;
-    const modeLine = this.theme.fg(
-      "dim",
-      `${this.showAll ? "all" : "open"} tasks · ↑↓/j/k select · enter/space expand · x expand/collapse all · a all/open`,
-    );
-    const content = renderTodoDocketLines(this.state, this.theme, {
-      width: bodyWidth,
-      limit: rows.length,
-      includeDone: this.showAll,
-      detail: "compact",
-      selectedTodoId,
-      expandedTodoIds: this.expandedTodoIds,
-    });
-    const footer = this.theme.fg(
-      "dim",
-      "a all/open · x expand/collapse all · enter/space expand · ↑↓/j/k select · pgup/pgdn scroll · q close",
-    );
-    const maxLines = Math.max(8, Math.floor(this.getRows() * TODO_MODAL_MAX_HEIGHT_RATIO));
-    const contentLimit = Math.max(1, maxLines - 4);
-    const maxOffset = Math.max(0, content.length - contentLimit);
-    this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, maxOffset));
-    this.syncScrollToSelection(content, contentLimit);
-    this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, maxOffset));
-    const visibleContent =
-      content.length > contentLimit
-        ? content.slice(this.scrollOffset, this.scrollOffset + contentLimit)
-        : content;
-    const range =
-      content.length > contentLimit
-        ? this.theme.fg(
-            "dim",
-            ` · lines ${this.scrollOffset + 1}-${this.scrollOffset + visibleContent.length}/${content.length}`,
-          )
-        : "";
-    const all = framed(
-      this.theme,
-      Math.max(40, width),
-      `/todo · ${this.showAll ? "all" : "open"}`,
-      [modeLine + range, ...visibleContent, footer],
-    );
-    this.cachedWidth = width;
-    this.cachedLines = all;
-    return this.cachedLines;
+  constructor(options: LightweightTodoModalOptions) {
+    this.state = options.state;
+    this.theme = options.theme;
+    this.requestRender = options.requestRender;
+    this.closeModal = options.close;
+    this.terminalRows = options.terminalRows;
   }
 
   handleInput(data: string): void {
-    if (
-      matchesKey(data, Key.escape) ||
-      matchesKey(data, Key.ctrl("c")) ||
-      data === "q"
-    )
-      return this.close();
-    if (data === "a") {
+    const rows = this.rows();
+    if (data === "q" || matchesKey(data, Key.escape)) {
+      this.closeModal();
+      return;
+    }
+    if (data === "j" || matchesKey(data, Key.down)) this.selectedIndex = Math.min(rows.length - 1, this.selectedIndex + 1);
+    else if (data === "k" || matchesKey(data, Key.up)) this.selectedIndex = Math.max(0, this.selectedIndex - 1);
+    else if (data === " " || matchesKey(data, Key.enter)) {
+      const id = rows[this.selectedIndex]?.id;
+      if (id) this.expanded.has(id) ? this.expanded.delete(id) : this.expanded.add(id);
+    } else if (data === "x") {
+      if (rows.every((todo) => this.expanded.has(todo.id))) this.expanded.clear();
+      else for (const todo of rows) this.expanded.add(todo.id);
+    } else if (data === "a") {
+      const selected = rows[this.selectedIndex]?.id;
       this.showAll = !this.showAll;
-      this.scrollOffset = 0;
-      this.clampSelection();
-    }
-    if (data === "x") this.toggleExpandAll();
-    if (matchesKey(data, Key.pageDown)) this.scrollOffset += 5;
-    if (matchesKey(data, Key.pageUp))
-      this.scrollOffset = Math.max(0, this.scrollOffset - 5);
-    if (matchesKey(data, Key.down) || data === "j")
-      this.selectedIndex = Math.min(
-        Math.max(0, this.rows().length - 1),
-        this.selectedIndex + 1,
-      );
-    if (matchesKey(data, Key.up) || data === "k")
-      this.selectedIndex = Math.max(0, this.selectedIndex - 1);
-    if (
-      matchesKey(data, Key.enter) ||
-      matchesKey(data, Key.space) ||
-      data === " "
-    ) {
-      const todoId = this.rows()[this.selectedIndex]?.id;
-      if (todoId)
-        this.expandedTodoIds.has(todoId)
-          ? this.expandedTodoIds.delete(todoId)
-          : this.expandedTodoIds.add(todoId);
-    }
-    this.invalidate();
+      const next = this.rows();
+      this.selectedIndex = Math.max(0, selected ? next.findIndex((todo) => todo.id === selected) : 0);
+    } else if (data === "\x1b[6~") this.selectedIndex = Math.min(rows.length - 1, this.selectedIndex + 5);
+    else if (data === "\x1b[5~") this.selectedIndex = Math.max(0, this.selectedIndex - 5);
+    else return;
+    this.clampSelection();
     this.requestRender();
   }
 
-  invalidate(): void {
-    this.cachedWidth = undefined;
-    this.cachedLines = undefined;
+  render(width: number): string[] {
+    const inner = Math.max(30, width - 2);
+    const rows = this.rows();
+    const selectedId = rows[this.selectedIndex]?.id;
+    const mode = this.theme.fg("dim", `${this.showAll ? "all" : "open"} tasks · ↑↓/j/k select · enter/space expand · x expand all · a all/open`);
+    const content = [
+      mode,
+      ...renderTodoDocketLines(this.state, this.theme, {
+        width: inner,
+        includeDone: this.showAll,
+        limit: rows.length,
+        selectedTodoId: selectedId,
+        expandedTodoIds: this.expanded,
+      }),
+      this.theme.fg("dim", "a all/open · x expand/collapse · pgup/pgdn scroll · q close"),
+    ];
+    const maxBody = Math.max(6, Math.floor(this.terminalRows() * 0.8) - 2);
+    const overflowing = content.length > maxBody;
+    const contentCapacity = Math.max(1, maxBody - (overflowing ? 2 : 0));
+    const selectedLine = content.findIndex((line) => line.includes("›"));
+    if (selectedLine >= 0) {
+      if (selectedLine < this.scrollOffset) this.scrollOffset = selectedLine;
+      else if (selectedLine >= this.scrollOffset + contentCapacity) this.scrollOffset = selectedLine - contentCapacity + 1;
+    }
+    const maxOffset = Math.max(0, content.length - contentCapacity);
+    this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, maxOffset));
+    const body = content.slice(this.scrollOffset, this.scrollOffset + contentCapacity);
+    if (this.scrollOffset > 0) body.unshift(this.theme.fg("dim", "↑ more"));
+    if (this.scrollOffset + contentCapacity < content.length) body.push(this.theme.fg("dim", "↓ more"));
+    return frame(this.theme, Math.max(32, width), "TODO DOCKET", body);
   }
 
-  close(): void {
-    if (this.closed) return;
-    this.dispose();
-    this.closeModal();
+  invalidate(): void {}
+
+  private rows() {
+    return orderedTodoItems(this.state, this.showAll);
   }
 
-  dispose(): void {
-    this.closed = true;
-    if (this.pollTimer) clearInterval(this.pollTimer);
-    this.pollTimer = undefined;
+  private clampSelection(): void {
+    this.selectedIndex = Math.max(0, Math.min(this.selectedIndex, Math.max(0, this.rows().length - 1)));
   }
 }
 
-export function createLiveTodoModalComponent(options: {
-  theme: TodoTheme;
-  state: TodoState;
-  requestRender: () => void;
-  closeModal: () => void;
-  getRows: () => number;
-  refreshState: () => Promise<TodoState>;
-  pollMs?: number;
-}): TodoModalComponent {
-  return new TodoModalComponent(
-    options.theme,
-    options.state,
-    options.requestRender,
-    options.closeModal,
-    options.getRows,
-    options.refreshState,
-    options.pollMs,
-  );
-}
-
-export function disposeTodoModal(): void {
-  const modal = activeTodoModal;
-  activeTodoModal = undefined;
-  modal?.close();
-}
-
-export async function openTodoModal(
-  pi: ExtensionAPI,
-  ctx: ExtensionCommandContext,
-): Promise<void> {
-  if (!ctx.hasUI || ctx.mode !== "tui") return;
-  disposeTodoModal();
-  const svc = new TodoService(new PiTodoEventStore(pi, ctx));
-  const state = await svc.state();
-  let component: TodoModalComponent | undefined;
-  try {
-    await ctx.ui.custom<void>(
-      (tui, theme, _kb, done) => {
-        component = createLiveTodoModalComponent({
-          theme,
-          state,
-          requestRender: () => tui.requestRender(),
-          closeModal: () => done(),
-          getRows: () => tui.terminal.rows,
-          refreshState: () => svc.state(),
-        });
-        activeTodoModal = component;
-        return component;
-      },
-      {
-        overlay: true,
-        overlayOptions: {
-          anchor: "center",
-          width: "90%",
-          minWidth: 54,
-          maxHeight: `${Math.round(TODO_MODAL_MAX_HEIGHT_RATIO * 100)}%`,
-          margin: 1,
-          visible: (termWidth) => termWidth >= 54,
-        },
-      },
-    );
-  } finally {
-    component?.dispose();
-    if (activeTodoModal === component) activeTodoModal = undefined;
-  }
+function frame(theme: TodoTheme, width: number, title: string, body: string[]): string[] {
+  const inner = Math.max(30, width - 2);
+  const label = ` ${title} `;
+  const left = Math.max(1, Math.floor((inner - label.length) / 2));
+  const right = Math.max(1, inner - label.length - left);
+  return [
+    theme.fg("border", `╭${"─".repeat(left)}${label}${"─".repeat(right)}╮`),
+    ...body.map((line) => `${theme.fg("border", "│")}${padAnsi(truncateToWidth(line, inner, ""), inner)}${theme.fg("border", "│")}`),
+    theme.fg("border", `╰${"─".repeat(inner)}╯`),
+  ];
 }

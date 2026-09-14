@@ -14,7 +14,7 @@ import { createPiContextHudSnapshot } from "../extensions/pi-context/src/app/hud
 import { resetConfig } from "../extensions/pi-hud/src/app/state.ts";
 import { renderFooterLines } from "../extensions/pi-hud/src/ui/surfaces/footer.ts";
 import type { HudSnapshot, Theme } from "../extensions/pi-hud/types.ts";
-import { todoToolParameters } from "../extensions/pi-todo/src/pi/schema.ts";
+import { lightweightTodoParameters } from "../extensions/pi-todo/src/thin-surface.ts";
 import { generateGenticInventory } from "../src/release/inventory.ts";
 
 const root = new URL("..", import.meta.url).pathname;
@@ -71,7 +71,7 @@ const startupStarted = performance.now();
 for (const extension of extensions) await extension(pi as never);
 const startupMs = performance.now() - startupStarted;
 if (startupMs > budgets.extensionStartupMs) failures.push(`extension startup ${startupMs.toFixed(1)}ms exceeds ${budgets.extensionStartupMs}ms`);
-schemas.push(todoToolParameters);
+schemas.push(lightweightTodoParameters);
 const schemaBytes = Buffer.byteLength(JSON.stringify(schemas));
 if (schemaBytes > budgets.toolSchemaBytes) failures.push(`tool schemas ${schemaBytes} bytes exceeds ${budgets.toolSchemaBytes}`);
 const inventoryMs = measure("inventory generation", budgets.inventoryMs, () => { generateGenticInventory(root); });
