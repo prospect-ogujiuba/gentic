@@ -1,15 +1,15 @@
 {
   "version": 1,
   "topic": "lighten-pi-context",
-  "revision": 1,
-  "status": "draft",
+  "revision": 28,
+  "status": "complete",
   "goal": "Replace pi-context’s parallel runtime ledger with an on-demand bounded snapshot built from Pi native context and session APIs.",
-  "plan": "Characterize operator-visible outcomes first; retain only justified reporting, pressure, and explicit export capabilities. Remove streaming updates and per-tool execution ledger.",
+  "plan": ".model-artifacts/initiatives/lighten-pi-context/plans/2026-09-14_0203-bounded-native-snapshot.md",
   "tasks": [
     {
       "id": "T1",
       "title": "Characterize operator-visible context outcomes",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [],
       "acceptance": [
         "Tests characterize remaining-context, contributor, pressure, deduplication, hysteresis, and export outcomes",
@@ -27,13 +27,33 @@
       },
       "assessmentStatus": "assessed",
       "verification": [],
-      "evidence": [],
-      "evidenceLinks": []
+      "verificationCheckpoint": {
+        "revision": 2,
+        "at": "2026-09-14T01:58:58.615Z",
+        "sessionId": "01a09d6f-4d62-72b4-ac49-9856ddb4d13e",
+        "branchLength": 2
+      },
+      "evidence": [
+        {
+          "command": "node --experimental-strip-types --test test/pi-context-characterization.test.ts",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T02:01:40.734Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_54kPdoEPAdmnDKGz05uotYwD|fc_0cb906f2178fccd4016aa7558423e087d2b4bcd209fb8ba487",
+            "workflowRevision": 2,
+            "sessionId": "01a09d6f-4d62-72b4-ac49-9856ddb4d13e"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T02:01:49.260Z"
     },
     {
       "id": "T2",
       "title": "Design the bounded native snapshot",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "T1"
       ],
@@ -52,19 +72,40 @@
       },
       "assessmentStatus": "assessed",
       "verification": [],
-      "evidence": [],
-      "evidenceLinks": []
+      "verificationCheckpoint": {
+        "revision": 6,
+        "at": "2026-09-14T02:02:31.470Z",
+        "sessionId": "01a09d6f-4d62-72b4-ac49-9856ddb4d13e",
+        "branchLength": 39
+      },
+      "evidence": [
+        {
+          "command": "node --experimental-strip-types --test test/pi-context-native-snapshot-contract.test.ts && npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T02:05:50.178Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_DO97bD10iU6b2LWhHuSXEQtG|fc_0cb906f2178fccd4016aa75679a7f487d28a7fb24d7340402c",
+            "workflowRevision": 6,
+            "sessionId": "01a09d6f-4d62-72b4-ac49-9856ddb4d13e"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T02:06:07.573Z"
     },
     {
       "id": "T3",
       "title": "Implement usage and contributor reporting",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "T2"
       ],
       "acceptance": [
         "Reports remaining context and broad contributors from native APIs",
-        "Contributor reporting is aggregate and content-safe"
+        "Contributor reporting is aggregate and content-safe",
+        "Every collection dimension, content-block traversal, and measured string has a hard cap; truncation is reported"
       ],
       "approaches": [
         "tdd",
@@ -72,19 +113,39 @@
         "performance"
       ],
       "approachReasons": {
-        "tdd": "Usage calculations and contributor grouping require regression tests.",
-        "security": "Contributor output must not disclose prompt or session content.",
-        "performance": "Native snapshot computation must remain bounded."
+        "tdd": "Usage calculations, contributor grouping, and truncation boundaries require regression tests.",
+        "security": "Contributor output must not disclose prompt, session content, paths, identifiers, or exception text.",
+        "performance": "Native snapshot computation must cap collection lengths, nested content blocks, and measured string characters."
       },
       "assessmentStatus": "assessed",
       "verification": [],
-      "evidence": [],
-      "evidenceLinks": []
+      "verificationCheckpoint": {
+        "revision": 11,
+        "at": "2026-09-14T02:32:58.401Z",
+        "sessionId": "01a09d6f-4d62-72b4-ac49-9856ddb4d13e",
+        "branchLength": 99
+      },
+      "evidence": [
+        {
+          "command": "node --experimental-strip-types --test test/pi-context-native-snapshot.test.ts test/pi-context-native-snapshot-contract.test.ts test/pi-context-characterization.test.ts && npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T02:36:52.988Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_rHvM45XnlTB7KgH9HVIoRq2o|fc_0cb906f2178fccd4016aa75dbfc55c87d2a0f6784ba956feef",
+            "workflowRevision": 11,
+            "sessionId": "01a09d6f-4d62-72b4-ac49-9856ddb4d13e"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T02:36:59.342Z"
     },
     {
       "id": "T4",
       "title": "Implement pressure thresholds and explicit export",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "T3"
       ],
@@ -103,13 +164,33 @@
       },
       "assessmentStatus": "assessed",
       "verification": [],
-      "evidence": [],
-      "evidenceLinks": []
+      "verificationCheckpoint": {
+        "revision": 15,
+        "at": "2026-09-14T02:39:59.083Z",
+        "sessionId": "01a09d6f-4d62-72b4-ac49-9856ddb4d13e",
+        "branchLength": 133
+      },
+      "evidence": [
+        {
+          "command": "node --experimental-strip-types --test --test-reporter=dot test/pi-context*.test.ts && npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T02:44:12.158Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_R19Y3owcpn3hsnphb96qDRnR|fc_0cb906f2178fccd4016aa75f76b6d087d29360a93936df8367",
+            "workflowRevision": 15,
+            "sessionId": "01a09d6f-4d62-72b4-ac49-9856ddb4d13e"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T02:44:22.460Z"
     },
     {
       "id": "T5",
       "title": "Replace the event-heavy ledger",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "T4"
       ],
@@ -128,19 +209,39 @@
       },
       "assessmentStatus": "assessed",
       "verification": [],
-      "evidence": [],
-      "evidenceLinks": []
+      "verificationCheckpoint": {
+        "revision": 19,
+        "at": "2026-09-14T02:44:34.718Z",
+        "sessionId": "01a09d6f-4d62-72b4-ac49-9856ddb4d13e",
+        "branchLength": 179
+      },
+      "evidence": [
+        {
+          "command": "node --experimental-strip-types --test --test-reporter=dot test/**/*.test.ts && npm run typecheck && npm run check && npm run check:performance",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T02:52:33.585Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_hCz6ThGFD0MqI8H30bDU9y11|fc_0cb906f2178fccd4016aa76164f26487d29e0cab1382bcaada",
+            "workflowRevision": 19,
+            "sessionId": "01a09d6f-4d62-72b4-ac49-9856ddb4d13e"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T02:52:46.144Z"
     },
     {
       "id": "T6",
       "title": "Qualify HUD compatibility and resource bounds",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "T5"
       ],
       "acceptance": [
         "Context and HUD tests pass",
-        "Snapshot remains bounded and content-safe",
+        "Snapshot remains bounded and content-safe under oversized and adversarial inputs",
         "Pressure behavior and explicit exports pass integration tests"
       ],
       "approaches": [
@@ -150,14 +251,54 @@
       ],
       "approachReasons": {
         "tdd": "Final compatibility and behavior require automated verification.",
-        "security": "Qualification must confirm no sensitive content is exposed.",
-        "performance": "Resource bounds and reduced subscriptions must be measured."
+        "security": "Qualification must confirm no sensitive content is exposed for hostile input shapes.",
+        "performance": "Resource caps and reduced subscriptions must be measured, including per-value bounds."
       },
       "assessmentStatus": "assessed",
-      "verification": [],
-      "evidence": [],
-      "evidenceLinks": []
+      "verification": [
+        {
+          "command": "sh",
+          "args": [
+            "-c",
+            "node --experimental-strip-types --test test/pi-context*.test.ts test/pi-hud*.test.ts && npm run typecheck"
+          ]
+        }
+      ],
+      "verificationCheckpoint": {
+        "revision": 24,
+        "at": "2026-09-14T03:08:14.271Z",
+        "sessionId": "01a09dd6-066b-72b4-ac49-98589e7ca0db",
+        "branchLength": 57
+      },
+      "evidence": [
+        {
+          "command": "sh -c node --experimental-strip-types --test test/pi-context*.test.ts test/pi-hud*.test.ts && npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T03:11:01.268Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_bjyIjF6Ffv0jddxtcXSOaQZp|fc_07da10d406fa288d016aa765c0ee0087d193b28b573aafaa8f",
+            "workflowRevision": 24,
+            "sessionId": "01a09dd6-066b-72b4-ac49-98589e7ca0db"
+          }
+        },
+        {
+          "command": "sh -c node --experimental-strip-types --test test/pi-context*.test.ts test/pi-hud*.test.ts && npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T03:13:13.033Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_AskSO5x7thfTmXy6WOUo5IuT|fc_07da10d406fa288d016aa76644cda087d1ae39524b5fad0db2",
+            "workflowRevision": 25,
+            "sessionId": "01a09dd6-066b-72b4-ac49-98589e7ca0db"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T03:15:12.293Z"
     }
   ],
-  "updatedAt": "2026-09-14T01:26:41.564Z"
+  "updatedAt": "2026-09-14T03:15:12.293Z"
 }

@@ -63,7 +63,11 @@ export function createNativeContextSnapshot(
 
   const usageSource = safely(() => ctx.getContextUsage());
   const usage = readUsage(usageSource.value);
-  if (!usageSource.ok || !usageSource.value) addDiagnostic(diagnostics, "usage-unavailable");
+  if (
+    !usageSource.ok
+    || !usageSource.value
+    || (usage.usedTokens === undefined && usage.contextWindowTokens === undefined && usage.remainingPercent === undefined)
+  ) addDiagnostic(diagnostics, "usage-unavailable");
 
   const promptSource = safely(() => ctx.getSystemPromptOptions());
   if (!promptSource.ok) {
@@ -75,15 +79,24 @@ export function createNativeContextSnapshot(
   const branchSource = safely(() => ctx.sessionManager.getBranch());
   let totalEntries = 0;
   let scannedEntries = 0;
-  if (!branchSource.ok || !Array.isArray(branchSource.value)) {
+  const branchIsArray = branchSource.ok ? safely(() => Array.isArray(branchSource.value)) : { ok: false as const, value: undefined };
+  if (!branchSource.ok || !branchIsArray.ok || !branchIsArray.value) {
     addDiagnostic(diagnostics, "branch-unavailable");
   } else {
-    totalEntries = branchSource.value.length;
-    const first = Math.max(0, totalEntries - NATIVE_SNAPSHOT_LIMITS.maxBranchEntriesScanned);
-    scannedEntries = totalEntries - first;
-    if (first > 0) addDiagnostic(diagnostics, "branch-truncated");
-    for (let index = first; index < totalEntries; index += 1) {
-      collectBranchContributor(branchSource.value[index], contributors, diagnostics);
+    const branch = branchSource.value as unknown[];
+    const lengthSource = safely(() => branch.length);
+    if (!lengthSource.ok) {
+      addDiagnostic(diagnostics, "branch-unavailable");
+    } else {
+      totalEntries = integer(lengthSource.value);
+      const first = Math.max(0, totalEntries - NATIVE_SNAPSHOT_LIMITS.maxBranchEntriesScanned);
+      scannedEntries = totalEntries - first;
+      if (first > 0) addDiagnostic(diagnostics, "branch-truncated");
+      for (let index = first; index < totalEntries; index += 1) {
+        const entry = safely(() => branch[index]);
+        if (entry.ok) collectBranchContributor(entry.value, contributors, diagnostics);
+        else addDiagnostic(diagnostics, "content-truncated");
+      }
     }
   }
 
@@ -138,34 +151,30 @@ export function renderNativeContextSummary(input: NativeContextSnapshot): string
 
 export function sanitizeNativeContextSnapshot(input: NativeContextSnapshot): NativeContextSnapshot {
   const candidate = record(input) ?? {};
-  const usage = record(candidate.usage) ?? {};
-  const pressure = record(candidate.pressure) ?? {};
-  const branch = record(candidate.branch) ?? {};
-  const contributors = Array.isArray(candidate.contributors)
-    ? candidate.contributors.slice(0, NATIVE_SNAPSHOT_LIMITS.maxContributors).flatMap((value) => sanitizeContributor(value))
-    : [];
-  const diagnostics = Array.isArray(candidate.diagnostics)
-    ? candidate.diagnostics
-      .filter((value): value is NativeSnapshotDiagnostic => DIAGNOSTIC_CODES.has(value as NativeSnapshotDiagnostic))
-      .filter((value, index, values) => values.indexOf(value) === index)
-      .slice(0, NATIVE_SNAPSHOT_LIMITS.maxDiagnostics)
-    : [];
+  const usage = record(propertyValue(candidate, "usage")) ?? {};
+  const pressure = record(propertyValue(candidate, "pressure")) ?? {};
+  const branch = record(propertyValue(candidate, "branch")) ?? {};
+  const contributors = boundedArrayValues(propertyValue(candidate, "contributors"), NATIVE_SNAPSHOT_LIMITS.maxContributors)
+    .flatMap((value) => sanitizeContributor(value));
+  const diagnostics = boundedArrayValues(propertyValue(candidate, "diagnostics"), NATIVE_SNAPSHOT_LIMITS.maxDiagnostics)
+    .filter((value): value is NativeSnapshotDiagnostic => DIAGNOSTIC_CODES.has(value as NativeSnapshotDiagnostic))
+    .filter((value, index, values) => values.indexOf(value) === index);
 
   return {
     schemaVersion: 1,
-    capturedAt: safeCapturedAt(candidate.capturedAt),
+    capturedAt: safeCapturedAt(propertyValue(candidate, "capturedAt")),
     usage: {
-      usedTokens: nonNegativeNumber(usage.usedTokens),
-      contextWindowTokens: positiveNumber(usage.contextWindowTokens),
-      remainingTokens: nonNegativeNumber(usage.remainingTokens),
-      remainingPercent: percentNumber(usage.remainingPercent),
+      usedTokens: nonNegativeNumber(propertyValue(usage, "usedTokens")),
+      contextWindowTokens: positiveNumber(propertyValue(usage, "contextWindowTokens")),
+      remainingTokens: nonNegativeNumber(propertyValue(usage, "remainingTokens")),
+      remainingPercent: percentNumber(propertyValue(usage, "remainingPercent")),
     },
     pressure: sanitizePressure(pressure),
     contributors,
     branch: {
-      totalEntries: integer(branch.totalEntries),
-      scannedEntries: Math.min(integer(branch.scannedEntries), NATIVE_SNAPSHOT_LIMITS.maxBranchEntriesScanned),
-      truncated: branch.truncated === true,
+      totalEntries: integer(propertyValue(branch, "totalEntries")),
+      scannedEntries: Math.min(integer(propertyValue(branch, "scannedEntries")), NATIVE_SNAPSHOT_LIMITS.maxBranchEntriesScanned),
+      truncated: propertyValue(branch, "truncated") === true,
     },
     diagnostics,
     bounds: NATIVE_SNAPSHOT_LIMITS,
@@ -183,25 +192,28 @@ function collectPromptContributors(
     return;
   }
 
-  addMeasured(contributors, "system-prompt", options.customPrompt, diagnostics);
-  addMeasured(contributors, "system-prompt", options.appendSystemPrompt, diagnostics);
-  collectArray(options.promptGuidelines, NATIVE_SNAPSHOT_LIMITS.maxPromptGuidelinesScanned, (item) => {
+  addMeasured(contributors, "system-prompt", safeProperty(options, "customPrompt", diagnostics), diagnostics);
+  addMeasured(contributors, "system-prompt", safeProperty(options, "appendSystemPrompt", diagnostics), diagnostics);
+  collectArray(safeProperty(options, "promptGuidelines", diagnostics), NATIVE_SNAPSHOT_LIMITS.maxPromptGuidelinesScanned, (item) => {
     addMeasured(contributors, "system-prompt", item, diagnostics);
   }, diagnostics);
 
-  const snippets = record(options.toolSnippets);
-  collectArray(options.selectedTools, NATIVE_SNAPSHOT_LIMITS.maxToolsScanned, (item) => {
+  const snippets = record(safeProperty(options, "toolSnippets", diagnostics));
+  collectArray(safeProperty(options, "selectedTools", diagnostics), NATIVE_SNAPSHOT_LIMITS.maxToolsScanned, (item) => {
     const snippet = typeof item === "string" ? safely(() => snippets?.[item]).value : undefined;
     addMeasured(contributors, "active-tools", [item, snippet], diagnostics);
   }, diagnostics);
 
-  collectArray(options.contextFiles, NATIVE_SNAPSHOT_LIMITS.maxContextFilesScanned, (item) => {
-    addMeasured(contributors, "context-files", record(item)?.content, diagnostics, true);
+  collectArray(safeProperty(options, "contextFiles", diagnostics), NATIVE_SNAPSHOT_LIMITS.maxContextFilesScanned, (item) => {
+    const contextFile = record(item);
+    addMeasured(contributors, "context-files", contextFile ? safeProperty(contextFile, "content", diagnostics) : undefined, diagnostics, true);
   }, diagnostics);
 
-  collectArray(options.skills, NATIVE_SNAPSHOT_LIMITS.maxSkillsScanned, (item) => {
+  collectArray(safeProperty(options, "skills", diagnostics), NATIVE_SNAPSHOT_LIMITS.maxSkillsScanned, (item) => {
     const skill = record(item);
-    addMeasured(contributors, "skills", [skill?.name, skill?.description], diagnostics, true);
+    addMeasured(contributors, "skills", skill
+      ? [safeProperty(skill, "name", diagnostics), safeProperty(skill, "description", diagnostics)]
+      : undefined, diagnostics, true);
   }, diagnostics);
 }
 
@@ -215,17 +227,20 @@ function collectBranchContributor(
     addMeasured(contributors, "other-session", undefined, diagnostics, true);
     return;
   }
-  if (entry.type === "message") {
-    const message = record(entry.message);
-    addMeasured(contributors, messageKind(message?.role), message?.content, diagnostics, true);
+  const type = safeProperty(entry, "type", diagnostics);
+  if (type === "message") {
+    const message = record(safeProperty(entry, "message", diagnostics));
+    const role = message ? safeProperty(message, "role", diagnostics) : undefined;
+    const content = message ? safeProperty(message, "content", diagnostics) : undefined;
+    addMeasured(contributors, messageKind(role), content, diagnostics, true);
     return;
   }
-  if (entry.type === "custom_message") {
-    addMeasured(contributors, "other-session", entry.content, diagnostics, true);
+  if (type === "custom_message") {
+    addMeasured(contributors, "other-session", safeProperty(entry, "content", diagnostics), diagnostics, true);
     return;
   }
-  if (entry.type === "compaction" || entry.type === "branch_summary") {
-    addMeasured(contributors, "other-session", entry.summary, diagnostics, true);
+  if (type === "compaction" || type === "branch_summary") {
+    addMeasured(contributors, "other-session", safeProperty(entry, "summary", diagnostics), diagnostics, true);
     return;
   }
   addMeasured(contributors, "other-session", undefined, diagnostics, true);
@@ -244,10 +259,32 @@ function collectArray(
   visit: (item: unknown) => void,
   diagnostics: NativeSnapshotDiagnostic[],
 ): void {
-  if (!Array.isArray(value)) return;
-  const count = Math.min(value.length, limit);
-  for (let index = 0; index < count; index += 1) visit(value[index]);
-  if (value.length > limit) addDiagnostic(diagnostics, "prompt-options-truncated");
+  const arrayCheck = safely(() => Array.isArray(value));
+  if (!arrayCheck.ok || !arrayCheck.value) return;
+  const array = value as unknown[];
+  const lengthSource = safely(() => array.length);
+  if (!lengthSource.ok) {
+    addDiagnostic(diagnostics, "content-truncated");
+    return;
+  }
+  const length = integer(lengthSource.value);
+  const count = Math.min(length, limit);
+  for (let index = 0; index < count; index += 1) {
+    const item = safely(() => array[index]);
+    if (item.ok) visit(item.value);
+    else addDiagnostic(diagnostics, "content-truncated");
+  }
+  if (length > limit) addDiagnostic(diagnostics, "prompt-options-truncated");
+}
+
+function safeProperty(
+  value: Record<string, unknown>,
+  key: string,
+  diagnostics: NativeSnapshotDiagnostic[],
+): unknown {
+  const property = safely(() => value[key]);
+  if (!property.ok) addDiagnostic(diagnostics, "content-truncated");
+  return property.value;
 }
 
 function addMeasured(
@@ -288,23 +325,49 @@ function measureValue(value: unknown, budget: MeasurementBudget, depth: number):
   }
   budget.seen.add(value);
 
-  if (Array.isArray(value)) {
-    const count = Math.min(value.length, NATIVE_SNAPSHOT_LIMITS.maxContentBlocksPerValue);
+  const arrayCheck = safely(() => Array.isArray(value));
+  if (!arrayCheck.ok) {
+    budget.truncated = true;
+    return 0;
+  }
+  if (arrayCheck.value) {
+    const array = value as unknown[];
+    const lengthSource = safely(() => array.length);
+    if (!lengthSource.ok) {
+      budget.truncated = true;
+      return 0;
+    }
+    const length = integer(lengthSource.value);
+    const count = Math.min(length, NATIVE_SNAPSHOT_LIMITS.maxContentBlocksPerValue);
     let bytes = 0;
-    for (let index = 0; index < count; index += 1) bytes += measureValue(value[index], budget, depth + 1);
-    if (value.length > count) budget.truncated = true;
+    for (let index = 0; index < count; index += 1) {
+      const item = safely(() => array[index]);
+      if (item.ok) bytes += measureValue(item.value, budget, depth + 1);
+      else budget.truncated = true;
+    }
+    if (length > count) budget.truncated = true;
     return bytes;
   }
 
-  let bytes = 0;
-  let properties = 0;
-  for (const key in value as Record<string, unknown>) {
-    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
-    if (properties >= NATIVE_SNAPSHOT_LIMITS.maxObjectPropertiesPerValue) {
-      budget.truncated = true;
-      break;
+  const keysSource = safely(() => {
+    const keys: string[] = [];
+    let examined = 0;
+    for (const key in value as Record<string, unknown>) {
+      examined += 1;
+      if (Object.prototype.hasOwnProperty.call(value, key)) keys.push(key);
+      if (examined > NATIVE_SNAPSHOT_LIMITS.maxObjectPropertiesPerValue) break;
     }
-    properties += 1;
+    return { keys, truncated: examined > NATIVE_SNAPSHOT_LIMITS.maxObjectPropertiesPerValue };
+  });
+  if (!keysSource.ok) {
+    budget.truncated = true;
+    return 0;
+  }
+  const { keys } = keysSource.value;
+  const count = Math.min(keys.length, NATIVE_SNAPSHOT_LIMITS.maxObjectPropertiesPerValue);
+  let bytes = 0;
+  for (let index = 0; index < count; index += 1) {
+    const key = keys[index]!;
     bytes += measureString(key, budget);
     const property = safely(() => (value as Record<string, unknown>)[key]);
     if (!property.ok) {
@@ -313,6 +376,7 @@ function measureValue(value: unknown, budget: MeasurementBudget, depth: number):
     }
     bytes += measureValue(property.value, budget, depth + 1);
   }
+  if (keysSource.value.truncated || keys.length > count) budget.truncated = true;
   return bytes;
 }
 
@@ -325,10 +389,10 @@ function measureString(value: string, budget: MeasurementBudget): number {
 }
 
 function readUsage(value: unknown): NativeContextSnapshot["usage"] {
-  const usage = record(value);
-  const usedTokens = nonNegativeNumber(usage?.tokens);
-  const contextWindowTokens = positiveNumber(usage?.contextWindow);
-  const usedPercent = finiteNumber(usage?.percent);
+  const usage = record(value) ?? {};
+  const usedTokens = nonNegativeNumber(propertyValue(usage, "tokens"));
+  const contextWindowTokens = positiveNumber(propertyValue(usage, "contextWindow"));
+  const usedPercent = finiteNumber(propertyValue(usage, "percent"));
   const remainingTokens = usedTokens === undefined || contextWindowTokens === undefined
     ? undefined
     : Math.max(0, contextWindowTokens - usedTokens);
@@ -340,22 +404,23 @@ function readUsage(value: unknown): NativeContextSnapshot["usage"] {
 
 function sanitizeContributor(value: unknown): NativeSnapshotContributor[] {
   const contributor = record(value);
-  if (!contributor || !CONTRIBUTOR_KINDS.has(contributor.kind as NativeContributorKind)) return [];
+  const kind = contributor ? propertyValue(contributor, "kind") : undefined;
+  if (!contributor || !CONTRIBUTOR_KINDS.has(kind as NativeContributorKind)) return [];
   return [{
-    kind: contributor.kind as NativeContributorKind,
-    itemCount: integer(contributor.itemCount),
-    byteCount: integer(contributor.byteCount),
-    tokenCount: nonNegativeNumber(contributor.tokenCount),
+    kind: kind as NativeContributorKind,
+    itemCount: integer(propertyValue(contributor, "itemCount")),
+    byteCount: integer(propertyValue(contributor, "byteCount")),
+    tokenCount: nonNegativeNumber(propertyValue(contributor, "tokenCount")),
   }];
 }
 
 function sanitizePressure(value: Record<string, unknown>): NativeSnapshotPressure {
-  const available = value.available === true;
-  const level = value.level;
+  const available = propertyValue(value, "available") === true;
+  const level = propertyValue(value, "level");
   if (!available || (level !== "normal" && level !== "warning" && level !== "critical")) {
     return { available: false, level: "unavailable" };
   }
-  return { available: true, level, remainingPercent: percentNumber(value.remainingPercent) };
+  return { available: true, level, remainingPercent: percentNumber(propertyValue(value, "remainingPercent")) };
 }
 
 function pressureFromUsage(usage: NativeContextSnapshot["usage"]): NativeSnapshotPressure {
@@ -396,7 +461,26 @@ function safely<T>(read: () => T): { ok: true; value: T } | { ok: false; value: 
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+  if (value === null || typeof value !== "object") return undefined;
+  const arrayCheck = safely(() => Array.isArray(value));
+  return arrayCheck.ok && !arrayCheck.value ? value as Record<string, unknown> : undefined;
+}
+
+function propertyValue(value: Record<string, unknown>, key: string): unknown {
+  return safely(() => value[key]).value;
+}
+
+function boundedArrayValues(value: unknown, limit: number): unknown[] {
+  const arrayCheck = safely(() => Array.isArray(value));
+  if (!arrayCheck.ok || !arrayCheck.value) return [];
+  const array = value as unknown[];
+  const length = integer(safely(() => array.length).value);
+  const values: unknown[] = [];
+  for (let index = 0; index < Math.min(length, limit); index += 1) {
+    const item = safely(() => array[index]);
+    if (item.ok) values.push(item.value);
+  }
+  return values;
 }
 
 function finiteNumber(value: unknown): number | undefined {
