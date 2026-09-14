@@ -1,0 +1,163 @@
+{
+  "version": 1,
+  "topic": "lighten-pi-context",
+  "revision": 1,
+  "status": "draft",
+  "goal": "Replace pi-context’s parallel runtime ledger with an on-demand bounded snapshot built from Pi native context and session APIs.",
+  "plan": "Characterize operator-visible outcomes first; retain only justified reporting, pressure, and explicit export capabilities. Remove streaming updates and per-tool execution ledger.",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Characterize operator-visible context outcomes",
+      "status": "pending",
+      "dependsOn": [],
+      "acceptance": [
+        "Tests characterize remaining-context, contributor, pressure, deduplication, hysteresis, and export outcomes",
+        "Tests identify forensic features that can be removed"
+      ],
+      "approaches": [
+        "tdd",
+        "diagnosis",
+        "security"
+      ],
+      "approachReasons": {
+        "tdd": "Characterization tests must lock down retained visible behavior.",
+        "diagnosis": "Existing ledger outputs and event dependencies must be measured before removal.",
+        "security": "Characterization must identify content that could expose sensitive context."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T2",
+      "title": "Design the bounded native snapshot",
+      "status": "pending",
+      "dependsOn": [
+        "T1"
+      ],
+      "acceptance": [
+        "Design uses ctx.getContextUsage(), getSystemPromptOptions(), and active branch data",
+        "Snapshot has explicit resource bounds and excludes sensitive content",
+        "Streaming-update and per-tool execution ledgers are excluded"
+      ],
+      "approaches": [
+        "security",
+        "performance"
+      ],
+      "approachReasons": {
+        "security": "Snapshot fields must prevent sensitive content disclosure.",
+        "performance": "The snapshot must be bounded and on-demand."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T3",
+      "title": "Implement usage and contributor reporting",
+      "status": "pending",
+      "dependsOn": [
+        "T2"
+      ],
+      "acceptance": [
+        "Reports remaining context and broad contributors from native APIs",
+        "Contributor reporting is aggregate and content-safe"
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "performance"
+      ],
+      "approachReasons": {
+        "tdd": "Usage calculations and contributor grouping require regression tests.",
+        "security": "Contributor output must not disclose prompt or session content.",
+        "performance": "Native snapshot computation must remain bounded."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T4",
+      "title": "Implement pressure thresholds and explicit export",
+      "status": "pending",
+      "dependsOn": [
+        "T3"
+      ],
+      "acceptance": [
+        "Pressure notifications retain hysteresis and deduplication",
+        "Markdown and JSON export occur only on explicit request",
+        "Exports contain no sensitive content"
+      ],
+      "approaches": [
+        "tdd",
+        "security"
+      ],
+      "approachReasons": {
+        "tdd": "Threshold transitions and deduplication are stateful boundary cases.",
+        "security": "Explicit exports must enforce content-safe schemas."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T5",
+      "title": "Replace the event-heavy ledger",
+      "status": "pending",
+      "dependsOn": [
+        "T4"
+      ],
+      "acceptance": [
+        "No streaming-update or per-tool execution ledger remains",
+        "Event subscriptions are materially reduced",
+        "Unjustified forensic features are explicitly removed"
+      ],
+      "approaches": [
+        "migration",
+        "performance"
+      ],
+      "approachReasons": {
+        "migration": "The parallel ledger must be retired without leaving duplicate runtime paths.",
+        "performance": "Reduced subscriptions and retained state are core resource goals."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T6",
+      "title": "Qualify HUD compatibility and resource bounds",
+      "status": "pending",
+      "dependsOn": [
+        "T5"
+      ],
+      "acceptance": [
+        "Context and HUD tests pass",
+        "Snapshot remains bounded and content-safe",
+        "Pressure behavior and explicit exports pass integration tests"
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "performance"
+      ],
+      "approachReasons": {
+        "tdd": "Final compatibility and behavior require automated verification.",
+        "security": "Qualification must confirm no sensitive content is exposed.",
+        "performance": "Resource bounds and reduced subscriptions must be measured."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    }
+  ],
+  "updatedAt": "2026-09-14T01:26:41.564Z"
+}

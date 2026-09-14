@@ -1,0 +1,215 @@
+{
+  "version": 1,
+  "topic": "lighten-pi-todo",
+  "revision": 1,
+  "status": "draft",
+  "goal": "Rebuild pi-todo as a small branch-aware focus list preserving create/start/finish/block/list and the deterministic pi-swe ownership boundary.",
+  "plan": "Characterization-first replacement. Remove scheduling, leases, splitting, artifacts, modal UI, startup scans, and autonomous follow-up.",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Characterize essential behavior",
+      "status": "pending",
+      "dependsOn": [],
+      "acceptance": [
+        "Black-box tests cover existing essential create/start/finish/block/list behavior",
+        "Tests characterize active-session-branch reconstruction",
+        "Tests characterize at-most-one-active and pi-swe ownership behavior"
+      ],
+      "approaches": [
+        "tdd",
+        "diagnosis"
+      ],
+      "approachReasons": {
+        "tdd": "The initiative must begin with executable characterization before refactoring.",
+        "diagnosis": "Current externally visible behavior and ownership decisions must be observed before replacement."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "test:todo"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T2",
+      "title": "Define the minimal public contract",
+      "status": "pending",
+      "dependsOn": [
+        "T1"
+      ],
+      "acceptance": [
+        "Public actions are limited to approximately six essential operations",
+        "Contract excludes dependency scheduling, leases, splitting, artifact writing, and modal UI",
+        "pi-swe ownership precedence is deterministic"
+      ],
+      "approaches": [],
+      "approachReasons": {},
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T3",
+      "title": "Build the branch-aware state core",
+      "status": "pending",
+      "dependsOn": [
+        "T2"
+      ],
+      "acceptance": [
+        "State reconstructs correctly from the active session branch",
+        "At most one todo is active",
+        "No startup filesystem scan or autonomous follow-up exists"
+      ],
+      "approaches": [
+        "tdd",
+        "performance"
+      ],
+      "approachReasons": {
+        "tdd": "Branch reconstruction and single-active invariants need regression tests.",
+        "performance": "The replacement must avoid startup scans and keep reconstruction bounded."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "test:todo"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T4",
+      "title": "Add the thin tool, command, and status surface",
+      "status": "pending",
+      "dependsOn": [
+        "T3"
+      ],
+      "acceptance": [
+        "Essential create/start/finish/block/list experience is available through a thin surface",
+        "Surface delegates state and ownership decisions to the core"
+      ],
+      "approaches": [
+        "tdd"
+      ],
+      "approachReasons": {
+        "tdd": "Public command and tool behavior should be verified black-box."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "test:todo"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T5",
+      "title": "Replace the legacy implementation",
+      "status": "pending",
+      "dependsOn": [
+        "T4"
+      ],
+      "acceptance": [
+        "Legacy scheduling, leases, splitting, artifact writing, modal UI, startup scan, and autonomous follow-up paths are absent",
+        "The minimal implementation is the sole pi-todo runtime"
+      ],
+      "approaches": [
+        "migration"
+      ],
+      "approachReasons": {
+        "migration": "Replacing the legacy runtime requires controlled removal without retaining competing state paths."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "test:todo"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T6",
+      "title": "Qualify behavior, performance, and integration",
+      "status": "pending",
+      "dependsOn": [
+        "T5"
+      ],
+      "acceptance": [
+        "All essential black-box behavior passes",
+        "Branch state, single-active invariant, and pi-swe ownership are verified",
+        "Package checks pass"
+      ],
+      "approaches": [
+        "tdd",
+        "performance"
+      ],
+      "approachReasons": {
+        "tdd": "Final qualification is driven by the characterization and regression suite.",
+        "performance": "Startup and state reconstruction must remain bounded without filesystem scanning."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "test:todo"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": []
+    }
+  ],
+  "updatedAt": "2026-09-14T01:26:25.044Z"
+}

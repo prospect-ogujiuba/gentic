@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "topic": "consolidate-gentic-catalog",
+  "revision": 1,
+  "status": "draft",
+  "goal": "Consolidate package status and capability discovery into one small suite surface using Pi native command and tool metadata.",
+  "plan": "Characterize useful discovery, define one contract, query native metadata, retire duplicate routing/catalog paths, and regenerate deterministic build-time inventory.",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Characterize useful discovery operations",
+      "status": "pending",
+      "dependsOn": [],
+      "acceptance": [
+        "Tests identify useful existing search and status outcomes",
+        "Duplicate routing, proxy invocation, and generated fixture responsibilities are identified"
+      ],
+      "approaches": [
+        "tdd",
+        "diagnosis"
+      ],
+      "approachReasons": {
+        "tdd": "Characterization protects useful search and status behavior.",
+        "diagnosis": "Existing overlapping discovery paths must be mapped before consolidation."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T2",
+      "title": "Define one consolidated command and tool contract",
+      "status": "pending",
+      "dependsOn": [
+        "T1"
+      ],
+      "acceptance": [
+        "One obvious user-facing discovery command is defined",
+        "Contract does not proxy commands that can be invoked directly",
+        "Generated release fixtures remain build-time concerns"
+      ],
+      "approaches": [
+        "accessibility-ux"
+      ],
+      "approachReasons": {
+        "accessibility-ux": "A single obvious discovery entry point depends on clear naming and concise output."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T3",
+      "title": "Implement native metadata queries",
+      "status": "pending",
+      "dependsOn": [
+        "T2"
+      ],
+      "acceptance": [
+        "Implementation uses pi.getCommands(), pi.getAllTools(), and canonical sourceInfo",
+        "Useful search and status behavior is preserved"
+      ],
+      "approaches": [
+        "tdd",
+        "performance"
+      ],
+      "approachReasons": {
+        "tdd": "Metadata search and status results require regression tests.",
+        "performance": "Queries should use native metadata without redundant discovery scans."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T4",
+      "title": "Retire duplicate routing and catalog behavior",
+      "status": "pending",
+      "dependsOn": [
+        "T3"
+      ],
+      "acceptance": [
+        "Duplicate routing and catalog surfaces are removed",
+        "No proxy remains for directly invokable commands"
+      ],
+      "approaches": [
+        "migration"
+      ],
+      "approachReasons": {
+        "migration": "Overlapping legacy surfaces must be retired while preserving the consolidated contract."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T5",
+      "title": "Regenerate inventory and qualify package checks",
+      "status": "pending",
+      "dependsOn": [
+        "T4"
+      ],
+      "acceptance": [
+        "Generated release inventory is refreshed as a build-time fixture",
+        "Catalog freshness checks are deterministic",
+        "Useful discovery tests and package checks pass"
+      ],
+      "approaches": [
+        "tdd",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Freshness and discovery outcomes need deterministic verification.",
+        "operations": "Build-time inventory generation and package checks affect release reliability."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    }
+  ],
+  "updatedAt": "2026-09-14T01:27:18.091Z"
+}

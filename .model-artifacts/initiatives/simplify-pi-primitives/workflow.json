@@ -1,0 +1,155 @@
+{
+  "version": 1,
+  "topic": "simplify-pi-primitives",
+  "revision": 1,
+  "status": "draft",
+  "goal": "Replace the plugin-inside-a-plugin loader with explicit isolated registration of the few retained primitive behaviors.",
+  "plan": "Inventory behavior, explicitly import retained primitives, simplify bounded prompt injection and whimsical feedback, then remove dynamic loading.",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Inventory retained primitive outcomes",
+      "status": "pending",
+      "dependsOn": [],
+      "acceptance": [
+        "Useful primitive outcomes and their current tests are documented",
+        "Dynamic-loading, prompt-injection, and whimsical runtime behaviors are characterized"
+      ],
+      "approaches": [
+        "diagnosis"
+      ],
+      "approachReasons": {
+        "diagnosis": "Retained outcomes must be separated from loader mechanics before implementation."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T2",
+      "title": "Implement explicit primitive registration",
+      "status": "pending",
+      "dependsOn": [
+        "T1"
+      ],
+      "acceptance": [
+        "Retained primitives are explicitly imported and registered",
+        "One primitive failure does not obscure startup diagnostics"
+      ],
+      "approaches": [
+        "tdd",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Registration and isolated-failure behavior need deterministic tests.",
+        "operations": "Startup diagnostics must remain actionable when one primitive fails."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T3",
+      "title": "Simplify conditional prompt injection",
+      "status": "pending",
+      "dependsOn": [
+        "T2"
+      ],
+      "acceptance": [
+        "Prompt injection remains conditional and bounded",
+        "Injection does not require dynamic loading"
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "performance"
+      ],
+      "approachReasons": {
+        "tdd": "Conditions and bounds are explicit testable contracts.",
+        "security": "Prompt content and activation boundaries must avoid unintended disclosure or influence.",
+        "performance": "Bounded injection limits startup and context overhead."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T4",
+      "title": "Replace or remove whimsical runtime machinery",
+      "status": "pending",
+      "dependsOn": [
+        "T2"
+      ],
+      "acceptance": [
+        "Whimsical messages use a small data resource or native working indicator",
+        "Complex runtime machinery is absent"
+      ],
+      "approaches": [
+        "migration",
+        "performance"
+      ],
+      "approachReasons": {
+        "migration": "Existing machinery must be replaced or removed without duplicate behavior.",
+        "performance": "A small static resource or native indicator avoids runtime overhead."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T5",
+      "title": "Remove dynamic loading and qualify startup",
+      "status": "pending",
+      "dependsOn": [
+        "T3",
+        "T4"
+      ],
+      "acceptance": [
+        "No directory scanning or cache-busting dynamic imports remain",
+        "Primitive tests, typecheck, and package checks pass",
+        "Startup diagnostics identify isolated primitive failures"
+      ],
+      "approaches": [
+        "tdd",
+        "performance",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Final retained behavior and removal constraints need regression coverage.",
+        "performance": "Startup must be qualified after eliminating scans and dynamic imports.",
+        "operations": "Diagnostic clarity is a startup reliability requirement."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "test:primitives"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": []
+    }
+  ],
+  "updatedAt": "2026-09-14T01:27:07.140Z"
+}

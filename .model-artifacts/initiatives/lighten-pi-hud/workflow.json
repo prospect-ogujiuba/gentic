@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "topic": "lighten-pi-hud",
+  "revision": 1,
+  "status": "draft",
+  "goal": "After lighten-pi-context completes, rebuild pi-hud as a compact optional widget using native Pi state and the lightweight context adapter.",
+  "plan": "Do not start this workflow until lighten-pi-context is complete. Keep Pi native footer authoritative and remove duplicate runtime services.",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Define the minimum useful HUD surface",
+      "status": "pending",
+      "dependsOn": [],
+      "acceptance": [
+        "Scope is one optional widget showing model, context pressure, Git summary, and activity",
+        "Pi native footer remains authoritative",
+        "Modal, work timer, event history, and custom footer replacement are excluded",
+        "Dependency on completed lighten-pi-context is confirmed before work starts"
+      ],
+      "approaches": [
+        "accessibility-ux"
+      ],
+      "approachReasons": {
+        "accessibility-ux": "The minimum information hierarchy and terminal presentation must remain legible and non-disruptive."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T2",
+      "title": "Build a pure width-safe widget renderer",
+      "status": "pending",
+      "dependsOn": [
+        "T1"
+      ],
+      "acceptance": [
+        "Renderer is pure",
+        "Every rendered line respects terminal width",
+        "JSON and print modes make no UI calls"
+      ],
+      "approaches": [
+        "tdd",
+        "accessibility-ux"
+      ],
+      "approachReasons": {
+        "tdd": "Width boundaries and non-UI modes are readily testable.",
+        "accessibility-ux": "Width safety and concise presentation directly affect terminal usability."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T3",
+      "title": "Wire bounded native-state refresh",
+      "status": "pending",
+      "dependsOn": [
+        "T2"
+      ],
+      "acceptance": [
+        "Widget uses native Pi state and the lightweight context adapter",
+        "Refresh work is bounded",
+        "No independent Git polling service exists"
+      ],
+      "approaches": [
+        "tdd",
+        "performance"
+      ],
+      "approachReasons": {
+        "tdd": "Refresh behavior and state transitions need deterministic tests.",
+        "performance": "Refresh frequency and work must remain bounded."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T4",
+      "title": "Remove footer replacement and redundant services",
+      "status": "pending",
+      "dependsOn": [
+        "T3"
+      ],
+      "acceptance": [
+        "Pi native footer is not replaced",
+        "Custom modal, work timer, event history, and independent Git polling are absent"
+      ],
+      "approaches": [
+        "migration",
+        "performance"
+      ],
+      "approachReasons": {
+        "migration": "Legacy UI and service paths must be retired without duplicate ownership.",
+        "performance": "Removing redundant services reduces background work."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "T5",
+      "title": "Qualify modes, cleanup, and responsiveness",
+      "status": "pending",
+      "dependsOn": [
+        "T4"
+      ],
+      "acceptance": [
+        "HUD and context adapter tests pass",
+        "JSON and print modes perform no UI calls",
+        "Shutdown cleanup is idempotent",
+        "All lines remain width-safe and widget refresh remains responsive"
+      ],
+      "approaches": [
+        "tdd",
+        "performance",
+        "accessibility-ux"
+      ],
+      "approachReasons": {
+        "tdd": "Mode behavior and cleanup invariants require regression coverage.",
+        "performance": "Qualification must cover bounded refresh and responsiveness.",
+        "accessibility-ux": "All terminal widths and display modes must remain usable."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "evidence": [],
+      "evidenceLinks": []
+    }
+  ],
+  "updatedAt": "2026-09-14T01:26:54.644Z"
+}
