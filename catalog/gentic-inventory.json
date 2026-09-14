@@ -257,15 +257,8 @@
         "extensions/pi-hud/src/pi/adapter.ts",
         "extensions/pi-hud/src/pi/register.ts",
         "extensions/pi-hud/src/pi/runtime.ts",
-        "extensions/pi-hud/src/ui/components/context.ts",
-        "extensions/pi-hud/src/ui/components/events.ts",
-        "extensions/pi-hud/src/ui/components/git.ts",
-        "extensions/pi-hud/src/ui/components/model.ts",
-        "extensions/pi-hud/src/ui/components/tools.ts",
-        "extensions/pi-hud/src/ui/components/worktime.ts",
         "extensions/pi-hud/src/ui/lib/format.ts",
-        "extensions/pi-hud/src/ui/surfaces/footer.ts",
-        "extensions/pi-hud/src/ui/surfaces/modal.ts",
+        "extensions/pi-hud/src/ui/surfaces/widget.ts",
         "extensions/pi-hud/types.ts"
       ],
       "registrations": {
@@ -277,15 +270,11 @@
           "agent_end",
           "agent_settled",
           "agent_start",
-          "message_end",
           "model_select",
-          "session_info_changed",
           "session_shutdown",
           "session_start",
-          "thinking_level_select",
           "tool_execution_end",
           "tool_execution_start",
-          "tool_result",
           "turn_start"
         ],
         "shortcuts": [],
@@ -295,8 +284,6 @@
         "markdownTransformers": 0,
         "uiSurfaces": [
           "notify",
-          "setFooter",
-          "setStatus",
           "setWidget"
         ]
       }

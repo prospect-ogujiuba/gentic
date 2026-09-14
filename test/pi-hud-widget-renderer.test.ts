@@ -39,8 +39,6 @@ function snapshot(overrides: Partial<HudSnapshot> = {}): HudSnapshot {
     },
     gitState: { status: "stale", generation: 1 },
     activeTools: [{ id: "tool-1", toolName: "testing" }],
-    toolCounts: {},
-    recentEvents: [],
     ...overrides,
   };
 }
@@ -50,9 +48,41 @@ test("minimum HUD widget renders its four textual groups in priority order", () 
   const labels = ["model claude-sonnet", "context warning", "git feature/轻量-hud", "activity testing"];
   for (const label of labels) assert.match(line, new RegExp(label));
   assert.ok(labels.map((label) => line.indexOf(label)).every((offset, index, offsets) => index === 0 || offset > offsets[index - 1]));
-  assert.match(line, /24% left/);
-  assert.match(line, /dirty/);
-  assert.match(line, /stale/);
+  assert.match(line, /context warning █{12}░{4} 76\.0k\/100\.0k 24% left/);
+  assert.match(line, /git feature\/轻量-hud\(\*\) · origin · ↓\(1\)\|↑\(2\) · unstaged \(2\) · staged \(1\) · stale/);
+});
+
+test("rich Git status preserves branch, sync, divergence, and working-tree detail", () => {
+  const line = renderHudWidgetLines(snapshot({ git: {
+    branch: "master",
+    dirty: true,
+    stagedCount: 0,
+    unstagedCount: 23,
+    untrackedCount: 3,
+    upstream: "origin/master",
+    remoteName: "origin",
+    aheadCount: 0,
+    behindCount: 0,
+  }, gitState: { status: "fresh", generation: 1 } }), plainTheme, 160).join("\n");
+  assert.match(line, /git master\(\*\) · origin · synced · ↓\(0\)\|↑\(0\) · unstaged \(23\) · untracked \(3\)/);
+});
+
+test("medium widths preserve the context bar in a compact two-line widget", () => {
+  const lines = renderHudWidgetLines(snapshot(), plainTheme, 120);
+  assert.equal(lines.length, 2);
+  assert.match(lines[0], /model claude-sonnet.*context warning █{12}░{4} 76\.0k\/100\.0k 24% left/);
+  assert.match(lines[1], /git feature\/轻量-hud.*activity testing/);
+  assert.ok(lines.every((line) => visibleWidth(line) <= 120));
+});
+
+test("narrow widths retain all four groups without dangling separators", () => {
+  const lines = renderHudWidgetLines(snapshot(), plainTheme, 40);
+  const text = lines.join("\n");
+  assert.match(text, /m claude-sonnet/);
+  assert.match(text, /ctx warning/);
+  assert.match(text, /git feature\/轻量-hud/);
+  assert.match(text, /act testing/);
+  assert.ok(lines.every((line) => !/·\s*$/.test(line)));
 });
 
 test("minimum HUD widget is pure, deterministic, and width-safe for ANSI and Unicode", () => {

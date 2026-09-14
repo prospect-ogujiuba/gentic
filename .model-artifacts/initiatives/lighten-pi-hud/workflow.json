@@ -1,11 +1,10 @@
 {
   "version": 1,
   "topic": "lighten-pi-hud",
-  "revision": 15,
-  "status": "active",
+  "revision": 38,
+  "status": "complete",
   "goal": "After lighten-pi-context completes, rebuild pi-hud as a compact optional widget using native Pi state and the lightweight context adapter.",
   "plan": "Do not start this workflow until lighten-pi-context is complete. Keep Pi native footer authoritative and remove duplicate runtime services.",
-  "activeTask": "T3",
   "tasks": [
     {
       "id": "T1",
@@ -137,7 +136,7 @@
     {
       "id": "T3",
       "title": "Wire bounded native-state refresh",
-      "status": "active",
+      "status": "complete",
       "dependsOn": [
         "T2"
       ],
@@ -155,20 +154,84 @@
         "performance": "Refresh frequency and work must remain bounded."
       },
       "assessmentStatus": "assessed",
-      "verification": [],
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "--test-reporter=dot",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-context-hud-adapter.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check:performance"
+          ]
+        }
+      ],
       "verificationCheckpoint": {
-        "revision": 15,
-        "at": "2026-09-14T11:12:46.591Z",
+        "revision": 17,
+        "at": "2026-09-14T11:16:05.950Z",
         "sessionId": "01a09f3b-aca7-73ad-8a9c-4e4d433ac810",
-        "branchLength": 100
+        "branchLength": 135
       },
-      "evidence": [],
-      "evidenceLinks": []
+      "evidence": [
+        {
+          "command": "node --experimental-strip-types --test --test-reporter=dot test/pi-hud-native-widget-wiring.test.ts test/pi-hud-snapshot-service.test.ts test/pi-context-hud-adapter.test.ts",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T11:16:10.114Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_xTeyjBZk489QItD2H1ErJffC|fc_0a81ee42985bfe7d016aa7d778691487d284daf58bfdb91b42",
+            "workflowRevision": 17,
+            "sessionId": "01a09f3b-aca7-73ad-8a9c-4e4d433ac810"
+          }
+        },
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T11:16:20.881Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_OOrmXtIGppo9yyO93Jx22W9M|fc_0a81ee42985bfe7d016aa7d780abe487d2879fe0c66304a050",
+            "workflowRevision": 18,
+            "sessionId": "01a09f3b-aca7-73ad-8a9c-4e4d433ac810"
+          }
+        },
+        {
+          "command": "npm run check:performance",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T11:16:28.523Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_gA3ihVXGKSNmHr8mwzM9FOVZ|fc_0a81ee42985bfe7d016aa7d78aad0887d2ab2fed5353bda3e9",
+            "workflowRevision": 19,
+            "sessionId": "01a09f3b-aca7-73ad-8a9c-4e4d433ac810"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T11:16:35.543Z"
     },
     {
       "id": "T4",
       "title": "Remove footer replacement and redundant services",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "T3"
       ],
@@ -185,14 +248,126 @@
         "performance": "Removing redundant services reduces background work."
       },
       "assessmentStatus": "assessed",
-      "verification": [],
-      "evidence": [],
-      "evidenceLinks": []
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "--test-reporter=dot",
+            "test/pi-hud-legacy-removal.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-lifecycle.test.ts"
+          ]
+        },
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "--test-reporter=dot",
+            "test/pi-hud-widget-renderer.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-snapshot-service.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check:performance"
+          ]
+        }
+      ],
+      "verificationCheckpoint": {
+        "revision": 24,
+        "at": "2026-09-14T11:23:11.684Z",
+        "sessionId": "01a09f3b-aca7-73ad-8a9c-4e4d433ac810",
+        "branchLength": 205
+      },
+      "evidence": [
+        {
+          "command": "node --experimental-strip-types --test --test-reporter=dot test/pi-hud-legacy-removal.test.ts test/pi-hud-mode-contract.test.ts test/pi-hud-lifecycle.test.ts",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T11:23:17.091Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_XnFItXF3XJzvn3qtr2GVugf2|fc_0a81ee42985bfe7d016aa7d922a70c87d2a16e0b2022f0f30b",
+            "workflowRevision": 24,
+            "sessionId": "01a09f3b-aca7-73ad-8a9c-4e4d433ac810"
+          }
+        },
+        {
+          "command": "node --experimental-strip-types --test --test-reporter=dot test/pi-hud-widget-renderer.test.ts test/pi-hud-native-widget-wiring.test.ts test/pi-hud-snapshot-service.test.ts",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T11:23:29.045Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_5dhgohWULCWntxJg71PxGW42|fc_0a81ee42985bfe7d016aa7d92f447c87d29f4b6074db63df62",
+            "workflowRevision": 25,
+            "sessionId": "01a09f3b-aca7-73ad-8a9c-4e4d433ac810"
+          }
+        },
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T11:23:40.179Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_aFfJ9pXPSMIKcUKmGIaQGKer|fc_0a81ee42985bfe7d016aa7d937bfa487d2b52b50193c45cd34",
+            "workflowRevision": 26,
+            "sessionId": "01a09f3b-aca7-73ad-8a9c-4e4d433ac810"
+          }
+        },
+        {
+          "command": "npm run check",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T11:23:47.747Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_QVzlltSCi9hEd0pfdzOelfWS|fc_0a81ee42985bfe7d016aa7d942154087d2b236b783665293c0",
+            "workflowRevision": 27,
+            "sessionId": "01a09f3b-aca7-73ad-8a9c-4e4d433ac810"
+          }
+        },
+        {
+          "command": "npm run check:performance",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T11:23:54.189Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_DfuCIZVGeIOos2OvIoTEUCUT|fc_0a81ee42985bfe7d016aa7d94894ec87d2aab743ca345074a3",
+            "workflowRevision": 28,
+            "sessionId": "01a09f3b-aca7-73ad-8a9c-4e4d433ac810"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T11:23:59.443Z"
     },
     {
       "id": "T5",
       "title": "Qualify modes, cleanup, and responsiveness",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "T4"
       ],
@@ -213,10 +388,79 @@
         "accessibility-ux": "All terminal widths and display modes must remain usable."
       },
       "assessmentStatus": "assessed",
-      "verification": [],
-      "evidence": [],
-      "evidenceLinks": []
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "--test-reporter=dot",
+            "test/pi-hud*.test.ts",
+            "test/pi-context-hud-adapter.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check:performance"
+          ]
+        }
+      ],
+      "verificationCheckpoint": {
+        "revision": 33,
+        "at": "2026-09-14T11:34:24.900Z",
+        "sessionId": "01a09f3b-aca7-73ad-8a9c-4e4d433ac810",
+        "branchLength": 241
+      },
+      "evidence": [
+        {
+          "command": "node --experimental-strip-types --test --test-reporter=dot test/pi-hud*.test.ts test/pi-context-hud-adapter.test.ts",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T11:34:32.214Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_HXiLvzXpXN5yWWYS788Y1Q7T|fc_0a81ee42985bfe7d016aa7dbc6345487d289fd71ff8ad5e0c4",
+            "workflowRevision": 33,
+            "sessionId": "01a09f3b-aca7-73ad-8a9c-4e4d433ac810"
+          }
+        },
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T11:34:45.127Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_oRkfHaRwiJYM9JcBwqtc5IMy|fc_0a81ee42985bfe7d016aa7dbcfe6e487d2af013f00f90ae1b2",
+            "workflowRevision": 34,
+            "sessionId": "01a09f3b-aca7-73ad-8a9c-4e4d433ac810"
+          }
+        },
+        {
+          "command": "npm run check:performance",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T11:34:54.030Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_ME4w48P27FdkYRnSmIIE71WF|fc_0a81ee42985bfe7d016aa7dbdc5bf087d2aaba820a3d923613",
+            "workflowRevision": 35,
+            "sessionId": "01a09f3b-aca7-73ad-8a9c-4e4d433ac810"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T11:35:02.047Z"
     }
   ],
-  "updatedAt": "2026-09-14T11:12:46.591Z"
+  "updatedAt": "2026-09-14T11:35:02.047Z"
 }

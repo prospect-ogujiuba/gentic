@@ -17,15 +17,11 @@ function readUsageSnapshot(ctx: SnapshotContext): UsageSnapshot | undefined {
   const tokens = numberOrUndefined(usage?.tokens);
   const promptTokens = tokens === 0 ? estimateSystemPromptTokens(ctx) : undefined;
   const contextTokens = promptTokens && promptTokens > (tokens ?? 0) ? promptTokens : tokens;
-  const contextWindow = usage?.contextWindow;
-  const contextPct = contextTokens !== undefined && contextWindow && contextWindow > 0 ? (contextTokens / contextWindow) * 100 : numberOrUndefined(usage?.percent);
-  return usage || state.usage ? {
-    ...state.usage,
-    totalTokens: contextTokens ?? state.usage?.totalTokens,
-    contextTokens,
-    contextWindow,
-    contextPct,
-  } : undefined;
+  const contextWindow = numberOrUndefined(usage?.contextWindow);
+  const contextPct = contextTokens !== undefined && contextWindow && contextWindow > 0
+    ? (contextTokens / contextWindow) * 100
+    : numberOrUndefined(usage?.percent);
+  return usage ? { contextTokens, contextWindow, contextPct } : undefined;
 }
 
 export function withLiveUsage(snapshot: HudSnapshot, ctx: SnapshotContext): HudSnapshot {
@@ -43,12 +39,10 @@ export function createSnapshot(ctx: SnapshotContext): HudSnapshot {
       getContextUsage: () => ctx.getContextUsage?.(),
       getSystemPromptOptions: () => ({ cwd: ctx.cwd }),
       sessionManager: ctx.sessionManager ?? { getBranch: () => [] },
-    } as never), { topContributors: 3 }),
+    } as never), { topContributors: 0 }),
     git: gitState.snapshot,
     gitState,
     activeTools: state.activeTools,
-    toolCounts: state.toolCounts,
-    recentEvents: state.recentEvents,
-    thinkingLevel: state.thinkingLevel,
+    activity: state.agent,
   };
 }

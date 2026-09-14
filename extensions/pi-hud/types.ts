@@ -1,9 +1,8 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { PiContextHudSnapshot } from "../pi-context/src/app/index.ts";
 
-export type HudComponentId = "provider" | "model" | "context" | "git" | "session" | "tools" | "events" | "worktime";
 export type AgentState = "idle" | "thinking" | "reading" | "editing" | "writing" | "executing" | "testing";
-export type DisplayMode = "off" | "widget-first" | "footer";
+export type DisplayMode = "off" | "widget-first";
 
 export type Theme = {
   fg(color: any, text: string): string;
@@ -13,7 +12,6 @@ export type Theme = {
 export interface ActiveTool {
   id: string;
   toolName: string;
-  args?: Record<string, unknown>;
 }
 
 export interface GitStatus {
@@ -35,17 +33,10 @@ export interface GitSnapshotState {
   generation: number;
   snapshot?: GitStatus;
   updatedAt?: number;
-  error?: {
-    code: string;
-    message: string;
-  };
+  error?: { code: string; message: string };
 }
 
 export interface UsageSnapshot {
-  input?: number;
-  output?: number;
-  cost?: number;
-  totalTokens?: number;
   contextTokens?: number;
   contextWindow?: number;
   contextPct?: number;
@@ -59,37 +50,14 @@ export interface HudSnapshot {
   git?: GitStatus;
   gitState?: GitSnapshotState;
   activeTools: ActiveTool[];
-  toolCounts: Record<string, number>;
-  recentEvents: string[];
-  thinkingLevel?: string;
   activity?: AgentState;
-}
-
-export interface HudModalHandle {
-  update(snapshot: HudSnapshot): void;
-  dispose(): void;
 }
 
 export interface HudState {
   displayMode: DisplayMode;
-  components: Record<HudComponentId, boolean>;
   agent: AgentState;
-  turn: number;
-  recentEvents: string[];
   activeTools: ActiveTool[];
-  toolCounts: Record<string, number>;
-  successCalls: number;
-  errorCalls: number;
-  warningCalls: number;
-  usage?: UsageSnapshot;
-  usageMessageKeys: Set<string>;
-  thinkingLevel?: string;
-  workTimer: {
-    active: boolean;
-    startedAt?: number;
-    elapsedMs: number;
-    lastRunMs: number;
-  };
 }
 
-export type SnapshotContext = Pick<ExtensionContext, "cwd" | "model" | "getContextUsage" | "getSystemPrompt"> & Partial<Pick<ExtensionContext, "sessionManager">>;
+export type SnapshotContext = Pick<ExtensionContext, "cwd" | "model" | "getContextUsage" | "getSystemPrompt">
+  & Partial<Pick<ExtensionContext, "sessionManager">>;

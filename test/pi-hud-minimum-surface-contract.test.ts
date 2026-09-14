@@ -19,6 +19,8 @@ test("the minimum HUD surface is gated, bounded, and non-disruptive", () => {
   for (const group of ["Model", "Context pressure", "Git summary", "Activity"]) {
     assert.ok(spec.includes(`**${group}**`), `missing ${group} group`);
   }
+  assert.match(spec, /compact visual context bar/);
+  assert.match(spec, /remote\/sync, ahead\/behind, and staged\/unstaged\/untracked/);
   assert.match(spec, /native footer remains visible and authoritative/);
   for (const exclusion of ["modal or overlay ui", "work timers", "event or tool history", "custom footer"]) {
     assert.ok(lower.includes(exclusion), `missing ${exclusion} exclusion`);

@@ -11,8 +11,8 @@ pi-hud owns one optional widget, registered only under the `pi-hud` widget id. U
 The widget contains exactly four information groups, in this priority order:
 
 1. **Model** — the active model's concise display identifier.
-2. **Context pressure** — a textual pressure state plus bounded percentage/remaining capacity when available from pi-context.
-3. **Git summary** — concise branch and dirty/ahead/behind state from Pi-native or shared bounded state.
+2. **Context pressure** — a textual pressure state plus the compact visual context bar, used/window tokens, and bounded percentage/remaining capacity when available from pi-context.
+3. **Git summary** — concise but rich branch, remote/sync, ahead/behind, and staged/unstaged/untracked state from Pi-native or shared bounded state.
 4. **Activity** — the current coarse activity state, such as `idle`, `thinking`, or an active tool category; no history is retained.
 
 Unavailable values use a short explicit marker such as `unknown` or `unavailable`; stale Git data is labeled `stale`. Errors degrade the affected group without hiding the other groups or emitting repeated notifications.
