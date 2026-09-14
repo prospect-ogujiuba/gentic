@@ -1,5 +1,0 @@
-node_modules/
-dist/
-*.tgz
-*.zip
-.pi/marathon.json.local
