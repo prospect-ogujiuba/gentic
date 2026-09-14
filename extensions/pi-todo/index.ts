@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   activeTodo,
   ensureActiveTodoForToolCall,
@@ -15,10 +15,16 @@ import {
 import { loadEffectiveTodoConfig } from "./src/config.ts";
 import { decideToolPolicy } from "./src/domain/policy.ts";
 import { resetTodoSessionNameMemory } from "./src/pi/session-name.ts";
+import { hasActiveSweWorkflow } from "./src/pi/swe-ownership.ts";
 import { disposeTodoModal } from "./src/ui/modal.ts";
 import { todoToolParameters } from "./src/pi/schema.ts";
+import { registerTodoActivityProbe } from "../../src/lifecycle-coordination.ts";
 
 export default function piTodo(pi: ExtensionAPI): void {
+  registerTodoActivityProbe(async (ctx) => {
+    const todo = activeTodo(await todoState(pi, ctx as ExtensionContext));
+    return todo ? { id: todo.id, title: todo.title } : undefined;
+  });
   let todoExecutionQueue: Promise<void> = Promise.resolve();
   pi.on("session_start", async (event, ctx) => {
     if (event.reason !== "reload") {
@@ -38,7 +44,17 @@ export default function piTodo(pi: ExtensionAPI): void {
   pi.on("turn_end", async (_event, ctx) => checkTodoDocketBeforeFinalMessage(pi, ctx));
   pi.on("agent_settled", async (_event, ctx) => checkTodoDocketAtAgentEnd(pi, ctx));
   pi.on("tool_call", async (event, ctx) => {
-    if (event.toolName === "todo") return;
+    // pi-swe is the sole lifecycle authority from workflow activation through completion.
+    // Inspection and cleanup of pre-existing todo work remain available, but new competing
+    // todo lifecycle work cannot be activated while an assessed SWE task owns execution.
+    const sweActive = hasActiveSweWorkflow(ctx.cwd);
+    if (event.toolName === "todo") {
+      const action = typeof event.input?.action === "string" ? event.input.action : "";
+      const allowedDuringSwe = ["list", "get", "history", "graph", "attach_evidence", "finish", "complete", "block", "cancel", "verify"].includes(action);
+      if (sweActive && !allowedDuringSwe) return { block: true, reason: "pi-swe lifecycle ownership: pause or complete the active SWE task before creating, starting, or restructuring todo work" };
+      return;
+    }
+    if (event.toolName === "swe_workflow" || sweActive) return;
     const state = await todoState(pi, ctx);
     if (activeTodo(state)) return;
 
@@ -68,7 +84,7 @@ export default function piTodo(pi: ExtensionAPI): void {
     description:
       "Unified Gentic todo ledger tool with create/create_organized/update/split/split_check/begin/claim/start/block/complete/finish/attach_evidence/create_artifact/note_artifact/record_artifact/verify/reopen/list/get/history/graph actions.",
     promptSnippet:
-      "Use todo first. If no active todo, call todo action=begin; it deterministically returns active work or starts the next ready todo. If begin reports no ready todo for a new user request, create one with a concise verb-plus-outcome title derived from the user's intent, then start it before using other tools. Never use a tool name or literal shell command as the title. Prefer finish over complete when ending active work. Prefer create_artifact/note_artifact for generated notes, reports, plans, logs, TODO files, and artifacts so pi-todo creates a valid .model-artifacts/initiatives/<topic>/<kind>/ path and records evidence automatically. Use record_artifact only for files that already exist. Legacy kind-first topics are read-only until explicitly migrated, and mixed v1/v2 topics block writes. For TODO/planning artifacts use kind=todo with category such as pi-todo, pi-swe, or gentic and subcategory for phase sets like pi-swe-phases.",
+      "Use todo first unless pi-swe has an active assessed workflow task, in which case pi-swe owns the lifecycle and todo must not be started. If no active todo, call todo action=begin; it deterministically returns active work or starts the next ready todo. If begin reports no ready todo for a new user request, create one with a concise verb-plus-outcome title derived from the user's intent, then start it before using other tools. Never use a tool name or literal shell command as the title. Prefer finish over complete when ending active work. Prefer create_artifact/note_artifact for generated notes, reports, plans, logs, TODO files, and artifacts so pi-todo creates a valid .model-artifacts/initiatives/<topic>/<kind>/ path and records evidence automatically. Use record_artifact only for files that already exist. Legacy kind-first topics are read-only until explicitly migrated, and mixed v1/v2 topics block writes. For TODO/planning artifacts use kind=todo with category such as pi-todo, pi-swe, or gentic and subcategory for phase sets like pi-swe-phases.",
     parameters: todoToolParameters,
     executionMode: "sequential",
     async execute(_id, params, signal, onUpdate, ctx) {

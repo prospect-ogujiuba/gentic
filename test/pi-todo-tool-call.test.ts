@@ -81,6 +81,21 @@ test("todo tool uses Google-compatible enums and serializes concurrent mutation 
   });
 });
 
+test("tool_call hook yields lifecycle ownership to an active pi-swe workflow", async () => {
+  await withTempProject(async (cwd) => {
+    const { handlers, ctx } = setupPiTodo(cwd);
+    const hook = handlers.get("tool_call") as ToolCallHandler;
+    assert.equal(await hook({ type: "tool_call", toolName: "swe_workflow" }, ctx), undefined);
+    const directory = join(cwd, ".model-artifacts/initiatives/demo");
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, "workflow.json"), JSON.stringify({ version: 1, topic: "demo", goal: "Demo", revision: 2, updatedAt: new Date().toISOString(), status: "active", activeTask: "T1", tasks: [{ id: "T1", status: "active", approaches: [], approachReasons: {}, assessmentStatus: "assessed", verificationCheckpoint: { revision: 2, at: new Date().toISOString() } }] }));
+    assert.equal(await hook({ type: "tool_call", toolName: "write" }, ctx), undefined);
+    const todoCreate = await hook({ type: "tool_call", toolName: "todo", input: { action: "create" } }, ctx) as { block?: boolean };
+    assert.equal(todoCreate.block, true);
+    assert.equal(await hook({ type: "tool_call", toolName: "todo", input: { action: "list" } }, ctx), undefined);
+  });
+});
+
 test("tool_call hook allows configured tools without an active todo", async () => {
   await withTempProject(async (cwd) => {
     await writeProjectConfig(cwd, { enforcement: { rules: [{ pattern: "read", action: "allow" }] } });

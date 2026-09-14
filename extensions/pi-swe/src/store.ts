@@ -18,6 +18,11 @@ export function legacyManifestPath(topic: string): string {
   return `.model-artifacts/initiatives/${topic}/specs/manifest.json`;
 }
 
+export function hasLegacyInitiative(cwd: string, topic: string): boolean {
+  const root = safeRoot(cwd);
+  return existsSync(safePath(root, legacyManifestPath(topic)));
+}
+
 export function listWorkflowTopics(cwd: string): string[] {
   const root = safeRoot(cwd);
   const initiatives = resolve(root, ".model-artifacts/initiatives");
@@ -38,6 +43,14 @@ export function listWorkflowTopics(cwd: string): string[] {
   }
   walk(initiatives, []);
   return [...new Set(topics)].sort().slice(0, MAX_TOPICS);
+}
+
+export function activeWorkflowTopics(cwd: string, exceptTopic?: string): string[] {
+  return listWorkflowTopics(cwd).filter((topic) => {
+    if (topic === exceptTopic) return false;
+    const workflow = loadWorkflow(cwd, topic)?.workflow;
+    return workflow?.status === "active" && !!workflow.activeTask;
+  });
 }
 
 export function resolveTopic(cwd: string, explicit?: string): string {
@@ -87,6 +100,11 @@ function importLegacyWorkflow(root: string, topic: string, manifestPath: string)
   const activePlan = record(manifest.activePlan) ? manifest.activePlan : undefined;
   const contractRoot = activePlan && typeof activePlan.contractRoot === "string" ? activePlan.contractRoot : undefined;
   if (!contractRoot) throw new Error("legacy initiative has no active contract root");
+  const expectedRoot = `.model-artifacts/initiatives/${topic}/plans/revisions`;
+  if (!new RegExp(`^${escapeRegExp(expectedRoot)}/r[1-9][0-9]*$`).test(contractRoot)) {
+    throw new Error(`legacy contract root must be a revision beneath ${expectedRoot}`);
+  }
+  const contractRootPath = safePath(root, contractRoot);
   const indexPath = safePath(root, `${contractRoot}/contracts.json`);
   const index = readJson(indexPath);
   if (!record(index) || !Array.isArray(index.contracts)) throw new Error("legacy contract index is malformed");
@@ -94,20 +112,66 @@ function importLegacyWorkflow(root: string, topic: string, manifestPath: string)
   const parentIds = new Set(rawContracts.map((item) => typeof item.parentId === "string" ? item.parentId : undefined).filter(Boolean));
   const executable = rawContracts.filter((item) => item.kind === "subphase" || !parentIds.has(item.id as string));
   if (!executable.length) throw new Error("legacy initiative has no executable contracts");
-  const active = record(manifest.activeContract) && typeof manifest.activeContract.id === "string" ? manifest.activeContract.id : undefined;
+  const activeContract = record(manifest.activeContract) ? manifest.activeContract : undefined;
+  const active = typeof activeContract?.id === "string" ? activeContract.id : undefined;
+  const completionRecords = record(index.completionRecords) ? index.completionRecords : {};
   const tasks: WorkflowTask[] = executable.map((item) => {
     const id = String(item.id ?? "");
-    const status = legacyStatus(item.status, id === active);
     const facts = record(index.contractFacts) && record(index.contractFacts[id]) ? index.contractFacts[id] as Record<string, unknown> : undefined;
+    const status = legacyStatus(item.status, id === active, facts);
+    const contractPath = typeof item.path === "string" ? item.path : typeof item.canonicalPath === "string" ? item.canonicalPath : undefined;
+    const document = contractPath ? readLegacyContract(root, contractRootPath, contractPath) : undefined;
+    const acceptance = document ? markdownSectionItems(document, "acceptance criteria") : [];
+    const verification = document ? verificationCommands(document) : [];
+    if (facts?.acceptanceDefined === true && !acceptance.length) throw new Error(`legacy contract ${id} acceptance criteria could not be imported`);
+    if (facts?.verificationDefined === true && !verification.length) throw new Error(`legacy contract ${id} verification commands could not be imported`);
+    const completion = record(completionRecords[id]) ? completionRecords[id] as Record<string, unknown> : undefined;
+    const completionVerification = completion && record(completion.verification) ? completion.verification : undefined;
+    const completionReview = completion && record(completion.review) ? completion.review : undefined;
+    const completionNextState = completion && record(completion.nextState) ? completion.nextState : undefined;
+    const evidenceLinks = uniqueStrings([
+      ...pathValues(item.evidence),
+      ...pathValues(completion?.evidence),
+      completionVerification?.path,
+      completionReview?.path,
+    ]);
+    const blockedReason = legacyBlocker(item, id === active ? activeContract : undefined);
+    const provenance = contractPath ? {
+      kind: "pi-swe-v2-contract" as const,
+      contractPath,
+      ...(typeof item.contentHash === "string" ? { contentHash: item.contentHash } : {}),
+      ...(completion ? { completion: {
+        ...(Number.isSafeInteger(completion.schemaVersion) ? { schemaVersion: completion.schemaVersion as number } : {}),
+        ...(typeof completion.requestId === "string" ? { requestId: completion.requestId } : {}),
+        ...(typeof completion.completedAt === "string" ? { completedAt: completion.completedAt } : {}),
+        ...(Number.isSafeInteger(completion.planRevision) ? { planRevision: completion.planRevision as number } : {}),
+        ...(typeof completion.contractPath === "string" ? { contractPath: completion.contractPath } : {}),
+        ...(typeof completion.preCompletionContentHash === "string" ? { preCompletionContentHash: completion.preCompletionContentHash } : {}),
+        ...(typeof completionVerification?.path === "string" ? { verificationPath: completionVerification.path } : {}),
+        ...(typeof completionVerification?.contentHash === "string" ? { verificationContentHash: completionVerification.contentHash } : {}),
+        ...(typeof completionReview?.path === "string" ? { reviewPath: completionReview.path } : {}),
+        ...(typeof completionReview?.contentHash === "string" ? { reviewContentHash: completionReview.contentHash } : {}),
+        ...(typeof completionReview?.decision === "string" ? { reviewDecision: completionReview.decision } : {}),
+        ...(typeof completionNextState?.initiativeState === "string" ? { nextInitiativeState: completionNextState.initiativeState } : {}),
+        ...(completionNextState?.activeContractId === null || typeof completionNextState?.activeContractId === "string" ? { nextActiveContractId: completionNextState.activeContractId as string | null } : {}),
+        ...(Array.isArray(completionNextState?.readyContractIds) ? { nextReadyContractIds: uniqueStrings(completionNextState.readyContractIds) } : {}),
+      } } : {}),
+    } : undefined;
     return {
       id,
-      title: typeof item.title === "string" ? item.title : id,
+      title: document ? markdownTitle(document, id) : typeof item.title === "string" ? item.title : id,
       status,
-      dependsOn: Array.isArray(item.dependsOn) ? item.dependsOn.filter((value): value is string => typeof value === "string" && executable.some((candidate) => candidate.id === value)) : [],
-      acceptance: facts?.acceptanceDefined === true ? ["Preserve the acceptance criteria in the linked legacy contract."] : [],
-      verification: [],
+      dependsOn: (Array.isArray(item.dependsOn) ? item.dependsOn : Array.isArray(item.dependencies) ? item.dependencies : []).filter((value): value is string => typeof value === "string" && executable.some((candidate) => candidate.id === value)),
+      acceptance,
+      approaches: [],
+      approachReasons: {},
+      assessmentStatus: "unassessed",
+      verification,
       evidence: [],
-      ...(status === "blocked" ? { blockedReason: "Imported legacy blocker; inspect the linked contract." } : {}),
+      evidenceLinks,
+      ...(blockedReason ? { blockedReason } : {}),
+      ...(typeof completion?.completedAt === "string" ? { completedAt: completion.completedAt } : {}),
+      ...(provenance ? { importedFrom: provenance } : {}),
     };
   });
   const now = typeof manifest.updatedAt === "string" ? manifest.updatedAt : new Date().toISOString();
@@ -123,7 +187,7 @@ function importLegacyWorkflow(root: string, topic: string, manifestPath: string)
   const activeTask = tasks.find((task) => task.status === "active")?.id;
   return {
     ...workflow,
-    status: allDone ? "complete" : activeTask ? "active" : hasBlocked ? "blocked" : "draft",
+    status: allDone ? "complete" : activeTask ? "paused" : hasBlocked ? "blocked" : "draft",
     ...(activeTask ? { activeTask } : {}),
     importedFrom: {
       kind: "pi-swe-v2",
@@ -133,9 +197,65 @@ function importLegacyWorkflow(root: string, topic: string, manifestPath: string)
   };
 }
 
-function legacyStatus(value: unknown, active: boolean): TaskStatus {
-  if (value === "complete") return "complete";
-  if (value === "deferred") return "deferred";
+function readLegacyContract(root: string, contractRoot: string, path: string): string {
+  const absolute = safePath(root, path);
+  const rel = relative(contractRoot, absolute);
+  if (!rel || rel === ".." || rel.startsWith(`..${sep}`)) throw new Error(`legacy contract path is outside its contract revision: ${path}`);
+  if (!existsSync(absolute)) throw new Error(`legacy contract file is missing: ${path}`);
+  if (lstatSync(absolute).isSymbolicLink()) throw new Error(`legacy contract file must not be a symlink: ${path}`);
+  const stat = statSync(absolute);
+  if (!stat.isFile() || stat.size > MAX_FILE_BYTES) throw new Error(`legacy contract file is not a bounded regular file: ${path}`);
+  return readFileSync(absolute, "utf8");
+}
+
+function markdownTitle(markdown: string, fallback: string): string {
+  const heading = markdown.match(/^#\s+(.+)$/m)?.[1]?.trim();
+  if (!heading) return fallback;
+  return heading.replace(new RegExp(`^${escapeRegExp(fallback)}\\s*:\\s*`, "i"), "").trim() || fallback;
+}
+
+function markdownSection(markdown: string, heading: string): string {
+  const lines = markdown.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.trim().toLowerCase() === `## ${heading.toLowerCase()}`);
+  if (start < 0) return "";
+  const endOffset = lines.slice(start + 1).findIndex((line) => /^##\s+/.test(line));
+  const end = endOffset < 0 ? lines.length : start + 1 + endOffset;
+  return lines.slice(start + 1, end).join("\n");
+}
+
+function markdownSectionItems(markdown: string, heading: string): string[] {
+  return uniqueStrings(markdownSection(markdown, heading).split("\n").map((line) => line.match(/^\s*(?:[-*]|\d+[.)])\s+(.*)$/)?.[1]));
+}
+
+function verificationCommands(markdown: string): Array<{ command: string; args: string[] }> {
+  const section = markdownSection(markdown, "TDD/verification") || markdownSection(markdown, "verification");
+  const inline = [...section.matchAll(/`([^`\n]+)`/g)].map((match) => match[1]!.trim());
+  const fenced = [...section.matchAll(/```(?:bash|sh|shell)?\s*\n([\s\S]*?)```/gi)].flatMap((match) => match[1]!.split("\n").map((line) => line.trim()));
+  const commands = [...inline, ...fenced].filter((value) => /^(?:npm|pnpm|yarn|bun|node|deno|python|pytest|cargo|go|make|\.\/)/.test(value));
+  return uniqueStrings(commands).map((command) => ({ command, args: [] }));
+}
+
+function legacyBlocker(item: Record<string, unknown>, active?: Record<string, unknown>): string | undefined {
+  for (const value of [item.blockedReason, item.blocker, active?.blockedReason, active?.blocker]) if (typeof value === "string" && value.trim()) return value.trim();
+  const blockers = uniqueStrings([...(Array.isArray(item.blockers) ? item.blockers : []), ...(Array.isArray(active?.blockers) ? active.blockers : [])]);
+  return blockers.length ? blockers.join("; ") : item.status === "blocked" ? "Imported legacy blocker; inspect the linked contract." : undefined;
+}
+
+function pathValues(value: unknown): unknown[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => typeof item === "string" ? [item] : record(item) ? [item.path] : []);
+}
+
+function uniqueStrings(values: unknown[]): string[] {
+  return [...new Set(values.filter((value): value is string => typeof value === "string").map((value) => value.trim()).filter(Boolean))];
+}
+
+function escapeRegExp(value: string): string { return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+function legacyStatus(value: unknown, active: boolean, facts?: Record<string, unknown>): TaskStatus {
+  const deferral = record(facts?.deferral) ? facts.deferral : undefined;
+  if (value === "deferred" || deferral?.approved === true) return "deferred";
+  if (value === "complete" || value === "completed") return "complete";
   if (value === "blocked") return "blocked";
   return active ? "active" : "pending";
 }

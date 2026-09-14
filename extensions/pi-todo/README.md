@@ -1,6 +1,6 @@
 # pi-todo
 
-pi-todo is the Gentic todo ledger extension. It keeps agents on durable, claimable work and blocks non-todo tools until work is active.
+pi-todo is the Gentic todo ledger extension. It keeps agents on durable, claimable work and blocks non-todo tools until work is active. When pi-swe is also enabled, the extensions use the explicit ownership contract documented under [pi-swe interoperability](#pi-swe-interoperability).
 
 Deterministic agent defaults:
 
@@ -32,7 +32,7 @@ Runtime persistence uses `gentic.todo.event` envelopes with `version: 1`. Legacy
 
 ## Interaction and reminder policy
 
-Todo enforcement is unchanged: mutating or otherwise configured tools still require active work. Display hooks only reconstruct state; they never reconcile, transition, create, or close ledger entries.
+Outside an active assessed pi-swe task, todo enforcement is unchanged: mutating or otherwise configured tools still require active work. Display hooks only reconstruct state; they never reconcile, transition, create, or close ledger entries.
 
 | Pi mode | Persistent display | Final reminder | `/todo open` |
 |---|---|---|---|
@@ -113,7 +113,18 @@ pi-todo reads `~/.pi/agent/pi-todo.json` and project `.pi/pi-todo.json`, with pr
 
 Set `docket.showCompletedFocus` to `false` to hide the last completed task chip once all tasks are closed. The default is `true`, so the docket keeps showing the latest completed work for handoff visibility.
 
-`enforcement.defaultAction` is `requireTodo` by default, preserving strict behavior for mutating, executable, and unknown tools. The `todo` tool is always allowed so agents can start work. Add exact `enforcement.rules` to allow low-risk inspection tools before a todo is active: built-in tools such as `read`, safe context lookup/status tools such as `ctx_search`, `ctx_stats`, `ctx_doctor` and their `context_mode_ctx_*` equivalents, and third-party/search tools such as `web_search` or `code_search`. `enforcement.bashReadonlyAllowlist` is evaluated only for the `bash` tool and allows conservative one-line exploratory command chains before a todo is active. It rejects redirects, command substitution, shell pipes/backgrounding, unknown commands, mutating `find` actions, git write subcommands, and scripts. Set it to `[]` to disable pre-todo bash entirely. Keep mutating tools (`edit`, `write`), general command/code execution (`bash`, `ctx_execute`, `ctx_execute_file`, `context_mode_ctx_execute`, `context_mode_ctx_execute_file`, deploy tools), and broad third-party patterns at `requireTodo`; for non-bash rules, explicit `requireTodo` rules always take precedence over `allow` rules, even when the `allow` rule is more specific.
+`enforcement.defaultAction` is `requireTodo` by default, preserving strict behavior for mutating, executable, and unknown tools. The `swe_workflow` tool and the `todo` tool outside SWE execution are always allowed so agents can start their respective work. Add exact `enforcement.rules` to allow low-risk inspection tools before a todo is active: built-in tools such as `read`, safe context lookup/status tools such as `ctx_search`, `ctx_stats`, `ctx_doctor` and their `context_mode_ctx_*` equivalents, and third-party/search tools such as `web_search` or `code_search`. `enforcement.bashReadonlyAllowlist` is evaluated only for the `bash` tool and allows conservative one-line exploratory command chains before a todo is active. It rejects redirects, command substitution, shell pipes/backgrounding, unknown commands, mutating `find` actions, git write subcommands, and scripts. Set it to `[]` to disable pre-todo bash entirely. Keep mutating tools (`edit`, `write`), general command/code execution (`bash`, `ctx_execute`, `ctx_execute_file`, `context_mode_ctx_execute`, `context_mode_ctx_execute_file`, deploy tools), and broad third-party patterns at `requireTodo`; for non-bash rules, explicit `requireTodo` rules always take precedence over `allow` rules, even when the `allow` rule is more specific.
+
+### pi-swe interoperability
+
+An assessed, active pi-swe task owns the implementation lifecycle. SWE activation is rejected while any todo is active, including activation through `/swe work`. While SWE owns the lifecycle:
+
+- implementation tools bypass pi-todo's guard-todo creation;
+- `todo` actions `list`, `get`, `history`, and `graph` remain available for inspection;
+- `attach_evidence`, `finish`, `complete`, `block`, `cancel`, and `verify` remain available to clean up pre-existing todo state; and
+- all other todo actions are blocked so they cannot create or activate competing work.
+
+Ownership ends when pi-swe is paused, blocked, or complete. Malformed, unassessed, or checkpoint-free workflow files never disable normal todo enforcement.
 
 ### Enforcement migration modes
 

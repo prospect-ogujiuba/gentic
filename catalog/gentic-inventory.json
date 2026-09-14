@@ -403,6 +403,7 @@
         "extensions/pi-todo/src/pi/schema.ts",
         "extensions/pi-todo/src/pi/session-name.ts",
         "extensions/pi-todo/src/pi/store.ts",
+        "extensions/pi-todo/src/pi/swe-ownership.ts",
         "extensions/pi-todo/src/ui/docket.ts",
         "extensions/pi-todo/src/ui/format.ts",
         "extensions/pi-todo/src/ui/modal.ts",

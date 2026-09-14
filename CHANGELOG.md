@@ -19,6 +19,7 @@ All notable Gentic changes are documented here. Versions follow the policy in `d
 - Catalog UX is one hierarchical `/catalog` command plus one compact `gentic_catalog` tool.
 - Anatomy declarations are optional handwritten records rather than generated requirements.
 - Primitive loading isolates invalid imports/config/triggers and reports status.
+- pi-swe and pi-todo now share explicit lifecycle ownership, required-all checkpointed verification, transparent per-task approach assessment, and guarded workflow activation.
 
 ## 0.1.0
 

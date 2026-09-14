@@ -1,19 +1,156 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gentic.dev/schemas/pi-swe/workflow.schema.json",
   "title": "pi-swe workflow",
   "type": "object",
   "required": ["version", "topic", "revision", "status", "goal", "tasks", "updatedAt"],
   "properties": {
     "version": { "const": 1 },
-    "topic": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*)*$" },
+    "topic": { "$ref": "#/$defs/topic" },
     "revision": { "type": "integer", "minimum": 1 },
     "status": { "enum": ["draft", "active", "paused", "blocked", "complete"] },
-    "goal": { "type": "string", "minLength": 1 },
-    "plan": { "type": "string" },
-    "activeTask": { "type": "string" },
-    "tasks": { "type": "array", "minItems": 1, "items": { "type": "object" } },
-    "updatedAt": { "type": "string" },
-    "importedFrom": { "type": "object" }
+    "goal": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "plan": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "activeTask": { "$ref": "#/$defs/taskId" },
+    "tasks": { "type": "array", "minItems": 1, "maxItems": 100, "items": { "$ref": "#/$defs/task" } },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "importedFrom": { "$ref": "#/$defs/workflowImport" }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "topic": {
+      "type": "string",
+      "maxLength": 256,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*)*$"
+    },
+    "taskId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    },
+    "approach": {
+      "enum": ["tdd", "diagnosis", "dsa", "security", "performance", "migration", "accessibility-ux", "operations"]
+    },
+    "approachReasons": {
+      "type": "object",
+      "properties": {
+        "tdd": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "diagnosis": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "dsa": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "security": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "performance": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "migration": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "accessibility-ux": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "operations": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      },
+      "additionalProperties": false
+    },
+    "verificationCheckpoint": {
+      "type": "object",
+      "required": ["revision", "at"],
+      "properties": {
+        "revision": { "type": "integer", "minimum": 1 },
+        "at": { "type": "string", "format": "date-time" },
+        "sessionId": { "type": "string", "minLength": 1 },
+        "branchLength": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "command": {
+      "type": "object",
+      "required": ["command", "args"],
+      "properties": {
+        "command": { "type": "string", "minLength": 1 },
+        "args": { "type": "array", "maxItems": 64, "items": { "type": "string", "maxLength": 512 } }
+      },
+      "additionalProperties": false
+    },
+    "evidenceSource": {
+      "type": "object",
+      "required": ["kind", "toolCallId", "workflowRevision"],
+      "properties": {
+        "kind": { "const": "bash-tool-result" },
+        "toolCallId": { "type": "string", "minLength": 1 },
+        "workflowRevision": { "type": "integer", "minimum": 1 },
+        "sessionId": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["command", "args", "exitCode", "at"],
+      "properties": {
+        "command": { "type": "string", "minLength": 1 },
+        "args": { "type": "array", "maxItems": 64, "items": { "type": "string", "maxLength": 512 } },
+        "exitCode": { "type": "integer" },
+        "at": { "type": "string", "format": "date-time" },
+        "source": { "$ref": "#/$defs/evidenceSource" }
+      },
+      "additionalProperties": false
+    },
+    "completionImport": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": { "type": "integer", "minimum": 1 },
+        "requestId": { "type": "string" },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "planRevision": { "type": "integer", "minimum": 1 },
+        "contractPath": { "type": "string" },
+        "preCompletionContentHash": { "type": "string" },
+        "verificationPath": { "type": "string" },
+        "verificationContentHash": { "type": "string" },
+        "reviewPath": { "type": "string" },
+        "reviewContentHash": { "type": "string" },
+        "reviewDecision": { "type": "string" },
+        "nextInitiativeState": { "type": "string" },
+        "nextActiveContractId": { "type": ["string", "null"] },
+        "nextReadyContractIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/taskId" } }
+      },
+      "additionalProperties": false
+    },
+    "taskImport": {
+      "type": "object",
+      "required": ["kind", "contractPath"],
+      "properties": {
+        "kind": { "const": "pi-swe-v2-contract" },
+        "contractPath": { "type": "string", "minLength": 1 },
+        "contentHash": { "type": "string", "minLength": 1 },
+        "completion": { "$ref": "#/$defs/completionImport" }
+      },
+      "additionalProperties": false
+    },
+    "task": {
+      "type": "object",
+      "required": ["id", "title", "status", "dependsOn", "acceptance", "approaches", "approachReasons", "assessmentStatus", "verification", "evidence", "evidenceLinks"],
+      "properties": {
+        "id": { "$ref": "#/$defs/taskId" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "status": { "enum": ["pending", "active", "blocked", "deferred", "complete"] },
+        "dependsOn": { "type": "array", "maxItems": 64, "uniqueItems": true, "items": { "$ref": "#/$defs/taskId" } },
+        "acceptance": { "type": "array", "maxItems": 64, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 1024 } },
+        "approaches": { "type": "array", "maxItems": 8, "uniqueItems": true, "items": { "$ref": "#/$defs/approach" } },
+        "approachReasons": { "$ref": "#/$defs/approachReasons" },
+        "assessmentStatus": { "enum": ["assessed", "unassessed"] },
+        "verificationCheckpoint": { "$ref": "#/$defs/verificationCheckpoint" },
+        "verification": { "type": "array", "maxItems": 16, "uniqueItems": true, "items": { "$ref": "#/$defs/command" } },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
+        "evidenceLinks": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 2048 } },
+        "blockedReason": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "importedFrom": { "$ref": "#/$defs/taskImport" }
+      },
+      "additionalProperties": false
+    },
+    "workflowImport": {
+      "type": "object",
+      "required": ["kind", "manifestPath"],
+      "properties": {
+        "kind": { "const": "pi-swe-v2" },
+        "manifestPath": { "type": "string", "minLength": 1 },
+        "planRevision": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    }
+  }
 }
