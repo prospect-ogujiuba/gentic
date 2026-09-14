@@ -1,100 +1,132 @@
+import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { fileURLToPath } from "node:url";
 
+import { packageSummary } from "../app/package-summary.ts";
 import {
-  capabilitiesText,
-  catalogText,
-  eventsListText,
-  PI_CONTRACT_SCHEMA_VERSION_DETAIL_KEY,
-  PI_CONTRACT_SOURCE,
-  PI_NATIVE_CAPABILITY_GROUPS,
-  PI_PACKAGE_SURFACES,
-  surfaceById,
-  surfacesListText,
-  surfaceText,
-  type CatalogSection,
-} from "../app/catalog.ts";
-import { PI_EXTENSION_EVENTS, SCHEMA_VERSION, type PiNativeCapabilityGroup } from "../../../../src/pi-contract.ts";
+  DISCOVERY_COMMAND_COMPLETIONS,
+  DISCOVERY_COMMAND_NAME,
+  DISCOVERY_COMMAND_USAGE,
+  DISCOVERY_OPERATIONS,
+  DISCOVERY_TOOL_NAME,
+  type DiscoveryOperation,
+} from "../app/discovery-contract.ts";
+import {
+  discoveryMatchDetails,
+  discoverySearchText,
+  discoverySnapshot,
+  discoveryStatusText,
+  MAX_DISCOVERY_QUERY_LENGTH,
+  searchDiscovery,
+  type DiscoveryMatches,
+} from "../app/runtime-discovery.ts";
 
-const capabilityGroups = Object.keys(PI_NATIVE_CAPABILITY_GROUPS) as PiNativeCapabilityGroup[];
-const catalogSections = ["summary", "surfaces", "events", ...capabilityGroups] as const;
-const SECTION_DESCRIPTIONS: Record<string, string> = {
-  summary: "Catalog version, source, and capability totals · /catalog summary",
-  surfaces: "Inspect Pi package surfaces · /catalog surfaces [id]",
-  events: "List extension lifecycle events · /catalog events",
-  commands: "List native command capabilities · /catalog commands",
-  tools: "List native tool capabilities · /catalog tools",
-  shortcuts: "List native shortcut capabilities · /catalog shortcuts",
-  flags: "List native CLI flag capabilities · /catalog flags",
-  providers: "List provider capabilities · /catalog providers",
-  renderers: "List custom renderer capabilities · /catalog renderers",
-  "markdown-transformers": "List markdown transformer capabilities · /catalog markdown-transformers",
-  "ui-surfaces": "List native UI surface capabilities · /catalog ui-surfaces",
-};
+const ROOT = fileURLToPath(new URL("../../../..", import.meta.url));
+const STATUS_KEY = "pi-catalog";
 
-function sectionText(section: CatalogSection, id?: string): string {
-  if (section === "summary") return catalogText();
-  if (section === "events") return eventsListText();
-  if (section === "surfaces") {
-    if (!id) return surfacesListText();
-    const surface = surfaceById(id);
-    return surface ? surfaceText(surface) : `Unknown surface: ${id}\n\n${surfacesListText()}`;
+function runDiscovery(
+  pi: ExtensionAPI,
+  session: { packageSummary: string; cwd: string; resources: string },
+  operation: DiscoveryOperation,
+  query = "",
+) {
+  const snapshot = discoverySnapshot(pi);
+  const matches: DiscoveryMatches = operation === "search"
+    ? searchDiscovery(snapshot, query)
+    : { commands: [], tools: [], truncated: { commands: false, tools: false } };
+  const text = operation === "status"
+    ? discoveryStatusText(snapshot, session)
+    : discoverySearchText(matches);
+  return { snapshot, matches, text };
+}
+
+function normalizeQuery(query: string | undefined): string {
+  return (query ?? "").replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function invalidQuery(query: string): string | undefined {
+  if (!query) return "Usage: /catalog search <term>";
+  if (query.length > MAX_DISCOVERY_QUERY_LENGTH) {
+    return `Search term must be ${MAX_DISCOVERY_QUERY_LENGTH} characters or fewer.`;
   }
-  return capabilitiesText(section);
+  return undefined;
 }
 
 export function registerPiCatalog(pi: ExtensionAPI): void {
-  pi.on("session_start", (_event, ctx) => {
-    ctx.ui.setStatus("pi-catalog", `Pi ${PI_CONTRACT_SOURCE.version}; ${capabilityGroups.length} capability groups`);
+  const session = { packageSummary: packageSummary(ROOT), cwd: "", resources: "unknown" };
+  pi.on("session_start", (event, ctx) => {
+    session.cwd = ctx.cwd;
+    session.resources = event.reason;
+    ctx.ui.setStatus(STATUS_KEY, "Gentic catalog");
+  });
+
+  pi.on("resources_discover", (event) => {
+    session.resources = event.reason;
   });
 
   pi.registerTool({
-    name: "gentic_catalog",
-    label: "Pi Native Catalog",
-    description: "Inspect the version-stamped Pi package and native extension capability catalog.",
-    promptSnippet: "Inspect Pi package surfaces or native extension capabilities.",
+    name: DISCOVERY_TOOL_NAME,
+    label: "Gentic Catalog",
+    description: "Show runtime command/tool status or search their native metadata.",
+    promptSnippet: "Use gentic_catalog to inspect or search registered commands and tools.",
     parameters: Type.Object({
-      section: Type.Optional(Type.Union(catalogSections.map((section) => Type.Literal(section)))),
-      id: Type.Optional(Type.String({ description: "Package surface id when section is surfaces" })),
+      operation: Type.Optional(StringEnum(DISCOVERY_OPERATIONS)),
+      query: Type.Optional(Type.String({
+        description: `Search term, at most ${MAX_DISCOVERY_QUERY_LENGTH} characters, when operation is search`,
+        maxLength: MAX_DISCOVERY_QUERY_LENGTH,
+      })),
     }),
     async execute(_toolCallId, params) {
-      const section = (params.section ?? "summary") as CatalogSection;
+      const operation = (params.operation ?? "status") as DiscoveryOperation;
+      const query = normalizeQuery(params.query);
+      const queryError = operation === "search" ? invalidQuery(query) : undefined;
+      if (queryError) {
+        return {
+          content: [{ type: "text", text: queryError }],
+          details: { commandCount: 0, toolCount: 0, matches: { commands: [], tools: [] }, truncated: { commands: false, tools: false } },
+        };
+      }
+      const { snapshot, matches, text } = runDiscovery(pi, session, operation, query);
+      const output = operation === "search" && !text ? `No commands or tools matched: ${query}` : text;
       return {
-        content: [{ type: "text", text: sectionText(section, params.id) }],
+        content: [{ type: "text", text: output }],
         details: {
-          [PI_CONTRACT_SCHEMA_VERSION_DETAIL_KEY]: SCHEMA_VERSION,
-          source: PI_CONTRACT_SOURCE,
-          surfaceCount: PI_PACKAGE_SURFACES.length,
-          eventCount: PI_EXTENSION_EVENTS.length,
-          capabilityGroupCount: capabilityGroups.length,
+          commandCount: snapshot.commands.length,
+          toolCount: snapshot.tools.length,
+          matches: discoveryMatchDetails(matches),
+          truncated: matches.truncated,
         },
       };
     },
   });
 
-  pi.registerCommand("catalog", {
-    description: "/catalog [summary|surfaces [id]|events|commands|tools|shortcuts|flags|providers|renderers|markdown-transformers|ui-surfaces] — inspect native Pi capabilities",
+  pi.registerCommand(DISCOVERY_COMMAND_NAME, {
+    description: `${DISCOVERY_COMMAND_USAGE} — inspect registered commands and tools`,
     getArgumentCompletions: (prefix) => {
-      const [section = "", id = ""] = prefix.trimStart().split(/\s+/, 2);
-      if (section === "surfaces" && prefix.includes(" ")) {
-        return PI_PACKAGE_SURFACES.filter((surface) => surface.id.startsWith(id)).map((surface) => ({
-          value: `surfaces ${surface.id}`,
-          label: surface.id,
-          description: surface.description,
-        }));
-      }
-      return ["summary", "surfaces", "events", ...capabilityGroups]
-        .filter((value) => value.startsWith(section))
-        .map((value) => ({ value, label: value, description: SECTION_DESCRIPTIONS[value] ?? `Inspect ${value}` }));
+      const normalized = prefix.trimStart();
+      if (/\s/.test(normalized)) return [];
+      return DISCOVERY_COMMAND_COMPLETIONS.filter(({ value }) => value.startsWith(normalized)).map((item) => ({ ...item }));
     },
     handler: async (args, ctx) => {
-      const [section = "summary", id] = args.trim().split(/\s+/).filter(Boolean);
-      if (!catalogSections.includes(section as (typeof catalogSections)[number])) {
-        ctx.ui.notify(`Unknown catalog section: ${section}\n\n${catalogText()}`, "warning");
+      const [rawOperation = "status", ...rest] = args.trim().split(/\s+/).filter(Boolean);
+      if (!DISCOVERY_OPERATIONS.includes(rawOperation as DiscoveryOperation)) {
+        ctx.ui.notify(`Unknown catalog operation: ${rawOperation}\n\n${DISCOVERY_COMMAND_USAGE}`, "warning");
         return;
       }
-      const text = sectionText(section as CatalogSection, id);
-      ctx.ui.notify(text, section === "surfaces" && id && !surfaceById(id) ? "warning" : "info");
+      const operation = rawOperation as DiscoveryOperation;
+      const query = normalizeQuery(rest.join(" "));
+      const queryError = operation === "search" ? invalidQuery(query) : undefined;
+      if (queryError) {
+        ctx.ui.notify(queryError, "warning");
+        return;
+      }
+      const { text } = runDiscovery(pi, session, operation, query);
+      if (operation === "search" && !text) {
+        ctx.ui.notify(`No commands or tools matched: ${query}`, "warning");
+        return;
+      }
+      ctx.ui.notify(text, "info");
     },
   });
 }

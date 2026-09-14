@@ -30,7 +30,6 @@
   },
   "resources": {
     "extensions": [
-      "extensions/gentic/index.ts",
       "extensions/pi-artifacts/index.ts",
       "extensions/pi-catalog/index.ts",
       "extensions/pi-commands/index.ts",
@@ -65,37 +64,6 @@
   },
   "extensions": [
     {
-      "owner": "gentic",
-      "entrypoint": "extensions/gentic/index.ts",
-      "sourceFiles": [
-        "extensions/gentic/index.ts",
-        "extensions/gentic/src/command-catalog.ts",
-        "extensions/gentic/src/package-summary.ts",
-        "extensions/gentic/src/pi/register.ts"
-      ],
-      "registrations": {
-        "commands": [
-          "gentic"
-        ],
-        "tools": [
-          "gentic_status"
-        ],
-        "events": [
-          "resources_discover",
-          "session_start"
-        ],
-        "shortcuts": [],
-        "flags": [],
-        "providers": [],
-        "renderers": [],
-        "markdownTransformers": 0,
-        "uiSurfaces": [
-          "notify",
-          "setStatus"
-        ]
-      }
-    },
-    {
       "owner": "pi-artifacts",
       "entrypoint": "extensions/pi-artifacts/index.ts",
       "sourceFiles": [
@@ -129,7 +97,9 @@
       "entrypoint": "extensions/pi-catalog/index.ts",
       "sourceFiles": [
         "extensions/pi-catalog/index.ts",
-        "extensions/pi-catalog/src/app/catalog.ts",
+        "extensions/pi-catalog/src/app/discovery-contract.ts",
+        "extensions/pi-catalog/src/app/package-summary.ts",
+        "extensions/pi-catalog/src/app/runtime-discovery.ts",
         "extensions/pi-catalog/src/pi/register.ts"
       ],
       "registrations": {
@@ -140,6 +110,7 @@
           "gentic_catalog"
         ],
         "events": [
+          "resources_discover",
           "session_start"
         ],
         "shortcuts": [],
@@ -390,7 +361,6 @@
       "id": "core",
       "path": "profiles/core.json",
       "extensions": [
-        "+extensions/gentic/index.ts",
         "+extensions/pi-catalog/index.ts",
         "+extensions/pi-commands/index.ts",
         "+extensions/pi-git/index.ts",
@@ -401,7 +371,6 @@
       "id": "full",
       "path": "profiles/full.json",
       "extensions": [
-        "+extensions/gentic/index.ts",
         "+extensions/pi-catalog/index.ts",
         "+extensions/pi-commands/index.ts",
         "+extensions/pi-context/index.ts",

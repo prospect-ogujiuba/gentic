@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { completeGenticArgument } from "../extensions/gentic/src/pi/register.ts";
 import { registerArtifactsCommand } from "../extensions/pi-artifacts/src/pi/commands.ts";
 import { registerPiCatalog } from "../extensions/pi-catalog/src/pi/register.ts";
 import { completeScaffoldArgument } from "../extensions/pi-commands/commands/scaffold.ts";
@@ -19,14 +18,13 @@ function assertDescribed(items: readonly Completion[]): void {
 }
 
 test("runtime command roots expose concise syntax-aware descriptions", () => {
-  const gentic = completeGenticArgument({ getCommands: () => [] } as never, "");
   const scaffold = completeScaffoldArgument("");
   const context = completePiContextArgument("");
   const hud = completeHudArgument("");
   const swe = completeSweArgument("")!;
   const todo = getTodoCommandCompletions("");
 
-  for (const items of [gentic, scaffold, context, hud, swe, todo]) assertDescribed(items);
+  for (const items of [scaffold, context, hud, swe, todo]) assertDescribed(items);
   assert.match(swe.find((item) => item.value === "work")!.description!, /\/swe work/);
   assert.match(hud.find((item) => item.value === "mode")!.description!, /<off\|widget-first>/);
 });
@@ -56,18 +54,6 @@ test("registered artifact and catalog commands describe their nested choices", (
   assertDescribed(artifactItems);
 
   const catalogItems = commands.get("catalog")!.getArgumentCompletions!("")!;
-  assert.ok(catalogItems.some((item) => item.value === "summary"));
+  assert.deepEqual(catalogItems.map((item) => item.value), ["status", "search"]);
   assertDescribed(catalogItems);
-});
-
-test("gentic run completion describes and inserts extension commands", () => {
-  const pi = {
-    getCommands: () => [
-      { name: "swe", source: "extension", description: "/swe <...> — manage SWE", sourceInfo: { path: "/repo/extensions/pi-swe/index.ts" } },
-      { name: "model", source: "builtin", description: "Select model" },
-    ],
-  };
-  assert.deepEqual(completeGenticArgument(pi as never, "run sw"), [
-    { value: "run swe", label: "swe", description: "/swe <...> — manage SWE" },
-  ]);
 });

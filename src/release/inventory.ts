@@ -53,11 +53,34 @@ function literals(source: string, pattern: RegExp): string[] {
   return [...source.matchAll(pattern)].map((match) => match[1]).filter(Boolean);
 }
 
+function registeredNames(source: string, literalPattern: RegExp, referencePattern: RegExp): string[] {
+  const assignments = new Map<string, Set<string>>();
+  for (const match of source.matchAll(/\b(?:export\s+)?const\s+([A-Z][A-Z0-9_]*)\s*=\s*["']([^"']+)["']/g)) {
+    const values = assignments.get(match[1]) ?? new Set<string>();
+    values.add(match[2]);
+    assignments.set(match[1], values);
+  }
+  const references = literals(source, referencePattern).map((name) => {
+    const values = [...(assignments.get(name) ?? [])];
+    if (values.length !== 1) throw new Error(`Registration constant ${name} must have one literal string assignment`);
+    return values[0];
+  });
+  return [...literals(source, literalPattern), ...references];
+}
+
 function registrations(source: string): RegistrationInventory {
   const unique = (values: string[]) => [...new Set(values)].sort((a, b) => a.localeCompare(b));
   return {
-    commands: unique(literals(source, /\bpi\.registerCommand\(\s*["']([^"']+)["']/g)),
-    tools: unique(literals(source, /\bpi\.registerTool\(\s*\{[\s\S]{0,800}?\bname:\s*["']([^"']+)["']/g)),
+    commands: unique(registeredNames(
+      source,
+      /\bpi\.registerCommand\(\s*["']([^"']+)["']/g,
+      /\bpi\.registerCommand\(\s*([A-Z][A-Z0-9_]*)/g,
+    )),
+    tools: unique(registeredNames(
+      source,
+      /\bpi\.registerTool\(\s*\{[\s\S]{0,800}?\bname:\s*["']([^"']+)["']/g,
+      /\bpi\.registerTool\(\s*\{[\s\S]{0,800}?\bname:\s*([A-Z][A-Z0-9_]*)/g,
+    )),
     events: unique(literals(source, /\bpi\.on\(\s*["']([^"']+)["']/g)),
     shortcuts: unique(literals(source, /\bpi\.registerShortcut\(\s*["']([^"']+)["']/g)),
     flags: unique(literals(source, /\bpi\.registerFlag\(\s*["']([^"']+)["']/g)),

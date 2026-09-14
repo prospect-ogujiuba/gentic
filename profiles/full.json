@@ -4,7 +4,6 @@
   "package": {
     "source": "git:github.com/prospect-ogujiuba/gentic@v0.1.0",
     "extensions": [
-      "+extensions/gentic/index.ts",
       "+extensions/pi-catalog/index.ts",
       "+extensions/pi-commands/index.ts",
       "+extensions/pi-context/index.ts",

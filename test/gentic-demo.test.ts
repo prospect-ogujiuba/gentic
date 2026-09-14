@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import gentic from "../extensions/gentic/index.ts";
 import piCatalog from "../extensions/pi-catalog/index.ts";
 import piCommands from "../extensions/pi-commands/index.ts";
 import piGit from "../extensions/pi-git/index.ts";
@@ -21,14 +20,14 @@ type RegisteredCommand = {
   description?: string;
   handler: (args: string, ctx: ReturnType<typeof createContext>) => Promise<void> | void;
   getArgumentCompletions?: (prefix: string) => Array<Record<string, unknown>>;
-  sourceInfo?: { path: string };
+  sourceInfo?: { path: string; source?: string; scope?: string; origin?: string };
 };
 
 type RegisteredTool = {
   name: string;
   description?: string;
   execute: (...args: unknown[]) => Promise<unknown> | unknown;
-  sourceInfo?: { path: string };
+  sourceInfo?: { path: string; source?: string; scope?: string; origin?: string };
 };
 
 function createContext(entries: Array<Record<string, unknown>>) {
@@ -105,6 +104,7 @@ function createPiHarness() {
   const entries: Array<Record<string, unknown>> = [];
   const sentUserMessages: Array<{ message: string; options?: unknown }> = [];
   const execCalls: Array<{ command: string; args: string[] }> = [];
+  const metadataScans = { commands: 0, tools: 0 };
   let currentExtension = "unknown";
   let sessionName = "";
 
@@ -128,12 +128,19 @@ function createPiHarness() {
       handlers.set(event, [...(handlers.get(event) || []), handler]);
     },
     registerCommand(name: string, command: RegisteredCommand) {
-      commands.set(name, { ...command, sourceInfo: { path: join(root, "extensions", currentExtension, "index.ts") } });
+      commands.set(name, {
+        ...command,
+        sourceInfo: { path: join(root, "extensions", currentExtension, "index.ts"), source: currentExtension, scope: "project", origin: "top-level" },
+      });
     },
     registerTool(tool: RegisteredTool) {
-      tools.set(tool.name, { ...tool, sourceInfo: { path: join(root, "extensions", currentExtension, "index.ts") } });
+      tools.set(tool.name, {
+        ...tool,
+        sourceInfo: { path: join(root, "extensions", currentExtension, "index.ts"), source: currentExtension, scope: "project", origin: "top-level" },
+      });
     },
     getCommands() {
+      metadataScans.commands += 1;
       return [...commands].map(([name, command]) => ({
         name,
         description: command.description,
@@ -142,7 +149,8 @@ function createPiHarness() {
       }));
     },
     getAllTools() {
-      return [...tools].map(([name, tool]) => ({ name, sourceInfo: tool.sourceInfo }));
+      metadataScans.tools += 1;
+      return [...tools].map(([name, tool]) => ({ name, description: tool.description, sourceInfo: tool.sourceInfo }));
     },
     async exec(command: string, args: string[]) {
       execCalls.push({ command, args });
@@ -177,8 +185,49 @@ function createPiHarness() {
   }
 
   const ctx = createContext(entries);
-  return { pi, ctx, handlers, commands, tools, entries, sentUserMessages, execCalls, activate, emit };
+  return { pi, ctx, handlers, commands, tools, entries, sentUserMessages, execCalls, metadataScans, activate, emit };
 }
+
+test("catalog queries native command and tool metadata once per operation", async (t) => {
+  const harness = createPiHarness();
+  t.after(() => rmSync(harness.ctx.cwd, { recursive: true, force: true }));
+
+  await harness.activate("plugin-a", (pi) => {
+    pi.registerCommand("deploy", { description: "Deploy the durable service", handler() {} });
+    pi.registerTool({ name: "deploy_status", description: "Inspect the durable deployment", execute() {} });
+  });
+  await harness.activate("pi-catalog", piCatalog as never);
+  await harness.emit("session_start", { reason: "startup" }, harness.ctx);
+  await harness.emit("resources_discover", { reason: "reload" }, harness.ctx);
+
+  await harness.commands.get("catalog")?.handler("status", harness.ctx);
+  const status = harness.ctx.demoState.notifications.at(-1);
+  assert.match(status?.message ?? "", /gentic@0\.1\.0/);
+  assert.match(status?.message ?? "", new RegExp(`cwd: ${harness.ctx.cwd}`));
+  assert.match(status?.message ?? "", /resources: reload/);
+  assert.match(status?.message ?? "", /Commands \(2\)/);
+  assert.match(status?.message ?? "", /Tools \(2\)/);
+  assert.match(status?.message ?? "", /Owners: pi-catalog, plugin-a/);
+  assert.deepEqual(harness.metadataScans, { commands: 1, tools: 1 });
+
+  await harness.commands.get("catalog")?.handler("search durable", harness.ctx);
+  const search = harness.ctx.demoState.notifications.at(-1);
+  assert.match(search?.message ?? "", /Commands[\s\S]*\/deploy - Deploy the durable service/);
+  assert.match(search?.message ?? "", /Tools[\s\S]*deploy_status - Inspect the durable deployment/);
+  assert.deepEqual(harness.metadataScans, { commands: 2, tools: 2 });
+
+  const result = await harness.tools.get("gentic_catalog")?.execute("tool-call", { operation: "search", query: "plugin-a" }) as {
+    content: Array<{ text: string }>;
+    details: { commandCount: number; toolCount: number; matches: { commands: unknown[]; tools: unknown[] } };
+  };
+  assert.match(result.content[0].text, /\/deploy/);
+  assert.match(result.content[0].text, /deploy_status/);
+  assert.equal(result.details.commandCount, 2);
+  assert.equal(result.details.toolCount, 2);
+  assert.equal(result.details.matches.commands.length, 1);
+  assert.equal(result.details.matches.tools.length, 1);
+  assert.deepEqual(harness.metadataScans, { commands: 3, tools: 3 });
+});
 
 test("demo activates every Gentic-owned extension and exercises shared runtime paths", async (t) => {
   const harness = createPiHarness();
@@ -187,7 +236,6 @@ test("demo activates every Gentic-owned extension and exercises shared runtime p
     rmSync(harness.ctx.cwd, { recursive: true, force: true });
   });
 
-  await harness.activate("gentic", gentic as never);
   await harness.activate("pi-catalog", piCatalog as never);
   await harness.activate("pi-commands", piCommands as never);
   await harness.activate("pi-git", piGit as never);
@@ -196,11 +244,11 @@ test("demo activates every Gentic-owned extension and exercises shared runtime p
   await harness.activate("pi-swe", piSwe as never);
   await harness.activate("pi-todo", piTodo as never);
 
-  for (const command of ["gentic", "catalog", "clear", "scaffold", "pi-git", "pi-hud", "swe", "todo"]) {
+  for (const command of ["catalog", "clear", "scaffold", "pi-git", "pi-hud", "swe", "todo"]) {
     assert.equal(harness.commands.has(command), true, `missing /${command}`);
   }
 
-  for (const tool of ["gentic_status", "gentic_catalog", "git_snapshot", "todo"]) {
+  for (const tool of ["gentic_catalog", "git_snapshot", "todo"]) {
     assert.equal(harness.tools.has(tool), true, `missing tool ${tool}`);
   }
 
@@ -223,12 +271,8 @@ test("demo activates every Gentic-owned extension and exercises shared runtime p
   );
   assert.ok(primitiveResults.some((result) => JSON.stringify(result).includes("Implementation file completion convention")));
 
-  const genticStatus = await harness.tools.get("gentic_status")?.execute("tool-call", {}, undefined, undefined, harness.ctx) as { content: Array<{ text: string }> };
-  assert.match(genticStatus.content[0].text, /extension command owners:/);
-  assert.match(genticStatus.content[0].text, /pi-swe/);
-
-  const surfaces = await harness.tools.get("gentic_catalog")?.execute("tool-call", { section: "surfaces" }, undefined, undefined, harness.ctx) as { content: Array<{ text: string }> };
-  assert.match(surfaces.content[0].text, /prompt-template/);
+  const catalogStatus = await harness.tools.get("gentic_catalog")?.execute("tool-call", { operation: "status" }, undefined, undefined, harness.ctx) as { content: Array<{ text: string }> };
+  assert.match(catalogStatus.content[0].text, /Commands \(\d+\)[\s\S]*Tools \(\d+\)/);
 
   const gitSnapshot = await harness.tools.get("git_snapshot")?.execute("tool-call", {}, undefined, undefined, harness.ctx) as { content: Array<{ text: string }> };
   assert.match(gitSnapshot.content[0].text, /branch: demo/);
@@ -240,9 +284,7 @@ test("demo activates every Gentic-owned extension and exercises shared runtime p
   const listed = await todoTool?.execute("tool-call", { action: "list", includeDone: true }, undefined, undefined, harness.ctx) as { content: Array<{ text: string }> };
   assert.match(listed.content[0].text, /exercise all extensions/);
 
-  await harness.commands.get("gentic")?.handler("find swe", harness.ctx);
-  await harness.commands.get("gentic")?.handler("run todo list", harness.ctx);
-  await harness.commands.get("catalog")?.handler("surfaces package", harness.ctx);
+  await harness.commands.get("catalog")?.handler("search pi-swe", harness.ctx);
   await harness.commands.get("gate")?.handler("check node --version", harness.ctx);
   await harness.commands.get("pi-git")?.handler("", harness.ctx);
   await harness.commands.get("pi-hud")?.handler("show", harness.ctx);
@@ -250,11 +292,9 @@ test("demo activates every Gentic-owned extension and exercises shared runtime p
   await harness.commands.get("todo")?.handler("list", harness.ctx);
   await harness.commands.get("clear")?.handler("", harness.ctx);
 
-  assert.ok(harness.sentUserMessages.some((message) => message.message === "/todo list"));
   assert.equal(harness.ctx.demoState.newSessionStarted, true);
   assert.ok(harness.ctx.demoState.notifications.some((entry) => entry.message.includes("pi-swe")));
-  assert.ok(harness.ctx.demoState.notifications.some((entry) => entry.message.includes("Pi package surfaces") || entry.message.includes("package manifest")));
+  assert.ok(harness.ctx.demoState.notifications.some((entry) => entry.message.includes("Commands") && entry.message.includes("/swe")));
   assert.equal(harness.ctx.demoState.status.has("todo"), true);
   assert.equal(harness.ctx.demoState.status.has("pi-catalog"), true);
-  assert.equal(harness.ctx.demoState.status.has("gentic"), true);
 });

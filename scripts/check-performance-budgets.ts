@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { performance } from "node:perf_hooks";
 
-import gentic from "../extensions/gentic/index.ts";
 import piCatalog from "../extensions/pi-catalog/index.ts";
 import piCommands from "../extensions/pi-commands/index.ts";
 import piContext from "../extensions/pi-context/index.ts";
@@ -62,7 +61,7 @@ const pi = new Proxy({ capabilities }, {
     return () => undefined;
   },
 });
-const extensions = [gentic, piCatalog, piCommands, piContext, piGit, piHud, piPrimitives, piSwe, piTodo];
+const extensions = [piCatalog, piCommands, piContext, piGit, piHud, piPrimitives, piSwe, piTodo];
 const startupStarted = performance.now();
 for (const extension of extensions) await extension(pi as never);
 const startupMs = performance.now() - startupStarted;

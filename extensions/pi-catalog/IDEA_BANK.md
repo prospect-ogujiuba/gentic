@@ -8,14 +8,15 @@ Purpose: durable, non-ephemeral idea bank for future Pi/Gentic quality-of-life e
 - `prompts`: root-owned reusable prompt templates.
 - `extensions/pi-primitives/primitives`: conditional prompt/context primitives.
 - `extensions/pi-commands/commands`: slash-command UX.
-- `extensions/pi-catalog`: durable catalog/reference docs and introspection helpers.
+- `extensions/pi-catalog`: bounded runtime command/tool discovery plus durable reference docs.
 
 ## Existing command surface
 
-- `/gentic`
-- `/catalog`, `/catalog surfaces [id]`, `/catalog events`, `/catalog <capability-group>`
+- `/artifacts`
+- `/catalog [status|search <term>]`
 - `/clear`
-- `/gate`
+- `/scaffold`
+- `/pi-context`
 - `/pi-git`
 - `/pi-hud`
 - `/swe`
@@ -58,8 +59,7 @@ These are useful for conditional injections, takeover behavior, and low-context 
 
 ## Observed event usage by existing plugins
 
-- `gentic`: `session_start`, `resources_discover`
-- `pi-catalog`: `session_start`
+- `pi-catalog`: `session_start`, `resources_discover`
 - `pi-permission-system`: `session_start`, `resources_discover`, `session_shutdown`, `before_agent_start`, `input`, `tool_call`
 - `pi-hud`: `session_start`, `model_select`, `thinking_level_select`, `agent_start`, `agent_end`, `turn_start`, `tool_execution_start`, `tool_execution_end`, `tool_result`, `message_end`, `session_shutdown`
 - `pi-primitives/implementation-file-completion`: `before_agent_start`

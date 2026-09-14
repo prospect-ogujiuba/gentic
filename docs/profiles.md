@@ -2,7 +2,7 @@
 
 Profiles are documented Pi package-filter fragments, not a Gentic resource kind or runtime registry.
 
-- `profiles/core.json`: orchestrator, catalog, scaffolding, safety, git scope, and shared primitives. It explicitly selects the root add-skill skill and git commit prompt and disables themes.
+- `profiles/core.json`: runtime catalog, scaffolding, safety, git scope, and shared primitives. It explicitly selects the root add-skill skill and git commit prompt and disables themes.
 - `profiles/full.json`: every extension; omitted skill/prompt/theme keys allow all resources already admitted by `package.json#pi`.
 
 Copy the nested `package` object into the `packages` array in global or project `.pi/settings.json`:
@@ -12,7 +12,7 @@ Copy the nested `package` object into the `packages` array in global or project 
   "packages": [
     {
       "source": "git:github.com/prospect-ogujiuba/gentic@v0.1.0",
-      "extensions": ["+extensions/gentic/index.ts"]
+      "extensions": ["+extensions/pi-catalog/index.ts"]
     }
   ]
 }
