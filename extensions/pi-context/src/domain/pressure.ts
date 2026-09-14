@@ -1,4 +1,4 @@
-import type { TokenConfidence } from "./types.ts";
+export type TokenConfidence = "exact" | "estimated" | "unknown";
 
 export type ContextPressureLevel = "normal" | "warning" | "critical";
 export type ContextPressureAvailability = ContextPressureLevel | "unavailable";

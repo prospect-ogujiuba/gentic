@@ -1,15 +1,15 @@
 {
   "version": 1,
   "topic": "lighten-pi-todo",
-  "revision": 1,
-  "status": "draft",
+  "revision": 31,
+  "status": "complete",
   "goal": "Rebuild pi-todo as a small branch-aware focus list preserving create/start/finish/block/list and the deterministic pi-swe ownership boundary.",
   "plan": "Characterization-first replacement. Remove scheduling, leases, splitting, artifacts, modal UI, startup scans, and autonomous follow-up.",
   "tasks": [
     {
       "id": "T1",
       "title": "Characterize essential behavior",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [],
       "acceptance": [
         "Black-box tests cover existing essential create/start/finish/block/list behavior",
@@ -34,13 +34,33 @@
           ]
         }
       ],
-      "evidence": [],
-      "evidenceLinks": []
+      "verificationCheckpoint": {
+        "revision": 2,
+        "at": "2026-09-14T01:34:09.585Z",
+        "sessionId": "01a09d6f-5ab9-73ad-8a9c-4e482f64c0d7",
+        "branchLength": 2
+      },
+      "evidence": [
+        {
+          "command": "npm run test:todo",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T01:36:21.210Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_hIjRNacmGLzIgtJNuF7mvYPK|fc_05e09afc12eb63e8016aa74f93fb6487d2ab7497ae02b8c0a4",
+            "workflowRevision": 2,
+            "sessionId": "01a09d6f-5ab9-73ad-8a9c-4e482f64c0d7"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T01:36:27.283Z"
     },
     {
       "id": "T2",
       "title": "Define the minimal public contract",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "T1"
       ],
@@ -53,13 +73,33 @@
       "approachReasons": {},
       "assessmentStatus": "assessed",
       "verification": [],
-      "evidence": [],
-      "evidenceLinks": []
+      "verificationCheckpoint": {
+        "revision": 6,
+        "at": "2026-09-14T01:37:51.990Z",
+        "sessionId": "01a09d6f-5ab9-73ad-8a9c-4e482f64c0d7",
+        "branchLength": 39
+      },
+      "evidence": [
+        {
+          "command": "npm run test:todo",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T01:38:54.479Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_v8prey05OR5AsQM0kHe2sMul|fc_05e09afc12eb63e8016aa7502d4cd487d291b01aabe9d0a6a3",
+            "workflowRevision": 6,
+            "sessionId": "01a09d6f-5ab9-73ad-8a9c-4e482f64c0d7"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T01:39:01.281Z"
     },
     {
       "id": "T3",
       "title": "Build the branch-aware state core",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "T2"
       ],
@@ -93,13 +133,45 @@
           ]
         }
       ],
-      "evidence": [],
-      "evidenceLinks": []
+      "verificationCheckpoint": {
+        "revision": 10,
+        "at": "2026-09-14T01:39:14.680Z",
+        "sessionId": "01a09d6f-5ab9-73ad-8a9c-4e482f64c0d7",
+        "branchLength": 55
+      },
+      "evidence": [
+        {
+          "command": "npm run test:todo",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T01:42:04.758Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_tvVYVd1XXaXjcAnUIU5jasen|fc_05e09afc12eb63e8016aa750eb80e487d2874a45d7a7111dc8",
+            "workflowRevision": 10,
+            "sessionId": "01a09d6f-5ab9-73ad-8a9c-4e482f64c0d7"
+          }
+        },
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T01:42:17.092Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_dCqRoYXmPVriqHyfpAlhNSHr|fc_05e09afc12eb63e8016aa750f499c487d28794da0e432875ed",
+            "workflowRevision": 11,
+            "sessionId": "01a09d6f-5ab9-73ad-8a9c-4e482f64c0d7"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T01:42:22.242Z"
     },
     {
       "id": "T4",
       "title": "Add the thin tool, command, and status surface",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "T3"
       ],
@@ -123,13 +195,33 @@
           ]
         }
       ],
-      "evidence": [],
-      "evidenceLinks": []
+      "verificationCheckpoint": {
+        "revision": 15,
+        "at": "2026-09-14T01:43:00.067Z",
+        "sessionId": "01a09d6f-5ab9-73ad-8a9c-4e482f64c0d7",
+        "branchLength": 90
+      },
+      "evidence": [
+        {
+          "command": "npm run test:todo",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T01:45:39.375Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_fp3qf4gIgakT2hOkGRX0ewkw|fc_05e09afc12eb63e8016aa751c20c2087d28f8602928ca3ad5a",
+            "workflowRevision": 15,
+            "sessionId": "01a09d6f-5ab9-73ad-8a9c-4e482f64c0d7"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T01:45:47.808Z"
     },
     {
       "id": "T5",
       "title": "Replace the legacy implementation",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "T4"
       ],
@@ -160,13 +252,69 @@
           ]
         }
       ],
-      "evidence": [],
-      "evidenceLinks": []
+      "verificationCheckpoint": {
+        "revision": 19,
+        "at": "2026-09-14T01:45:57.037Z",
+        "sessionId": "01a09d6f-5ab9-73ad-8a9c-4e482f64c0d7",
+        "branchLength": 123
+      },
+      "evidence": [
+        {
+          "command": "npm run test:todo",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T01:48:57.054Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_LGS9WI5S3QIqbeVRKStDKjLl|fc_05e09afc12eb63e8016aa75288366087d2b8d72b600a3e6943",
+            "workflowRevision": 19,
+            "sessionId": "01a09d6f-5ab9-73ad-8a9c-4e482f64c0d7"
+          }
+        },
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T01:49:06.980Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_2eu9TVJEMu4tgp3iK93zzjrw|fc_05e09afc12eb63e8016aa7528eaff087d290d0ee117402f243",
+            "workflowRevision": 20,
+            "sessionId": "01a09d6f-5ab9-73ad-8a9c-4e482f64c0d7"
+          }
+        },
+        {
+          "command": "npm run test:todo",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T01:49:27.379Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_rtArH1HaaqViTDs1nB8FeVvW|fc_05e09afc12eb63e8016aa752a6852c87d28f8debac033fec7d",
+            "workflowRevision": 21,
+            "sessionId": "01a09d6f-5ab9-73ad-8a9c-4e482f64c0d7"
+          }
+        },
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T01:49:37.990Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_b5oRjRPD7OBWVWkiHXFNXa1m|fc_05e09afc12eb63e8016aa752ad6ee887d2a399e99307747de7",
+            "workflowRevision": 22,
+            "sessionId": "01a09d6f-5ab9-73ad-8a9c-4e482f64c0d7"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T01:49:45.558Z"
     },
     {
       "id": "T6",
       "title": "Qualify behavior, performance, and integration",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "T5"
       ],
@@ -207,9 +355,53 @@
           ]
         }
       ],
-      "evidence": [],
-      "evidenceLinks": []
+      "verificationCheckpoint": {
+        "revision": 26,
+        "at": "2026-09-14T01:50:08.308Z",
+        "sessionId": "01a09d6f-5ab9-73ad-8a9c-4e482f64c0d7",
+        "branchLength": 184
+      },
+      "evidence": [
+        {
+          "command": "npm run test:todo",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T01:51:08.660Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_FcIhVfu4xhY5n8Hl7hrYExdY|fc_05e09afc12eb63e8016aa7530ba6cc87d28d414f132f94cda1",
+            "workflowRevision": 26,
+            "sessionId": "01a09d6f-5ab9-73ad-8a9c-4e482f64c0d7"
+          }
+        },
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T01:51:19.530Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_IH2PTOqlFFp5XWjwFB5hXGZl|fc_05e09afc12eb63e8016aa75313001487d286cfc5123168450e",
+            "workflowRevision": 27,
+            "sessionId": "01a09d6f-5ab9-73ad-8a9c-4e482f64c0d7"
+          }
+        },
+        {
+          "command": "npm run check",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T01:51:28.424Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_DS1wAJek4JHS7zl1v3qdS5rg|fc_05e09afc12eb63e8016aa7531eeff487d291575b2083ba89a4",
+            "workflowRevision": 28,
+            "sessionId": "01a09d6f-5ab9-73ad-8a9c-4e482f64c0d7"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T01:51:38.773Z"
     }
   ],
-  "updatedAt": "2026-09-14T01:26:25.044Z"
+  "updatedAt": "2026-09-14T01:51:38.773Z"
 }

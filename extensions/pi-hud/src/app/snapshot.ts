@@ -1,4 +1,4 @@
-import { createPiContextHudSnapshot, getSessionState } from "../../../pi-context/src/app/index.ts";
+import { createNativeContextSnapshot, createPiContextHudSnapshot } from "../../../pi-context/src/app/index.ts";
 import { gitSnapshotService } from "./git-snapshot-service.ts";
 import { state } from "./state.ts";
 import type { HudSnapshot, SnapshotContext, UsageSnapshot } from "../../types.ts";
@@ -39,7 +39,11 @@ export function createSnapshot(ctx: SnapshotContext): HudSnapshot {
     modelId: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
     worktreeId: ctx.cwd,
     usage: readUsageSnapshot(ctx),
-    piContext: createPiContextHudSnapshot(getSessionState(), { topContributors: 3 }),
+    piContext: createPiContextHudSnapshot(createNativeContextSnapshot({
+      getContextUsage: () => ctx.getContextUsage?.(),
+      getSystemPromptOptions: () => ({ cwd: ctx.cwd }),
+      sessionManager: ctx.sessionManager ?? { getBranch: () => [] },
+    } as never), { topContributors: 3 }),
     git: gitState.snapshot,
     gitState,
     activeTools: state.activeTools,
