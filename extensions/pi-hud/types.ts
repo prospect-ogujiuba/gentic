@@ -62,6 +62,7 @@ export interface HudSnapshot {
   toolCounts: Record<string, number>;
   recentEvents: string[];
   thinkingLevel?: string;
+  activity?: AgentState;
 }
 
 export interface HudModalHandle {

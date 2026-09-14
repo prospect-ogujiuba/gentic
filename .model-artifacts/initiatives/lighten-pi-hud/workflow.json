@@ -1,21 +1,23 @@
 {
   "version": 1,
   "topic": "lighten-pi-hud",
-  "revision": 1,
-  "status": "draft",
+  "revision": 15,
+  "status": "active",
   "goal": "After lighten-pi-context completes, rebuild pi-hud as a compact optional widget using native Pi state and the lightweight context adapter.",
   "plan": "Do not start this workflow until lighten-pi-context is complete. Keep Pi native footer authoritative and remove duplicate runtime services.",
+  "activeTask": "T3",
   "tasks": [
     {
       "id": "T1",
       "title": "Define the minimum useful HUD surface",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [],
       "acceptance": [
         "Scope is one optional widget showing model, context pressure, Git summary, and activity",
         "Pi native footer remains authoritative",
         "Modal, work timer, event history, and custom footer replacement are excluded",
-        "Dependency on completed lighten-pi-context is confirmed before work starts"
+        "Dependency on completed lighten-pi-context is confirmed before work starts",
+        "The surface remains legible, keyboard-neutral, and usable without color-only signals"
       ],
       "approaches": [
         "accessibility-ux"
@@ -24,14 +26,43 @@
         "accessibility-ux": "The minimum information hierarchy and terminal presentation must remain legible and non-disruptive."
       },
       "assessmentStatus": "assessed",
-      "verification": [],
-      "evidence": [],
-      "evidenceLinks": []
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-hud-minimum-surface-contract.test.ts"
+          ]
+        }
+      ],
+      "verificationCheckpoint": {
+        "revision": 3,
+        "at": "2026-09-14T09:27:58.059Z",
+        "sessionId": "01a09f3b-aca7-73ad-8a9c-4e4d433ac810",
+        "branchLength": 29
+      },
+      "evidence": [
+        {
+          "command": "node --experimental-strip-types --test test/pi-hud-minimum-surface-contract.test.ts",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T09:28:00.877Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_K3JQjuzxyY21Y9dS2hRlabhe|fc_0a81ee42985bfe7d016aa7be20352487d2a62e038c73ccefee",
+            "workflowRevision": 3,
+            "sessionId": "01a09f3b-aca7-73ad-8a9c-4e4d433ac810"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T09:28:08.601Z"
     },
     {
       "id": "T2",
       "title": "Build a pure width-safe widget renderer",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "T1"
       ],
@@ -49,14 +80,64 @@
         "accessibility-ux": "Width safety and concise presentation directly affect terminal usability."
       },
       "assessmentStatus": "assessed",
-      "verification": [],
-      "evidence": [],
-      "evidenceLinks": []
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "--test-reporter=dot",
+            "test/pi-hud-widget-renderer.test.ts",
+            "test/pi-hud-mode-contract.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "verificationCheckpoint": {
+        "revision": 10,
+        "at": "2026-09-14T09:34:15.814Z",
+        "sessionId": "01a09f3b-aca7-73ad-8a9c-4e4d433ac810",
+        "branchLength": 88
+      },
+      "evidence": [
+        {
+          "command": "node --experimental-strip-types --test --test-reporter=dot test/pi-hud-widget-renderer.test.ts test/pi-hud-mode-contract.test.ts",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T09:34:19.189Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_35JzXggGfQBe1Flx3gZ06bgx|fc_0a81ee42985bfe7d016aa7bf9a0d6c87d29dc82fcf9e04f1f5",
+            "workflowRevision": 10,
+            "sessionId": "01a09f3b-aca7-73ad-8a9c-4e4d433ac810"
+          }
+        },
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T09:34:28.332Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_K6EROZe7Xtb7bXCtxBhE5Sen|fc_0a81ee42985bfe7d016aa7bfa025b887d29d3fe55462321b4f",
+            "workflowRevision": 11,
+            "sessionId": "01a09f3b-aca7-73ad-8a9c-4e4d433ac810"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T09:34:33.902Z"
     },
     {
       "id": "T3",
       "title": "Wire bounded native-state refresh",
-      "status": "pending",
+      "status": "active",
       "dependsOn": [
         "T2"
       ],
@@ -75,6 +156,12 @@
       },
       "assessmentStatus": "assessed",
       "verification": [],
+      "verificationCheckpoint": {
+        "revision": 15,
+        "at": "2026-09-14T11:12:46.591Z",
+        "sessionId": "01a09f3b-aca7-73ad-8a9c-4e4d433ac810",
+        "branchLength": 100
+      },
       "evidence": [],
       "evidenceLinks": []
     },
@@ -94,7 +181,7 @@
         "performance"
       ],
       "approachReasons": {
-        "migration": "Legacy UI and service paths must be retired without duplicate ownership.",
+        "migration": "Legacy UI and service paths must be retired without leaving duplicate ownership.",
         "performance": "Removing redundant services reduces background work."
       },
       "assessmentStatus": "assessed",
@@ -131,5 +218,5 @@
       "evidenceLinks": []
     }
   ],
-  "updatedAt": "2026-09-14T01:26:54.644Z"
+  "updatedAt": "2026-09-14T11:12:46.591Z"
 }
