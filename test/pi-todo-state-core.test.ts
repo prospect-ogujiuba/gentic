@@ -78,6 +78,34 @@ test("minimal core reads essential legacy events and writes rollback-compatible 
   assert.equal(h.core.state().todos.legacy.status, "completed");
 });
 
+test("legacy status aliases normalize without violating the active invariant", () => {
+  const at = "2026-01-01T00:00:00.000Z";
+  const entry = (id: string, status: string, blockedReason?: string): TodoBranchEntry => ({
+    type: "custom",
+    customType: "gentic.todo.event",
+    data: { id: `event-${id}`, type: "todo.created", at, todo: { id, title: id, status, blockedReason } },
+  });
+  const h = harness([
+    entry("pending", "pending"),
+    entry("done", "done"),
+    entry("blocked", "blocked", "legacy wait"),
+    entry("active", "ready"),
+    entry("cancelled", "ready"),
+    { type: "custom", customType: "gentic.todo.event", data: { id: "cancel", type: "todo.cancelled", at, todoId: "cancelled" } },
+    { type: "custom", customType: "gentic.todo.event", data: { id: "start", type: "todo.started", at, todoId: "active" } },
+    { type: "custom", customType: "gentic.todo.event", data: { id: "unblock", type: "todo.unblocked", at, todoId: "active" } },
+  ]);
+
+  const state = h.core.state();
+  assert.equal(state.todos.pending.status, "ready");
+  assert.equal(state.todos.done.status, "completed");
+  assert.equal(state.todos.blocked.status, "external_blocked");
+  assert.equal(state.todos.blocked.blockedReason, "legacy wait");
+  assert.equal(state.todos.active.status, "ready");
+  assert.equal(state.todos.cancelled.status, "completed");
+  assert.equal(state.activeTodoId, undefined);
+});
+
 test("branch reconstruction is a single bounded pass and ignores unrelated entries", () => {
   const unrelated = Array.from({ length: 10_000 }, (_, index) => ({
     type: "custom" as const,

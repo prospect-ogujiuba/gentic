@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -33,6 +33,7 @@ type RegisteredTool = {
 
 function createContext(entries: Array<Record<string, unknown>>) {
   const notifications: Array<{ message: string; type?: string }> = [];
+  const cwd = mkdtempSync(join(tmpdir(), "gentic-demo-"));
   const status = new Map<string, unknown>();
   const widgets = new Map<string, unknown>();
   let footer: unknown;
@@ -41,7 +42,7 @@ function createContext(entries: Array<Record<string, unknown>>) {
   let newSessionStarted = false;
 
   const ctx = {
-    cwd: root,
+    cwd,
     sessionId: "demo-session",
     hasUI: true,
     mode: "tui" as const,
@@ -183,6 +184,7 @@ test("demo activates every Gentic-owned extension and exercises shared runtime p
   const harness = createPiHarness();
   t.after(async () => {
     await harness.emit("session_shutdown", { reason: "test-complete" }, harness.ctx);
+    rmSync(harness.ctx.cwd, { recursive: true, force: true });
   });
 
   await harness.activate("gentic", gentic as never);

@@ -20,6 +20,15 @@ import { LightweightTodoModal } from "./ui/modal.ts";
 import { plainTodoTheme } from "./ui/theme.ts";
 
 const STATUS_KEY = "todo";
+const TODO_COMMAND_COMPLETIONS = [
+  { value: "open", label: "open", description: "Open the visual docket · /todo open" },
+  { value: "list", label: "list", description: "List every todo · /todo list" },
+  { value: "create", label: "create", description: "Create ready work · /todo create <title>" },
+  { value: "start", label: "start", description: "Start one todo · /todo start <id>" },
+  { value: "finish", label: "finish", description: "Finish active work · /todo finish [id]" },
+  { value: "block", label: "block", description: "Record an external blocker · /todo block <id> <reason>" },
+  { value: "unblock", label: "unblock", description: "Return blocked work to ready · /todo unblock <id>" },
+] as const;
 
 export const lightweightTodoParameters = Type.Object({
   action: StringEnum(TODO_PUBLIC_ACTIONS),
@@ -81,8 +90,13 @@ export function registerLightweightTodoSurface(pi: ExtensionAPI, options: Surfac
     async execute(_id, params, signal, _onUpdate, ctx) {
       signal?.throwIfAborted();
       if (!isTodoPublicAction(params.action)) return errorResult("INVALID_REQUEST", "unsupported todo action");
-      const request = requestFrom(params.action, params);
-      const run = queue.then(() => execute(request, ctx));
+      const run = queue.then(async () => {
+        try {
+          return await execute(requestFrom(params.action, params), ctx);
+        } catch (error) {
+          return errorResult("INVALID_REQUEST", error instanceof Error ? error.message : String(error));
+        }
+      });
       queue = run.then(() => undefined, () => undefined);
       const result = await run;
       signal?.throwIfAborted();
@@ -92,6 +106,7 @@ export function registerLightweightTodoSurface(pi: ExtensionAPI, options: Surfac
 
   pi.registerCommand("todo", {
     description: "/todo [open|list|create <title>|start <id>|finish [id]|block <id> <reason>|unblock <id>]",
+    getArgumentCompletions: getTodoCommandCompletions,
     handler: async (args, ctx) => {
       if (args.trim() === "open") {
         await openTodoDocket(pi, ctx);
@@ -106,6 +121,14 @@ export function registerLightweightTodoSurface(pi: ExtensionAPI, options: Surfac
       ctx.ui.notify(result.content[0]?.text ?? "", result.details.error ? "error" : "info");
     },
   });
+}
+
+export function getTodoCommandCompletions(prefix: string): Array<{ value: string; label: string; description: string }> {
+  const normalized = prefix.trimStart();
+  if (/\s/.test(normalized)) return [];
+  return TODO_COMMAND_COMPLETIONS
+    .filter((item) => item.value.startsWith(normalized))
+    .map((item) => ({ ...item }));
 }
 
 function coreFor(pi: ExtensionAPI, ctx: ExtensionContext): BranchTodoCore {
@@ -198,7 +221,9 @@ function updateDisplay(core: BranchTodoCore, ctx: ExtensionContext | ExtensionCo
       ? (_tui, theme) => createTodoDocketComponent(state, theme)
       : undefined);
   } else if (ctx.mode === "rpc") {
-    ctx.ui.setWidget(STATUS_KEY, renderTodoDocketLines(state, plainTodoTheme, { width: 92 }));
+    ctx.ui.setWidget(STATUS_KEY, state.order.length
+      ? renderTodoDocketLines(state, plainTodoTheme, { width: 92 })
+      : undefined);
   }
 }
 

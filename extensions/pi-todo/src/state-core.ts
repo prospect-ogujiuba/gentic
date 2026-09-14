@@ -25,7 +25,7 @@ export type TodoCoreState = {
 type TodoCoreEvent =
   | { id: string; type: "todo.created"; at: string; todo: TodoPublicItem }
   | { id: string; type: "todo.started"; at: string; todoId: string }
-  | { id: string; type: "todo.completed"; at: string; todoId: string; summary?: string; evidence?: readonly unknown[] }
+  | { id: string; type: "todo.completed" | "todo.cancelled" | "todo.failed" | "todo.superseded" | "todo.verified"; at: string; todoId: string; summary?: string; evidence?: readonly unknown[] }
   | { id: string; type: "todo.blocked" | "todo.external_blocked"; at: string; todoId: string; reason: string }
   | { id: string; type: "todo.unblocked"; at: string; todoId: string };
 
@@ -164,8 +164,14 @@ function decodeEvent(entry: TodoBranchEntry): TodoCoreEvent | undefined {
   if (candidate.type === "todo.started" || candidate.type === "todo.unblocked") {
     return { id: candidate.id, type: candidate.type, at: candidate.at, todoId: candidate.todoId };
   }
-  if (candidate.type === "todo.completed") {
-    return { id: candidate.id, type: candidate.type, at: candidate.at, todoId: candidate.todoId, summary: typeof candidate.summary === "string" ? candidate.summary : undefined };
+  if (["todo.completed", "todo.cancelled", "todo.failed", "todo.superseded", "todo.verified"].includes(candidate.type)) {
+    return {
+      id: candidate.id,
+      type: candidate.type as "todo.completed" | "todo.cancelled" | "todo.failed" | "todo.superseded" | "todo.verified",
+      at: candidate.at,
+      todoId: candidate.todoId,
+      summary: typeof candidate.summary === "string" ? candidate.summary : undefined,
+    };
   }
   if ((candidate.type === "todo.blocked" || candidate.type === "todo.external_blocked") && typeof candidate.reason === "string") {
     return { id: candidate.id, type: candidate.type, at: candidate.at, todoId: candidate.todoId, reason: candidate.reason };
@@ -178,6 +184,7 @@ function applyEvent(state: TodoCoreState, event: TodoCoreEvent): void {
     if (!state.todos[event.todo.id]) state.order.push(event.todo.id);
     state.todos[event.todo.id] = { ...event.todo };
     if (event.todo.status === "in_progress") activate(state, event.todo.id);
+    else if (state.activeTodoId === event.todo.id) state.activeTodoId = undefined;
     return;
   }
   const todo = state.todos[event.todoId];
@@ -186,7 +193,7 @@ function applyEvent(state: TodoCoreState, event: TodoCoreEvent): void {
     activate(state, event.todoId);
     return;
   }
-  if (event.type === "todo.completed") {
+  if (["todo.completed", "todo.cancelled", "todo.failed", "todo.superseded", "todo.verified"].includes(event.type)) {
     state.todos[event.todoId] = { ...todo, status: "completed", blockedReason: undefined };
     if (state.activeTodoId === event.todoId) state.activeTodoId = undefined;
     return;
@@ -197,6 +204,7 @@ function applyEvent(state: TodoCoreState, event: TodoCoreEvent): void {
     return;
   }
   state.todos[event.todoId] = { ...todo, status: "ready", blockedReason: undefined };
+  if (state.activeTodoId === event.todoId) state.activeTodoId = undefined;
 }
 
 function activate(state: TodoCoreState, todoId: string): void {
@@ -213,8 +221,8 @@ function activate(state: TodoCoreState, todoId: string): void {
 function decodeTodo(value: unknown): TodoPublicItem | undefined {
   const todo = record(value);
   if (!todo || typeof todo.id !== "string" || typeof todo.title !== "string") return undefined;
-  const status = todo.status;
-  if (status !== "ready" && status !== "in_progress" && status !== "external_blocked" && status !== "completed") return undefined;
+  const status = normalizePublicStatus(todo.status);
+  if (!status) return undefined;
   return {
     id: todo.id,
     title: todo.title,
@@ -223,6 +231,14 @@ function decodeTodo(value: unknown): TodoPublicItem | undefined {
       ? todo.blockedReason
       : typeof todo.externalBlocker === "string" ? todo.externalBlocker : undefined,
   };
+}
+
+function normalizePublicStatus(value: unknown): TodoPublicItem["status"] | undefined {
+  if (value === "ready" || value === "pending" || value === "proposed") return "ready";
+  if (value === "in_progress" || value === "claimed") return "in_progress";
+  if (value === "external_blocked" || value === "blocked") return "external_blocked";
+  if (["completed", "done", "needs_review", "verified", "failed", "cancelled", "superseded", "abandoned"].includes(String(value))) return "completed";
+  return undefined;
 }
 
 function requireTodo(state: TodoCoreState, todoId: string): TodoPublicItem {

@@ -8,7 +8,7 @@ import { completeScaffoldArgument } from "../extensions/pi-commands/commands/sca
 import { completePiContextArgument } from "../extensions/pi-context/src/pi/register.ts";
 import { completeHudArgument } from "../extensions/pi-hud/src/pi/adapter.ts";
 import { completeSweArgument } from "../extensions/pi-swe/src/command.ts";
-import { getTodoCommandCompletions } from "../extensions/pi-todo/src/pi/actions.ts";
+import { getTodoCommandCompletions } from "../extensions/pi-todo/src/thin-surface.ts";
 
 type Completion = { value: string; label: string; description?: string };
 type Command = { getArgumentCompletions?: (prefix: string) => Completion[] | null };

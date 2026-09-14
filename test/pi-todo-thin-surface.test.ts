@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { registerLightweightTodoSurface } from "../extensions/pi-todo/src/thin-surface.ts";
+import { getTodoCommandCompletions, registerLightweightTodoSurface } from "../extensions/pi-todo/src/thin-surface.ts";
 
 type RegisteredTool = {
   parameters: { properties: { action: { enum?: string[] } } };
@@ -56,6 +56,9 @@ test("thin surface exposes essential tool, command, and status behavior through 
   const execute = (action: string, params: Record<string, unknown> = {}) =>
     tool.execute(action, { action, ...params }, new AbortController().signal, () => {}, ctx);
 
+  const invalid = await execute("create");
+  assert.equal(invalid.details.error?.code, "INVALID_REQUEST");
+
   const created = await execute("create", { title: "Thin lifecycle" });
   const todoId = created.details.todo?.id;
   assert.ok(todoId);
@@ -85,4 +88,12 @@ test("thin surface exposes essential tool, command, and status behavior through 
   assert.equal(blocked.block, true);
   assert.match(blocked.reason ?? "", /pi-swe lifecycle ownership/);
   assert.equal(await hook({ toolName: "todo", input: { action: "list" } }, ctx), undefined);
+});
+
+test("todo command completions expose the lightweight visual and lifecycle surface", () => {
+  const completions = getTodoCommandCompletions("");
+  assert.deepEqual(completions.map((item) => item.value), ["open", "list", "create", "start", "finish", "block", "unblock"]);
+  assert.ok(completions.every((item) => item.description.includes(`/todo ${item.value}`)));
+  assert.deepEqual(getTodoCommandCompletions("st").map((item) => item.value), ["start"]);
+  assert.deepEqual(getTodoCommandCompletions("start "), []);
 });
