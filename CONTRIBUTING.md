@@ -46,7 +46,7 @@ Do not hand-edit a command barrel, add a nested package manifest, or add a new p
 
 | Area | Owner path | Targeted verification |
 | --- | --- | --- |
-| Package/catalog/scaffolding | `extensions/gentic`, `extensions/pi-catalog`, `extensions/pi-commands`, `src/pi-contract.ts` | `npm run check:catalog`, scaffold tests |
+| Package/catalog/scaffolding | `extensions/pi-catalog`, `extensions/pi-commands`, `src/pi-contract.ts` | `npm run check:catalog`, scaffold tests |
 | Context/HUD | `extensions/pi-context`, `extensions/pi-hud` | `test/pi-context-*.test.ts`, `test/pi-hud-*.test.ts` |
 | Safety policy/git | `config/pi-permission-system.json`, `extensions/pi-git` | `npm run test:permissions`, `test/pi-git.test.ts` |
 | SWE/todos | `extensions/pi-swe`, `extensions/pi-todo` | `npm run test:swe`, `npm run test:todo` |

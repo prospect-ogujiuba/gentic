@@ -88,7 +88,7 @@ First-class Gentic surfaces are only things Pi discovers directly from package m
 | `prompt-template` | `prompts/`, `extensions/**/prompts` | `pi.prompts` |
 | `theme` | `themes/`, `extensions/**/themes` | `pi.themes` |
 
-Everything else is Pi extension API behavior. `pi-catalog` inventories those APIs as native capability groups, but does not mislabel them as package resources or encode them into manifest paths.
+Everything else is Pi extension API behavior. `/catalog [status|search <term>]` discovers the current command and tool registrations from Pi's native metadata. The generated native-capability fixture remains release evidence and does not become a runtime registry or manifest resource.
 
 ## Filtering
 
