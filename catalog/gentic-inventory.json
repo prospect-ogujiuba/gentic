@@ -297,6 +297,7 @@
         "extensions/pi-primitives/primitives/implementation-file-completion/index.ts",
         "extensions/pi-primitives/primitives/model-artifacts/index.ts",
         "extensions/pi-primitives/primitives/whimsical/index.ts",
+        "extensions/pi-primitives/prompt-policy.ts",
         "extensions/pi-primitives/triggers.ts"
       ],
       "registrations": {
@@ -304,9 +305,7 @@
         "tools": [],
         "events": [
           "before_agent_start",
-          "session_start",
-          "turn_end",
-          "turn_start"
+          "session_start"
         ],
         "shortcuts": [],
         "flags": [],

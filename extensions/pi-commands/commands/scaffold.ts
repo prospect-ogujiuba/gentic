@@ -66,8 +66,8 @@ function toTitle(name: string): string {
 }
 function validateName(name: string): string | undefined {
   if (!name) return "Missing scaffold name.";
-  if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(name) || name.includes("--")) {
-    return `Invalid name: ${name}. Use kebab-case letters, numbers, and single hyphen-separated words.`;
+  if (!/^[a-z](?:[a-z0-9-]*[a-z0-9])?$/.test(name) || name.includes("--")) {
+    return `Invalid name: ${name}. Use kebab-case starting with a letter, followed by letters, numbers, and single hyphen-separated words.`;
   }
   return undefined;
 }
@@ -159,7 +159,7 @@ function specsFor(kind: ScaffoldKind, name: string, variant?: ScaffoldVariant): 
   if (kind === "theme") return [{ template: "theme/theme.template.json", target: `themes/${name}.json`, description: "Pi theme" }];
   return [
     { template: "primitive/index.template.ts", target: `extensions/pi-primitives/primitives/${name}/index.ts`, description: "primitive entrypoint" },
-    { template: "primitive/supporting-file.template.md", target: `extensions/pi-primitives/primitives/${name}/supporting-file.md`, description: "primitive supporting context" },
+    { template: "primitive/supporting-file.template.md", target: `extensions/pi-primitives/primitives/${name}/injection.md`, description: "bounded primitive prompt policy" },
     { template: "primitive/triggers.template.json", target: `extensions/pi-primitives/primitives/${name}/triggers.json`, description: "primitive triggers" },
   ];
 }
@@ -175,7 +175,7 @@ function renderTemplate(template: string, name: string, kind: ScaffoldKind): str
     firstArgumentDescription: "primary input", allArgumentsDescription: "all prompt arguments", successCriterion: "TODO: define success",
     activationCondition: `the ${name} workflow is requested`, inputDescription: "task input", stepOne: "Inspect the request.",
     stepTwo: "Do the smallest useful work.", stepThree: "Report changed paths.", verificationStep: "Run the relevant targeted check.",
-    supportingFileName: "supporting-file.md", triggerPhrase: name, pathPattern: `**/${name}/**`,
+    supportingFileName: "injection.md", triggerPhrase: name, pathPattern: `(?:^|/)${name}(?:/|$)`,
     enabledText: "enabled", disabledText: "disabled", statusPrefix: toTitle(name), referenceNote: "Add detailed reference material here.",
     helperOutput: `${name} helper ready`,
   };
@@ -267,7 +267,10 @@ export function formatScaffoldPreview(preview: ScaffoldPreview): string {
 }
 export function formatScaffoldApplyResult(result: ScaffoldApplyResult): string {
   const heading = [result.kind, result.name, result.variant].filter(Boolean).join(" ");
-  return [`Applied scaffold: ${heading}`, `Project root: ${result.projectRoot}`, ...result.createdPaths.map((path) => `- created ${path}`)].join("\n");
+  const nextSteps = result.kind === "primitive"
+    ? [`- next: import ${result.name} in extensions/pi-primitives/index.ts and add it to EXPLICIT_PRIMITIVES`]
+    : [];
+  return [`Applied scaffold: ${heading}`, `Project root: ${result.projectRoot}`, ...result.createdPaths.map((path) => `- created ${path}`), ...nextSteps].join("\n");
 }
 
 const KIND_DESCRIPTIONS: Record<ScaffoldKind, string> = {

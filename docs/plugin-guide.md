@@ -17,7 +17,7 @@ Run `/scaffold` from the intended Pi project. Preview first, inspect every targe
 | Skill | `/scaffold skill foo --simple` or `--directory` | `skills/foo/` |
 | Prompt | `/scaffold prompt foo` | `prompts/foo.md` |
 | Theme | `/scaffold theme foo` | `themes/foo.json` |
-| Primitive | `/scaffold primitive foo` | `extensions/pi-primitives/primitives/foo/` |
+| Primitive | `/scaffold primitive foo` | `extensions/pi-primitives/primitives/foo/` (then import and add `foo` to `EXPLICIT_PRIMITIVES`) |
 
 Primitive use is restricted to small, shared runtime behavior. New product plugins use native extensions.
 

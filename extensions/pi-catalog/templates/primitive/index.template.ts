@@ -1,15 +1,14 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { Primitive, PrimitiveContext } from "../../index.ts";
+import type { PrimitiveContext } from "../../index.ts";
+import { loadPromptPolicy } from "../../prompt-policy.ts";
+import { loadPrimitiveTriggers, matchesPrimitivePrompt } from "../../triggers.ts";
 
-const primitive: Primitive = (pi: ExtensionAPI, ctx: PrimitiveContext): void => {
-  const content = ctx.readText("{{supportingFileName}}");
+export default function {{camelName}}Primitive(pi: ExtensionAPI, ctx: PrimitiveContext): void {
+  const applyPolicy = loadPromptPolicy(ctx);
+  const triggers = loadPrimitiveTriggers(ctx);
 
   pi.on("before_agent_start", (event) => {
-    if (!event.prompt.includes("{{triggerPhrase}}")) return;
-    return {
-      systemPrompt: `${event.systemPrompt}\n\n${content}`,
-    };
+    if (!matchesPrimitivePrompt(event, triggers)) return;
+    return applyPolicy(event.systemPrompt);
   });
-};
-
-export default primitive;
+}

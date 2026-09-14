@@ -8,7 +8,7 @@ const HUD_COMMAND_COMPLETIONS = [
   { value: "show", label: "show", description: "Show the optional HUD widget" },
   { value: "hide", label: "hide", description: "Hide the optional HUD widget" },
   { value: "reset", label: "reset", description: "Restore the default widget mode" },
-  { value: "mode", label: "mode", description: "Select off or widget-first mode" },
+  { value: "mode", label: "mode", description: "Set /pi-hud mode <off|widget-first>" },
 ] as const;
 
 type HudCommandContext = ExtensionCommandContext & HudUiContext;

@@ -28,7 +28,7 @@ test("runtime command roots expose concise syntax-aware descriptions", () => {
 
   for (const items of [gentic, scaffold, context, hud, swe, todo]) assertDescribed(items);
   assert.match(swe.find((item) => item.value === "work")!.description!, /\/swe work/);
-  assert.match(hud.find((item) => item.value === "mode")!.description!, /<off\|widget-first\|footer>/);
+  assert.match(hud.find((item) => item.value === "mode")!.description!, /<off\|widget-first>/);
 });
 
 test("nested completions preserve the full argument prefix and explain values", () => {

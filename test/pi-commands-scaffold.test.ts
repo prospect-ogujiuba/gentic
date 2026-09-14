@@ -80,11 +80,33 @@ test("scaffold previews every native variant including theme and contextual comm
   } finally { rmSync(project, { recursive: true, force: true }); }
 });
 
+test("primitive scaffold uses bounded host helpers and requires explicit registration", () => {
+  const project = createProject();
+  try {
+    const preview = createScaffoldPreview("primitive", "review-helper", undefined, "dry-run", options(project));
+    assert.deepEqual(preview.files.map((file) => file.target), [
+      "extensions/pi-primitives/primitives/review-helper/index.ts",
+      "extensions/pi-primitives/primitives/review-helper/injection.md",
+      "extensions/pi-primitives/primitives/review-helper/triggers.json",
+    ]);
+    const entry = preview.files.find((file) => file.target.endsWith("index.ts"))!.renderedContent;
+    assert.match(entry, /loadPrimitiveTriggers/);
+    assert.match(entry, /matchesPrimitivePrompt/);
+    assert.match(entry, /loadPromptPolicy/);
+    const triggers = JSON.parse(preview.files.find((file) => file.target.endsWith("triggers.json"))!.renderedContent);
+    assert.doesNotThrow(() => triggers.pathPatterns.forEach((pattern: string) => new RegExp(pattern, "i")));
+
+    const result = applyScaffold("primitive", "review-helper", undefined, options(project));
+    assert.match(formatScaffoldApplyResult(result), /EXPLICIT_PRIMITIVES/);
+  } finally { rmSync(project, { recursive: true, force: true }); }
+});
+
 test("scaffold refuses unsafe names, wrong roots, and overwrites", async () => {
   const outside = mkdtempSync(join(tmpdir(), "gentic-not-project-"));
   const project = createProject();
   try {
     assert.throws(() => resolveScaffoldProjectRoot(outside), /Refusing scaffold outside a Pi project/);
+    assert.throws(() => createScaffoldPreview("primitive", "123", undefined, "dry-run", options(project)), /starting with a letter/);
     const harness = registerScaffoldCommand(project);
     await harness.command.handler("skill ../bad --simple", harness.ctx);
     assert.match(harness.notifications[0]?.message ?? "", /Invalid name/);
