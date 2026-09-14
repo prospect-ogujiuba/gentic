@@ -38,7 +38,8 @@ export type PiContextHudSnapshot = {
   contextWindowTokens?: number;
   remainingTokens?: number;
   pressure: PiContextPressureStatus;
-  tokenConfidence: "exact" | "unknown";
+  /** Pi derives current usage from the last assistant usage plus estimated trailing messages. */
+  tokenConfidence: "estimated" | "unknown";
   largestGroup?: PiContextHudGroup;
   recentCompaction?: PiContextHudCompaction;
   contributors: PiContextHudContributor[];
@@ -89,7 +90,9 @@ export function createPiContextHudSnapshot(
     contextWindowTokens: snapshot.usage.contextWindowTokens,
     remainingTokens: snapshot.usage.remainingTokens,
     pressure: snapshot.pressure,
-    tokenConfidence: snapshot.usage.usedTokens === undefined ? "unknown" : "exact",
+    tokenConfidence: snapshot.usage.usedTokens === undefined && snapshot.usage.remainingPercent === undefined
+      ? "unknown"
+      : "estimated",
     largestGroup: largest
       ? {
           kind: largest.kind,

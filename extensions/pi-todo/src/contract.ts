@@ -1,4 +1,13 @@
 /** Stable public contract for the lightweight pi-todo replacement. */
+export const TODO_TEXT_LIMITS = Object.freeze({
+  title: 256,
+  todoId: 128,
+  reason: 2_048,
+  summary: 2_048,
+} as const);
+
+export const TODO_MAX_ITEMS = 1_000;
+
 export const TODO_PUBLIC_ACTIONS = Object.freeze([
   "create",
   "start",

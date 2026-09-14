@@ -1,10 +1,12 @@
-import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, opendirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, type Dirent } from "node:fs";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import { createWorkflow, isValidTopic, parseWorkflow, type TaskStatus, type Workflow, type WorkflowTask } from "./workflow.ts";
 
 const MAX_FILE_BYTES = 512 * 1024;
 const MAX_TOPICS = 100;
+const MAX_DIRECTORIES = 1_000;
+const MAX_DIRECTORY_ENTRIES = 1_000;
 
 export type LocatedWorkflow =
   | { kind: "native"; path: string; workflow: Workflow }
@@ -27,22 +29,49 @@ export function listWorkflowTopics(cwd: string): string[] {
   const root = safeRoot(cwd);
   const initiatives = resolve(root, ".model-artifacts/initiatives");
   if (!existsSync(initiatives)) return [];
+  if (lstatSync(initiatives).isSymbolicLink()) throw new Error("workflow scan incomplete: initiative root is a symlink");
   const topics: string[] = [];
+  let directories = 0;
   function walk(directory: string, segments: string[]): void {
-    if (topics.length >= MAX_TOPICS || segments.length > 16) return;
+    directories += 1;
+    if (segments.length > 16 || directories > MAX_DIRECTORIES) throw new Error("workflow scan incomplete: directory or depth limit exceeded");
     let entries;
-    try { entries = readdirSync(directory, { withFileTypes: true }); } catch { return; }
+    try { entries = readWorkflowDirectory(directory); }
+    catch (error) {
+      if (error instanceof Error && /workflow scan incomplete/.test(error.message)) throw error;
+      throw new Error("workflow scan incomplete: directory could not be read");
+    }
+    if (entries.some((entry) => entry.isSymbolicLink())) throw new Error("workflow scan incomplete: symlinked entry rejected");
     const names = new Set(entries.map((entry) => entry.name));
     const topic = segments.join("/");
     const hasWorkflow = names.has("workflow.json") && existsSync(resolve(directory, "workflow.json"));
     const hasLegacyManifest = names.has("specs") && existsSync(resolve(directory, "specs/manifest.json"));
-    if (topic && isValidTopic(topic) && (hasWorkflow || hasLegacyManifest)) topics.push(topic);
+    if (topic && isValidTopic(topic) && (hasWorkflow || hasLegacyManifest)) {
+      if (topics.length >= MAX_TOPICS) throw new Error("workflow scan incomplete: topic limit exceeded");
+      topics.push(topic);
+    }
     for (const entry of entries) if (entry.isDirectory() && !entry.isSymbolicLink() && entry.name !== "specs" && entry.name !== "plans" && entry.name !== "reports" && entry.name !== "findings" && entry.name !== "logs" && entry.name !== "todo") {
       walk(resolve(directory, entry.name), [...segments, entry.name]);
     }
   }
   walk(initiatives, []);
   return [...new Set(topics)].sort().slice(0, MAX_TOPICS);
+}
+
+function readWorkflowDirectory(directory: string): Dirent[] {
+  const handle = opendirSync(directory);
+  const entries: Dirent[] = [];
+  try {
+    for (;;) {
+      const entry = handle.readSync();
+      if (!entry) break;
+      if (entries.length >= MAX_DIRECTORY_ENTRIES) throw new Error("workflow scan incomplete: directory entry limit exceeded");
+      entries.push(entry);
+    }
+  } finally {
+    handle.closeSync();
+  }
+  return entries.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function activeWorkflowTopics(cwd: string, exceptTopic?: string): string[] {

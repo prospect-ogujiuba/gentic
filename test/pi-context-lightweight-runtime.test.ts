@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { DEFAULT_PI_CONTEXT_CONFIG } from "../extensions/pi-context/src/config/index.ts";
 import { EXCLUDED_RUNTIME_LEDGER_EVENTS } from "../extensions/pi-context/src/app/index.ts";
 import { registerPiContext } from "../extensions/pi-context/src/pi/index.ts";
 
@@ -70,6 +69,106 @@ test("command builds native output on demand and writes only explicit exports", 
   assert.deepEqual({ usageCalls, promptCalls, branchCalls }, { usageCalls: 3, promptCalls: 3, branchCalls: 3 });
 });
 
+test("temporarily unavailable compaction preserves pressure until valid hysteresis recovery", () => {
+  const handlers = new Map<string, Function>();
+  const notifications: string[] = [];
+  let remaining: number | undefined = 40;
+  let configLoads = 0;
+  registerPiContext({
+    on: (event: string, handler: Function) => handlers.set(event, handler),
+    registerCommand: () => undefined,
+  } as never, {
+    loadConfig: () => {
+      configLoads += 1;
+      return {
+        config: {
+          version: 1,
+          pressure: Object.freeze({ warningPercent: 20, criticalPercent: 8, hysteresisPercent: 3 }),
+        },
+        diagnostics: [],
+        paths: { global: "/safe/global", project: "/safe/project" },
+      };
+    },
+  });
+  const ctx = {
+    cwd: "/safe/project",
+    getContextUsage: () => remaining === undefined
+      ? undefined
+      : { tokens: 100 - remaining, contextWindow: 100, percent: 100 - remaining },
+    ui: { notify: (text: string) => notifications.push(text) },
+  };
+
+  handlers.get("session_start")?.({ reason: "startup" }, ctx);
+  remaining = 20;
+  handlers.get("turn_end")?.({}, ctx);
+  remaining = undefined;
+  handlers.get("session_compact")?.({ reason: "manual" }, ctx);
+  remaining = 23;
+  handlers.get("turn_end")?.({}, ctx);
+  remaining = 24;
+  handlers.get("turn_end")?.({}, ctx);
+  remaining = 20;
+  handlers.get("turn_end")?.({}, ctx);
+
+  assert.deepEqual(notifications.map((text) => text.match(/([0-9.]+)% remaining/)?.[1]), ["20", "20"]);
+  assert.equal(configLoads, 1, "turn and compaction hooks must not reload configuration");
+});
+
+test("new, resumed, reloaded, and post-shutdown sessions reset pressure state", () => {
+  const handlers = new Map<string, Function>();
+  const notifications: string[] = [];
+  let configLoads = 0;
+  registerPiContext({
+    on: (event: string, handler: Function) => handlers.set(event, handler),
+    registerCommand: () => undefined,
+  } as never, {
+    loadConfig: () => {
+      configLoads += 1;
+      return {
+        config: {
+          version: 1,
+          pressure: Object.freeze({ warningPercent: 20, criticalPercent: 8, hysteresisPercent: 3 }),
+        },
+        diagnostics: [],
+        paths: { global: "/safe/global", project: "/safe/project" },
+      };
+    },
+  });
+  const ctx = {
+    cwd: "/safe/project",
+    getContextUsage: () => ({ tokens: 80, contextWindow: 100, percent: 80 }),
+    ui: { notify: (text: string) => notifications.push(text) },
+  };
+
+  for (const reason of ["startup", "new", "resume"] as const) {
+    handlers.get("session_start")?.({ reason }, ctx);
+  }
+  handlers.get("session_shutdown")?.({}, ctx);
+  handlers.get("session_start")?.({ reason: "resume" }, ctx);
+
+  const reloadedHandlers = new Map<string, Function>();
+  registerPiContext({
+    on: (event: string, handler: Function) => reloadedHandlers.set(event, handler),
+    registerCommand: () => undefined,
+  } as never, {
+    loadConfig: () => {
+      configLoads += 1;
+      return {
+        config: {
+          version: 1,
+          pressure: Object.freeze({ warningPercent: 20, criticalPercent: 8, hysteresisPercent: 3 }),
+        },
+        diagnostics: [],
+        paths: { global: "/safe/global", project: "/safe/project" },
+      };
+    },
+  });
+  reloadedHandlers.get("session_start")?.({ reason: "startup" }, ctx);
+
+  assert.equal(notifications.length, 5, "new, resumed, reloaded, and post-shutdown sessions must begin freshly armed");
+  assert.equal(configLoads, 5, "configuration is loaded once for each session generation");
+});
+
 test("stable lifecycle pressure remains transition-only and content-safe", () => {
   const handlers = new Map<string, Function>();
   const notifications: Array<{ text: string; type: string }> = [];
@@ -83,7 +182,10 @@ test("stable lifecycle pressure remains transition-only and content-safe", () =>
     loadConfig: () => {
       configLoads += 1;
       return {
-        config: DEFAULT_PI_CONTEXT_CONFIG,
+        config: {
+          version: 1,
+          pressure: Object.freeze({ warningPercent: 20, criticalPercent: 8, hysteresisPercent: 3 }),
+        },
         diagnostics: [],
         paths: { global: `/private/${marker}`, project: `/repo/${marker}` },
       };
@@ -96,9 +198,10 @@ test("stable lifecycle pressure remains transition-only and content-safe", () =>
   };
 
   handlers.get("session_start")?.({ reason: marker }, ctx);
-  for (remaining of [25, 24, 10, 16, 10, 31, 25]) handlers.get("turn_end")?.({}, ctx);
+  for (remaining of [20, 19, 8, 12, 8, 24, 20]) handlers.get("turn_end")?.({}, ctx);
 
   assert.deepEqual(notifications.map(({ type }) => type), ["warning", "error", "error", "warning"]);
+  assert.deepEqual(notifications.map(({ text }) => text.match(/([0-9.]+)% remaining/)?.[1]), ["20", "8", "8", "20"]);
   assert.equal(configLoads, 1);
   assert.doesNotMatch(JSON.stringify(notifications), new RegExp(marker));
 });

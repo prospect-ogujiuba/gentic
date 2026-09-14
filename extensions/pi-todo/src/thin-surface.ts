@@ -8,6 +8,7 @@ import { Type } from "typebox";
 
 import {
   TODO_PUBLIC_ACTIONS,
+  TODO_TEXT_LIMITS,
   isTodoPublicAction,
   type TodoPublicAction,
   type TodoPublicItem,
@@ -32,10 +33,10 @@ const TODO_COMMAND_COMPLETIONS = [
 
 export const lightweightTodoParameters = Type.Object({
   action: StringEnum(TODO_PUBLIC_ACTIONS),
-  title: Type.Optional(Type.String()),
-  todoId: Type.Optional(Type.String()),
-  reason: Type.Optional(Type.String()),
-  summary: Type.Optional(Type.String()),
+  title: Type.Optional(Type.String({ maxLength: TODO_TEXT_LIMITS.title })),
+  todoId: Type.Optional(Type.String({ maxLength: TODO_TEXT_LIMITS.todoId })),
+  reason: Type.Optional(Type.String({ maxLength: TODO_TEXT_LIMITS.reason })),
+  summary: Type.Optional(Type.String({ maxLength: TODO_TEXT_LIMITS.summary })),
 });
 
 type SurfaceOptions = {
@@ -44,6 +45,7 @@ type SurfaceOptions = {
 
 type SurfaceResult = {
   content: Array<{ type: "text"; text: string }>;
+  isError?: boolean;
   details: {
     todo?: TodoPublicItem;
     state?: TodoCoreState;
@@ -57,9 +59,18 @@ export function registerLightweightTodoSurface(pi: ExtensionAPI, options: Surfac
 
   pi.on("session_start", async (_event, ctx) => updateDisplay(coreFor(pi, ctx), ctx));
   pi.on("session_tree", async (_event, ctx) => updateDisplay(coreFor(pi, ctx), ctx));
+  const readOwnership = async (ctx: ExtensionContext): Promise<boolean | undefined> => {
+    try { return await hasActiveSweTask(ctx); }
+    catch { return undefined; }
+  };
+
   pi.on("tool_call", async (event, ctx) => {
     if (event.toolName !== "todo" || !isTodoPublicAction(event.input?.action)) return;
-    const decision = coreFor(pi, ctx).ownership(event.input.action, await hasActiveSweTask(ctx));
+    const active = await readOwnership(ctx);
+    if (active === undefined && event.input.action !== "list") {
+      return { block: true, reason: "pi-swe lifecycle ownership scan is incomplete; mutation is blocked" };
+    }
+    const decision = coreFor(pi, ctx).ownership(event.input.action, active === true);
     if (decision.allowed) return;
     return {
       block: true,
@@ -69,7 +80,9 @@ export function registerLightweightTodoSurface(pi: ExtensionAPI, options: Surfac
 
   const execute = async (request: TodoPublicRequest, ctx: ExtensionContext): Promise<SurfaceResult> => {
     const core = coreFor(pi, ctx);
-    const decision = core.ownership(request.action, await hasActiveSweTask(ctx));
+    const active = await readOwnership(ctx);
+    if (active === undefined && request.action !== "list") return errorResult("PI_SWE_OWNERSHIP_UNKNOWN", "pi-swe ownership scan is incomplete; mutation is blocked");
+    const decision = core.ownership(request.action, active === true);
     if (!decision.allowed) return errorResult("PI_SWE_OWNS_LIFECYCLE", "pi-swe lifecycle ownership is active");
     try {
       const result = dispatch(core, request);
@@ -91,6 +104,7 @@ export function registerLightweightTodoSurface(pi: ExtensionAPI, options: Surfac
       signal?.throwIfAborted();
       if (!isTodoPublicAction(params.action)) return errorResult("INVALID_REQUEST", "unsupported todo action");
       const run = queue.then(async () => {
+        signal?.throwIfAborted();
         try {
           return await execute(requestFrom(params.action, params), ctx);
         } catch (error) {
@@ -245,8 +259,10 @@ function optionalString(value: unknown): string | undefined {
 }
 
 function errorResult(code: string, message: string): SurfaceResult {
+  const bounded = message.replace(/[\r\n\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 240) || "todo operation failed";
   return {
-    content: [{ type: "text", text: `Error: ${message}` }],
-    details: { error: { code, message } },
+    content: [{ type: "text", text: `Error: ${bounded}` }],
+    isError: true,
+    details: { error: { code, message: bounded } },
   };
 }

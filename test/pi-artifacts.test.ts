@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 
-import { auditArtifacts, loadMigrationConfig } from "../extensions/pi-artifacts/src/domain/inventory.ts";
+import { ArtifactTraversalLimitError, auditArtifacts, loadMigrationConfig } from "../extensions/pi-artifacts/src/domain/inventory.ts";
 import { createMigrationPlan, fingerprint } from "../extensions/pi-artifacts/src/domain/plan.ts";
 import { resolveProjectPath } from "../extensions/pi-artifacts/src/domain/normalize.ts";
 import type { ArtifactInventory } from "../extensions/pi-artifacts/src/domain/types.ts";
@@ -205,8 +205,18 @@ test("migration config is closed and supplies exact deterministic mappings", () 
 
   write(root, ".pi/model-artifacts-migration.json", JSON.stringify({ schemaVersion: 1, mappings: {}, extra: true }));
   assert.throws(() => loadMigrationConfig(root), /unknown config key: extra/);
+  const configPath = join(root, ".pi/model-artifacts-migration.json");
   write(root, ".pi/model-artifacts-migration.json", JSON.stringify({ schemaVersion: 1, mappings: { "../escape.md": { kind: "reports", topic: "demo", timestamp: "2026-05-01_1202", shortName: "x" } } }));
   assert.throws(() => loadMigrationConfig(root), /source must be a project-relative \.model-artifacts path/);
+
+  const outside = join(root, "outside-config.json");
+  writeFileSync(outside, JSON.stringify({ schemaVersion: 1, mappings: {} }));
+  unlinkSync(configPath);
+  symlinkSync(outside, configPath);
+  assert.throws(() => loadMigrationConfig(root), /symlink|regular file/);
+  unlinkSync(configPath);
+  writeFileSync(configPath, "x".repeat(1024 * 1024 + 1));
+  assert.throws(() => loadMigrationConfig(root), /byte|size|bounded/);
 });
 
 test("artifact audit fails closed at file and byte bounds", () => {
@@ -215,6 +225,23 @@ test("artifact audit fails closed at file and byte bounds", () => {
   write(root, ".model-artifacts/b.md", "67890");
   assert.throws(() => auditArtifacts({ cwd: root, maxFiles: 1 }), /file limit exceeded/);
   assert.throws(() => auditArtifacts({ cwd: root, maxBytes: 9 }), /byte limit exceeded/);
+});
+
+test("artifact traversal fails with typed directory, depth, and wide-directory bounds", () => {
+  const cases = [
+    { code: "directory-limit", options: { maxDirectories: 2 }, paths: [".model-artifacts/a/one.md", ".model-artifacts/b/two.md"] },
+    { code: "depth-limit", options: { maxDepth: 1 }, paths: [".model-artifacts/a/b/deep.md"] },
+    { code: "directory-entry-limit", options: { maxEntriesPerDirectory: 1 }, paths: [".model-artifacts/a.md", ".model-artifacts/b.md"] },
+  ] as const;
+  for (const item of cases) {
+    const root = fixture();
+    for (const path of item.paths) write(root, path, "x\n");
+    assert.throws(
+      () => auditArtifacts({ cwd: root, ...item.options }),
+      (error) => error instanceof ArtifactTraversalLimitError && error.code === item.code,
+      item.code,
+    );
+  }
 });
 
 test("migration plans have stable logical fingerprints and sorted eligible moves", () => {

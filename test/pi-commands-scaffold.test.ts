@@ -118,6 +118,22 @@ test("scaffold refuses unsafe names, wrong roots, and overwrites", async () => {
   }
 });
 
+test("scaffold apply rejects symlinked target ancestors without external writes", () => {
+  const project = createProject();
+  const outside = mkdtempSync(join(tmpdir(), "gentic-scaffold-outside-"));
+  try {
+    symlinkSync(outside, join(project, "extensions"), "dir");
+    assert.throws(
+      () => applyScaffold("extension", "escaped-extension", "minimal", options(project)),
+      /symlink|escapes project root/i,
+    );
+    assert.deepEqual(readdirSync(outside), []);
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
 test("layered scaffold transaction rolls back at every stage and commit step", () => {
   for (let failAtStep = 1; failAtStep <= 12; failAtStep += 1) {
     const project = createProject();

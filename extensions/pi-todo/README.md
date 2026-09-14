@@ -17,7 +17,7 @@ The `/todo` command exposes the same operations. A compact footer status names a
 
 ## State and ownership
 
-State is reconstructed in one pass over `sessionManager.getBranch()`. Mutations append `gentic.todo.event` version-1 custom entries. The presentation layer renders that state without adding lifecycle behavior. The runtime has no scheduler, dependencies, claims, leases, splitting, artifact writing, configuration scan, startup filesystem scan, reminder hooks, polling, or autonomous follow-up.
+State is reconstructed in one pass over `sessionManager.getBranch()`. Public and legacy-replayed state is bounded to 1,000 todos; identifiers/text are single-line and bounded (title 256, ID 128, reason/summary 2,048 characters). Mutations append `gentic.todo.event` version-1 custom entries; queued cancellation is rechecked before append, and failed tool operations set `isError`. Bounded pi-swe ownership scans fail closed for mutation while list remains available. Model calls intentionally check pi-swe ownership both in the pre-execution hook and again inside queued execution. The duplicate bounded scan closes the state-change window; it is a deliberate security cost rather than cached hot-path state. The presentation layer renders state without adding lifecycle behavior. The runtime has no scheduler, dependencies, claims, leases, splitting, artifact writing, configuration scan, reminder hooks, polling, or autonomous follow-up.
 
 When an assessed pi-swe task is active, pi-swe is the lifecycle owner. `todo list` remains available; todo mutations are rejected. Conversely, pi-swe uses the shared lifecycle probe to reject activation while a todo is active.
 

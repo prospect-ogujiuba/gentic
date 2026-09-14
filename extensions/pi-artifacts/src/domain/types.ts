@@ -44,4 +44,10 @@ export type AuditArtifactsOptions = {
   maxBytes?: number;
   maxReferenceFiles?: number;
   maxReferenceBytes?: number;
+  maxDirectories?: number;
+  maxDepth?: number;
+  maxEntriesPerDirectory?: number;
+  maxReferenceDirectories?: number;
+  maxReferenceDepth?: number;
+  maxReferenceEntriesPerDirectory?: number;
 };

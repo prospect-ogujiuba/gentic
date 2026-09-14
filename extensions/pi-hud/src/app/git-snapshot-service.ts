@@ -7,6 +7,7 @@ export interface GitSnapshotServiceOptions {
   collector?: GitCollector;
   debounceMs?: number;
   freshnessMs?: number;
+  retryCooldownMs?: number;
   timeoutMs?: number;
   maxOutputBytes?: number;
   now?: () => number;
@@ -30,6 +31,7 @@ export class GitSnapshotService {
   private readonly collector: GitCollector;
   private readonly debounceMs: number;
   private readonly freshnessMs: number;
+  private readonly retryCooldownMs: number;
   private readonly timeoutMs: number;
   private readonly maxOutputBytes: number;
   private readonly now: () => number;
@@ -37,6 +39,7 @@ export class GitSnapshotService {
   private cwd?: string;
   private disposed = false;
   private lastGood?: LastGood;
+  private lastAttemptAt?: number;
   private pending?: PendingRefresh;
   private state: GitSnapshotState = { status: "unavailable", generation: 0 };
 
@@ -44,6 +47,7 @@ export class GitSnapshotService {
     this.collector = options.collector ?? collectGitStatus;
     this.debounceMs = options.debounceMs ?? 25;
     this.freshnessMs = options.freshnessMs ?? 1_000;
+    this.retryCooldownMs = options.retryCooldownMs ?? 1_000;
     this.timeoutMs = options.timeoutMs ?? 800;
     this.maxOutputBytes = options.maxOutputBytes ?? 64 * 1024;
     this.now = options.now ?? Date.now;
@@ -75,6 +79,7 @@ export class GitSnapshotService {
     this.cwd = cwd;
     this.disposed = false;
     this.lastGood = undefined;
+    this.lastAttemptAt = undefined;
     this.state = { status: "unavailable", generation: this.generation };
     pending?.resolve(this.state);
   }
@@ -85,6 +90,7 @@ export class GitSnapshotService {
     this.cwd = undefined;
     this.disposed = true;
     this.lastGood = undefined;
+    this.lastAttemptAt = undefined;
     this.state = { status: "unavailable", generation: this.generation };
     pending?.resolve(this.state);
   }
@@ -95,6 +101,11 @@ export class GitSnapshotService {
 
     const current = this.getState(cwd);
     if (current.status === "fresh") return Promise.resolve(current);
+    if (
+      this.lastAttemptAt !== undefined
+      && this.now() - this.lastAttemptAt < this.retryCooldownMs
+      && (current.status === "unavailable" || current.status === "error" || current.status === "stale")
+    ) return Promise.resolve(current);
 
     const generation = this.generation;
     let resolve!: (state: GitSnapshotState) => void;
@@ -138,13 +149,15 @@ export class GitSnapshotService {
         this.state = { status: "fresh", generation: pending.generation, snapshot, updatedAt };
       } else {
         this.lastGood = undefined;
-        this.state = { status: "unavailable", generation: pending.generation, updatedAt: this.now() };
+        this.lastAttemptAt = this.now();
+        this.state = { status: "unavailable", generation: pending.generation, updatedAt: this.lastAttemptAt };
       }
     } catch (error) {
       if (!this.canPublish(pending)) return;
       const detail = error instanceof GitCollectionError
         ? { code: error.code, message: error.message }
         : { code: "command-failure", message: error instanceof Error ? error.message.slice(0, 200) : "Git collection failed" };
+      this.lastAttemptAt = this.now();
       this.state = this.lastGood
         ? { status: "stale", generation: pending.generation, snapshot: this.lastGood.snapshot, updatedAt: this.lastGood.updatedAt, error: detail }
         : { status: "error", generation: pending.generation, updatedAt: this.now(), error: detail };

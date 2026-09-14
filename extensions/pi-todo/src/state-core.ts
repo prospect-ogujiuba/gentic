@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  TODO_MAX_ITEMS,
+  TODO_TEXT_LIMITS,
   decideTodoOwnership,
   type TodoOwnershipDecision,
   type TodoPublicAction,
@@ -83,10 +85,10 @@ export class BranchTodoCore {
   }
 
   create(title: string): TodoPublicItem {
-    const normalized = title.trim();
-    if (!normalized) throw new Error("todo title is required");
+    const normalized = requirePublicLine(title, TODO_TEXT_LIMITS.title, "todo title");
+    if (this.state().order.length >= TODO_MAX_ITEMS) throw new Error(`todo limit exceeded: maximum ${TODO_MAX_ITEMS}`);
     const todo: TodoPublicItem = {
-      id: this.createId("todo"),
+      id: requireTodoId(this.createId("todo")),
       title: normalized,
       status: "ready",
     };
@@ -96,7 +98,8 @@ export class BranchTodoCore {
 
   start(todoId: string): TodoPublicItem {
     const state = this.state();
-    const todo = requireTodo(state, todoId);
+    const normalizedId = requireTodoId(todoId);
+    const todo = requireTodo(state, normalizedId);
     if (todo.status === "in_progress") return todo;
     if (state.activeTodoId) {
       throw new TodoCoreError("ACTIVE_TODO_EXISTS", `todo ${state.activeTodoId} is already active`);
@@ -104,43 +107,44 @@ export class BranchTodoCore {
     if (todo.status !== "ready") {
       throw new TodoCoreError("INVALID_TRANSITION", `cannot start todo from ${todo.status}`);
     }
-    this.append({ type: "todo.started", todoId });
+    this.append({ type: "todo.started", todoId: normalizedId });
     return { ...todo, status: "in_progress", blockedReason: undefined };
   }
 
   finish(todoId?: string, summary?: string): TodoPublicItem {
     const state = this.state();
-    const targetId = todoId ?? state.activeTodoId;
+    const targetId = todoId === undefined ? state.activeTodoId : requireTodoId(todoId);
     if (!targetId) throw new TodoCoreError("NO_ACTIVE_TODO", "no active todo to finish");
     const todo = requireTodo(state, targetId);
     if (todo.status !== "in_progress") {
       throw new TodoCoreError("INVALID_TRANSITION", `cannot finish todo from ${todo.status}`);
     }
-    this.append({ type: "todo.completed", todoId: targetId, summary, evidence: [] });
+    const normalizedSummary = summary === undefined ? undefined : requirePublicLine(summary, TODO_TEXT_LIMITS.summary, "todo summary");
+    this.append({ type: "todo.completed", todoId: targetId, summary: normalizedSummary, evidence: [] });
     return { ...todo, status: "completed", blockedReason: undefined };
   }
 
   block(todoId: string | undefined, reason: string): TodoPublicItem {
     const state = this.state();
-    const targetId = todoId ?? state.activeTodoId;
+    const targetId = todoId === undefined ? state.activeTodoId : requireTodoId(todoId);
     if (!targetId) throw new TodoCoreError("NO_ACTIVE_TODO", "no active todo to block");
     const todo = requireTodo(state, targetId);
     if (todo.status !== "ready" && todo.status !== "in_progress") {
       throw new TodoCoreError("INVALID_TRANSITION", `cannot block todo from ${todo.status}`);
     }
-    const normalized = reason.trim();
-    if (!normalized) throw new Error("block reason is required");
+    const normalized = requirePublicLine(reason, TODO_TEXT_LIMITS.reason, "block reason");
     this.append({ type: "todo.blocked", todoId: targetId, reason: normalized });
     return { ...todo, status: "external_blocked", blockedReason: normalized };
   }
 
   unblock(todoId: string): TodoPublicItem {
     const state = this.state();
-    const todo = requireTodo(state, todoId);
+    const normalizedId = requireTodoId(todoId);
+    const todo = requireTodo(state, normalizedId);
     if (todo.status !== "external_blocked") {
       throw new TodoCoreError("INVALID_TRANSITION", `cannot unblock todo from ${todo.status}`);
     }
-    this.append({ type: "todo.unblocked", todoId });
+    this.append({ type: "todo.unblocked", todoId: normalizedId });
     return { ...todo, status: "ready", blockedReason: undefined };
   }
 
@@ -161,27 +165,32 @@ function decodeEvent(entry: TodoBranchEntry): TodoCoreEvent | undefined {
     return todo ? { id: candidate.id, type: candidate.type, at: candidate.at, todo } : undefined;
   }
   if (typeof candidate.todoId !== "string") return undefined;
+  const todoId = decodeTodoId(candidate.todoId);
+  if (!todoId) return undefined;
   if (candidate.type === "todo.started" || candidate.type === "todo.unblocked") {
-    return { id: candidate.id, type: candidate.type, at: candidate.at, todoId: candidate.todoId };
+    return { id: candidate.id, type: candidate.type, at: candidate.at, todoId };
   }
   if (["todo.completed", "todo.cancelled", "todo.failed", "todo.superseded", "todo.verified"].includes(candidate.type)) {
     return {
       id: candidate.id,
       type: candidate.type as "todo.completed" | "todo.cancelled" | "todo.failed" | "todo.superseded" | "todo.verified",
       at: candidate.at,
-      todoId: candidate.todoId,
-      summary: typeof candidate.summary === "string" ? candidate.summary : undefined,
+      todoId,
+      summary: typeof candidate.summary === "string" ? boundedPublicLine(candidate.summary, TODO_TEXT_LIMITS.summary) : undefined,
     };
   }
   if ((candidate.type === "todo.blocked" || candidate.type === "todo.external_blocked") && typeof candidate.reason === "string") {
-    return { id: candidate.id, type: candidate.type, at: candidate.at, todoId: candidate.todoId, reason: candidate.reason };
+    return { id: candidate.id, type: candidate.type, at: candidate.at, todoId, reason: boundedPublicLine(candidate.reason, TODO_TEXT_LIMITS.reason) };
   }
   return undefined;
 }
 
 function applyEvent(state: TodoCoreState, event: TodoCoreEvent): void {
   if (event.type === "todo.created") {
-    if (!state.todos[event.todo.id]) state.order.push(event.todo.id);
+    if (!state.todos[event.todo.id]) {
+      if (state.order.length >= TODO_MAX_ITEMS) return;
+      state.order.push(event.todo.id);
+    }
     state.todos[event.todo.id] = { ...event.todo };
     if (event.todo.status === "in_progress") activate(state, event.todo.id);
     else if (state.activeTodoId === event.todo.id) state.activeTodoId = undefined;
@@ -221,15 +230,17 @@ function activate(state: TodoCoreState, todoId: string): void {
 function decodeTodo(value: unknown): TodoPublicItem | undefined {
   const todo = record(value);
   if (!todo || typeof todo.id !== "string" || typeof todo.title !== "string") return undefined;
+  const id = decodeTodoId(todo.id);
+  if (!id) return undefined;
   const status = normalizePublicStatus(todo.status);
   if (!status) return undefined;
   return {
-    id: todo.id,
-    title: todo.title,
+    id,
+    title: boundedPublicLine(todo.title, TODO_TEXT_LIMITS.title),
     status,
     blockedReason: typeof todo.blockedReason === "string"
-      ? todo.blockedReason
-      : typeof todo.externalBlocker === "string" ? todo.externalBlocker : undefined,
+      ? boundedPublicLine(todo.blockedReason, TODO_TEXT_LIMITS.reason)
+      : typeof todo.externalBlocker === "string" ? boundedPublicLine(todo.externalBlocker, TODO_TEXT_LIMITS.reason) : undefined,
   };
 }
 
@@ -239,6 +250,30 @@ function normalizePublicStatus(value: unknown): TodoPublicItem["status"] | undef
   if (value === "external_blocked" || value === "blocked") return "external_blocked";
   if (["completed", "done", "needs_review", "verified", "failed", "cancelled", "superseded", "abandoned"].includes(String(value))) return "completed";
   return undefined;
+}
+
+function boundedPublicLine(value: string, maximum: number): string {
+  return value.replace(/[\r\n\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, maximum);
+}
+
+function requirePublicLine(value: string, maximum: number, label: string): string {
+  const normalized = boundedPublicLine(value, maximum + 1);
+  if (!normalized) throw new Error(`${label} is required`);
+  if (normalized.length > maximum) throw new Error(`${label} must not exceed ${maximum} characters`);
+  return normalized;
+}
+
+function decodeTodoId(value: string): string | undefined {
+  const normalized = boundedPublicLine(value, TODO_TEXT_LIMITS.todoId + 1);
+  return normalized.length > 0 && normalized.length <= TODO_TEXT_LIMITS.todoId && /^[A-Za-z0-9._:-]+$/.test(normalized)
+    ? normalized
+    : undefined;
+}
+
+function requireTodoId(value: string): string {
+  const normalized = decodeTodoId(value);
+  if (!normalized) throw new Error(`todoId must be 1..${TODO_TEXT_LIMITS.todoId} safe characters`);
+  return normalized;
 }
 
 function requireTodo(state: TodoCoreState, todoId: string): TodoPublicItem {

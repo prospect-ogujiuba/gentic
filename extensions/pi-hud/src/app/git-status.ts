@@ -1,4 +1,4 @@
-import { execFile, type ExecFileException } from "node:child_process";
+import { execBounded, type ExecResult } from "../../../pi-git/src/app/snapshot.ts";
 import { normalizeGitStatus } from "../domain/git-status.ts";
 import type { GitStatus } from "../../types.ts";
 
@@ -19,24 +19,6 @@ export interface GitCollectorOptions {
   timeoutMs?: number;
   maxOutputBytes?: number;
   gitPath?: string;
-}
-
-interface CommandResult {
-  error: ExecFileException | null;
-  stdout: string;
-  stderr: string;
-}
-
-function execute(command: string, cwd: string, args: string[], signal: AbortSignal, maxBuffer: number): Promise<CommandResult> {
-  return new Promise((resolve) => {
-    execFile(command, args, { cwd, encoding: "utf8", maxBuffer, signal }, (error, stdout, stderr) => {
-      resolve({ error, stdout, stderr });
-    });
-  });
-}
-
-function isOutputLimit(error: ExecFileException): boolean {
-  return error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" || /maxbuffer/i.test(error.message);
 }
 
 function commandDetail(args: string[], stderr: string): string {
@@ -60,19 +42,29 @@ export async function collectGitStatus(cwd: string, options: GitCollectorOptions
   timeout.unref?.();
 
   const run = async (args: string[], allowExitFailure = false): Promise<string | undefined> => {
-    const result = await execute(options.gitPath ?? "git", cwd, args, controller.signal, remainingBytes);
-    const outputBytes = Buffer.byteLength(result.stdout) + Buffer.byteLength(result.stderr);
-    remainingBytes = Math.max(0, remainingBytes - outputBytes);
-
-    if (result.error) {
+    let result: ExecResult;
+    try {
+      result = await execBounded(options.gitPath ?? "git", args, cwd, controller.signal, timeoutMs + 1_000, remainingBytes);
+    } catch {
       if (timedOut) throw new GitCollectionError("timeout", `Git collection exceeded ${timeoutMs}ms`);
       if (options.signal?.aborted) throw new GitCollectionError("cancelled", "Git collection cancelled");
-      if (isOutputLimit(result.error) || remainingBytes === 0) throw new GitCollectionError("output-limit", `Git output exceeded ${maxOutputBytes} bytes`);
-      if (allowExitFailure) return undefined;
-      throw new GitCollectionError("command-failure", commandDetail(args, result.stderr));
+      throw new GitCollectionError("command-failure", `git ${args[0]} failed`);
     }
-    if (remainingBytes === 0 && outputBytes > 0) throw new GitCollectionError("output-limit", `Git output exceeded ${maxOutputBytes} bytes`);
-    return result.stdout;
+    const stdout = result.stdout ?? "";
+    const stderr = result.stderr ?? "";
+    const outputBytes = Buffer.byteLength(stdout) + Buffer.byteLength(stderr);
+    remainingBytes = Math.max(0, remainingBytes - outputBytes);
+
+    if (timedOut) throw new GitCollectionError("timeout", `Git collection exceeded ${timeoutMs}ms`);
+    if (options.signal?.aborted) throw new GitCollectionError("cancelled", "Git collection cancelled");
+    if (result.stdoutTruncated || result.stderrTruncated || remainingBytes === 0 && outputBytes > 0) {
+      throw new GitCollectionError("output-limit", `Git output exceeded ${maxOutputBytes} bytes`);
+    }
+    if (result.code !== 0 || result.killed) {
+      if (allowExitFailure) return undefined;
+      throw new GitCollectionError("command-failure", commandDetail(args, stderr));
+    }
+    return stdout;
   };
 
   try {

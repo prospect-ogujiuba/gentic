@@ -13,14 +13,12 @@
       "properties": {
         "warningPercent": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 100, "default": 25 },
         "criticalPercent": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 100, "default": 10 },
-        "hysteresisPercent": { "type": "number", "minimum": 0, "maximum": 100, "default": 5 },
-        "repeatCooldownMs": { "type": "integer", "minimum": 0, "default": 300000 }
+        "hysteresisPercent": { "type": "number", "minimum": 0, "maximum": 100, "default": 5 }
       },
       "default": {
         "warningPercent": 25,
         "criticalPercent": 10,
-        "hysteresisPercent": 5,
-        "repeatCooldownMs": 300000
+        "hysteresisPercent": 5
       }
     }
   }

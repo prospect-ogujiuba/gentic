@@ -30,7 +30,7 @@ The former footer replacement, modal, component toggle matrix, work timer, event
 
 ## Refresh and ownership
 
-`src/pi/runtime.ts` owns one session generation and the `pi-hud` widget. Native model, context usage, session branch data, and coarse activity are projected into an on-demand bounded snapshot. Git collection is event-driven, asynchronous, single-flight, deadline/output-bounded, and has no interval or background polling loop. Widget rendering itself starts no timers or subscriptions.
+`src/pi/runtime.ts` owns one session generation and the `pi-hud` widget. Native model, context usage, session branch data, and coarse activity are projected into an on-demand bounded snapshot. Live context projection reads native usage once, fails closed when unavailable, and skips prompt/branch contributor scans. Git collection is event-driven, asynchronous, single-flight, and uses pi-git's shared bounded process runner for deadline/output enforcement and forced process-group cleanup after cancellation, and negatively cached for one second after unavailable/error results to prevent subprocess storms. Session reset bypasses that cache. There is no interval or background polling loop, and widget rendering itself starts no timers or subscriptions.
 
 Shutdown clears only widget id `pi-hud`, cancels pending Git work, and rejects late generation results. Pi's native footer, working indicator, statuses, editor, and other widgets remain untouched.
 

@@ -88,7 +88,7 @@ export function registerPiContext(pi: ExtensionAPI, options: RegisterPiContextOp
   };
 
   const observePressure = (ctx: Pick<ExtensionContext, "getContextUsage" | "ui">): void => {
-    const transition = reduceContextPressure(pressureState, readPressureUsage(ctx), policy, now());
+    const transition = reduceContextPressure(pressureState, readPressureUsage(ctx), policy);
     pressureState = transition.state;
     notifyPressure(transition.evaluation.notification, transition.evaluation.remainingPercent, ctx);
   };
@@ -104,8 +104,11 @@ export function registerPiContext(pi: ExtensionAPI, options: RegisterPiContextOp
         return;
       }
 
-      const snapshot = createNativeContextSnapshot(ctx, { capturedAt: new Date(now()).toISOString() });
-      const transition = reduceContextPressure(pressureState, usageFromSnapshot(snapshot), policy, now());
+      const snapshot = createNativeContextSnapshot(ctx, {
+        capturedAt: new Date(now()).toISOString(),
+        pressurePolicy: policy,
+      });
+      const transition = reduceContextPressure(pressureState, usageFromSnapshot(snapshot), policy);
       pressureState = transition.state;
       notifyPressure(transition.evaluation.notification, transition.evaluation.remainingPercent, ctx);
       const pressured = {
@@ -169,7 +172,7 @@ function readPressureUsage(ctx: Pick<ExtensionContext, "getContextUsage">): Cont
     tokens: typeof usage.tokens === "number" ? usage.tokens : undefined,
     contextWindow: typeof usage.contextWindow === "number" ? usage.contextWindow : undefined,
     percent: typeof usage.percent === "number" ? usage.percent : undefined,
-    tokenConfidence: typeof usage.tokens === "number" ? "exact" : "unknown",
+    tokenConfidence: typeof usage.tokens === "number" || typeof usage.percent === "number" ? "estimated" : "unknown",
   };
 }
 
@@ -179,7 +182,7 @@ function usageFromSnapshot(snapshot: ReturnType<typeof createNativeContextSnapsh
     tokens: snapshot.usage.usedTokens,
     contextWindow: snapshot.usage.contextWindowTokens,
     percent: snapshot.usage.remainingPercent === undefined ? undefined : 100 - snapshot.usage.remainingPercent,
-    tokenConfidence: "exact",
+    tokenConfidence: "estimated",
   };
 }
 

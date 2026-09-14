@@ -16,6 +16,6 @@ Central extension for Gentic slash commands.
 
 Supported kinds: minimal/layered extension, tool, command, event, shortcut, flag, provider, widget, footer, overlay, skill, prompt, theme, and retained primitive.
 
-Apply uses staged sibling files and a rollback transaction. Existing targets are never overwritten. Native registrations are standalone Pi extensions, so scaffolding does not edit a TypeScript barrel with regexes.
+Apply uses staged sibling files and a rollback transaction. Existing targets are never overwritten, and symlinked or escaping target ancestors are rejected before staging and rechecked before commit/rollback. Native registrations are standalone Pi extensions, so scaffolding does not edit a TypeScript barrel with regexes.
 
 Run `node --experimental-strip-types --test test/pi-commands-scaffold.test.ts` for golden previews, every-step rollback injection, typechecking, and smoke loading.

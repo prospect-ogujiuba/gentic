@@ -34,8 +34,9 @@ A drift report is expected to fail its candidate event row when upstream adds or
 `npm run check:performance` blocks gross regressions in:
 
 - context-to-HUD snapshot projection;
+- representative HUD snapshot construction and start/update/shutdown lifecycle paths;
 - responsive HUD footer rendering;
-- all-extension startup registration;
+- all-extension startup registration (registration only, not command execution);
 - source/manifest inventory generation;
 - aggregate model-callable tool-schema size.
 

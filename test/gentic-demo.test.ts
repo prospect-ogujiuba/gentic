@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -231,6 +232,8 @@ test("catalog queries native command and tool metadata once per operation", asyn
 
 test("demo activates every Gentic-owned extension and exercises shared runtime paths", async (t) => {
   const harness = createPiHarness();
+  execFileSync("git", ["init", "-q", "-b", "demo"], { cwd: harness.ctx.cwd });
+  execFileSync("git", ["-c", "user.name=Gentic Test", "-c", "user.email=gentic@example.invalid", "commit", "-q", "--allow-empty", "-m", "fixture"], { cwd: harness.ctx.cwd });
   t.after(async () => {
     await harness.emit("session_shutdown", { reason: "test-complete" }, harness.ctx);
     rmSync(harness.ctx.cwd, { recursive: true, force: true });
@@ -276,7 +279,6 @@ test("demo activates every Gentic-owned extension and exercises shared runtime p
 
   const gitSnapshot = await harness.tools.get("git_snapshot")?.execute("tool-call", {}, undefined, undefined, harness.ctx) as { content: Array<{ text: string }> };
   assert.match(gitSnapshot.content[0].text, /branch: demo/);
-  assert.ok(harness.execCalls.some((call) => call.command === "git" && call.args.includes("status")));
 
   const todoTool = harness.tools.get("todo");
   const created = await todoTool?.execute("tool-call", { action: "create", title: "exercise all extensions", acceptanceCriteria: ["demo passes"] }, undefined, undefined, harness.ctx) as { content: Array<{ text: string }>; details: { todo: { id: string } } };

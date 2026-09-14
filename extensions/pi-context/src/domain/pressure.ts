@@ -7,7 +7,6 @@ export type ContextPressurePolicy = Readonly<{
   warningPercent: number;
   criticalPercent: number;
   hysteresisPercent: number;
-  repeatCooldownMs: number;
 }>;
 
 export type ContextPressureUsage = {
@@ -31,8 +30,6 @@ export type ContextPressureState = Readonly<{
   level: ContextPressureLevel;
   warningArmed: boolean;
   criticalArmed: boolean;
-  lastNotifiedLevel?: "warning" | "critical";
-  lastNotifiedAtMs?: number;
 }>;
 
 export type ContextPressureTransition = {
@@ -44,7 +41,6 @@ export const DEFAULT_CONTEXT_PRESSURE_POLICY: ContextPressurePolicy = Object.fre
   warningPercent: 25,
   criticalPercent: 10,
   hysteresisPercent: 5,
-  repeatCooldownMs: 300_000,
 });
 
 export function createContextPressureState(): ContextPressureState {
@@ -56,7 +52,7 @@ export function evaluateContextPressure(
   policy: ContextPressurePolicy = DEFAULT_CONTEXT_PRESSURE_POLICY,
 ): ContextPressureEvaluation {
   if (!usage) return unavailable("usage-unavailable");
-  if (usage.tokenConfidence !== "exact") return unavailable("usage-not-exact");
+  if (usage.tokenConfidence === "unknown") return unavailable("usage-not-exact");
 
   const remainingPercent = readRemainingPercent(usage);
   if (remainingPercent === undefined) return unavailable("usage-invalid");
@@ -73,7 +69,6 @@ export function reduceContextPressure(
   state: ContextPressureState,
   usage: ContextPressureUsage | undefined,
   policy: ContextPressurePolicy = DEFAULT_CONTEXT_PRESSURE_POLICY,
-  nowMs = Date.now(),
 ): ContextPressureTransition {
   const measured = evaluateContextPressure(usage, policy);
   if (!measured.available || measured.remainingPercent === undefined) {
@@ -99,8 +94,6 @@ export function reduceContextPressure(
     level,
     warningArmed: notification === "warning" ? false : warningArmed,
     criticalArmed: notification === "critical" ? false : criticalArmed,
-    lastNotifiedLevel: notification ?? state.lastNotifiedLevel,
-    lastNotifiedAtMs: notification ? nowMs : state.lastNotifiedAtMs,
   });
 
   return {

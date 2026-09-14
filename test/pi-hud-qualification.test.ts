@@ -4,6 +4,7 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 
 import { registerHudCommand } from "../extensions/pi-hud/src/pi/adapter.ts";
 import { GitSnapshotService } from "../extensions/pi-hud/src/app/git-snapshot-service.ts";
+import { createSnapshot, withLiveUsage } from "../extensions/pi-hud/src/app/snapshot.ts";
 import { HudRuntimeOwner } from "../extensions/pi-hud/src/pi/runtime.ts";
 import { renderHudWidgetLines } from "../extensions/pi-hud/src/ui/surfaces/widget.ts";
 import type { GitSnapshotState, HudSnapshot, Theme } from "../extensions/pi-hud/types.ts";
@@ -34,7 +35,7 @@ function hostileSnapshot(): HudSnapshot {
       contextWindowTokens: 100_000,
       remainingTokens: 5_000,
       pressure: { available: true, level: "critical", remainingPercent: 5 },
-      tokenConfidence: "exact",
+      tokenConfidence: "estimated",
       contributors: [],
       warnings: [],
       truncatedWarnings: 0,
@@ -60,6 +61,44 @@ test("all terminal widths remain ANSI-aware and bounded under hostile labels", (
     const lines = renderHudWidgetLines(snapshot, ansiTheme, width);
     assert.ok(lines.every((line) => visibleWidth(line) <= Math.max(0, width)), `width ${width}`);
   }
+});
+
+test("HUD reads native usage once, fails closed on thrown accessors, and projects live pressure", () => {
+  let used = 20;
+  let usageCalls = 0;
+  let branchCalls = 0;
+  const ctx = {
+    cwd: process.cwd(),
+    model: undefined,
+    getContextUsage: () => {
+      usageCalls += 1;
+      return { tokens: used, contextWindow: 100, percent: used };
+    },
+    getSystemPrompt: () => "must not be measured",
+    sessionManager: { getBranch: () => { branchCalls += 1; throw new Error("PRIVATE_BRANCH_MARKER"); } },
+  };
+
+  const initial = createSnapshot(ctx);
+  assert.equal(usageCalls, 1);
+  assert.equal(branchCalls, 0, "pressure-only HUD snapshots must not scan branch contributors");
+  used = 95;
+  const live = withLiveUsage(initial, ctx);
+  assert.equal(usageCalls, 2);
+  assert.deepEqual(live.piContext?.pressure, { available: true, level: "critical", remainingPercent: 5 });
+  assert.equal(live.piContext?.totalTokens, 95);
+  const liveLine = renderHudWidgetLines(live, { fg: (_color: unknown, text: string) => text }, 120).join("\n");
+  assert.match(liveLine, /context critical.*95\/100 5% left/);
+
+  const hostile = {
+    ...ctx,
+    getContextUsage: () => { throw new Error("PRIVATE_USAGE_MARKER"); },
+    getSystemPrompt: () => { throw new Error("PRIVATE_PROMPT_MARKER"); },
+  };
+  const failed = createSnapshot(hostile);
+  assert.equal(failed.usage, undefined);
+  assert.deepEqual(failed.piContext?.pressure, { available: false, level: "unavailable" });
+  assert.doesNotMatch(JSON.stringify(failed), /PRIVATE_/);
+  assert.doesNotThrow(() => withLiveUsage(initial, hostile));
 });
 
 test("JSON and print commands perform no UI calls", async () => {

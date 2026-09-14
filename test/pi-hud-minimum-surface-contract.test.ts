@@ -2,30 +2,25 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const dependencyPath = ".model-artifacts/initiatives/lighten-pi-context/workflow.json";
-const specPath = ".model-artifacts/initiatives/lighten-pi-hud/specs/2026-09-14_0526-minimum-widget-surface.md";
+const readmePath = "extensions/pi-hud/README.md";
+const runtimePath = "extensions/pi-hud/src/pi/runtime.ts";
 
-test("the minimum HUD surface is gated, bounded, and non-disruptive", () => {
-  const dependency = JSON.parse(readFileSync(dependencyPath, "utf8")) as {
-    status: string;
-    tasks: Array<{ status: string }>;
-  };
-  const spec = readFileSync(specPath, "utf8");
-  const lower = spec.toLowerCase();
-
-  assert.equal(dependency.status, "complete");
-  assert.ok(dependency.tasks.every((task) => task.status === "complete"));
-  assert.match(spec, /owns one optional widget/);
-  for (const group of ["Model", "Context pressure", "Git summary", "Activity"]) {
-    assert.ok(spec.includes(`**${group}**`), `missing ${group} group`);
-  }
-  assert.match(spec, /compact visual context bar/);
-  assert.match(spec, /remote\/sync, ahead\/behind, and staged\/unstaged\/untracked/);
-  assert.match(spec, /native footer remains visible and authoritative/);
-  for (const exclusion of ["modal or overlay ui", "work timers", "event or tool history", "custom footer"]) {
-    assert.ok(lower.includes(exclusion), `missing ${exclusion} exclusion`);
-  }
-  assert.match(spec, /color is supplementary/);
-  assert.match(spec, /do not steal focus/);
-  assert.match(spec, /Narrow terminals/);
+test("the source-owned minimum HUD surface is bounded and non-disruptive", () => {
+  const readme = readFileSync(readmePath, "utf8");
+  const runtime = readFileSync(runtimePath, "utf8");
+  for (const contract of [
+    "compact, optional Pi widget",
+    "native footer remains authoritative",
+    "active model",
+    "bounded context pressure",
+    "cached Git summary",
+    "current coarse activity",
+    "Color is supplementary",
+    "Narrow layouts",
+    "width-bounded",
+    "timer-free",
+  ]) assert.match(readme, new RegExp(contract, "i"), contract);
+  assert.match(readme, /former footer replacement, modal, component toggle matrix, work timer, event history, usage ledger.*removed/i);
+  assert.match(runtime, /setWidget\(HUD_WIDGET_ID/);
+  assert.doesNotMatch(runtime, /setFooter|registerFooter|setInterval/);
 });

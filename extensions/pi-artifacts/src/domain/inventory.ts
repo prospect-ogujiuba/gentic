@@ -1,6 +1,7 @@
+import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, lstatSync, opendirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, type Dirent } from "node:fs";
 import { basename, extname, join, resolve } from "node:path";
 
 import {
@@ -27,17 +28,57 @@ const DEFAULT_MAX_FILES = 10_000;
 const DEFAULT_MAX_BYTES = 64 * 1024 * 1024;
 const DEFAULT_MAX_REFERENCE_FILES = 20_000;
 const DEFAULT_MAX_REFERENCE_BYTES = 256 * 1024 * 1024;
+const DEFAULT_MAX_DIRECTORIES = 20_000;
+const DEFAULT_MAX_DEPTH = 32;
+const DEFAULT_MAX_ENTRIES_PER_DIRECTORY = 10_000;
+const DEFAULT_MAX_REFERENCE_DIRECTORIES = 50_000;
+const DEFAULT_MAX_REFERENCE_DEPTH = 64;
+const DEFAULT_MAX_REFERENCE_ENTRIES_PER_DIRECTORY = 20_000;
+const MAX_CONFIG_BYTES = 1024 * 1024;
 const TEXT_EXTENSIONS = new Set([".md", ".json", ".ts", ".tsx", ".js", ".mjs", ".cjs", ".yaml", ".yml", ".txt"]);
 const SKIP_DIRECTORIES = new Set([".git", "node_modules", "dist", "build", "coverage", ".next", ".venv"]);
-const CONFIG_RELATIVE = ".pi/model-artifacts-migration.json";
+const CONFIG_FILENAME = "model-artifacts-migration.json";
+const CONFIG_RELATIVE = `${CONFIG_DIR_NAME}/${CONFIG_FILENAME}`;
 const LEGACY_TRANSACTION_PREFIX = ".model-artifacts/logs/model-artifact-migration/";
 const SYSTEM_TRANSACTION_PREFIX = ".model-artifacts/system/logs/model-artifact-migration/";
 
+export type ArtifactTraversalLimitCode = "directory-limit" | "depth-limit" | "directory-entry-limit";
+export class ArtifactTraversalLimitError extends Error {
+  readonly code: ArtifactTraversalLimitCode;
+  constructor(code: ArtifactTraversalLimitCode, message: string) {
+    super(message);
+    this.name = "ArtifactTraversalLimitError";
+    this.code = code;
+  }
+}
+
 export function loadMigrationConfig(cwd: string): MigrationConfig {
   const root = realpathSync(resolve(cwd));
-  const path = join(root, ".pi", "model-artifacts-migration.json");
+  const path = join(root, CONFIG_DIR_NAME, CONFIG_FILENAME);
   if (!existsSync(path)) return { schemaVersion: 1, mappings: {} };
-  const raw: unknown = JSON.parse(readFileSync(path, "utf8"));
+  const initial = lstatSync(path);
+  if (initial.isSymbolicLink() || !initial.isFile()) throw new Error("migration config must be a bounded regular non-symlink file");
+  if (initial.size > MAX_CONFIG_BYTES) throw new Error(`migration config byte limit exceeded: ${initial.size} > ${MAX_CONFIG_BYTES}`);
+  let descriptor: number | undefined;
+  let raw: unknown;
+  try {
+    const noFollow = "O_NOFOLLOW" in constants ? constants.O_NOFOLLOW : 0;
+    const nonBlock = "O_NONBLOCK" in constants ? constants.O_NONBLOCK : 0;
+    descriptor = openSync(path, constants.O_RDONLY | noFollow | nonBlock);
+    const opened = fstatSync(descriptor);
+    if (!opened.isFile()) throw new Error("migration config must be a bounded regular file");
+    const buffer = Buffer.alloc(MAX_CONFIG_BYTES + 1);
+    let bytes = 0;
+    while (bytes <= MAX_CONFIG_BYTES) {
+      const count = readSync(descriptor, buffer, bytes, buffer.length - bytes, null);
+      if (count === 0) break;
+      bytes += count;
+    }
+    if (bytes > MAX_CONFIG_BYTES) throw new Error(`migration config byte limit exceeded: more than ${MAX_CONFIG_BYTES}`);
+    raw = JSON.parse(buffer.toString("utf8", 0, bytes));
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("migration config must be an object");
   const object = raw as Record<string, unknown>;
   for (const key of Object.keys(object)) if (!["schemaVersion", "mappings"].includes(key)) throw new Error(`unknown config key: ${key}`);
@@ -65,6 +106,12 @@ export function auditArtifacts(options: AuditArtifactsOptions): ArtifactInventor
   const maxBytes = positiveBound(options.maxBytes, DEFAULT_MAX_BYTES, "maxBytes");
   const maxReferenceFiles = positiveBound(options.maxReferenceFiles, DEFAULT_MAX_REFERENCE_FILES, "maxReferenceFiles");
   const maxReferenceBytes = positiveBound(options.maxReferenceBytes, DEFAULT_MAX_REFERENCE_BYTES, "maxReferenceBytes");
+  const maxDirectories = positiveBound(options.maxDirectories, DEFAULT_MAX_DIRECTORIES, "maxDirectories");
+  const maxDepth = positiveBound(options.maxDepth, DEFAULT_MAX_DEPTH, "maxDepth");
+  const maxEntriesPerDirectory = positiveBound(options.maxEntriesPerDirectory, DEFAULT_MAX_ENTRIES_PER_DIRECTORY, "maxEntriesPerDirectory");
+  const maxReferenceDirectories = positiveBound(options.maxReferenceDirectories, DEFAULT_MAX_REFERENCE_DIRECTORIES, "maxReferenceDirectories");
+  const maxReferenceDepth = positiveBound(options.maxReferenceDepth, DEFAULT_MAX_REFERENCE_DEPTH, "maxReferenceDepth");
+  const maxReferenceEntriesPerDirectory = positiveBound(options.maxReferenceEntriesPerDirectory, DEFAULT_MAX_REFERENCE_ENTRIES_PER_DIRECTORY, "maxReferenceEntriesPerDirectory");
   const config = loadMigrationConfig(root);
   if (!existsSync(artifactRoot)) return emptyInventory(root, config);
   const artifactRootStat = lstatSync(artifactRoot);
@@ -72,11 +119,11 @@ export function auditArtifacts(options: AuditArtifactsOptions): ArtifactInventor
   if (!artifactRootStat.isDirectory()) throw new Error(".model-artifacts must be a directory");
   if (realpathSync(artifactRoot) !== artifactRoot) throw new Error(".model-artifacts root escapes the project");
 
-  const discovered = walk(root, artifactRoot, maxFiles);
+  const discovered = walk(root, artifactRoot, maxFiles, maxDirectories, maxDepth, maxEntriesPerDirectory);
   const candidateBytes = discovered.filter((entry) => entry.regular).reduce((sum, entry) => sum + entry.bytes, 0);
   if (candidateBytes > maxBytes) throw new Error(`artifact byte limit exceeded: ${candidateBytes} > ${maxBytes}`);
   const authority = discoverAuthority(root, discovered);
-  const references = discoverReferences(root, discovered.map((entry) => entry.source), maxReferenceFiles, maxReferenceBytes);
+  const references = discoverReferences(root, discovered.map((entry) => entry.source), maxReferenceFiles, maxReferenceBytes, maxReferenceDirectories, maxReferenceDepth, maxReferenceEntriesPerDirectory);
   const entries = discovered.map((entry) => classifyEntry(root, entry, config, authority, references));
   entries.sort((a, b) => a.source.localeCompare(b.source));
   const totals = { "canonical-valid": 0, "legacy-movable": 0, protected: 0, ambiguous: 0, invalid: 0 } satisfies Record<ArtifactClassification, number>;
@@ -84,7 +131,7 @@ export function auditArtifacts(options: AuditArtifactsOptions): ArtifactInventor
   return {
     schemaVersion: 1,
     projectRoot: root,
-    configPath: existsSync(join(root, ".pi", "model-artifacts-migration.json")) ? CONFIG_RELATIVE : null,
+    configPath: existsSync(join(root, CONFIG_DIR_NAME, CONFIG_FILENAME)) ? CONFIG_RELATIVE : null,
     entries,
     totals,
     fileCount: entries.length,
@@ -102,21 +149,41 @@ function positiveBound(value: number | undefined, fallback: number, label: strin
   return result;
 }
 
-function walk(root: string, artifactRoot: string, maxFiles: number): Discovered[] {
+function walk(root: string, artifactRoot: string, maxFiles: number, maxDirectories: number, maxDepth: number, maxEntriesPerDirectory: number): Discovered[] {
   const output: Discovered[] = [];
-  const visit = (directory: string): void => {
-    for (const item of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+  let directories = 0;
+  const visit = (directory: string, depth: number): void => {
+    directories += 1;
+    if (directories > maxDirectories) throw new ArtifactTraversalLimitError("directory-limit", `artifact directory limit exceeded: ${directories} > ${maxDirectories}`);
+    if (depth > maxDepth) throw new ArtifactTraversalLimitError("depth-limit", `artifact depth limit exceeded: ${depth} > ${maxDepth}`);
+    for (const item of readBoundedDirectory(directory, maxEntriesPerDirectory, "artifact")) {
       const absolute = join(directory, item.name);
       const source = toPosix(projectRelative(root, absolute));
       const stat = lstatSync(absolute);
       if (stat.isSymbolicLink()) output.push({ absolute, source, bytes: stat.size, regular: false, symlink: true });
-      else if (stat.isDirectory()) visit(absolute);
+      else if (stat.isDirectory()) visit(absolute, depth + 1);
       else output.push({ absolute, source, bytes: stat.size, regular: stat.isFile(), symlink: false });
       if (output.length > maxFiles) throw new Error(`artifact file limit exceeded: ${output.length} > ${maxFiles}`);
     }
   };
-  visit(artifactRoot);
+  visit(artifactRoot, 0);
   return output;
+}
+
+function readBoundedDirectory(directory: string, maximum: number, label: "artifact" | "reference"): Dirent[] {
+  const handle = opendirSync(directory);
+  const entries: Dirent[] = [];
+  try {
+    for (;;) {
+      const entry = handle.readSync();
+      if (!entry) break;
+      if (entries.length >= maximum) throw new ArtifactTraversalLimitError("directory-entry-limit", `${label} directory entry limit exceeded: more than ${maximum}`);
+      entries.push(entry);
+    }
+  } finally {
+    handle.closeSync();
+  }
+  return entries.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function discoverAuthority(root: string, files: Discovered[]): Authority {
@@ -257,20 +324,32 @@ function addPath(set: Set<string>, value: unknown): void {
 type ReferenceTrie = { children: Map<string, ReferenceTrie>; terminal?: string };
 type ReferenceSnapshot = { sites: Map<string, string[]>; hashes: Map<string, string> };
 
-function discoverReferences(root: string, sources: string[], maxFiles: number, maxBytes: number): ReferenceSnapshot {
+function discoverReferences(
+  root: string,
+  sources: string[],
+  maxFiles: number,
+  maxBytes: number,
+  maxDirectories: number,
+  maxDepth: number,
+  maxEntriesPerDirectory: number,
+): ReferenceSnapshot {
   const trie = buildReferenceTrie(sources);
   const found = new Map<string, string[]>();
   const hashes = new Map<string, string>();
   let visited = 0;
   let scannedBytes = 0;
-  const visit = (directory: string): void => {
-    for (const item of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+  let directories = 0;
+  const visit = (directory: string, depth: number): void => {
+    directories += 1;
+    if (directories > maxDirectories) throw new ArtifactTraversalLimitError("directory-limit", `reference directory limit exceeded: ${directories} > ${maxDirectories}`);
+    if (depth > maxDepth) throw new ArtifactTraversalLimitError("depth-limit", `reference depth limit exceeded: ${depth} > ${maxDepth}`);
+    for (const item of readBoundedDirectory(directory, maxEntriesPerDirectory, "reference")) {
       if (item.isDirectory() && SKIP_DIRECTORIES.has(item.name)) continue;
       const absolute = join(directory, item.name);
       const relative = toPosix(projectRelative(root, absolute));
       if (relative === CONFIG_RELATIVE || relative.startsWith(LEGACY_TRANSACTION_PREFIX) || relative.startsWith(SYSTEM_TRANSACTION_PREFIX)) continue;
       if (item.isSymbolicLink()) continue;
-      if (item.isDirectory()) { visit(absolute); continue; }
+      if (item.isDirectory()) { visit(absolute, depth + 1); continue; }
       if (!item.isFile() || !TEXT_EXTENSIONS.has(extname(item.name).toLowerCase())) continue;
       visited += 1;
       if (visited > maxFiles) throw new Error(`reference scan file limit exceeded: ${visited} > ${maxFiles}`);
@@ -288,7 +367,7 @@ function discoverReferences(root: string, sources: string[], maxFiles: number, m
       }
     }
   };
-  visit(root);
+  visit(root, 0);
   for (const refs of found.values()) refs.sort();
   return { sites: found, hashes };
 }

@@ -1,4 +1,13 @@
-import { existsSync, readFileSync } from "node:fs";
+import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent";
+import {
+  closeSync,
+  constants,
+  existsSync,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -11,7 +20,6 @@ export type PiContextPressureConfig = {
   warningPercent?: number;
   criticalPercent?: number;
   hysteresisPercent?: number;
-  repeatCooldownMs?: number;
 };
 
 export type PiContextConfig = {
@@ -43,6 +51,7 @@ export type LoadEffectiveContextConfigResult = {
 
 const MAX_DIAGNOSTICS = 20;
 const MAX_DIAGNOSTIC_LENGTH = 240;
+const MAX_CONFIG_BYTES = 16_384;
 
 export const DEFAULT_PI_CONTEXT_CONFIG: EffectivePiContextConfig = Object.freeze({
   version: 1,
@@ -54,8 +63,8 @@ export function loadEffectiveContextConfig(
 ): LoadEffectiveContextConfigResult {
   const cwd = resolve(options.cwd ?? process.cwd());
   const home = options.homeDir ?? homedir();
-  const globalPath = join(home, ".pi", "agent", "pi-context.json");
-  const projectPath = join(cwd, ".pi", "pi-context.json");
+  const globalPath = join(home, CONFIG_DIR_NAME, "agent", "pi-context.json");
+  const projectPath = join(cwd, CONFIG_DIR_NAME, "pi-context.json");
   const diagnostics: PiContextConfigDiagnostic[] = [];
   const globalConfig = readConfigFile(globalPath, diagnostics);
   const projectConfig = readConfigFile(projectPath, diagnostics);
@@ -74,8 +83,41 @@ export function loadEffectiveContextConfig(
 
 function readConfigFile(path: string, diagnostics: PiContextConfigDiagnostic[]): PiContextConfig | undefined {
   if (!existsSync(path)) return undefined;
+  let descriptor: number | undefined;
   try {
-    const value: unknown = JSON.parse(readFileSync(path, "utf8"));
+    const initial = lstatSync(path);
+    if (initial.isSymbolicLink()) {
+      diagnoseRequired(diagnostics, path, "pi-context config must not be a symlink; ignoring file");
+      return undefined;
+    }
+    if (!initial.isFile()) {
+      diagnoseRequired(diagnostics, path, "pi-context config must be a regular file; ignoring file");
+      return undefined;
+    }
+    if (initial.size > MAX_CONFIG_BYTES) {
+      diagnoseRequired(diagnostics, path, `pi-context config must not exceed ${MAX_CONFIG_BYTES} bytes; ignoring file`);
+      return undefined;
+    }
+    const noFollow = "O_NOFOLLOW" in constants ? constants.O_NOFOLLOW : 0;
+    const nonBlock = "O_NONBLOCK" in constants ? constants.O_NONBLOCK : 0;
+    descriptor = openSync(path, constants.O_RDONLY | noFollow | nonBlock);
+    const opened = fstatSync(descriptor);
+    if (!opened.isFile()) {
+      diagnoseRequired(diagnostics, path, "pi-context config must be a regular file; ignoring file");
+      return undefined;
+    }
+    const buffer = Buffer.alloc(MAX_CONFIG_BYTES + 1);
+    let bytes = 0;
+    while (bytes <= MAX_CONFIG_BYTES) {
+      const count = readSync(descriptor, buffer, bytes, buffer.length - bytes, null);
+      if (count === 0) break;
+      bytes += count;
+    }
+    if (bytes > MAX_CONFIG_BYTES) {
+      diagnoseRequired(diagnostics, path, `pi-context config must not exceed ${MAX_CONFIG_BYTES} bytes; ignoring file`);
+      return undefined;
+    }
+    const value: unknown = JSON.parse(buffer.toString("utf8", 0, bytes));
     if (!isPlainObject(value)) {
       diagnoseRequired(diagnostics, path, "pi-context config must be a JSON object; ignoring file");
       return undefined;
@@ -85,9 +127,13 @@ function readConfigFile(path: string, diagnostics: PiContextConfigDiagnostic[]):
       return undefined;
     }
     return normalizeInput(value, diagnostics, path);
-  } catch (error) {
-    diagnoseRequired(diagnostics, path, `failed to parse pi-context config: ${error instanceof Error ? error.message : String(error)}`);
+  } catch {
+    diagnoseRequired(diagnostics, path, "failed to parse or safely read pi-context config; ignoring file");
     return undefined;
+  } finally {
+    if (descriptor !== undefined) {
+      try { closeSync(descriptor); } catch { /* Descriptor cleanup cannot make invalid config fatal. */ }
+    }
   }
 }
 
@@ -123,16 +169,15 @@ function normalizePressure(
   const percentFields = ["warningPercent", "criticalPercent", "hysteresisPercent"] as const;
   const known = new Set([...percentFields, "repeatCooldownMs"]);
   for (const key of Object.keys(input)) {
-    if (!known.has(key)) diagnose(diagnostics, path, `unknown pressure field '${key}' ignored`);
+    if (key === "repeatCooldownMs") {
+      diagnose(diagnostics, path, "pressure.repeatCooldownMs was removed because notifications are transition-only; value ignored");
+    } else if (!known.has(key)) diagnose(diagnostics, path, `unknown pressure field '${key}' ignored`);
   }
   for (const field of percentFields) {
     const value = input[field];
     if (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100) pressure[field] = value;
     else if (value !== undefined) diagnoseRequired(diagnostics, path, `invalid 'pressure.${field}'; expected number 0..100`);
   }
-  const cooldown = input.repeatCooldownMs;
-  if (Number.isInteger(cooldown) && Number(cooldown) >= 0) pressure.repeatCooldownMs = Number(cooldown);
-  else if (cooldown !== undefined) diagnoseRequired(diagnostics, path, "invalid 'pressure.repeatCooldownMs'; expected integer >= 0");
   return pressure;
 }
 

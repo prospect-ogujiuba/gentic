@@ -15,7 +15,8 @@ export type NativeContextExportArtifact = {
   format: NativeContextExportFormat;
 };
 
-const REPORT_DIR = path.join(".model-artifacts", "system", "reports", "pi-context");
+const REPORT_SEGMENTS = [".model-artifacts", "system", "reports", "pi-context"] as const;
+const REPORT_DIR = path.join(...REPORT_SEGMENTS);
 
 export function renderNativeContextMarkdown(input: NativeContextSnapshot): string {
   const snapshot = sanitizeNativeContextSnapshot(input);
@@ -43,18 +44,40 @@ export function renderNativeContextJson(input: NativeContextSnapshot): string {
   return `${JSON.stringify(sanitizeNativeContextSnapshot(input), null, 2)}\n`;
 }
 
+function ensureSafeReportDirectory(root: string): string {
+  let current = root;
+  for (const segment of REPORT_SEGMENTS) {
+    current = path.join(current, segment);
+    if (!fs.existsSync(current)) fs.mkdirSync(current);
+    const stat = fs.lstatSync(current);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      throw new Error("pi-context export containment rejected an unsafe report directory");
+    }
+    const resolved = fs.realpathSync(current);
+    const relative = path.relative(root, resolved);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      throw new Error("pi-context export containment rejected an escaping report directory");
+    }
+  }
+  return current;
+}
+
 export function writeNativeContextExport(
   snapshot: NativeContextSnapshot,
   options: NativeContextExportOptions,
 ): NativeContextExportArtifact {
   const cwd = options.cwd ?? process.cwd();
-  const dir = path.resolve(cwd, REPORT_DIR);
-  fs.mkdirSync(dir, { recursive: true });
+  const root = fs.realpathSync(path.resolve(cwd));
+  const dir = ensureSafeReportDirectory(root);
   const extension = options.format === "json" ? "json" : "md";
-  const safeTimestamp = sanitizeNativeContextSnapshot(snapshot).capturedAt.replace(/[^0-9A-Za-z]+/g, "-").replace(/^-|-$/g, "");
-  const relativePath = path.join(REPORT_DIR, `${safeTimestamp}-pi-context.${extension}`);
-  const filePath = path.resolve(cwd, relativePath);
+  const capturedAt = new Date(sanitizeNativeContextSnapshot(snapshot).capturedAt).toISOString();
+  const timestamp = `${capturedAt.slice(0, 10)}_${capturedAt.slice(11, 16).replace(":", "")}`;
+  const uniqueSuffix = capturedAt.slice(17, 23).replace(".", "-");
+  const filename = `${timestamp}-pi-context-${uniqueSuffix}.${extension}`;
+  const relativePath = path.join(REPORT_DIR, filename);
+  const filePath = path.join(dir, filename);
+  if (fs.existsSync(filePath)) throw new Error("pi-context export destination already exists or is unsafe");
   const content = options.format === "json" ? renderNativeContextJson(snapshot) : renderNativeContextMarkdown(snapshot);
-  fs.writeFileSync(filePath, content, "utf8");
+  fs.writeFileSync(filePath, content, { encoding: "utf8", flag: "wx" });
   return { path: filePath, relativePath, format: options.format };
 }

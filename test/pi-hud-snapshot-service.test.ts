@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync, rmSync } from "node:fs";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -86,6 +87,38 @@ test("snapshot service distinguishes unavailable and error without valid Git fie
   errorService.dispose();
 });
 
+test("unavailable and error results use bounded retry cooldowns that reset by generation", async () => {
+  let now = 1_000;
+  let calls = 0;
+  let fail = false;
+  const service = new GitSnapshotService({
+    debounceMs: 0,
+    retryCooldownMs: 1_000,
+    now: () => now,
+    collector: async () => {
+      calls += 1;
+      if (fail) throw new Error("broken");
+      return undefined;
+    },
+  });
+
+  assert.equal((await service.requestRefresh("/repo")).status, "unavailable");
+  now = 1_999;
+  assert.equal((await service.requestRefresh("/repo")).status, "unavailable");
+  assert.equal(calls, 1);
+  now = 2_000;
+  fail = true;
+  assert.equal((await service.requestRefresh("/repo")).status, "error");
+  now = 2_999;
+  assert.equal((await service.requestRefresh("/repo")).status, "error");
+  assert.equal(calls, 2);
+
+  service.reset("/other");
+  assert.equal((await service.requestRefresh("/other")).status, "error");
+  assert.equal(calls, 3, "explicit reset must bypass the previous generation's negative cache");
+  service.dispose();
+});
+
 test("snapshot reset aborts work and rejects a late generation result", async () => {
   let complete!: (status: GitStatus) => void;
   let observedAbort = false;
@@ -161,6 +194,8 @@ else if (args === "status --porcelain=v1") { console.error("status exploded with
 else process.exit(1);
 `);
   const nonRepoGit = await fakeGit(`process.exit(1);`);
+  const resistantPidFile = join(tmpdir(), `gentic-resistant-git-${process.pid}.pid`);
+  const resistantGit = await fakeGit(`require("node:fs").writeFileSync(${JSON.stringify(resistantPidFile)}, String(process.pid)); process.on("SIGTERM", () => {}); setTimeout(() => console.log("/repo"), 3000);`);
 
   try {
     await assert.rejects(collectGitStatus(process.cwd(), { gitPath: timeoutGit.path, timeoutMs: 20 }), (error: unknown) => error instanceof GitCollectionError && error.code === "timeout");
@@ -168,11 +203,19 @@ else process.exit(1);
     await assert.rejects(collectGitStatus(process.cwd(), { gitPath: failureGit.path }), (error: unknown) => error instanceof GitCollectionError && error.code === "command-failure" && error.message.length <= 200);
     assert.equal(await collectGitStatus(process.cwd(), { gitPath: nonRepoGit.path }), undefined);
 
+    const timeoutStarted = Date.now();
+    await assert.rejects(collectGitStatus(process.cwd(), { gitPath: resistantGit.path, timeoutMs: 200 }), (error: unknown) => error instanceof GitCollectionError && error.code === "timeout");
+    assert.ok(Date.now() - timeoutStarted < 1_000, "HUD Git timeout must report promptly when a child ignores SIGTERM");
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const resistantPid = Number(readFileSync(resistantPidFile, "utf8"));
+    assert.throws(() => process.kill(resistantPid, 0), /ESRCH|no such process/i, "timed-out Git child must be terminated");
+
     const controller = new AbortController();
     const cancelled = collectGitStatus(process.cwd(), { gitPath: timeoutGit.path, timeoutMs: 500, signal: controller.signal });
     controller.abort();
     await assert.rejects(cancelled, (error: unknown) => error instanceof GitCollectionError && error.code === "cancelled");
   } finally {
-    await Promise.all([timeoutGit.cleanup(), outputGit.cleanup(), failureGit.cleanup(), nonRepoGit.cleanup()]);
+    await Promise.all([timeoutGit.cleanup(), outputGit.cleanup(), failureGit.cleanup(), nonRepoGit.cleanup(), resistantGit.cleanup()]);
+    rmSync(resistantPidFile, { force: true });
   }
 });

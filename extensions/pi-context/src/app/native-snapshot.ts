@@ -1,4 +1,8 @@
-import { evaluateContextPressure } from "../domain/index.ts";
+import {
+  DEFAULT_CONTEXT_PRESSURE_POLICY,
+  evaluateContextPressure,
+  type ContextPressurePolicy,
+} from "../domain/index.ts";
 import {
   NATIVE_SNAPSHOT_LIMITS,
   type NativeContextSnapshot,
@@ -11,6 +15,8 @@ import {
 
 export type CreateNativeContextSnapshotOptions = {
   capturedAt?: string;
+  pressurePolicy?: ContextPressurePolicy;
+  collectContributors?: boolean;
 };
 
 const CONTRIBUTOR_ORDER: NativeContributorKind[] = [
@@ -69,33 +75,35 @@ export function createNativeContextSnapshot(
     || (usage.usedTokens === undefined && usage.contextWindowTokens === undefined && usage.remainingPercent === undefined)
   ) addDiagnostic(diagnostics, "usage-unavailable");
 
-  const promptSource = safely(() => ctx.getSystemPromptOptions());
-  if (!promptSource.ok) {
-    addDiagnostic(diagnostics, "prompt-options-unavailable");
-  } else if (promptSource.value) {
-    collectPromptContributors(promptSource.value as unknown, contributors, diagnostics);
-  }
-
-  const branchSource = safely(() => ctx.sessionManager.getBranch());
   let totalEntries = 0;
   let scannedEntries = 0;
-  const branchIsArray = branchSource.ok ? safely(() => Array.isArray(branchSource.value)) : { ok: false as const, value: undefined };
-  if (!branchSource.ok || !branchIsArray.ok || !branchIsArray.value) {
-    addDiagnostic(diagnostics, "branch-unavailable");
-  } else {
-    const branch = branchSource.value as unknown[];
-    const lengthSource = safely(() => branch.length);
-    if (!lengthSource.ok) {
+  if (options.collectContributors !== false) {
+    const promptSource = safely(() => ctx.getSystemPromptOptions());
+    if (!promptSource.ok) {
+      addDiagnostic(diagnostics, "prompt-options-unavailable");
+    } else if (promptSource.value) {
+      collectPromptContributors(promptSource.value as unknown, contributors, diagnostics);
+    }
+
+    const branchSource = safely(() => ctx.sessionManager.getBranch());
+    const branchIsArray = branchSource.ok ? safely(() => Array.isArray(branchSource.value)) : { ok: false as const, value: undefined };
+    if (!branchSource.ok || !branchIsArray.ok || !branchIsArray.value) {
       addDiagnostic(diagnostics, "branch-unavailable");
     } else {
-      totalEntries = integer(lengthSource.value);
-      const first = Math.max(0, totalEntries - NATIVE_SNAPSHOT_LIMITS.maxBranchEntriesScanned);
-      scannedEntries = totalEntries - first;
-      if (first > 0) addDiagnostic(diagnostics, "branch-truncated");
-      for (let index = first; index < totalEntries; index += 1) {
-        const entry = safely(() => branch[index]);
-        if (entry.ok) collectBranchContributor(entry.value, contributors, diagnostics);
-        else addDiagnostic(diagnostics, "content-truncated");
+      const branch = branchSource.value as unknown[];
+      const lengthSource = safely(() => branch.length);
+      if (!lengthSource.ok) {
+        addDiagnostic(diagnostics, "branch-unavailable");
+      } else {
+        totalEntries = integer(lengthSource.value);
+        const first = Math.max(0, totalEntries - NATIVE_SNAPSHOT_LIMITS.maxBranchEntriesScanned);
+        scannedEntries = totalEntries - first;
+        if (first > 0) addDiagnostic(diagnostics, "branch-truncated");
+        for (let index = first; index < totalEntries; index += 1) {
+          const entry = safely(() => branch[index]);
+          if (entry.ok) collectBranchContributor(entry.value, contributors, diagnostics);
+          else addDiagnostic(diagnostics, "content-truncated");
+        }
       }
     }
   }
@@ -114,7 +122,7 @@ export function createNativeContextSnapshot(
     schemaVersion: 1,
     capturedAt: safeCapturedAt(options.capturedAt),
     usage,
-    pressure: pressureFromUsage(usage),
+    pressure: pressureFromUsage(usage, options.pressurePolicy ?? DEFAULT_CONTEXT_PRESSURE_POLICY),
     contributors: publicContributors,
     branch: {
       totalEntries,
@@ -423,7 +431,10 @@ function sanitizePressure(value: Record<string, unknown>): NativeSnapshotPressur
   return { available: true, level, remainingPercent: percentNumber(propertyValue(value, "remainingPercent")) };
 }
 
-function pressureFromUsage(usage: NativeContextSnapshot["usage"]): NativeSnapshotPressure {
+function pressureFromUsage(
+  usage: NativeContextSnapshot["usage"],
+  policy: ContextPressurePolicy,
+): NativeSnapshotPressure {
   const evaluation = evaluateContextPressure(
     usage.usedTokens === undefined && usage.remainingPercent === undefined
       ? undefined
@@ -431,8 +442,9 @@ function pressureFromUsage(usage: NativeContextSnapshot["usage"]): NativeSnapsho
           tokens: usage.usedTokens,
           contextWindow: usage.contextWindowTokens,
           percent: usage.remainingPercent === undefined ? undefined : 100 - usage.remainingPercent,
-          tokenConfidence: "exact",
+          tokenConfidence: "estimated",
         },
+    policy,
   );
   return evaluation.available
     ? { available: true, level: evaluation.level, remainingPercent: evaluation.remainingPercent }

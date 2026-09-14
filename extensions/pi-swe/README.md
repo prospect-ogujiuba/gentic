@@ -62,6 +62,7 @@ When pi-todo is also enabled, pi-swe is the sole lifecycle authority while an as
 
 - both model-tool and `/swe work` activation reject an already active todo;
 - at most one repository workflow may be active;
+- bounded workflow discovery is deterministic and fails closed when topic, directory, depth, or read limits prevent proving exclusive ownership;
 - pi-todo does not create guard todos for implementation tools during that interval;
 - todo inspection and cleanup remain available; and
 - creating, starting, reopening, or restructuring todo work is blocked until pi-swe is paused, blocked, or complete.

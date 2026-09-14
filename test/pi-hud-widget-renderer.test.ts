@@ -21,7 +21,7 @@ function snapshot(overrides: Partial<HudSnapshot> = {}): HudSnapshot {
       contextWindowTokens: 100_000,
       remainingTokens: 24_000,
       pressure: { available: true, level: "warning", remainingPercent: 24 },
-      tokenConfidence: "exact",
+      tokenConfidence: "estimated",
       contributors: [],
       warnings: [],
       truncatedWarnings: 0,

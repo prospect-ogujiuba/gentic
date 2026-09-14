@@ -78,7 +78,7 @@ Optional `.pi/model-artifacts-migration.json`:
 }
 ```
 
-The schema is closed. Sources must be exact project-relative `.model-artifacts/...` paths. Unsupported kinds, unknown keys, absolute/traversing paths, invalid timestamps, and invalid topic segments are rejected.
+The schema is closed, and the project config must be a regular non-symlink file no larger than 1 MiB. Sources must be exact project-relative `.model-artifacts/...` paths. Unsupported kinds, unknown keys, absolute/traversing paths, invalid timestamps, and invalid topic segments are rejected.
 
 ## Protected authority and conservative blockers
 
@@ -113,8 +113,9 @@ Conflicting or changed bytes block recovery rather than being overwritten. After
 
 Gentic 0.x keeps kind-first reads only for audit and explicit migration. Writers are v2-only, mixed topics block, and removing v1 read compatibility is a separate reviewed change no earlier than 1.0.
 
-- Maximum inventory: 10,000 artifact entries; maximum aggregate candidate bytes: 64 MiB.
-- Reference scanning defaults to 20,000 files and 256 MiB, skips common dependency/build directories, and ignores individual files above 1 MiB.
+- Maximum inventory: 10,000 artifact entries and 64 MiB; traversal also limits 20,000 directories, depth 32, and 10,000 entries materialized per directory.
+- Reference scanning defaults to 20,000 files and 256 MiB, plus 50,000 directories, depth 64, and 20,000 entries per directory; it skips common dependency/build directories and rejects the aggregate byte bound before reading the next file.
+- Inventory, hashing, Git timestamp fallback, and transaction filesystem work remain synchronous by design because pi-artifacts is command-only: they run only after an explicit `/artifacts` command, never during registration, model-tool calls, or lifecycle hooks.
 - Planning separately bounds affected bytes, references, rewrite records, and rollback bytes; reports include counts and storage estimates.
 - Non-Markdown legacy files are inventoried but not migrated.
 - No model-callable mutation tool or custom TUI is registered.

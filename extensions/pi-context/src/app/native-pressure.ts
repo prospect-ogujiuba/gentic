@@ -16,7 +16,6 @@ export function advanceNativeContextPressure(
   snapshot: NativeContextSnapshot,
   state: ContextPressureState,
   policy: ContextPressurePolicy = DEFAULT_CONTEXT_PRESSURE_POLICY,
-  nowMs = Date.now(),
 ): NativeContextPressureTransition {
   const usage = snapshot.usage;
   const transition = reduceContextPressure(
@@ -27,10 +26,9 @@ export function advanceNativeContextPressure(
           tokens: usage.usedTokens,
           contextWindow: usage.contextWindowTokens,
           percent: usage.remainingPercent === undefined ? undefined : 100 - usage.remainingPercent,
-          tokenConfidence: "exact",
+          tokenConfidence: "estimated",
         },
     policy,
-    nowMs,
   );
   const pressure: NativeSnapshotPressure = transition.evaluation.available
     ? {

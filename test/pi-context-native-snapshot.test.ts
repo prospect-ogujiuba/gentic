@@ -81,6 +81,17 @@ test("builds remaining-context and broad contributor reporting from native APIs 
   assert.match(summary, /Context files: .*1 item/);
 });
 
+test("pressure-only native snapshots skip prompt and branch contributor scans", () => {
+  const fixture = context({ promptError: true, branchError: true });
+  const snapshot = createNativeContextSnapshot(fixture.ctx as never, { collectContributors: false });
+
+  assert.deepEqual(fixture.calls, { usage: 1, prompt: 0, branch: 0 });
+  assert.deepEqual(snapshot.contributors, []);
+  assert.deepEqual(snapshot.branch, { totalEntries: 0, scannedEntries: 0, truncated: false });
+  assert.deepEqual(snapshot.diagnostics, []);
+  assert.deepEqual(snapshot.pressure, { available: true, level: "warning", remainingPercent: 25 });
+});
+
 test("snapshot and summary retain only numeric aggregates and fixed labels", () => {
   const fixture = context();
   const snapshot = createNativeContextSnapshot(fixture.ctx as never);

@@ -23,17 +23,29 @@ test("pressure classification uses exact warning and critical boundaries", () =>
   assert.equal(evaluateContextPressure(exact(0)).level, "critical");
 });
 
-test("missing and estimated usage is unavailable and never notifies", () => {
+test("missing, null, and unknown usage is unavailable and never notifies", () => {
   const missing = reduceContextPressure(createContextPressureState(), undefined);
-  const estimated = reduceContextPressure(createContextPressureState(), {
+  const nullUsage = reduceContextPressure(createContextPressureState(), null as never);
+  const unknown = reduceContextPressure(createContextPressureState(), {
     percent: 95,
-    tokenConfidence: "estimated",
+    tokenConfidence: "unknown",
   });
 
   assert.deepEqual(missing.evaluation, { available: false, level: "unavailable", shouldNotify: false, reason: "usage-unavailable" });
-  assert.equal(estimated.evaluation.available, false);
-  assert.equal(estimated.evaluation.shouldNotify, false);
-  assert.equal(estimated.state.level, "normal");
+  assert.deepEqual(nullUsage.evaluation, missing.evaluation);
+  assert.equal(unknown.evaluation.available, false);
+  assert.equal(unknown.evaluation.shouldNotify, false);
+  assert.equal(unknown.state.level, "normal");
+});
+
+test("Pi-native estimated usage is classified and remains numerically bounded", () => {
+  const result = evaluateContextPressure({ percent: 75, tokenConfidence: "estimated" });
+  assert.deepEqual(result, {
+    available: true,
+    level: "warning",
+    remainingPercent: 25,
+    shouldNotify: false,
+  });
 });
 
 test("transition reducer suppresses duplicates and rearms beyond hysteresis", () => {

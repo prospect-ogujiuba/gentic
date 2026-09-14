@@ -106,6 +106,54 @@ test("legacy status aliases normalize without violating the active invariant", (
   assert.equal(state.activeTodoId, undefined);
 });
 
+test("public mutations reject oversized text and legacy replay bounds hostile lines", () => {
+  const h = harness();
+  assert.throws(() => h.core.create("x".repeat(257)), /256/);
+  const todo = h.core.create("safe title");
+  assert.throws(() => h.core.block(todo.id, "x".repeat(2_049)), /2048/);
+
+  const hostile = harness([{
+    type: "custom",
+    customType: "gentic.todo.event",
+    data: {
+      version: 1,
+      event: {
+        id: "legacy-event",
+        type: "todo.created",
+        at: "2026-01-01T00:00:00.000Z",
+        todo: {
+          id: "legacy-safe",
+          title: `${"T".repeat(400)}\nINJECTED`,
+          status: "blocked",
+          blockedReason: `${"R".repeat(3_000)}\nINJECTED`,
+        },
+      },
+    },
+  }]);
+  const replayed = hostile.core.state().todos["legacy-safe"]!;
+  assert.ok(replayed.title.length <= 256);
+  assert.ok((replayed.blockedReason?.length ?? 0) <= 2_048);
+  assert.doesNotMatch(`${replayed.title}${replayed.blockedReason}`, /[\r\n\u0000-\u001f\u007f]/);
+});
+
+test("branch reconstruction and create bound the public todo collection", () => {
+  const at = "2026-01-01T00:00:00.000Z";
+  const entries: TodoBranchEntry[] = Array.from({ length: 1_001 }, (_, index) => ({
+    type: "custom",
+    customType: "gentic.todo.event",
+    data: {
+      version: 1,
+      event: { id: `event-${index}`, type: "todo.created", at, todo: { id: `todo-${index}`, title: `todo ${index}`, status: "ready" } },
+    },
+  }));
+  const h = harness(entries);
+  const state = h.core.state();
+  assert.equal(state.order.length, 1_000);
+  assert.equal(Object.keys(state.todos).length, 1_000);
+  assert.equal(state.todos["todo-1000"], undefined);
+  assert.throws(() => h.core.create("overflow"), /todo limit/i);
+});
+
 test("branch reconstruction is a single bounded pass and ignores unrelated entries", () => {
   const unrelated = Array.from({ length: 10_000 }, (_, index) => ({
     type: "custom" as const,
