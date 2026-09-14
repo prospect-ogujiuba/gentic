@@ -1,0 +1,539 @@
+{
+  "version": 1,
+  "topic": "pi-primitives-full-review",
+  "revision": 37,
+  "status": "complete",
+  "goal": "Exhaustively review, recursively test, clean up, and reconcile the pi-primitives initiative until no reproducible issues remain, preserving existing in-progress changes.",
+  "plan": "Review current simplify-pi-primitives implementation and contract, add adversarial and recursive tests, fix correctness and consistency issues, then run focused and repository-wide verification.",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Audit implementation, tests, docs, and generated inventory for contract gaps",
+      "status": "complete",
+      "dependsOn": [],
+      "acceptance": [
+        "Every retained primitive path, registration failure path, trigger boundary, prompt injection boundary, configuration state, and documented behavior is traced against tests.",
+        "Concrete issues are documented in task findings before implementation."
+      ],
+      "approaches": [
+        "diagnosis",
+        "security",
+        "performance",
+        "operations"
+      ],
+      "approachReasons": {
+        "diagnosis": "The request is an exhaustive review of an already-modified implementation, so faults must be reproduced and localized before edits.",
+        "security": "Trigger traversal and prompt injection process potentially hostile user-controlled structures and text.",
+        "performance": "Recursive traversal and prompt assembly require explicit bounded-work review.",
+        "operations": "Startup registration diagnostics and configuration failures must remain visible and actionable."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [],
+      "verificationCheckpoint": {
+        "revision": 2,
+        "at": "2026-09-14T15:37:29.703Z",
+        "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845",
+        "branchLength": 20
+      },
+      "evidence": [
+        {
+          "command": "test -f .model-artifacts/initiatives/pi-primitives-full-review/findings/2026-09-14_1139-audit-findings.md && grep -q 'Reproduced defects' .model-artifacts/initiatives/pi-primitives-full-review/findings/2026-09-14_1139-audit-findings.md",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:40:18.144Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_l3HMlIz6IREuWTtmcykwGSaX|fc_0778a758995fb44b016aa81560412c87d2bb8feac8371ebda0",
+            "workflowRevision": 2,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T15:40:27.070Z"
+    },
+    {
+      "id": "T2",
+      "title": "Add adversarial regressions and implement minimal correctness fixes",
+      "status": "complete",
+      "dependsOn": [
+        "T1"
+      ],
+      "acceptance": [
+        "Tests cover recursive/cyclic/accessor inputs, exact size/depth boundaries, registration failure isolation, duplicate injection, malformed configuration, resource containment, and primitive interoperability.",
+        "Each reproduced defect is demonstrated by a pre-fix failing regression where practical, then fixed minimally.",
+        "Focused primitive tests pass."
+      ],
+      "approaches": [
+        "tdd",
+        "diagnosis",
+        "security",
+        "performance"
+      ],
+      "approachReasons": {
+        "tdd": "Each audit defect needs a regression that fails before the corresponding production fix.",
+        "diagnosis": "Minimal fixes must address the reproduced causes rather than mask symptoms.",
+        "security": "Adversarial traversal, symlink containment, and accidental always-on trigger policies are trust-boundary issues.",
+        "performance": "Recursive scans and policy output must remain within exact budgets."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "test:primitives"
+          ]
+        }
+      ],
+      "verificationCheckpoint": {
+        "revision": 6,
+        "at": "2026-09-14T15:41:22.116Z",
+        "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845",
+        "branchLength": 67
+      },
+      "evidence": [
+        {
+          "command": "npm run test:primitives",
+          "args": [],
+          "exitCode": 1,
+          "at": "2026-09-14T15:42:56.806Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_SrEW0Wdry3ABo4wfnTyhMQbW|fc_0778a758995fb44b016aa816000ecc87d281ca4b8ab8f123c9",
+            "workflowRevision": 6,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run test:primitives",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:43:13.769Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_ysEhit9ntij4cSFCwpLUh115|fc_0778a758995fb44b016aa8160ea32087d282fd41990711ecf5",
+            "workflowRevision": 7,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run test:primitives",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:43:33.104Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_j89ikikBgcfWaaHp3ItvvP05|fc_0778a758995fb44b016aa81623b6cc87d28dd38a13dabf6486",
+            "workflowRevision": 8,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T15:43:44.305Z"
+    },
+    {
+      "id": "T3",
+      "title": "Clean implementation and documentation inconsistencies",
+      "status": "complete",
+      "dependsOn": [
+        "T2"
+      ],
+      "acceptance": [
+        "Dead code, misleading names, duplicated logic, and README/config/catalog inconsistencies in scope are removed or reconciled.",
+        "Public behavior remains explicit, isolated, bounded, diagnosable, and accurately documented.",
+        "No dynamic discovery or cache-busting imports return."
+      ],
+      "approaches": [
+        "tdd",
+        "diagnosis",
+        "security",
+        "performance",
+        "migration",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Cleanup must preserve regression coverage established in T2.",
+        "diagnosis": "Audit findings distinguish intentional compatibility from removable inconsistency.",
+        "security": "Documentation and helpers must accurately state resource containment and fail-closed behavior.",
+        "performance": "Static registration and bounded prompt work are core initiative constraints.",
+        "migration": "Cleanup must preserve the intentional whimsical compatibility entry while removing stale loader concepts.",
+        "operations": "Startup diagnostics and recovery guidance must remain actionable."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "test:primitives"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check"
+          ]
+        }
+      ],
+      "verificationCheckpoint": {
+        "revision": 11,
+        "at": "2026-09-14T15:43:44.305Z",
+        "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845",
+        "branchLength": 95
+      },
+      "evidence": [
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:45:38.854Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_K6PKbTbFjRttYMwly4xDTPYT|fc_0778a758995fb44b016aa8169a072c87d29af9b0d483b86d08",
+            "workflowRevision": 11,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run test:primitives",
+          "args": [],
+          "exitCode": 1,
+          "at": "2026-09-14T15:45:49.032Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_xR0nBFXUZ1jP4St2mCllDFxZ|fc_0778a758995fb44b016aa816ab58d487d297f26a67362b9fb2",
+            "workflowRevision": 12,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run test:primitives",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:46:12.273Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_pGMFEogj6ZdtqntpIxbSxB74|fc_0778a758995fb44b016aa816c3846087d2be82d74ece8151b1",
+            "workflowRevision": 13,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run check",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:46:23.795Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_O94Dz5usQFKCL932ouPV3gBK|fc_0778a758995fb44b016aa816cd97c887d2a7afced4583974d0",
+            "workflowRevision": 14,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:46:38.839Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_XBX0xgKYcO4vDGRV9jDyGvWh|fc_0778a758995fb44b016aa816d6b73887d2a837266150a4a43a",
+            "workflowRevision": 15,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run test:primitives",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:48:25.582Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_uQkLuSYbsBEekLRaKjUeqGpk|fc_0778a758995fb44b016aa81748e5a487d2bb5d3b92142bd8d3",
+            "workflowRevision": 16,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:48:39.347Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_6qMmnxN6ObAeh3gnCZcA7UrY|fc_0778a758995fb44b016aa8174f620487d2a300372304fcf329",
+            "workflowRevision": 17,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run check",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:48:46.701Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_K7eNdo6URANQxIzYkWQeIZbs|fc_0778a758995fb44b016aa8175c66e087d2ad9de6f9628a07ec",
+            "workflowRevision": 18,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:49:19.033Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_3dqaMxItaNVnfTccGTZI5NFS|fc_0778a758995fb44b016aa817776c2887d2aa8d591b368a1d44",
+            "workflowRevision": 19,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run test:primitives",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:49:24.887Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_V9GR2Q46eLz08WLRW0dn6LOH|fc_0778a758995fb44b016aa81783ef6c87d297aeff72a4908f99",
+            "workflowRevision": 20,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run check",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:49:32.433Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_tn0coaUq12r60KcHMZIOstx3|fc_0778a758995fb44b016aa8178a03c487d2a40c745fa338c88e",
+            "workflowRevision": 21,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T15:49:38.810Z"
+    },
+    {
+      "id": "T4",
+      "title": "Run recursive repository verification and final issue sweep",
+      "status": "complete",
+      "dependsOn": [
+        "T3"
+      ],
+      "acceptance": [
+        "Focused tests, full test suite, typecheck, repository checks, command inventory, and performance checks pass.",
+        "A final static sweep finds no unresolved TODO/FIXME, stale loader references, unbounded traversal, generated inventory drift, or documentation mismatch in pi-primitives scope.",
+        "Any new issue discovered during verification is routed back into regression coverage and fixes before completion."
+      ],
+      "approaches": [
+        "tdd",
+        "diagnosis",
+        "security",
+        "performance",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Full regression execution establishes final correctness.",
+        "diagnosis": "Failures from recursive verification require root-cause investigation and reruns.",
+        "security": "Final sweep rechecks hostile input and prompt handling.",
+        "performance": "Startup and bounded-work budgets need repository-level verification.",
+        "operations": "Release checks and generated inventory must agree with the shipped extension."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [
+        {
+          "command": "npm",
+          "args": [
+            "test"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check:commands"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check:performance"
+          ]
+        }
+      ],
+      "verificationCheckpoint": {
+        "revision": 24,
+        "at": "2026-09-14T15:49:38.810Z",
+        "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845",
+        "branchLength": 179
+      },
+      "evidence": [
+        {
+          "command": "npm test",
+          "args": [],
+          "exitCode": 1,
+          "at": "2026-09-14T15:49:56.133Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_KCLk4sE4Kyg4nBcZgnewkEnh|fc_0778a758995fb44b016aa81798d7f887d28bf4a72fbcf67439",
+            "workflowRevision": 24,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm test",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:50:49.658Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_pon3qVm7EovXGr3lNxBycFSS|fc_0778a758995fb44b016aa817c952b087d2907757d445eced0a",
+            "workflowRevision": 25,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:51:03.803Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_iil0vfcQEVXoainNDjTxMW0p|fc_0778a758995fb44b016aa817df14e087d2b33503ea719ab2b7",
+            "workflowRevision": 26,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run check",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:51:12.528Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_MNM3iF51qZ7wXKHfpgjSaJdu|fc_0778a758995fb44b016aa817ee758887d2a3dcef8ef2ae4711",
+            "workflowRevision": 27,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run check:commands",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:51:22.909Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_pG3yTIYjHDMF2XIMB2AOF8S2|fc_0778a758995fb44b016aa817f7afd887d2b1da106a6e5d006b",
+            "workflowRevision": 28,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run check:performance",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:51:29.803Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_AfB0mg8sk6kcXSYrV4oxUASh|fc_0778a758995fb44b016aa817ffd24487d2b595e77fc3ff36e4",
+            "workflowRevision": 29,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm test",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:52:32.835Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_M04LYCkYjzkwkxxeLMmtcYJQ|fc_0778a758995fb44b016aa81836567487d2a45d16716afc97a2",
+            "workflowRevision": 30,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:52:45.689Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_9T6Kaxhj4QRPWgWpDFh4ubRz|fc_0778a758995fb44b016aa81845dcf087d2b6230f115cca1746",
+            "workflowRevision": 31,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run check",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:52:56.571Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_Uag2IIfHU4ZlDoNvpQtJyhzz|fc_0778a758995fb44b016aa8185601d887d294f42e6ce49d6607",
+            "workflowRevision": 32,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run check:commands",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:53:05.700Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_RVqOrcag0s580p310NUtKD54|fc_0778a758995fb44b016aa8185e752c87d2bf3ebf86eed7df69",
+            "workflowRevision": 33,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run check:performance",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:53:12.825Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_ypWKh5rQKOxULvuIg3cPD0eD|fc_0778a758995fb44b016aa81866a6a887d2904a189d2a407b74",
+            "workflowRevision": 34,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T15:53:23.463Z"
+    }
+  ],
+  "updatedAt": "2026-09-14T15:53:23.463Z"
+}

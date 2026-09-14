@@ -1,0 +1,164 @@
+{
+  "version": 1,
+  "topic": "pi-primitives-second-pass",
+  "revision": 10,
+  "status": "complete",
+  "goal": "Perform a second independent exhaustive pass over pi-primitives, fix any remaining correctness, boundedness, security, test, and documentation inconsistencies, and re-run full verification.",
+  "plan": "Re-audit current implementation and generated metadata from fresh angles, add regressions for newly reproduced defects, reconcile documentation, then run focused and repository-wide checks.",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Second-pass audit, fixes, and recursive verification",
+      "status": "complete",
+      "dependsOn": [],
+      "acceptance": [
+        "Audit implementation, resources, README anatomy, catalog/inventory, configuration, diagnostics, registration, recursive traversal, and prompt injection from fresh boundary and adversarial cases.",
+        "Every newly reproducible defect receives regression coverage where practical and is fixed.",
+        "Focused tests, full suite, typecheck, package checks, command inventory, performance budgets, and a final static sweep pass."
+      ],
+      "approaches": [
+        "tdd",
+        "diagnosis",
+        "security",
+        "performance",
+        "migration",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Any second-pass defect should be locked down with a regression before or alongside its fix.",
+        "diagnosis": "The pass must reproduce and isolate issues rather than make speculative edits.",
+        "security": "Resource containment, hostile structured input, prompt injection, and diagnostics cross trust boundaries.",
+        "performance": "Registration, recursive traversal, regex matching, and policy injection must remain bounded.",
+        "migration": "Intentional whimsical and report compatibility must survive cleanup.",
+        "operations": "README anatomy, startup status, failure diagnostics, inventory, and rollback guidance must agree with runtime behavior."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "test:primitives"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "test"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check:commands"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check:performance"
+          ]
+        }
+      ],
+      "verificationCheckpoint": {
+        "revision": 2,
+        "at": "2026-09-14T15:57:18.868Z",
+        "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845",
+        "branchLength": 247
+      },
+      "evidence": [
+        {
+          "command": "npm run test:primitives",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T16:05:06.843Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_LTVfBio3GBB7CXhEp34agYrE|fc_0778a758995fb44b016aa81b3106b887d2837b7637c1a3b53a",
+            "workflowRevision": 2,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm test",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T16:05:26.849Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_O5h1IOVLPyg4cstIV7uyJujI|fc_0778a758995fb44b016aa81b38629487d2a3590fca729d1101",
+            "workflowRevision": 3,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T16:05:45.545Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_Nu3rcBtkpjaJvgGvttmkYAiU|fc_0778a758995fb44b016aa81b4e9d5887d2a8042637195c082d",
+            "workflowRevision": 4,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run check",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T16:05:56.423Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_WSAwoSfGqMlbLdwIixeoZl62|fc_0778a758995fb44b016aa81b61f8ac87d2bf8d37a6b56470cf",
+            "workflowRevision": 5,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run check:commands",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T16:06:10.919Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_C9NZUbqypRcoy9XN6D5oDhKE|fc_0778a758995fb44b016aa81b6f6cc887d29906dc8cb4f72c56",
+            "workflowRevision": 6,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        },
+        {
+          "command": "npm run check:performance",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T16:06:18.446Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_xJge79LdOf0Pvz7VdAvcLZNF|fc_0778a758995fb44b016aa81b782ed487d2bfa1a15e74a9db61",
+            "workflowRevision": 7,
+            "sessionId": "01a0a08e-f19a-760f-a361-8726bc145845"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T16:06:29.749Z"
+    }
+  ],
+  "updatedAt": "2026-09-14T16:06:29.749Z"
+}

@@ -1,15 +1,15 @@
 {
   "version": 1,
   "topic": "simplify-pi-primitives",
-  "revision": 1,
-  "status": "draft",
+  "revision": 33,
+  "status": "complete",
   "goal": "Replace the plugin-inside-a-plugin loader with explicit isolated registration of the few retained primitive behaviors.",
   "plan": "Inventory behavior, explicitly import retained primitives, simplify bounded prompt injection and whimsical feedback, then remove dynamic loading.",
   "tasks": [
     {
       "id": "T1",
       "title": "Inventory retained primitive outcomes",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [],
       "acceptance": [
         "Useful primitive outcomes and their current tests are documented",
@@ -23,13 +23,33 @@
       },
       "assessmentStatus": "assessed",
       "verification": [],
-      "evidence": [],
-      "evidenceLinks": []
+      "verificationCheckpoint": {
+        "revision": 2,
+        "at": "2026-09-14T15:16:22.171Z",
+        "sessionId": "01a0a07d-4511-760f-a361-8725809df25a",
+        "branchLength": 2
+      },
+      "evidence": [
+        {
+          "command": "npm run test:primitives",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:18:15.166Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_RlQjz9VZpaOCCUAnZcxMtlJv|fc_0d25add589346ba5016aa810367cd887d2940b8b30ccb075fc",
+            "workflowRevision": 2,
+            "sessionId": "01a0a07d-4511-760f-a361-8725809df25a"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T15:18:22.259Z"
     },
     {
       "id": "T2",
       "title": "Implement explicit primitive registration",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "T1"
       ],
@@ -47,13 +67,57 @@
       },
       "assessmentStatus": "assessed",
       "verification": [],
-      "evidence": [],
-      "evidenceLinks": []
+      "verificationCheckpoint": {
+        "revision": 6,
+        "at": "2026-09-14T15:20:29.014Z",
+        "sessionId": "01a0a07d-4511-760f-a361-8725809df25a",
+        "branchLength": 31
+      },
+      "evidence": [
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:22:44.973Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_3TZQmh3j1pzy0Og6BSiktFS3|fc_0d25add589346ba5016aa8113c58a087d28a16eee17abd985e",
+            "workflowRevision": 6,
+            "sessionId": "01a0a07d-4511-760f-a361-8725809df25a"
+          }
+        },
+        {
+          "command": "npm run test:primitives",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:22:53.885Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_5U5gQJGJFl6vQU9K75Cw1XJo|fc_0d25add589346ba5016aa8114d116487d2927f562a9bf15e74",
+            "workflowRevision": 7,
+            "sessionId": "01a0a07d-4511-760f-a361-8725809df25a"
+          }
+        },
+        {
+          "command": "npm run test:primitives && npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:23:15.666Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_llIWLFm09mdgNbEiAK4UVAh7|fc_0d25add589346ba5016aa8115b82cc87d29d94fb682f5a3f82",
+            "workflowRevision": 8,
+            "sessionId": "01a0a07d-4511-760f-a361-8725809df25a"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T15:23:22.092Z"
     },
     {
       "id": "T3",
       "title": "Simplify conditional prompt injection",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "T2"
       ],
@@ -73,13 +137,69 @@
       },
       "assessmentStatus": "assessed",
       "verification": [],
-      "evidence": [],
-      "evidenceLinks": []
+      "verificationCheckpoint": {
+        "revision": 12,
+        "at": "2026-09-14T15:25:22.729Z",
+        "sessionId": "01a0a07d-4511-760f-a361-8725809df25a",
+        "branchLength": 84
+      },
+      "evidence": [
+        {
+          "command": "npm run test:primitives > /tmp/primitives-t3-test.log 2>&1; result=$?; tail -n 18 /tmp/primitives-t3-test.log; exit \"$result\"",
+          "args": [],
+          "exitCode": 1,
+          "at": "2026-09-14T15:26:21.690Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_EPlfeEeGa3gwKvsuluzsINK1|fc_0061207880b86744016aa8121caa6c87d1b1297ca4b1866b1b",
+            "workflowRevision": 12,
+            "sessionId": "01a0a07d-4511-760f-a361-8725809df25a"
+          }
+        },
+        {
+          "command": "npm run test:primitives > /tmp/primitives-t3-test.log 2>&1; result=$?; grep -E '^(✔|✖|ℹ)' /tmp/primitives-t3-test.log | cut -c1-180; exit \"$result\"",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:27:47.711Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_3wpqll1uwvqBtPK3SpGITEzD|fc_0061207880b86744016aa81271125c87d1b16c2fdd3a8d57e5",
+            "workflowRevision": 13,
+            "sessionId": "01a0a07d-4511-760f-a361-8725809df25a"
+          }
+        },
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:28:41.904Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_nzGJe1AOmfnP7Tdxg63HXpF9|fc_0061207880b86744016aa812a202a887d18551a1b7c2f7b37b",
+            "workflowRevision": 14,
+            "sessionId": "01a0a07d-4511-760f-a361-8725809df25a"
+          }
+        },
+        {
+          "command": "npm run test:primitives",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:28:52.514Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_1Af9vPdlXUuXFwODteJux5r4|fc_0061207880b86744016aa812b36f9887d1863c08b2016d30ce",
+            "workflowRevision": 15,
+            "sessionId": "01a0a07d-4511-760f-a361-8725809df25a"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T15:28:59.794Z"
     },
     {
       "id": "T4",
       "title": "Replace or remove whimsical runtime machinery",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "T2"
       ],
@@ -97,13 +217,57 @@
       },
       "assessmentStatus": "assessed",
       "verification": [],
-      "evidence": [],
-      "evidenceLinks": []
+      "verificationCheckpoint": {
+        "revision": 19,
+        "at": "2026-09-14T15:29:24.165Z",
+        "sessionId": "01a0a07d-4511-760f-a361-8725809df25a",
+        "branchLength": 138
+      },
+      "evidence": [
+        {
+          "command": "npm run test:primitives > /tmp/primitives-t4.log 2>&1; result=$?; grep -E '^(✖|ℹ)' /tmp/primitives-t4.log | cut -c1-160; exit \"$result\"",
+          "args": [],
+          "exitCode": 1,
+          "at": "2026-09-14T15:30:05.071Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_JB1yzTALUEVIAGivhWvGqSMY|fc_0061207880b86744016aa812fa72d887d1807e375de7f7b862",
+            "workflowRevision": 19,
+            "sessionId": "01a0a07d-4511-760f-a361-8725809df25a"
+          }
+        },
+        {
+          "command": "npm run test:primitives",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:30:46.634Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_a71KOgdpcTNEAVeLU2iVFtJk|fc_0061207880b86744016aa81325865487d1af2beabe47704594",
+            "workflowRevision": 20,
+            "sessionId": "01a0a07d-4511-760f-a361-8725809df25a"
+          }
+        },
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:31:02.020Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_OV5IYJTCNfdSVxnnnAIjXs5H|fc_0061207880b86744016aa8132d0a0487d197cb6df1d482c159",
+            "workflowRevision": 21,
+            "sessionId": "01a0a07d-4511-760f-a361-8725809df25a"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T15:31:08.874Z"
     },
     {
       "id": "T5",
       "title": "Remove dynamic loading and qualify startup",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "T3",
         "T4"
@@ -147,9 +311,89 @@
           ]
         }
       ],
-      "evidence": [],
-      "evidenceLinks": []
+      "verificationCheckpoint": {
+        "revision": 25,
+        "at": "2026-09-14T15:31:20.273Z",
+        "sessionId": "01a0a07d-4511-760f-a361-8725809df25a",
+        "branchLength": 174
+      },
+      "evidence": [
+        {
+          "command": "npm run test:primitives",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:33:26.639Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_bAvC3SkHN6ZPD2ECvOhBJA56|fc_0061207880b86744016aa813c5708487d1a9a5a4248eca4e20",
+            "workflowRevision": 25,
+            "sessionId": "01a0a07d-4511-760f-a361-8725809df25a"
+          }
+        },
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:33:40.620Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_BSkSc1Emy914lA9LaJ8DyRKl|fc_0061207880b86744016aa813cc50fc87d1b7eae130c2cff382",
+            "workflowRevision": 26,
+            "sessionId": "01a0a07d-4511-760f-a361-8725809df25a"
+          }
+        },
+        {
+          "command": "npm run check",
+          "args": [],
+          "exitCode": 1,
+          "at": "2026-09-14T15:33:49.177Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_GUPodp9LyplQWhrFZlYRinKS|fc_0061207880b86744016aa813db9f2087d18fd360d5ed8473a2",
+            "workflowRevision": 27,
+            "sessionId": "01a0a07d-4511-760f-a361-8725809df25a"
+          }
+        },
+        {
+          "command": "npm run check",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:34:14.180Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_0I6HJSHEKKE50z1lx4NMqsWt|fc_0061207880b86744016aa813f434ec87d1a1eb790a624d3b57",
+            "workflowRevision": 28,
+            "sessionId": "01a0a07d-4511-760f-a361-8725809df25a"
+          }
+        },
+        {
+          "command": "npm run test:primitives",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:34:26.099Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_ldCSONO7fWlRenY0KvpAjWFI|fc_0061207880b86744016aa814017ca887d1807ef058b630fa76",
+            "workflowRevision": 29,
+            "sessionId": "01a0a07d-4511-760f-a361-8725809df25a"
+          }
+        },
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-14T15:34:40.344Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_tLZ7fbN8Y7TipnLl2NyRzwz6|fc_0061207880b86744016aa81407b16087d1a1d610f441241680",
+            "workflowRevision": 30,
+            "sessionId": "01a0a07d-4511-760f-a361-8725809df25a"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-14T15:34:46.437Z"
     }
   ],
-  "updatedAt": "2026-09-14T01:27:07.140Z"
+  "updatedAt": "2026-09-14T15:34:46.437Z"
 }
