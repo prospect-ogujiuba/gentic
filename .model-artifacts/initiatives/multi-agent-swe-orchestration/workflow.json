@@ -1,0 +1,417 @@
+{
+  "version": 1,
+  "topic": "multi-agent-swe-orchestration",
+  "revision": 2,
+  "status": "draft",
+  "goal": "Make /swe a deterministic multi-agent software-engineering orchestrator: fresh-context agents perform plan review, scoped implementation, independent review, bounded remediation, and final initiative acceptance; approved changes are safely integrated and followed by protected verification. Enforce workflow participation and evidence freshness without claiming that worktrees or prompts are an OS security sandbox.",
+  "plan": "Eight-task implementation, sequential execution by default. Keep workflow.json as authority. Separate contract identities from mutable state revisions; use fenced ownership, isolated fresh Pi children, typed reports/questions, Git workspace receipts, exact-snapshot review and protected verification. General review covers TDD/diagnosis/DSA; one additional composed reviewer covers applicable security/migration/performance/UX/operations concerns. Two remediation attempts then block. Final acceptance reviews the cumulative initiative. No automatic commit, push, deployment, recursive delegation, silent single-agent fallback, or mandatory external orchestration extension. Existing interactive-shell attachment is not the new runner UI. Bootstrap this extension under the installed v1 workflow; validate v2 in isolated fixtures before switching runtimes.",
+  "tasks": [
+    {
+      "id": "schema-v2",
+      "title": "Define v2 contracts, orchestration state, ownership, and migration",
+      "status": "pending",
+      "dependsOn": [],
+      "acceptance": [
+        "Keep the existing mutation revision distinct from plan/task contract hashes or revisions. Contract identities cover requirements, dependencies, acceptance, verification, approach policy, scope, and linked plan content; recording a run or check must not stale an otherwise valid approval.",
+        "Represent plan review, task phases, clarification, findings, remediation budget, workspace/integration receipts, final initiative acceptance, and runner-assigned provenance with per-field and aggregate bounds compatible with the store file-size limit.",
+        "Add task write scope and non-goals. Reject missing objective checks for implementation tasks before execution; when meaningful automated verification is unavailable, block for an explicit decision rather than inventing a passing command.",
+        "Reducers reject skipped stages, self-review, unresolved blocking findings, missing reports, stale contract/snapshot evidence, and completion without all required gates. Accepted no-change outcomes require explicit rationale and independent review.",
+        "Route tool and slash-command mutations through one service with cross-process locking, state compare-and-swap, and a fenced run lease. Release short-lived locks before awaiting a child so pause/cancel can proceed; stale child completions cannot advance state.",
+        "Read v1 state without writing; upgrade atomically on an explicit mutation. Preserve completed tasks as historical, not independently reviewed; unfinished/active tasks require new orchestration approval and fresh verification. Preserve legacy imports and block conflicting artifact layouts.",
+        "Revising requirements invalidates affected incomplete-task evidence and initiative closeout; historical completed tasks are not silently reapproved. Bound history without discarding unresolved findings or audit-critical provenance."
+      ],
+      "approaches": [
+        "tdd",
+        "migration",
+        "security",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Contract identities, reducers, ownership races, and migration can be specified using deterministic fixtures before implementation.",
+        "migration": "Existing v1 state and older imported initiatives need safe compatibility without retroactive multi-agent approval claims.",
+        "security": "Completion authority must reject stale or incorrectly attributed evidence and unauthorized stage transitions.",
+        "operations": "Concurrent sessions, crash-safe writes, leases, and paused-run recovery require explicit lifecycle invariants."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe.test.ts",
+            "test/pi-swe-store.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "git-workspace",
+      "title": "Build recoverable scoped workspaces and safe patch integration",
+      "status": "pending",
+      "dependsOn": [
+        "schema-v2"
+      ],
+      "acceptance": [
+        "Preflight Git capabilities and unsupported repository states before mutation. Non-Git repositories, unresolved merges, unsupported submodules/sparse checkouts/LFS or filters produce actionable blockers rather than a shared-directory fallback.",
+        "A synthetic baseline represents current working-copy bytes; separately preserve and fingerprint the real HEAD, index, staged/unstaged distinction, modes, symlinks, and included untracked files. Never stage, stash, reset, commit on the user branch, or push.",
+        "Select untracked inputs explicitly; do not automatically snapshot all untracked or ignored files, credentials, build output, or dependencies. Document local Git-object retention from synthetic commits and require user approval for ambiguous/sensitive inclusion.",
+        "Use detached task worktrees and pinned baseline references with recorded ownership. Exclude mutable workflow/runtime authority from source fingerprints and provide immutable contract packets separately; verify actual changed paths against the task scope.",
+        "Support or explicitly reject before integration additions, deletions, renames, binary content, executable modes, symlinks, and untracked collisions. Reject path traversal, escaping links, authority changes, and out-of-scope output.",
+        "Prepare a patch receipt, check main-checkout HEAD/index/content drift, apply without changing the user's index, and record the observed post-image. Detect interrupted or partially applied integration; never blindly reapply or reset user files. Document that this is not a filesystem transaction against arbitrary external writers.",
+        "Retain workspaces/baselines containing unintegrated or failed work on pause, rejection, and interruption. Clean only disposable scratch or successfully finalized work; discarding recoverable work requires explicit user authorization.",
+        "Reconstruct remediation from the original task baseline plus its cumulative accepted delta after post-integration failure; do not let previously integrated changes disappear from the re-review diff.",
+        "Bound snapshot file counts, bytes, patch size, and hashing work. Fixture measurements demonstrate that ignored dependency/build trees are excluded and oversize inputs fail clearly."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "operations",
+        "performance"
+      ],
+      "approachReasons": {
+        "tdd": "Git fixtures and injected failures can establish baseline preservation, drift detection, and recovery behavior.",
+        "security": "Scoped patch validation, path containment, sensitive-file handling, and user-change preservation define the workspace trust boundary.",
+        "operations": "Workspace ownership, environment preflight, interrupted integration, and retention/cleanup are operational requirements.",
+        "performance": "Snapshotting and diff hashing must have explicit bounds and avoid traversing ignored dependency or build trees."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe-workspace.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "agent-runner",
+      "title": "Implement fresh role processes and structured two-way handoffs",
+      "status": "pending",
+      "dependsOn": [
+        "schema-v2"
+      ],
+      "acceptance": [
+        "First verify the pinned Pi version's CLI, explicit-extension loading, event stream, and terminating-tool behavior with a local non-network harness. Resolve the installed Pi entry point explicitly rather than assuming process.argv[1] is Pi.",
+        "Each role attempt launches a new Pi process/session with the parent's explicitly resolved provider/model and thinking level; no fork, resumed conversation, automatic model fallback, shared session memory, or recursive delegation.",
+        "Disable automatic resource/extension discovery and deliberately provide trusted project instructions, approved relevant skills, role tools, and immutable contract/snapshot packets. Record effective configuration; approval cannot rely on undisclosed context inherited from parent or another role.",
+        "Read-only reviewers receive the contract, exact cumulative delta, relevant repository files, and objective evidence, not implementation conversation or another reviewer's verdict. General review includes requirements and test adequacy, not just style.",
+        "Use an explicit child-only terminating report tool for plan review, implementation, general/concern review, and final acceptance. The runner supplies identity, contract/snapshot hashes, run ID, lease, and timestamps; the model supplies only bounded findings, outcomes, and questions.",
+        "Support needs-input with correlated questions and parent answers durably recorded through an explicit response action. Questions return control to the orchestrator; resumption uses a new child with the answer packet and does not silently treat clarification as success.",
+        "Provide capability-scoped read/edit/write operations and no general shell or execution tools for reviewers. Implementer shell commands remain trusted local code execution; worktrees, tool allowlists, and role prompts are not an OS sandbox or protection from a hostile same-user process.",
+        "Classify malformed/missing reports, output truncation, model errors, unavailable credentials, nonzero exit, premature exit, deadline, and cancellation distinctly. Quiet output or exit code zero alone never means successful review.",
+        "Enforce explicit time/turn/output budgets and bounded infrastructure retries; terminate the entire child process group on cancellation with escalation. Distinguish these failures from review remediation attempts.",
+        "Define isolated dependency/bootstrap commands without symlinking writable dependency trees into the main checkout; child-run tests are advisory and cannot satisfy the parent's protected-bash verification."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Fake processes and a local Pi harness can test invocation, typed reports, communication, and failures deterministically.",
+        "security": "Fresh context, explicit resource loading, constrained reviewer tools, and runtime provenance prevent accidental cross-role authority leaks.",
+        "operations": "Authentication failures, dependency setup, deadlines, cancellation, budgets, and child process cleanup need controlled recovery."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe-agent-runner.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "orchestration-engine",
+      "title": "Compose required stages, concern routing, and bounded repair",
+      "status": "pending",
+      "dependsOn": [
+        "git-workspace",
+        "agent-runner"
+      ],
+      "acceptance": [
+        "swe_workflow advance executes exactly one valid stage and returns a typed handoff, with at most one active child and task by default. Duplicate advances cannot spawn duplicate work or integrate twice.",
+        "Require independent approval of the current plan contract before implementation. Plan rejection routes to parent revision and re-review; it cannot fall through into code execution.",
+        "Require a fresh implementer and distinct fresh general reviewer for every task. General review covers tdd, diagnosis, and dsa; add one composed concern reviewer only for selected security, migration, performance, accessibility-ux, or operations approaches.",
+        "Keep independent reviewer first passes blind to other verdicts. Findings have stable IDs, severity, evidence, and disposition; blocking findings require repair and independent confirmation or an explicit user decision, not parent self-dismissal.",
+        "A changes-requested outcome triggers fresh remediation and complete re-review of the cumulative task delta. Permit two remediation attempts after initial review, then block. Pause/resume does not reset budgets; any reset is explicit and recorded.",
+        "Provide the same fresh remediation path after protected verification failure or verification-induced source changes following integration. Reapprove the cumulative change and rerun all required checks; no direct parent fix or blanket rollback.",
+        "Infrastructure failure, lack of required browser/audio/external validation, scope drift, clarification, and human-only decisions are explicit blocked/needs-input outcomes, not fabricated approvals or automatic scope expansion.",
+        "Only integrate after all required approvals match the same contract and full relevant source snapshot. Initialize the protected verification checkpoint after integration; advancing control state alone does not invalidate approvals."
+      ],
+      "approaches": [
+        "tdd",
+        "dsa",
+        "security",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Table-driven transition tests can prove required role participation, retry bounds, and post-verification repair paths.",
+        "dsa": "Dependency ordering, stage selection, review aggregation, and bounded retries require explicit finite-state logic.",
+        "security": "Independent role provenance and snapshot-bound decisions must prevent self-approval and silent gate bypasses.",
+        "operations": "Resumable handoffs, clarification, failed verification, and infrastructure errors need distinct recovery paths."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe-orchestration.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "parent-integrity",
+      "title": "Enforce managed tool capabilities and snapshot-bound verification",
+      "status": "pending",
+      "dependsOn": [
+        "orchestration-engine"
+      ],
+      "acceptance": [
+        "During managed execution the parent can orchestrate, inspect approved read-only surfaces, and run exact planned protected-bash checks only in verification phases; direct edit/write is denied.",
+        "Use an allowlist/capability policy that also handles ctx_execute, MCP execution, interactive_shell, alternate shells, nested batch wrappers, and dynamically added tools. Unknown execution-capable tools fail closed; blocking only edit/write/bash is insufficient.",
+        "User-issued shell and external editors remain user-controlled but cannot silently preserve review or verification validity. Compare the relevant whole source snapshot including config, tests, lockfiles, and included untracked files, not only files changed by the implementer.",
+        "Authorize verification by tool-call provenance, exact command specification and cwd, current branch/session checkpoint, contract, and source snapshot. Do not accept model-authored results, child summaries, or old passing results after a newer failure.",
+        "Check source fingerprints before and after each verification and immediately before completion. Source-changing checks invalidate approval and all affected evidence; ignored output may be excluded only by the explicit fingerprint policy.",
+        "Block test completion if planned checks are absent; require a plan revision or explicit human validation path. Do not permit arbitrary fallback commands or add passing echo-style checks just to satisfy the gate.",
+        "Suspension, reload, session switch/fork, another parent session, and workflow ownership changes must not transfer authority accidentally. Explicitly document that managed runtime guards do not secure against malicious local processes or a user deliberately disabling the extension.",
+        "Keep the installed v1 runtime governing this implementation until v2 is validated in separate fixtures/sessions; do not hot-reload partial gates into the workflow that is building them."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Tool-hook, snapshot, branch, and failure regression tests are required to establish the enforcement boundary.",
+        "security": "Alternate execution tools and stale filesystem state are concrete review/verification bypass paths.",
+        "operations": "Session reload, ownership changes, and self-hosted rollout must not strand active work or silently weaken enforcement."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe-tool.test.ts",
+            "test/pi-swe-orchestration.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "initiative-closeout",
+      "title": "Require fresh initiative-wide acceptance before workflow completion",
+      "status": "pending",
+      "dependsOn": [
+        "parent-integrity"
+      ],
+      "acceptance": [
+        "Do not mark the workflow complete merely because its tasks are complete. Enter a final acceptance phase owned by the orchestrator.",
+        "A fresh final acceptance reviewer assesses the original goal, current approved plan, cumulative initiative delta, all task outcomes, unresolved risks, and integrated behavior against the final repository snapshot.",
+        "Define initiative-level integration checks during planning; the parent executes and binds them with protected bash against the final snapshot. Task-local passes are not a substitute for this final verification.",
+        "Final acceptance may approve, request changes, or require user/manual validation. Missing cross-task behavior becomes scoped follow-up work with implementation, review, and verification; it cannot be fixed directly by the orchestrator.",
+        "Completion requires final independent acceptance plus all final checks and no unresolved blockers on the same contract/snapshot. Later relevant mutations stale the closeout evidence.",
+        "Report explicitly that completion is implementation acceptance, not authorization to commit, push, deploy, or release; retain historical imported completion labels accurately."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "End-state tests can prove that a collection of locally passing tasks cannot skip integrated acceptance.",
+        "security": "Final approval and objective results need the same provenance and freshness guarantees as task gates.",
+        "operations": "Initiative acceptance must distinguish integrated readiness, manual validation, and separately authorized release actions."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe-closeout.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "command-ux-recovery",
+      "title": "Expose agent activity, decisions, pause/resume, and recovery",
+      "status": "pending",
+      "dependsOn": [
+        "initiative-closeout"
+      ],
+      "acceptance": [
+        "/swe work start and resume provide an orchestrator prompt; tool-driven and slash-command entry points use the same ownership, stage, and completion service without divergent gate behavior.",
+        "Status and inspect surfaces show current stage, role/run ID, model, elapsed time, outcome, findings, clarification requests, retry budget, preserved workspace, and the next valid action without dumping transcripts.",
+        "Provide a native way to inspect active/recent runs and bounded report/output tails, with clear instructions in the status display. Do not imply interactive-shell /attach works for the new non-PTY runner.",
+        "Pause/stop signal active children promptly without waiting behind a lock held for model execution. Resume detects orphan leases, stale snapshots, partial integration, and unconsumed answers before offering a safe restart.",
+        "Separate cancelled, interrupted, crashed, timed out, changes-requested, blocked, and completed states. Preserve useful report/receipt evidence across parent restart; never show a terminated child as successful solely because it exited.",
+        "If shell snapshots or diagnostic artifacts are retained, use authorized initiative logs/reports paths with bounded retention; workflow.json remains lifecycle authority. Exited entries may be dismissed without losing accepted report metadata.",
+        "Expose required human/manual checks and explicit retry/reset decisions in understandable keyboard-accessible flows. No silent fallback to a single implementing parent when a child cannot start."
+      ],
+      "approaches": [
+        "tdd",
+        "accessibility-ux",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Command adapters, status output, and interrupted-run recovery require regression tests.",
+        "accessibility-ux": "Users need to see what each agent is doing, inspect its result, and understand required decisions without confusing shell IDs with workflow IDs.",
+        "operations": "Pause, restart, cleanup, state retention, and failure diagnosis are the user-facing operational lifecycle."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe-tool.test.ts",
+            "test/pi-swe-command.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "docs-e2e",
+      "title": "Document trust boundaries and verify the full initiative lifecycle",
+      "status": "pending",
+      "dependsOn": [
+        "command-ux-recovery"
+      ],
+      "acceptance": [
+        "Document role/concern routing, fresh-context versus independent-judgment limits, two-way clarification, state transitions, Git retention, explicit tool trust, dependency setup, manual validation, and post-integration repair.",
+        "End-to-end fixtures prove plan review, implementation, independent review, safe integration, protected checks, and final acceptance cannot be skipped through either command or tool surfaces.",
+        "Cover v1 upgrade, historical legacy imports/layout conflicts, dirty indexes, sensitive/untracked selection, binary/mode/link handling, unsupported repositories, whole-snapshot drift, two concurrent parents, stale child results, cancellation, crash recovery, and budget exhaustion.",
+        "Cover plan rejection, specialist routing, clarification/response, test inadequacy, approval disagreement, failed final checks, source-changing tests, cumulative repair, follow-up tasks, and successful multi-task closeout.",
+        "Use deterministic fake providers and process fixtures in ordinary CI; test the pinned Pi protocol with a local fixture provider. Run a separate bounded real-model smoke test only when credentials/user authorization are available, reporting skips honestly.",
+        "Refresh catalog/inventory and affected prompt/resource metadata. Check pi-todo lifecycle coexistence and all existing repository regressions, not only the new SWE tests.",
+        "The full repository test suite, SWE suite, typecheck, and repository checks pass. No production rollout or self-upgrade is performed before review of those results."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "migration",
+        "accessibility-ux",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Cross-surface end-to-end tests establish the complete participation and evidence contract.",
+        "security": "Bypass and hostile-path fixtures validate managed runtime guards without overstating OS isolation.",
+        "migration": "Compatibility tests and documentation must distinguish historical completion from new multi-agent evidence.",
+        "accessibility-ux": "Documentation and run inspection must clearly communicate roles, progress, results, and blocked decisions.",
+        "operations": "Offline CI, optional live smoke tests, cleanup, lifecycle coexistence, and rollout are release-readiness concerns."
+      },
+      "assessmentStatus": "assessed",
+      "verification": [
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "test:swe"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "test"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": []
+    }
+  ],
+  "updatedAt": "2026-09-15T18:49:35.642Z"
+}
