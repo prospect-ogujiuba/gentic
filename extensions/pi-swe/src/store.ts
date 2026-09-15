@@ -77,7 +77,11 @@ function readWorkflowDirectory(directory: string): Dirent[] {
 export function activeWorkflowTopics(cwd: string, exceptTopic?: string): string[] {
   return listWorkflowTopics(cwd).filter((topic) => {
     if (topic === exceptTopic) return false;
-    const workflow = loadWorkflow(cwd, topic)?.workflow;
+    // Legacy initiatives are imported as paused so they never own the active
+    // workflow slot until explicitly migrated. Do not fully import unrelated
+    // legacy contracts here: malformed historical content must not prevent a
+    // valid native workflow from starting.
+    const workflow = loadWorkflow(cwd, topic, false)?.workflow;
     return workflow?.status === "active" && !!workflow.activeTask;
   });
 }

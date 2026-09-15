@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import piSwe from "../extensions/pi-swe/index.ts";
-import { loadWorkflow, migrateLegacyWorkflow, saveWorkflow, workflowPath } from "../extensions/pi-swe/src/store.ts";
+import { activeWorkflowTopics, loadWorkflow, migrateLegacyWorkflow, saveWorkflow, workflowPath } from "../extensions/pi-swe/src/store.ts";
 import { buildTaskExecutionPrompt } from "../extensions/pi-swe/src/command.ts";
 import { registerTodoActivityProbe } from "../src/lifecycle-coordination.ts";
 import { createWorkflow, parseWorkflow, readyTasks, reduceWorkflow, reviseWorkflow, summarizeWorkflow } from "../extensions/pi-swe/src/workflow.ts";
@@ -140,6 +140,15 @@ test("legacy migration rejects a contract root outside the initiative revision t
   mkdirSync(root, { recursive: true });
   writeFileSync(join(root, "manifest.json"), JSON.stringify({ schemaVersion: 2, activePlan: { contractRoot: "unrelated" } }));
   assert.throws(() => loadWorkflow(cwd, "legacy"), /must be a revision beneath/);
+});
+
+test("active workflow scan ignores malformed unrelated legacy initiatives", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-active-scan-"));
+  saveWorkflow(cwd, sample());
+  const legacyRoot = join(cwd, ".model-artifacts/initiatives/legacy/specs");
+  mkdirSync(legacyRoot, { recursive: true });
+  writeFileSync(join(legacyRoot, "manifest.json"), JSON.stringify({ schemaVersion: 2, activePlan: { contractRoot: "unrelated" } }));
+  assert.deepEqual(activeWorkflowTopics(cwd, "demo"), []);
 });
 
 test("revision preserves completed and active state and all evidence", () => {
