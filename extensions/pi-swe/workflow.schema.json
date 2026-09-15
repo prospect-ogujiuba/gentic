@@ -1,144 +1,274 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://gentic.dev/schemas/pi-swe/workflow.schema.json",
-  "title": "pi-swe workflow",
+  "title": "pi-swe workflow v2",
   "type": "object",
-  "required": ["version", "topic", "revision", "status", "goal", "tasks", "updatedAt"],
+  "required": ["version", "topic", "revision", "status", "goal", "contract", "orchestration", "tasks", "updatedAt"],
   "properties": {
-    "version": { "const": 1 },
+    "version": { "const": 2 },
     "topic": { "$ref": "#/$defs/topic" },
     "revision": { "type": "integer", "minimum": 1 },
     "status": { "enum": ["draft", "active", "paused", "blocked", "complete"] },
-    "goal": { "type": "string", "minLength": 1, "maxLength": 2048 },
-    "plan": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "goal": { "$ref": "#/$defs/text" },
+    "plan": { "$ref": "#/$defs/text" },
+    "contract": { "$ref": "#/$defs/contract" },
+    "orchestration": { "$ref": "#/$defs/orchestration" },
+    "planReview": { "$ref": "#/$defs/report" },
+    "initiativeAcceptance": { "$ref": "#/$defs/report" },
     "activeTask": { "$ref": "#/$defs/taskId" },
     "tasks": { "type": "array", "minItems": 1, "maxItems": 100, "items": { "$ref": "#/$defs/task" } },
-    "updatedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "$ref": "#/$defs/timestamp" },
+    "migration": { "$ref": "#/$defs/migration" },
     "importedFrom": { "$ref": "#/$defs/workflowImport" }
   },
   "additionalProperties": false,
   "$defs": {
-    "topic": {
-      "type": "string",
-      "maxLength": 256,
-      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*)*$"
-    },
-    "taskId": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
-    },
-    "approach": {
-      "enum": ["tdd", "diagnosis", "dsa", "security", "performance", "migration", "accessibility-ux", "operations"]
-    },
-    "approachReasons": {
+    "topic": { "type": "string", "maxLength": 256, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*)*$" },
+    "taskId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "contract": {
       "type": "object",
-      "properties": {
-        "tdd": { "type": "string", "minLength": 1, "maxLength": 1024 },
-        "diagnosis": { "type": "string", "minLength": 1, "maxLength": 1024 },
-        "dsa": { "type": "string", "minLength": 1, "maxLength": 1024 },
-        "security": { "type": "string", "minLength": 1, "maxLength": 1024 },
-        "performance": { "type": "string", "minLength": 1, "maxLength": 1024 },
-        "migration": { "type": "string", "minLength": 1, "maxLength": 1024 },
-        "accessibility-ux": { "type": "string", "minLength": 1, "maxLength": 1024 },
-        "operations": { "type": "string", "minLength": 1, "maxLength": 1024 }
-      },
-      "additionalProperties": false
-    },
-    "verificationCheckpoint": {
-      "type": "object",
-      "required": ["revision", "at"],
+      "required": ["revision", "hash"],
       "properties": {
         "revision": { "type": "integer", "minimum": 1 },
-        "at": { "type": "string", "format": "date-time" },
-        "sessionId": { "type": "string", "minLength": 1 },
-        "branchLength": { "type": "integer", "minimum": 0 }
+        "hash": { "$ref": "#/$defs/hash" },
+        "linkedPlanHash": { "$ref": "#/$defs/hash" }
       },
       "additionalProperties": false
+    },
+    "approach": { "enum": ["tdd", "diagnosis", "dsa", "security", "performance", "migration", "accessibility-ux", "operations"] },
+    "approachReasons": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/approach" },
+      "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 1024 },
+      "maxProperties": 8
     },
     "command": {
       "type": "object",
       "required": ["command", "args"],
       "properties": {
-        "command": { "type": "string", "minLength": 1 },
+        "command": { "type": "string", "minLength": 1, "maxLength": 256 },
         "args": { "type": "array", "maxItems": 64, "items": { "type": "string", "maxLength": 512 } }
       },
       "additionalProperties": false
     },
-    "evidenceSource": {
+    "provenance": {
       "type": "object",
-      "required": ["kind", "toolCallId", "workflowRevision"],
+      "required": ["runId", "role", "actorId", "leaseId", "leaseFence", "contractHash", "startedAt", "completedAt"],
       "properties": {
-        "kind": { "const": "bash-tool-result" },
-        "toolCallId": { "type": "string", "minLength": 1 },
-        "workflowRevision": { "type": "integer", "minimum": 1 },
-        "sessionId": { "type": "string", "minLength": 1 }
+        "runId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "role": { "enum": ["plan-reviewer", "implementer", "general-reviewer", "concern-reviewer", "final-reviewer"] },
+        "actorId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "leaseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "leaseFence": { "type": "integer", "minimum": 1 },
+        "contractHash": { "$ref": "#/$defs/hash" },
+        "snapshotHash": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "startedAt": { "$ref": "#/$defs/timestamp" },
+        "completedAt": { "$ref": "#/$defs/timestamp" }
+      },
+      "additionalProperties": false
+    },
+    "finding": {
+      "type": "object",
+      "required": ["id", "severity", "status", "summary", "evidence"],
+      "properties": {
+        "id": { "$ref": "#/$defs/taskId" },
+        "severity": { "enum": ["blocking", "warning"] },
+        "status": { "enum": ["open", "resolved", "accepted-risk"] },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "evidence": { "$ref": "#/$defs/text" },
+        "disposition": { "$ref": "#/$defs/text" }
+      },
+      "additionalProperties": false
+    },
+    "clarification": {
+      "type": "object",
+      "required": ["id", "question", "askedByRunId", "askedAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/taskId" },
+        "question": { "$ref": "#/$defs/text" },
+        "askedByRunId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "askedAt": { "$ref": "#/$defs/timestamp" },
+        "answer": { "$ref": "#/$defs/text" },
+        "answeredBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "answeredAt": { "$ref": "#/$defs/timestamp" }
+      },
+      "additionalProperties": false
+    },
+    "report": {
+      "type": "object",
+      "required": ["kind", "outcome", "summary", "findings", "provenance"],
+      "properties": {
+        "kind": { "enum": ["plan-review", "implementation", "general-review", "concern-review", "final-acceptance"] },
+        "outcome": { "enum": ["approved", "changes-requested", "needs-input", "completed", "no-change", "failed"] },
+        "summary": { "$ref": "#/$defs/text" },
+        "rationale": { "$ref": "#/$defs/text" },
+        "changedPaths": { "type": "array", "maxItems": 128, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 512 } },
+        "findings": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/finding" } },
+        "questions": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/clarification" } },
+        "provenance": { "$ref": "#/$defs/provenance" }
+      },
+      "additionalProperties": false
+    },
+    "lease": {
+      "type": "object",
+      "required": ["id", "runId", "ownerId", "stage", "fence", "acquiredAt", "expiresAt"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "runId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "stage": { "enum": ["plan-review", "task-execution", "initiative-acceptance", "complete", "pending", "implementation", "general-review", "concern-review", "remediation", "workspace", "integration", "verification", "ready-to-complete", "historical"] },
+        "taskId": { "$ref": "#/$defs/taskId" },
+        "fence": { "type": "integer", "minimum": 1 },
+        "acquiredAt": { "$ref": "#/$defs/timestamp" },
+        "expiresAt": { "$ref": "#/$defs/timestamp" }
+      },
+      "additionalProperties": false
+    },
+    "history": {
+      "type": "object",
+      "required": ["id", "type", "at", "summary"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "type": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "at": { "$ref": "#/$defs/timestamp" },
+        "summary": { "$ref": "#/$defs/text" },
+        "taskId": { "$ref": "#/$defs/taskId" },
+        "provenance": { "$ref": "#/$defs/provenance" },
+        "auditCritical": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "orchestration": {
+      "type": "object",
+      "required": ["mode", "phase", "nextFence", "history"],
+      "properties": {
+        "mode": { "enum": ["legacy", "multi-agent"] },
+        "phase": { "enum": ["plan-review", "task-execution", "initiative-acceptance", "complete"] },
+        "nextFence": { "type": "integer", "minimum": 1 },
+        "activeRun": { "$ref": "#/$defs/lease" },
+        "history": { "type": "array", "maxItems": 128, "items": { "$ref": "#/$defs/history" } }
+      },
+      "additionalProperties": false
+    },
+    "checkpoint": {
+      "type": "object",
+      "required": ["revision", "at"],
+      "properties": {
+        "revision": { "type": "integer", "minimum": 1 },
+        "at": { "$ref": "#/$defs/timestamp" },
+        "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "branchLength": { "type": "integer", "minimum": 0 }
       },
       "additionalProperties": false
     },
     "evidence": {
+      "allOf": [{ "$ref": "#/$defs/command" }],
       "type": "object",
       "required": ["command", "args", "exitCode", "at"],
       "properties": {
-        "command": { "type": "string", "minLength": 1 },
+        "command": { "type": "string", "minLength": 1, "maxLength": 256 },
         "args": { "type": "array", "maxItems": 64, "items": { "type": "string", "maxLength": 512 } },
         "exitCode": { "type": "integer" },
-        "at": { "type": "string", "format": "date-time" },
-        "source": { "$ref": "#/$defs/evidenceSource" }
+        "at": { "$ref": "#/$defs/timestamp" },
+        "contractHash": { "$ref": "#/$defs/hash" },
+        "snapshotHash": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "source": {
+          "type": "object",
+          "required": ["kind", "toolCallId", "workflowRevision"],
+          "properties": {
+            "kind": { "const": "bash-tool-result" },
+            "toolCallId": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "workflowRevision": { "type": "integer", "minimum": 1 },
+            "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 }
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": false
     },
-    "completionImport": {
+    "workspaceReceipt": {
       "type": "object",
+      "required": ["workspaceId", "baselineHash", "snapshotHash", "changedPaths", "createdAt"],
       "properties": {
-        "schemaVersion": { "type": "integer", "minimum": 1 },
-        "requestId": { "type": "string" },
-        "completedAt": { "type": "string", "format": "date-time" },
-        "planRevision": { "type": "integer", "minimum": 1 },
-        "contractPath": { "type": "string" },
-        "preCompletionContentHash": { "type": "string" },
-        "verificationPath": { "type": "string" },
-        "verificationContentHash": { "type": "string" },
-        "reviewPath": { "type": "string" },
-        "reviewContentHash": { "type": "string" },
-        "reviewDecision": { "type": "string" },
-        "nextInitiativeState": { "type": "string" },
-        "nextActiveContractId": { "type": ["string", "null"] },
-        "nextReadyContractIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/taskId" } }
+        "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "baselineHash": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "snapshotHash": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "changedPaths": { "type": "array", "maxItems": 128, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 512 } },
+        "createdAt": { "$ref": "#/$defs/timestamp" }
       },
       "additionalProperties": false
     },
-    "taskImport": {
+    "integrationReceipt": {
       "type": "object",
-      "required": ["kind", "contractPath"],
+      "required": ["integrationId", "preSnapshotHash", "postSnapshotHash", "patchHash", "integratedAt"],
       "properties": {
-        "kind": { "const": "pi-swe-v2-contract" },
-        "contractPath": { "type": "string", "minLength": 1 },
-        "contentHash": { "type": "string", "minLength": 1 },
-        "completion": { "$ref": "#/$defs/completionImport" }
+        "integrationId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "preSnapshotHash": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "postSnapshotHash": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "patchHash": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "integratedAt": { "$ref": "#/$defs/timestamp" }
       },
       "additionalProperties": false
     },
     "task": {
       "type": "object",
-      "required": ["id", "title", "status", "dependsOn", "acceptance", "approaches", "approachReasons", "assessmentStatus", "verification", "evidence", "evidenceLinks"],
+      "required": ["id", "title", "kind", "status", "phase", "dependsOn", "acceptance", "approaches", "approachReasons", "assessmentStatus", "writeScope", "nonGoals", "contract", "verification", "evidence", "evidenceLinks", "reports", "clarifications", "findings", "remediation"],
       "properties": {
         "id": { "$ref": "#/$defs/taskId" },
         "title": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "kind": { "enum": ["implementation", "coordination"] },
         "status": { "enum": ["pending", "active", "blocked", "deferred", "complete"] },
+        "phase": { "enum": ["pending", "implementation", "general-review", "concern-review", "remediation", "workspace", "integration", "verification", "ready-to-complete", "historical"] },
         "dependsOn": { "type": "array", "maxItems": 64, "uniqueItems": true, "items": { "$ref": "#/$defs/taskId" } },
         "acceptance": { "type": "array", "maxItems": 64, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 1024 } },
         "approaches": { "type": "array", "maxItems": 8, "uniqueItems": true, "items": { "$ref": "#/$defs/approach" } },
         "approachReasons": { "$ref": "#/$defs/approachReasons" },
         "assessmentStatus": { "enum": ["assessed", "unassessed"] },
-        "verificationCheckpoint": { "$ref": "#/$defs/verificationCheckpoint" },
-        "verification": { "type": "array", "maxItems": 16, "uniqueItems": true, "items": { "$ref": "#/$defs/command" } },
-        "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
-        "evidenceLinks": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 2048 } },
-        "blockedReason": { "type": "string", "minLength": 1, "maxLength": 2048 },
-        "completedAt": { "type": "string", "format": "date-time" },
-        "importedFrom": { "$ref": "#/$defs/taskImport" }
+        "writeScope": { "type": "array", "maxItems": 64, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 512 } },
+        "nonGoals": { "type": "array", "maxItems": 32, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 1024 } },
+        "contract": { "$ref": "#/$defs/contract" },
+        "verification": { "type": "array", "maxItems": 16, "items": { "$ref": "#/$defs/command" } },
+        "verificationDecision": {
+          "type": "object",
+          "required": ["kind", "rationale", "decidedBy", "at"],
+          "properties": {
+            "kind": { "const": "manual" },
+            "rationale": { "$ref": "#/$defs/text" },
+            "decidedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "at": { "$ref": "#/$defs/timestamp" }
+          },
+          "additionalProperties": false
+        },
+        "verificationCheckpoint": { "$ref": "#/$defs/checkpoint" },
+        "evidence": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/evidence" } },
+        "evidenceLinks": { "type": "array", "maxItems": 64, "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },
+        "reports": { "type": "array", "maxItems": 16, "items": { "$ref": "#/$defs/report" } },
+        "clarifications": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/clarification" } },
+        "findings": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/finding" } },
+        "remediation": {
+          "type": "object",
+          "required": ["used", "max"],
+          "properties": { "used": { "type": "integer", "minimum": 0, "maximum": 8 }, "max": { "type": "integer", "minimum": 0, "maximum": 8 } },
+          "additionalProperties": false
+        },
+        "workspaceReceipt": { "$ref": "#/$defs/workspaceReceipt" },
+        "integrationReceipt": { "$ref": "#/$defs/integrationReceipt" },
+        "blockedReason": { "$ref": "#/$defs/text" },
+        "completedAt": { "$ref": "#/$defs/timestamp" },
+        "importedFrom": { "type": "object", "required": ["kind", "contractPath"], "properties": { "kind": { "const": "pi-swe-v2-contract" }, "contractPath": { "$ref": "#/$defs/text" }, "contentHash": { "type": "string", "maxLength": 128 }, "completion": { "type": "object", "maxProperties": 16 } }, "additionalProperties": false }
+      },
+      "additionalProperties": false
+    },
+    "migration": {
+      "type": "object",
+      "required": ["sourceVersion", "readAt", "historicalTaskIds"],
+      "properties": {
+        "sourceVersion": { "const": 1 },
+        "readAt": { "$ref": "#/$defs/timestamp" },
+        "historicalTaskIds": { "type": "array", "maxItems": 100, "uniqueItems": true, "items": { "$ref": "#/$defs/taskId" } }
       },
       "additionalProperties": false
     },
@@ -147,7 +277,7 @@
       "required": ["kind", "manifestPath"],
       "properties": {
         "kind": { "const": "pi-swe-v2" },
-        "manifestPath": { "type": "string", "minLength": 1 },
+        "manifestPath": { "$ref": "#/$defs/text" },
         "planRevision": { "type": "integer", "minimum": 1 }
       },
       "additionalProperties": false

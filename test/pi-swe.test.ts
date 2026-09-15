@@ -40,7 +40,7 @@ test("workflow parser rejects missing dependencies and cycles", () => {
   assert.throws(() => createWorkflow({ topic: "demo", goal: "x", tasks: [{ id: "A", title: "A", dependsOn: ["missing"] }] }), /missing dependency/);
   assert.throws(() => createWorkflow({ topic: "demo", goal: "x", tasks: [{ id: "A", title: "A", dependsOn: ["B"] }, { id: "B", title: "B", dependsOn: ["A"] }] }), /cycle/);
   assert.throws(() => createWorkflow({ topic: "demo", goal: "x", tasks: [{ id: "A", title: "A", approaches: ["guessing" as never] }] }), /invalid approach/);
-  assert.throws(() => parseWorkflow({ ...sample(), version: 2 }), /unsupported/);
+  assert.throws(() => parseWorkflow({ ...sample(), version: 3 }), /unsupported/);
   const legacyShape = structuredClone(sample()) as any;
   delete legacyShape.tasks[0].approaches;
   delete legacyShape.tasks[0].approachReasons;
@@ -194,12 +194,12 @@ test("assessment reasons are required and status shows every task", () => {
   assert.match(summarizeWorkflow(workflow), /B: none/);
 });
 
-test("verification before the checkpoint revision cannot satisfy a planned check", () => {
+test("a no-op contract revision does not stale current verification", () => {
   let workflow = createWorkflow({ topic: "revision-check", goal: "verify", now, tasks: [{ id: "T1", title: "Check", approaches: [], verification: [{ command: "npm test", args: [] }] }] });
   workflow = reduceWorkflow(workflow, { type: "start" }, now).workflow;
   workflow = reviseWorkflow(workflow, { tasks: [{ id: "T1", title: "Check", approaches: [], verification: [{ command: "npm test", args: [] }] }] }, "2026-01-01T00:00:01.000Z").workflow;
-  workflow = reduceWorkflow(workflow, { type: "record-verification", evidence: { ...evidence("npm test", 0, 2), at: "2026-01-01T00:00:02.000Z" } }, now).workflow;
-  assert.match(reduceWorkflow(workflow, { type: "complete-task" }, now).message, /missing passing checks/);
+  workflow = reduceWorkflow(workflow, { type: "record-verification", evidence: { ...evidence("npm test", 0, workflow.revision), at: "2026-01-01T00:00:02.000Z" } }, now).workflow;
+  assert.equal(reduceWorkflow(workflow, { type: "complete-task" }, now).changed, true);
 });
 
 test("latest verification must pass", () => {
@@ -213,7 +213,7 @@ test("revision preserves evidence but requires fresh verification", () => {
   let workflow = reduceWorkflow(sample(), { type: "start" }, now).workflow;
   workflow = reduceWorkflow(workflow, { type: "record-verification", evidence: evidence("npm test", 0, 2) }, now).workflow;
   workflow = reviseWorkflow(workflow, { tasks: [{ id: "T1", title: "Changed acceptance", acceptance: ["new behavior"] }, { id: "T2", title: "Integration", dependsOn: ["T1"] }] }, now).workflow;
-  assert.equal(workflow.tasks[0]!.evidence.length, 1);
+  assert.equal(workflow.tasks[0]!.evidence.length, 0);
   assert.equal(reduceWorkflow(workflow, { type: "complete-task" }, now).changed, false);
 });
 

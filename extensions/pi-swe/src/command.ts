@@ -2,7 +2,8 @@ import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { coordinatedActiveTodo } from "../../../src/lifecycle-coordination.ts";
-import { activeWorkflowTopics, loadWorkflow, migrateLegacyWorkflow, resolveTopic, saveWorkflow } from "./store.ts";
+import { activeWorkflowTopics, loadWorkflow, resolveTopic } from "./store.ts";
+import { WorkflowMutationService } from "./service.ts";
 import { bindVerificationCheckpoint, reduceWorkflow, summarizeWorkflow, type Workflow, type WorkflowApproach, type WorkflowTask } from "./workflow.ts";
 
 const APPROACH_INSTRUCTIONS: Record<WorkflowApproach, string> = {
@@ -51,7 +52,7 @@ export function registerSweCommand(pi: ExtensionAPI): void {
         }
         if (root === "migrate") {
           const topic = resolveTopic(ctx.cwd, args[1]);
-          const located = migrateLegacyWorkflow(ctx.cwd, topic);
+          const located = await new WorkflowMutationService(ctx.cwd).migrate(topic);
           ctx.ui.notify(`pi-swe migrated ${topic} to ${located.path}`, "info");
           return;
         }
@@ -71,14 +72,20 @@ export function registerSweCommand(pi: ExtensionAPI): void {
           const active = activeWorkflowTopics(ctx.cwd, topic);
           if (active.length) throw new Error(`cannot activate ${topic} while workflow ${active.join(", ")} is active; pause or complete it first`);
         }
-        const located = migrateLegacyWorkflow(ctx.cwd, topic);
+        const service = new WorkflowMutationService(ctx.cwd);
+        const located = service.read(topic);
+        if (!located) throw new Error(`workflow ${topic} was not found`);
         const workflow = located.workflow;
         const event = workAction === "stop" ? { type: "pause" as const } : { type: workAction as "start" | "resume" | "pause" };
-        const decision = reduceWorkflow(workflow, event);
-        if (decision.changed && (workAction === "start" || workAction === "resume")) {
-          decision.workflow = bindVerificationCheckpoint(decision.workflow, ctx.sessionManager.getSessionId(), ctx.sessionManager.getBranch().length);
-        }
-        if (decision.changed) saveWorkflow(ctx.cwd, decision.workflow, workflow.revision);
+        const decision = await service.mutate(topic, workflow.revision, (current) => {
+          if (workAction === "start" || workAction === "resume") {
+            const active = activeWorkflowTopics(ctx.cwd, topic);
+            if (active.length) throw new Error(`cannot activate ${topic} while workflow ${active.join(", ")} is active; pause or complete it first`);
+          }
+          const next = reduceWorkflow(current, event);
+          if (next.changed && (workAction === "start" || workAction === "resume")) next.workflow = bindVerificationCheckpoint(next.workflow, ctx.sessionManager.getSessionId(), ctx.sessionManager.getBranch().length);
+          return next;
+        });
         ctx.ui.notify(`pi-swe ${decision.message}`, decision.changed ? "info" : "warning");
         if (decision.changed && (workAction === "start" || workAction === "resume") && decision.workflow.activeTask) {
           const task = decision.workflow.tasks.find((item) => item.id === decision.workflow.activeTask)!;
@@ -98,9 +105,21 @@ export function buildTaskExecutionPrompt(workflow: Workflow, task: WorkflowTask,
     ? task.approaches.map((approach) => `- ${approach}${task.approachReasons[approach] ? ` (${task.approachReasons[approach]})` : ""}: ${APPROACH_INSTRUCTIONS[approach]}`).join("\n")
     : "- none; use normal engineering judgment";
   const acceptance = task.acceptance.length ? task.acceptance.map((item) => `- ${item}`).join("\n") : "- no explicit criteria recorded";
-  const verification = task.verification.length ? task.verification.map((item) => `- ${[item.command, ...item.args].join(" ")}`).join("\n") : "- choose an objective check appropriate to the change";
+  const scope = task.writeScope.length ? task.writeScope.map((item) => `- ${item}`).join("\n") : "- no write scope recorded; stop for plan revision";
+  const nonGoals = task.nonGoals.length ? task.nonGoals.map((item) => `- ${item}`).join("\n") : "- none recorded";
+  const verification = task.verification.length
+    ? task.verification.map((item) => `- ${[item.command, ...item.args].join(" ")}`).join("\n")
+    : task.verificationDecision
+      ? `- manual validation decision by ${task.verificationDecision.decidedBy}: ${task.verificationDecision.rationale}`
+      : "- no objective check recorded; block for an explicit validation decision";
   return `Continue pi-swe workflow ${workflow.topic}, task ${task.id}: ${task.title}.
 Read ${path} and any linked plan. Implement only this task.
+
+Write scope:
+${scope}
+
+Non-goals:
+${nonGoals}
 
 Applicable approaches (advisory and user-overridable):
 ${approaches}

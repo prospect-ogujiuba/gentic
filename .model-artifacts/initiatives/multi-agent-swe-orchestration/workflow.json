@@ -1,15 +1,16 @@
 {
   "version": 1,
   "topic": "multi-agent-swe-orchestration",
-  "revision": 2,
-  "status": "draft",
+  "revision": 10,
+  "status": "paused",
   "goal": "Make /swe a deterministic multi-agent software-engineering orchestrator: fresh-context agents perform plan review, scoped implementation, independent review, bounded remediation, and final initiative acceptance; approved changes are safely integrated and followed by protected verification. Enforce workflow participation and evidence freshness without claiming that worktrees or prompts are an OS security sandbox.",
   "plan": "Eight-task implementation, sequential execution by default. Keep workflow.json as authority. Separate contract identities from mutable state revisions; use fenced ownership, isolated fresh Pi children, typed reports/questions, Git workspace receipts, exact-snapshot review and protected verification. General review covers TDD/diagnosis/DSA; one additional composed reviewer covers applicable security/migration/performance/UX/operations concerns. Two remediation attempts then block. Final acceptance reviews the cumulative initiative. No automatic commit, push, deployment, recursive delegation, silent single-agent fallback, or mandatory external orchestration extension. Existing interactive-shell attachment is not the new runner UI. Bootstrap this extension under the installed v1 workflow; validate v2 in isolated fixtures before switching runtimes.",
+  "activeTask": "git-workspace",
   "tasks": [
     {
       "id": "schema-v2",
       "title": "Define v2 contracts, orchestration state, ownership, and migration",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [],
       "acceptance": [
         "Keep the existing mutation revision distinct from plan/task contract hashes or revisions. Contract identities cover requirements, dependencies, acceptance, verification, approach policy, scope, and linked plan content; recording a run or check must not stale an otherwise valid approval.",
@@ -51,13 +52,45 @@
           ]
         }
       ],
-      "evidence": [],
-      "evidenceLinks": []
+      "verificationCheckpoint": {
+        "revision": 5,
+        "at": "2026-09-15T20:56:03.554Z",
+        "sessionId": "01a0a6da-e67b-737a-b68b-55758edb3e3b",
+        "branchLength": 4
+      },
+      "evidence": [
+        {
+          "command": "node --experimental-strip-types --test test/pi-swe.test.ts test/pi-swe-store.test.ts",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-15T20:56:10.013Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_6xauO2xrM0xBLBUPYdIVh3vN|fc_0b35ab28f569facd016aa9b0e64f8c87d09881355437e3b91d",
+            "workflowRevision": 5,
+            "sessionId": "01a0a6da-e67b-737a-b68b-55758edb3e3b"
+          }
+        },
+        {
+          "command": "npm run typecheck",
+          "args": [],
+          "exitCode": 0,
+          "at": "2026-09-15T20:56:24.838Z",
+          "source": {
+            "kind": "bash-tool-result",
+            "toolCallId": "call_2gMYOdJbDMrRcmyi899PXuDC|fc_0b35ab28f569facd016aa9b0eda44c87d09daf2612ccade7de",
+            "workflowRevision": 6,
+            "sessionId": "01a0a6da-e67b-737a-b68b-55758edb3e3b"
+          }
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-15T20:56:29.298Z"
     },
     {
       "id": "git-workspace",
       "title": "Build recoverable scoped workspaces and safe patch integration",
-      "status": "pending",
+      "status": "active",
       "dependsOn": [
         "schema-v2"
       ],
@@ -102,6 +135,12 @@
           ]
         }
       ],
+      "verificationCheckpoint": {
+        "revision": 9,
+        "at": "2026-09-15T20:56:29.298Z",
+        "sessionId": "01a0a6da-e67b-737a-b68b-55758edb3e3b",
+        "branchLength": 14
+      },
       "evidence": [],
       "evidenceLinks": []
     },
@@ -413,5 +452,5 @@
       "evidenceLinks": []
     }
   ],
-  "updatedAt": "2026-09-15T18:49:35.642Z"
+  "updatedAt": "2026-09-15T20:57:17.426Z"
 }

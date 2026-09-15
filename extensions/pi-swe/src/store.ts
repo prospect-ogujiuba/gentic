@@ -9,8 +9,8 @@ const MAX_DIRECTORIES = 1_000;
 const MAX_DIRECTORY_ENTRIES = 1_000;
 
 export type LocatedWorkflow =
-  | { kind: "native"; path: string; workflow: Workflow }
-  | { kind: "legacy"; path: string; workflow: Workflow };
+  | { kind: "native"; path: string; workflow: Workflow; storedVersion: 1 | 2 }
+  | { kind: "legacy"; path: string; workflow: Workflow; storedVersion: 2 };
 
 export function workflowPath(topic: string): string {
   return `.model-artifacts/initiatives/${topic}/workflow.json`;
@@ -100,11 +100,19 @@ export function loadWorkflow(cwd: string, topic: string, includeLegacy = true): 
   const root = safeRoot(cwd);
   const nativePath = workflowPath(topic);
   const absolute = safePath(root, nativePath);
-  if (existsSync(absolute)) return { kind: "native", path: nativePath, workflow: parseWorkflow(readJson(absolute)) };
-  if (!includeLegacy) return undefined;
   const manifest = safePath(root, legacyManifestPath(topic));
-  if (!existsSync(manifest)) return undefined;
-  return { kind: "legacy", path: legacyManifestPath(topic), workflow: importLegacyWorkflow(root, topic, manifest) };
+  const kindFirst = legacyKindFirstPaths(root, topic);
+  if (existsSync(absolute)) {
+    const raw = readJson(absolute);
+    const storedVersion = record(raw) && raw.version === 1 ? 1 : 2;
+    const workflow = parseWorkflow(raw);
+    if (kindFirst.length) throw new Error(`conflicting artifact layouts for ${topic}: canonical and legacy kind-first paths both exist`);
+    if (existsSync(manifest) && workflow.importedFrom?.manifestPath !== legacyManifestPath(topic)) throw new Error(`conflicting artifact layouts for ${topic}: workflow.json and an unrelated legacy manifest both exist`);
+    return { kind: "native", path: nativePath, workflow, storedVersion };
+  }
+  if (kindFirst.length) throw new Error(`legacy kind-first layout for ${topic} requires explicit migration before use`);
+  if (!includeLegacy || !existsSync(manifest)) return undefined;
+  return { kind: "legacy", path: legacyManifestPath(topic), workflow: importLegacyWorkflow(root, topic, manifest), storedVersion: 2 };
 }
 
 export function saveWorkflow(cwd: string, workflow: Workflow, expectedRevision?: number): string {
@@ -115,16 +123,22 @@ export function saveWorkflow(cwd: string, workflow: Workflow, expectedRevision?:
     const current = parseWorkflow(readJson(absolute));
     if (current.revision !== expectedRevision) throw new Error(`workflow changed: expected revision ${expectedRevision}, found ${current.revision}`);
   }
-  atomicWrite(absolute, `${JSON.stringify(parseWorkflow(workflow), null, 2)}\n`);
+  const normalized = parseWorkflow(workflow);
+  const content = `${JSON.stringify(normalized, null, 2)}\n`;
+  if (Buffer.byteLength(content) > MAX_FILE_BYTES) throw new Error(`workflow exceeds ${MAX_FILE_BYTES} byte store limit`);
+  atomicWrite(absolute, content);
   return path;
 }
 
 export function migrateLegacyWorkflow(cwd: string, topic: string): LocatedWorkflow {
   const located = loadWorkflow(cwd, topic, true);
   if (!located) throw new Error(`workflow ${topic} was not found`);
-  if (located.kind === "native") return located;
-  saveWorkflow(cwd, located.workflow);
-  return { kind: "native", path: workflowPath(topic), workflow: located.workflow };
+  if (located.kind === "native" && located.storedVersion === 2) return located;
+  const workflow = located.kind === "native"
+    ? { ...located.workflow, revision: located.workflow.revision + 1, updatedAt: new Date().toISOString() }
+    : located.workflow;
+  saveWorkflow(cwd, workflow, located.kind === "native" ? located.workflow.revision : undefined);
+  return { kind: "native", path: workflowPath(topic), workflow, storedVersion: 2 };
 }
 
 function importLegacyWorkflow(root: string, topic: string, manifestPath: string): Workflow {
@@ -148,7 +162,7 @@ function importLegacyWorkflow(root: string, topic: string, manifestPath: string)
   const activeContract = record(manifest.activeContract) ? manifest.activeContract : undefined;
   const active = typeof activeContract?.id === "string" ? activeContract.id : undefined;
   const completionRecords = record(index.completionRecords) ? index.completionRecords : {};
-  const tasks: WorkflowTask[] = executable.map((item) => {
+  const tasks: Array<Partial<WorkflowTask> & Pick<WorkflowTask, "id" | "title">> = executable.map((item) => {
     const id = String(item.id ?? "");
     const facts = record(index.contractFacts) && record(index.contractFacts[id]) ? index.contractFacts[id] as Record<string, unknown> : undefined;
     const status = legacyStatus(item.status, id === active, facts);
@@ -208,11 +222,13 @@ function importLegacyWorkflow(root: string, topic: string, manifestPath: string)
     };
   });
   const now = typeof manifest.updatedAt === "string" ? manifest.updatedAt : new Date().toISOString();
+  const planPath = typeof activePlan?.path === "string" ? activePlan.path : undefined;
   const workflow = createWorkflow({
     topic,
     goal: `Continue legacy initiative ${topic}`,
-    plan: typeof activePlan?.path === "string" ? activePlan.path : undefined,
-    tasks,
+    plan: planPath,
+    linkedPlanContent: planPath ? readOptionalBoundedFile(root, planPath) : undefined,
+    tasks: tasks.map((task) => ({ ...task, writeScope: [], nonGoals: [] })),
     now,
   });
   const allDone = tasks.every((task) => task.status === "complete" || task.status === "deferred");
@@ -222,6 +238,8 @@ function importLegacyWorkflow(root: string, topic: string, manifestPath: string)
     ...workflow,
     status: allDone ? "complete" : activeTask ? "paused" : hasBlocked ? "blocked" : "draft",
     ...(activeTask ? { activeTask } : {}),
+    orchestration: { ...workflow.orchestration, mode: "multi-agent", phase: allDone ? "complete" : "plan-review" },
+    tasks: workflow.tasks.map((task) => task.status === "complete" || task.status === "deferred" ? { ...task, phase: "historical" as const } : task),
     importedFrom: {
       kind: "pi-swe-v2",
       manifestPath: legacyManifestPath(topic),
@@ -301,6 +319,7 @@ function readJson(path: string): unknown {
 }
 
 function atomicWrite(path: string, content: string): void {
+  if (Buffer.byteLength(content) > MAX_FILE_BYTES) throw new Error(`workflow exceeds ${MAX_FILE_BYTES} byte store limit`);
   mkdirSync(dirname(path), { recursive: true });
   const temporary = `${path}.tmp-${process.pid}-${Date.now()}`;
   let descriptor: number | undefined;
@@ -311,11 +330,28 @@ function atomicWrite(path: string, content: string): void {
     closeSync(descriptor);
     descriptor = undefined;
     renameSync(temporary, path);
+    const directory = openSync(dirname(path), "r");
+    try { fsyncSync(directory); } finally { closeSync(directory); }
   } catch (error) {
     if (descriptor !== undefined) try { closeSync(descriptor); } catch { /* noop */ }
     try { rmSync(temporary, { force: true }); } catch { /* noop */ }
     throw error;
   }
+}
+
+function readOptionalBoundedFile(root: string, path: string): string | undefined {
+  try {
+    const absolute = safePath(root, path);
+    if (!existsSync(absolute) || lstatSync(absolute).isSymbolicLink()) return undefined;
+    const stat = statSync(absolute);
+    return stat.isFile() && stat.size <= MAX_FILE_BYTES ? readFileSync(absolute, "utf8") : undefined;
+  } catch { return undefined; }
+}
+
+function legacyKindFirstPaths(root: string, topic: string): string[] {
+  return ["specs", "plans", "todo", "findings", "reports", "logs"]
+    .map((kind) => `.model-artifacts/${kind}/${topic}`)
+    .filter((path) => existsSync(safePath(root, path)));
 }
 
 function safeRoot(cwd: string): string {

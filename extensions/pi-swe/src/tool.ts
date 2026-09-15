@@ -1,12 +1,11 @@
-import { resolve } from "node:path";
-
 import { StringEnum } from "@earendil-works/pi-ai";
-import { withFileMutationQueue, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 import { coordinatedActiveTodo } from "../../../src/lifecycle-coordination.ts";
 import { buildTaskExecutionPrompt } from "./command.ts";
-import { activeWorkflowTopics, hasLegacyInitiative, legacyManifestPath, loadWorkflow, migrateLegacyWorkflow, resolveTopic, saveWorkflow, workflowPath } from "./store.ts";
+import { activeWorkflowTopics, loadWorkflow, resolveTopic, workflowPath } from "./store.ts";
+import { WorkflowMutationService } from "./service.ts";
 import { bindVerificationCheckpoint, createWorkflow, reduceWorkflow, reviseWorkflow, summarizeWorkflow, WORKFLOW_APPROACHES, type ApproachReasons, type VerificationCommand, type Workflow, type WorkflowApproach, type WorkflowEvent } from "./workflow.ts";
 
 const Action = StringEnum(["status", "create", "migrate", "revise", "start", "pause", "resume", "verify", "complete", "block"] as const);
@@ -19,11 +18,20 @@ const ApproachReasonsSchema = Type.Object(Object.fromEntries(WORKFLOW_APPROACHES
 const Task = Type.Object({
   id: Type.String({ minLength: 1, maxLength: 64 }),
   title: Type.String({ minLength: 1, maxLength: 256 }),
+  kind: Type.Optional(StringEnum(["implementation", "coordination"] as const)),
   dependsOn: Type.Optional(Type.Array(Type.String({ maxLength: 64 }), { maxItems: 64 })),
   acceptance: Type.Optional(Type.Array(Type.String({ maxLength: 1024 }), { maxItems: 64 })),
   approaches: Type.Array(Approach, { maxItems: WORKFLOW_APPROACHES.length, uniqueItems: true, description: "Applicable advisory approaches after assessing every supported concern; use [] when none apply" }),
   approachReasons: Type.Optional(ApproachReasonsSchema),
+  writeScope: Type.Array(Type.String({ minLength: 1, maxLength: 512 }), { minItems: 1, maxItems: 64, uniqueItems: true, description: "Project-relative paths or /** prefixes the implementer may change" }),
+  nonGoals: Type.Array(Type.String({ minLength: 1, maxLength: 1024 }), { maxItems: 32, uniqueItems: true, description: "Explicit out-of-scope outcomes; use [] only after assessing non-goals" }),
   verification: Type.Optional(Type.Array(Command, { maxItems: 16 })),
+  verificationDecision: Type.Optional(Type.Object({
+    kind: StringEnum(["manual"] as const),
+    rationale: Type.String({ minLength: 1, maxLength: 2048 }),
+    decidedBy: Type.String({ minLength: 1, maxLength: 128 }),
+    at: Type.String({ minLength: 1, maxLength: 64 }),
+  })),
 });
 
 export const sweWorkflowParameters = Type.Object({
@@ -40,7 +48,7 @@ export type SweWorkflowInput = {
   topic?: string;
   goal?: string;
   plan?: string;
-  tasks?: Array<{ id: string; title: string; dependsOn?: string[]; acceptance?: string[]; approaches: WorkflowApproach[]; approachReasons?: ApproachReasons; verification?: VerificationCommand[] }>;
+  tasks?: Array<{ id: string; title: string; kind?: "implementation" | "coordination"; dependsOn?: string[]; acceptance?: string[]; approaches: WorkflowApproach[]; approachReasons?: ApproachReasons; writeScope: string[]; nonGoals: string[]; verification?: VerificationCommand[]; verificationDecision?: { kind: "manual"; rationale: string; decidedBy: string; at: string } }>;
   reason?: string;
 };
 
@@ -53,7 +61,8 @@ export function registerSweWorkflowTool(pi: ExtensionAPI): void {
     promptGuidelines: [
       "Use swe_workflow only for work that benefits from durable multi-step coordination; do not create a workflow for small or single-turn changes.",
       "On every swe_workflow create or revise, assess each task for tdd, diagnosis, dsa, security, performance, migration, accessibility-ux, and operations; store only applicable approaches, give a concise required applicability reason for each, and use an empty approaches array when none apply.",
-      "For applicable approaches, add corresponding acceptance criteria and planned verification commands wherever an objective check is possible. Users may inspect or override the assessment with swe_workflow status or revise.",
+      "For every swe_workflow implementation task, record a bounded project-relative writeScope and explicit nonGoals. Do not execute outside that scope.",
+      "For applicable approaches, add corresponding acceptance criteria and planned verification commands wherever an objective check is possible. When automation is not meaningful, block for an explicit manual verification decision instead of inventing a passing command. Users may inspect or override the assessment with swe_workflow status or revise.",
       "Run every planned verification command with the protected bash tool and bind each result with swe_workflow verify in the following tool turn; all planned checks are required before completion.",
       "If implementation discovers a material scope or design change, call swe_workflow revise and reassess every incomplete task before continuing.",
     ],
@@ -66,69 +75,62 @@ export function registerSweWorkflowTool(pi: ExtensionAPI): void {
         return result(summarizeWorkflow(located.workflow), located.workflow, located.kind);
       }
       const topic = params.action === "create" ? required(params.topic, "topic") : resolveTopic(ctx.cwd, params.topic);
-      const target = resolve(ctx.cwd, ".model-artifacts/initiatives/.pi-swe-lifecycle");
-      return withFileMutationQueue(target, async () => {
-        if (params.action === "create") {
-          const legacyTarget = resolve(ctx.cwd, legacyManifestPath(topic));
-          return withFileMutationQueue(legacyTarget, async () => {
-            if (loadWorkflow(ctx.cwd, topic, false)) throw new Error(`workflow ${topic} already exists`);
-            if (hasLegacyInitiative(ctx.cwd, topic)) throw new Error(`legacy initiative ${topic} already exists; migrate it instead of creating a shadow workflow`);
-            const workflow = createWorkflow({ topic, goal: required(params.goal, "goal"), plan: params.plan, tasks: params.tasks ?? [] });
-            const path = saveWorkflow(ctx.cwd, workflow);
-            return result(`created ${topic}\n${summarizeWorkflow(workflow)}\nstate: ${path}`, workflow, "native");
-          });
-        }
-        if (params.action === "migrate") {
-          const located = migrateLegacyWorkflow(ctx.cwd, topic);
-          return result(`migrated ${topic}\n${summarizeWorkflow(located.workflow)}\nstate: ${located.path}`, located.workflow, "native");
-        }
-        const located = migrateLegacyWorkflow(ctx.cwd, topic);
-        const workflow = located.workflow;
-        if (params.action === "start" || params.action === "resume") {
-          await requireNoActiveTodo(ctx);
-          requireNoOtherActiveWorkflow(ctx.cwd, topic);
-        }
-        if (params.action === "revise") {
-          const decision = reviseWorkflow(workflow, { goal: params.goal, plan: params.plan, tasks: params.tasks ?? [] });
-          decision.workflow = bindVerificationCheckpoint(decision.workflow, ctx.sessionManager.getSessionId(), ctx.sessionManager.getBranch().length);
-          saveWorkflow(ctx.cwd, decision.workflow, workflow.revision);
-          let text = `${decision.message}\n${summarizeWorkflow(decision.workflow)}`;
-          const active = activeTask(decision.workflow);
-          if (decision.workflow.status === "active" && active?.assessmentStatus === "assessed") text += `\n\n${buildTaskExecutionPrompt(decision.workflow, active, workflowPath(topic))}`;
-          return result(text, decision.workflow, "native");
-        }
-        if (params.action === "verify") {
-          const active = workflow.activeTask ? workflow.tasks.find((task) => task.id === workflow.activeTask) : undefined;
-          if (!active?.verificationCheckpoint) throw new Error("active task has no activation/revision checkpoint; start or resume it before verification");
-          const evidence = latestBashEvidence(ctx.sessionManager.getBranch(), ctx.sessionManager.getSessionId(), workflow.revision, active.verificationCheckpoint);
-          if (active?.verification.length && !active.verification.some((command) => commandText(command) === evidence.command)) {
-            throw new Error(`latest bash command is not a planned verification for ${active.id}; expected one of: ${active.verification.map(commandText).join(", ")}`);
-          }
-          const alreadyRecorded = workflow.tasks.some((task) => task.evidence.some((item) => item.source?.toolCallId === evidence.source.toolCallId && item.source.sessionId === evidence.source.sessionId));
-          if (alreadyRecorded) throw new Error("latest bash result is already recorded in this workflow");
-          onUpdate?.({ content: [{ type: "text", text: `Binding protected bash result ${evidence.source.toolCallId}` }], details: {} });
-          const decision = reduceWorkflow(workflow, { type: "record-verification", evidence });
-          if (decision.changed) saveWorkflow(ctx.cwd, decision.workflow, workflow.revision);
-          return result(`${decision.message}; exit ${evidence.exitCode}`, decision.workflow, "native");
-        }
-        let event: WorkflowEvent;
-        if (params.action === "complete") ensureNoImplementationAfterVerification(ctx.sessionManager.getBranch(), workflow);
-        if (params.action === "block") event = { type: "block", reason: required(params.reason, "reason") };
-        else if (params.action === "complete") event = { type: "complete-task" };
-        else if (params.action === "start" || params.action === "resume" || params.action === "pause") event = { type: params.action };
-        else throw new Error(`unsupported workflow action ${params.action}`);
-        const decision = reduceWorkflow(workflow, event);
-        const activated = activeTask(decision.workflow);
-        const didActivate = decision.changed && (
-          (params.action === "start" || params.action === "resume")
-          || (params.action === "complete" && activated?.id !== workflow.activeTask)
-        );
-        if (didActivate) decision.workflow = bindVerificationCheckpoint(decision.workflow, ctx.sessionManager.getSessionId(), ctx.sessionManager.getBranch().length);
-        if (decision.changed) saveWorkflow(ctx.cwd, decision.workflow, workflow.revision);
+      const service = new WorkflowMutationService(ctx.cwd);
+      if (params.action === "create") {
+        const workflow = createWorkflow({ topic, goal: required(params.goal, "goal"), plan: params.plan, linkedPlanContent: service.linkedPlanContent(params.plan), tasks: params.tasks ?? [] });
+        const path = await service.create(workflow);
+        return result(`created ${topic}\n${summarizeWorkflow(workflow)}\nstate: ${path}`, workflow, "native");
+      }
+      if (params.action === "migrate") {
+        const located = await service.migrate(topic);
+        return result(`migrated ${topic}\n${summarizeWorkflow(located.workflow)}\nstate: ${located.path}`, located.workflow, "native");
+      }
+      const located = service.read(topic);
+      if (!located) throw new Error(`workflow ${topic} was not found`);
+      const workflow = located.workflow;
+      if (params.action === "start" || params.action === "resume") await requireNoActiveTodo(ctx);
+      if (params.action === "revise") {
+        const decision = await service.mutate(topic, workflow.revision, (current) => {
+          const next = reviseWorkflow(current, { goal: params.goal, plan: params.plan, linkedPlanContent: service.linkedPlanContent(params.plan ?? current.plan), tasks: params.tasks ?? [] });
+          next.workflow = bindVerificationCheckpoint(next.workflow, ctx.sessionManager.getSessionId(), ctx.sessionManager.getBranch().length);
+          return next;
+        }, { allowPlanDrift: true });
         let text = `${decision.message}\n${summarizeWorkflow(decision.workflow)}`;
-        if (didActivate && activated?.assessmentStatus === "assessed") text += `\n\n${buildTaskExecutionPrompt(decision.workflow, activated, workflowPath(topic))}`;
+        const active = activeTask(decision.workflow);
+        if (decision.workflow.status === "active" && active?.assessmentStatus === "assessed") text += `\n\n${buildTaskExecutionPrompt(decision.workflow, active, workflowPath(topic))}`;
         return result(text, decision.workflow, "native");
+      }
+      if (params.action === "verify") {
+        const active = activeTask(workflow);
+        if (!active?.verificationCheckpoint) throw new Error("active task has no activation/revision checkpoint; start or resume it before verification");
+        const evidence = latestBashEvidence(ctx.sessionManager.getBranch(), ctx.sessionManager.getSessionId(), workflow.revision, active.verificationCheckpoint);
+        if (active.verification.length && !active.verification.some((command) => commandText(command) === evidence.command)) throw new Error(`latest bash command is not a planned verification for ${active.id}; expected one of: ${active.verification.map(commandText).join(", ")}`);
+        onUpdate?.({ content: [{ type: "text", text: `Binding protected bash result ${evidence.source.toolCallId}` }], details: {} });
+        const decision = await service.mutate(topic, workflow.revision, (current) => {
+          if (current.tasks.some((task) => task.evidence.some((item) => item.source?.toolCallId === evidence.source.toolCallId && item.source.sessionId === evidence.source.sessionId))) throw new Error("latest bash result is already recorded in this workflow");
+          return reduceWorkflow(current, { type: "record-verification", evidence });
+        });
+        return result(`${decision.message}; exit ${evidence.exitCode}`, decision.workflow, "native");
+      }
+      let event: WorkflowEvent;
+      if (params.action === "complete") ensureNoImplementationAfterVerification(ctx.sessionManager.getBranch(), workflow);
+      if (params.action === "block") event = { type: "block", reason: required(params.reason, "reason") };
+      else if (params.action === "complete") event = { type: "complete-task" };
+      else if (params.action === "start" || params.action === "resume" || params.action === "pause") event = { type: params.action };
+      else throw new Error(`unsupported workflow action ${params.action}`);
+      const decision = await service.mutate(topic, workflow.revision, (current) => {
+        if (params.action === "start" || params.action === "resume") requireNoOtherActiveWorkflow(ctx.cwd, topic);
+        const next = reduceWorkflow(current, event);
+        const activated = activeTask(next.workflow);
+        const didActivate = next.changed && ((params.action === "start" || params.action === "resume") || (params.action === "complete" && activated?.id !== current.activeTask));
+        if (didActivate) next.workflow = bindVerificationCheckpoint(next.workflow, ctx.sessionManager.getSessionId(), ctx.sessionManager.getBranch().length);
+        return next;
       });
+      const activated = activeTask(decision.workflow);
+      const didActivate = decision.changed && ((params.action === "start" || params.action === "resume") || (params.action === "complete" && activated?.id !== workflow.activeTask));
+      let text = `${decision.message}\n${summarizeWorkflow(decision.workflow)}`;
+      if (didActivate && activated?.assessmentStatus === "assessed") text += `\n\n${buildTaskExecutionPrompt(decision.workflow, activated, workflowPath(topic))}`;
+      return result(text, decision.workflow, "native");
     },
   });
 }
