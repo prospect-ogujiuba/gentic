@@ -116,6 +116,19 @@ export type RunLease = {
 export type HistoryEntry = { id: string; type: string; at: string; summary: string; taskId?: string; provenance?: RunnerProvenance; auditCritical?: boolean };
 
 export type VerificationCommand = { command: string; args: string[] };
+export type RepositorySnapshot = { hash: string; head: string; branch: string | null; changedPaths: string[]; capturedAt: string };
+export type ManualValidationOutcome = { status: "required" | "approved" | "rejected"; rationale: string; decidedBy?: string; at: string };
+export type InitiativeCloseout = {
+  snapshot: RepositorySnapshot;
+  cumulativeDeltaHash: string;
+  checkpoint: { revision: number; at: string; ownerId: string; sessionId: string; runtimeId: string; branchLength: number };
+  evidence: VerificationEvidence[];
+  unresolvedRisks: string[];
+  blockingRisks: string[];
+  followUpTaskIds: string[];
+  manualValidation?: ManualValidationOutcome;
+};
+
 export type VerificationEvidence = VerificationCommand & {
   exitCode: number;
   at: string;
@@ -192,6 +205,8 @@ export type Workflow = {
   contract: ContractIdentity;
   orchestration: { mode: "legacy" | "multi-agent"; phase: WorkflowPhase; nextFence: number; activeRun?: RunLease; parent?: ParentAuthority; history: HistoryEntry[] };
   planReview?: StageReport;
+  initiativeVerification: VerificationCommand[];
+  closeout?: InitiativeCloseout;
   initiativeAcceptance?: StageReport;
   activeTask?: string;
   tasks: WorkflowTask[];
@@ -217,8 +232,13 @@ export type WorkflowEvent =
   | { type: "record-integration"; receipt: IntegrationReceipt }
   | { type: "record-verification"; evidence: VerificationEvidence }
   | { type: "complete-task"; allowGap?: boolean }
+  | { type: "begin-initiative-closeout"; snapshot: RepositorySnapshot; cumulativeDeltaHash: string; unresolvedRisks: string[]; blockingRisks?: string[]; branchLength: number }
+  | { type: "record-initiative-verification"; evidence: VerificationEvidence; observedSnapshot: RepositorySnapshot }
   | { type: "record-initiative-acceptance"; report: StageReport }
-  | { type: "complete-initiative" }
+  | { type: "record-manual-validation"; outcome: ManualValidationOutcome & { status: "approved" | "rejected"; decidedBy: string } }
+  | { type: "add-closeout-follow-up"; task: WorkflowTaskRevision }
+  | { type: "invalidate-initiative-closeout"; observedSnapshot: RepositorySnapshot; reason: string }
+  | { type: "complete-initiative"; observedSnapshot: RepositorySnapshot; branchLength: number }
   | { type: "claim-run"; lease: RunLease }
   | { type: "cancel-run"; lease: RunLease; reason: string }
   | { type: "respond-clarification"; taskId?: string; questionId: string; answer: string; answeredBy: string }
@@ -269,18 +289,20 @@ export function createWorkflow(input: {
   goal: string;
   plan?: string;
   linkedPlanContent?: string;
+  initiativeVerification?: VerificationCommand[];
   tasks: Array<Partial<WorkflowTask> & Pick<WorkflowTask, "id" | "title">>;
   now?: string;
 }): Workflow {
   validateWorkflowInput(input.topic, input.goal, input.plan, input.tasks.length);
   const now = validTimestamp(input.now ?? new Date().toISOString(), "workflow timestamp");
   const mode = input.tasks.some((task) => task.writeScope !== undefined || task.nonGoals !== undefined) ? "multi-agent" : "legacy";
-  const contract = planIdentity(input.goal.trim(), input.plan?.trim(), input.linkedPlanContent, 1);
+  const initiativeVerification = normalizeCommands(input.initiativeVerification ?? deriveInitiativeVerification(input.tasks), "initiative");
+  const contract = planIdentity(input.goal.trim(), input.plan?.trim(), input.linkedPlanContent, 1, initiativeVerification);
   const tasks = input.tasks.map((task) => normalizeTask(task, { contract, compatibility: false }));
   validateTaskGraph(tasks);
   return {
     version: WORKFLOW_VERSION, topic: input.topic, revision: 1, status: "draft", goal: input.goal.trim(),
-    ...(input.plan?.trim() ? { plan: input.plan.trim() } : {}), contract,
+    ...(input.plan?.trim() ? { plan: input.plan.trim() } : {}), contract, initiativeVerification,
     orchestration: { mode, phase: mode === "multi-agent" ? "plan-review" : "task-execution", nextFence: 1, history: [] },
     tasks, updatedAt: now,
   };
@@ -297,7 +319,7 @@ export function parseWorkflow(value: unknown, readAt = new Date().toISOString())
   return parseV2(value);
 }
 
-export function reviseWorkflow(workflow: Workflow, input: { goal?: string; plan?: string; linkedPlanContent?: string; tasks: WorkflowTaskRevision[] }, now = new Date().toISOString()): WorkflowDecision {
+export function reviseWorkflow(workflow: Workflow, input: { goal?: string; plan?: string; linkedPlanContent?: string; initiativeVerification?: VerificationCommand[]; tasks: WorkflowTaskRevision[] }, now = new Date().toISOString()): WorkflowDecision {
   if (!input.tasks.length || input.tasks.length > MAX_TASKS) throw new Error("revised workflow requires 1 to 100 tasks");
   const proposedIds = new Set(input.tasks.map((task) => task.id));
   for (const task of workflow.tasks) if (["complete", "active", "blocked"].includes(task.status) && !proposedIds.has(task.id)) throw new Error(`cannot remove ${task.status} task ${task.id}`);
@@ -310,7 +332,8 @@ export function reviseWorkflow(workflow: Workflow, input: { goal?: string; plan?
     : input.plan !== undefined
       ? undefined
       : workflow.contract.linkedPlanHash;
-  const nextPlan = planIdentity(goal, plan, linkedPlanContent, workflow.contract.revision);
+  const initiativeVerification = normalizeCommands(input.initiativeVerification ?? workflow.initiativeVerification, "initiative");
+  const nextPlan = planIdentity(goal, plan, linkedPlanContent, workflow.contract.revision, initiativeVerification);
   const contract = nextPlan.hash === workflow.contract.hash ? workflow.contract : { ...nextPlan, revision: workflow.contract.revision + 1 };
   const existing = new Map(workflow.tasks.map((task) => [task.id, task]));
   const tasks = input.tasks.map((revision) => {
@@ -344,8 +367,8 @@ export function reviseWorkflow(workflow: Workflow, input: { goal?: string; plan?
   const allDone = tasks.every((task) => ["complete", "deferred"].includes(task.status));
   const status: WorkflowStatus = allDone && !anyContractChange ? workflow.status : activeTask ? (anyContractChange || workflow.status === "paused" ? "paused" : "active") : workflow.status === "blocked" ? "blocked" : "draft";
   return changed(workflow, {
-    goal, ...(plan ? { plan } : { plan: undefined }), contract, tasks, status,
-    ...(anyContractChange ? { planReview: undefined, initiativeAcceptance: undefined, orchestration: { ...workflow.orchestration, phase: "plan-review", activeRun: undefined } } : {}),
+    goal, ...(plan ? { plan } : { plan: undefined }), contract, initiativeVerification, tasks, status,
+    ...(anyContractChange ? { planReview: undefined, closeout: undefined, initiativeAcceptance: undefined, orchestration: { ...workflow.orchestration, phase: "plan-review", activeRun: undefined } } : {}),
   }, now, "workflow plan revised");
 }
 
@@ -537,17 +560,69 @@ function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowE
   if (event.type === "decide-finding") return decideFinding(workflow, event, now);
   if (event.type === "reset-remediation") return resetRemediation(workflow, event, now);
   if (event.type === "complete-task") return completeOrchestratedTask(workflow, current, now);
+  if (event.type === "begin-initiative-closeout") {
+    requireCloseoutPhase(workflow);
+    if (workflow.closeout) throw new Error("initiative closeout is already checkpointed");
+    if (!workflow.initiativeVerification.length) throw new Error("initiative closeout requires integration checks established by the approved plan");
+    const parent = requireValidParent(workflow);
+    const snapshot = normalizeRepositorySnapshot(event.snapshot);
+    const closeout: InitiativeCloseout = {
+      snapshot, cumulativeDeltaHash: requireDigest(event.cumulativeDeltaHash, "cumulative delta hash"),
+      checkpoint: { revision: workflow.revision + 1, at: now, ownerId: parent.ownerId, sessionId: parent.sessionId, runtimeId: parent.runtimeId, branchLength: validBranchLength(event.branchLength) },
+      evidence: [], unresolvedRisks: boundedStrings(event.unresolvedRisks, "unresolved initiative risks", 64, 1024), blockingRisks: boundedStrings(event.blockingRisks ?? event.unresolvedRisks, "blocking initiative risks", 64, 1024), followUpTaskIds: [],
+    };
+    return update(workflow, { closeout, initiativeAcceptance: undefined, status: "paused" }, now, "initiative closeout checkpointed");
+  }
+  if (event.type === "record-initiative-verification") {
+    requireCloseoutPhase(workflow);
+    const closeout = requireFreshCloseout(workflow, event.observedSnapshot);
+    const evidence = normalizeEvidence(event.evidence);
+    requireCloseoutEvidence(workflow, closeout, evidence);
+    const nextEvidence = boundedAppend(closeout.evidence, evidence, 32, "initiative verification evidence");
+    if (evidence.exitCode !== 0) return update(workflow, { closeout: { ...closeout, evidence: nextEvidence }, status: "blocked", initiativeAcceptance: undefined }, now, "initiative integration verification failed");
+    return update(workflow, { closeout: { ...closeout, evidence: nextEvidence } }, now, "recorded initiative integration verification");
+  }
   if (event.type === "record-initiative-acceptance") {
-    if (workflow.orchestration.phase !== "initiative-acceptance" || workflow.tasks.some((task) => !["complete", "deferred"].includes(task.status))) throw new Error("initiative acceptance cannot be recorded before all task gates complete");
+    requireCloseoutPhase(workflow);
+    const closeout = requireCompleteCloseoutVerification(workflow);
     const report = normalizeReport(event.report);
     requireReport(report, "final-acceptance", "final-reviewer", workflow.contract.hash, workflow.orchestration.activeRun);
-    if (workflow.tasks.some((task) => task.reports.some((prior) => prior.provenance.runId === report.provenance.runId || prior.provenance.actorId === report.provenance.actorId))) throw new Error("final self-review is not permitted");
-    if (report.outcome !== "approved" || report.findings.some((finding) => finding.severity === "blocking" && finding.status === "open")) throw new Error("initiative acceptance has unresolved blocking findings");
-    return update(workflow, { initiativeAcceptance: report }, now, "recorded initiative acceptance");
+    if (report.provenance.snapshotHash !== closeout.snapshot.hash || Date.parse(report.provenance.startedAt) <= Date.parse(closeout.checkpoint.at) || Date.parse(report.provenance.completedAt) < Date.parse(report.provenance.startedAt)) throw new Error("final acceptance is not fresh for the repository checkpoint");
+    if (report.findings.some((finding) => finding.status === "accepted-risk")) throw new Error("final reviewers cannot accept risk on the user's behalf");
+    const priorIdentities = workflowRunnerIdentities(workflow);
+    if (priorIdentities.has(report.provenance.runId) || priorIdentities.has(report.provenance.actorId)) throw new Error("final self-review or reviewer identity reuse is not permitted");
+    const hasOpenBlocking = report.findings.some((finding) => finding.severity === "blocking" && finding.status === "open");
+    if (report.outcome === "approved" && hasOpenBlocking) throw new Error("final acceptance cannot approve with unresolved blocking findings");
+    const orchestration = { ...workflow.orchestration, history: appendHistory(workflow.orchestration.history, { id: `final-acceptance-${workflow.revision + 1}`, type: "final-acceptance", at: now, summary: `${report.outcome}: ${report.summary}`, provenance: report.provenance, auditCritical: true }) };
+    if (report.outcome === "needs-input") return update(workflow, { initiativeAcceptance: report, closeout: { ...closeout, manualValidation: { status: "required", rationale: report.rationale ?? report.summary, at: now } }, status: "paused", orchestration }, now, "final acceptance requires explicit user or manual validation");
+    if (report.outcome === "changes-requested" || report.outcome === "failed" || hasOpenBlocking) return update(workflow, { initiativeAcceptance: report, status: "blocked", orchestration }, now, "final acceptance requested scoped follow-up work");
+    if (report.outcome !== "approved") throw new Error("invalid final acceptance outcome");
+    return update(workflow, { initiativeAcceptance: report, status: "paused", orchestration }, now, "recorded independent initiative acceptance");
+  }
+  if (event.type === "record-manual-validation") {
+    requireCloseoutPhase(workflow);
+    const closeout = workflow.closeout;
+    if (!closeout?.manualValidation || closeout.manualValidation.status !== "required") throw new Error("manual validation was not requested by final acceptance");
+    const outcome = normalizeManualValidation(event.outcome);
+    if (Date.parse(outcome.at) < Date.parse(closeout.manualValidation.at) || Date.parse(outcome.at) > Date.parse(now)) throw new Error("manual validation outcome is stale or future-dated");
+    if (workflowRunnerIdentities(workflow).has(outcome.decidedBy!)) throw new Error("a workflow child cannot provide user manual validation");
+    return update(workflow, { closeout: { ...closeout, manualValidation: outcome }, ...(outcome.status === "approved" ? { initiativeAcceptance: undefined } : {}), status: outcome.status === "approved" ? "paused" : "blocked" }, now, `manual validation ${outcome.status}`);
+  }
+  if (event.type === "add-closeout-follow-up") return addCloseoutFollowUp(workflow, event.task, now);
+  if (event.type === "invalidate-initiative-closeout") {
+    requireCloseoutPhase(workflow);
+    normalizeRepositorySnapshot(event.observedSnapshot);
+    if (!workflow.closeout) return unchanged(workflow, "initiative closeout is already invalidated");
+    return update(workflow, { closeout: undefined, initiativeAcceptance: undefined, status: "blocked" }, now, `initiative closeout invalidated: ${boundedText(event.reason, "closeout invalidation reason")}`);
   }
   if (event.type === "complete-initiative") {
-    if (workflow.orchestration.phase !== "initiative-acceptance" || !approvedReport(workflow.initiativeAcceptance, workflow.contract.hash)) throw new Error("initiative completion requires fresh independent final acceptance");
-    return update(workflow, { status: "complete", orchestration: { ...workflow.orchestration, phase: "complete" } }, now, "workflow complete");
+    const closeout = requireCompleteCloseoutVerification(workflow);
+    requireFreshCloseout(workflow, event.observedSnapshot);
+    if (!approvedReport(workflow.initiativeAcceptance, workflow.contract.hash) || workflow.initiativeAcceptance?.provenance.snapshotHash !== closeout.snapshot.hash) throw new Error("initiative completion requires fresh independent final acceptance");
+    if (closeout.blockingRisks.length || workflow.tasks.some((task) => task.status === "blocked" || task.findings.some((finding) => finding.severity === "blocking" && finding.status === "open"))) throw new Error("initiative completion has unresolved blockers or risks");
+    const parent = requireValidParent(workflow);
+    if (closeout.checkpoint.ownerId !== parent.ownerId || closeout.checkpoint.sessionId !== parent.sessionId || closeout.checkpoint.runtimeId !== parent.runtimeId || validBranchLength(event.branchLength) < closeout.checkpoint.branchLength) throw new Error("initiative completion parent, session, or branch provenance is stale");
+    return update(workflow, { status: "complete", orchestration: { ...workflow.orchestration, phase: "complete", activeRun: undefined } }, now, "workflow implementation accepted; commit, push, deployment, release, and external side effects remain separately authorized");
   }
   throw new Error("event is not valid in the current orchestration stage");
 }
@@ -579,8 +654,8 @@ function reduceLegacyWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, 
   const latestEvidence = current.evidence.at(-1);
   const checkpoint = current.verificationCheckpoint;
   const currentEvidence = checkpoint ? current.evidence.filter((item) => evidenceMatchesCheckpoint(item, checkpoint)) : [];
-  const missingChecks = current.verification.filter((planned) => !currentEvidence.some((item) => item.exitCode === 0 && commandKey(item) === commandKey(planned)));
-  if (!event.allowGap && (latestEvidence?.exitCode !== 0 || !checkpoint || !latestEvidence || !evidenceMatchesCheckpoint(latestEvidence, checkpoint) || missingChecks.length)) return unchanged(workflow, `${current.id} requires passing protected bash results recorded after its activation/revision checkpoint${missingChecks.length ? `; missing passing checks: ${missingChecks.map(commandKey).join(", ")}` : ""}`);
+  const missingChecks = current.verification.filter((planned) => !currentEvidence.some((item) => item.exitCode === 0 && legacyCommandKey(item) === legacyCommandKey(planned)));
+  if (!event.allowGap && (latestEvidence?.exitCode !== 0 || !checkpoint || !latestEvidence || !evidenceMatchesCheckpoint(latestEvidence, checkpoint) || missingChecks.length)) return unchanged(workflow, `${current.id} requires passing protected bash results recorded after its activation/revision checkpoint${missingChecks.length ? `; missing passing checks: ${missingChecks.map(commandDisplay).join(", ")}` : ""}`);
   const completed = replaceTask(workflow, current.id, { status: "complete", phase: "historical", blockedReason: undefined, completedAt: now }, { activeTask: undefined }, now, `completed ${current.id}`).workflow;
   const next = readyTasks(completed)[0];
   if (next) return replaceTask(completed, next.id, { status: "active", phase: "implementation", verificationCheckpoint: { revision: completed.revision + 1, at: now } }, { status: "active", activeTask: next.id }, now, `completed ${current.id}; started ${next.id}`);
@@ -611,6 +686,7 @@ function invalidateParent(workflow: Workflow, event: Extract<WorkflowEvent, { ty
   });
   return update(workflow, {
     status: workflow.status === "complete" ? workflow.status : "paused", tasks,
+    ...(workflow.orchestration.phase === "initiative-acceptance" ? { closeout: undefined, initiativeAcceptance: undefined } : {}),
     orchestration: { ...workflow.orchestration, parent: { ...parent, valid: false, invalidatedAt: now, invalidatedReason: reason } },
   }, now, `invalidated parent authority: ${reason}`);
 }
@@ -637,7 +713,8 @@ function recordPlanReview(workflow: Workflow, raw: StageReport, now: string): Wo
   requireReport(report, "plan-review", "plan-reviewer", workflow.contract.hash, workflow.orchestration.activeRun);
   if (report.outcome !== "approved") return update(workflow, { planReview: report, status: "blocked" }, now, "plan review requires revision or input");
   if (report.findings.some((finding) => finding.severity === "blocking" && finding.status === "open")) throw new Error("plan review cannot approve with unresolved blocking findings");
-  return update(workflow, { planReview: report, status: workflow.status === "blocked" ? "draft" : workflow.status, orchestration: { ...workflow.orchestration, phase: "task-execution" } }, now, "plan review approved");
+  const nextPhase: WorkflowPhase = workflow.tasks.every((task) => ["complete", "deferred"].includes(task.status)) ? "initiative-acceptance" : "task-execution";
+  return update(workflow, { planReview: report, status: workflow.status === "blocked" ? "draft" : workflow.status, orchestration: { ...workflow.orchestration, phase: nextPhase } }, now, "plan review approved");
 }
 
 function completeOrchestratedTask(workflow: Workflow, current: WorkflowTask | undefined, now: string): WorkflowDecision {
@@ -664,6 +741,57 @@ function completeOrchestratedTask(workflow: Workflow, current: WorkflowTask | un
   const unfinished = completed.tasks.some((task) => !["complete", "deferred"].includes(task.status));
   if (unfinished) return update(completed, { status: "blocked" }, now, `completed ${current!.id}; remaining work is blocked`);
   return update(completed, { status: "paused", orchestration: { ...completed.orchestration, phase: "initiative-acceptance" } }, now, `completed ${current!.id}; initiative acceptance required`);
+}
+
+function requireCloseoutPhase(workflow: Workflow): void {
+  if (!["initiative-acceptance", "complete"].includes(workflow.orchestration.phase) || workflow.tasks.some((task) => !["complete", "deferred"].includes(task.status))) throw new Error("initiative closeout requires every task gate to be terminal");
+}
+function requireValidParent(workflow: Workflow): ParentAuthority {
+  const parent = workflow.orchestration.parent;
+  if (!parent?.valid) throw new Error("initiative closeout requires current orchestrator parent ownership");
+  return parent;
+}
+function requireFreshCloseout(workflow: Workflow, observedRaw: RepositorySnapshot): InitiativeCloseout {
+  requireCloseoutPhase(workflow);
+  const closeout = workflow.closeout;
+  if (!closeout) throw new Error("initiative closeout checkpoint is missing");
+  const observed = normalizeRepositorySnapshot(observedRaw);
+  if (!sameRepositorySnapshot(closeout.snapshot, observed)) throw new Error("initiative closeout evidence is stale for the repository source, HEAD, or branch");
+  const parent = requireValidParent(workflow);
+  if (closeout.checkpoint.ownerId !== parent.ownerId || closeout.checkpoint.sessionId !== parent.sessionId || closeout.checkpoint.runtimeId !== parent.runtimeId) throw new Error("initiative closeout ownership provenance is stale");
+  return closeout;
+}
+function requireCloseoutEvidence(workflow: Workflow, closeout: InitiativeCloseout, evidence: VerificationEvidence): void {
+  if (!workflow.initiativeVerification.some((planned) => commandKey(planned) === commandKey(evidence))) throw new Error("initiative evidence is not an exact planned integration check");
+  if (evidence.contractHash !== workflow.contract.hash || evidence.snapshotHash !== closeout.snapshot.hash || evidence.beforeSnapshotHash !== closeout.snapshot.hash || evidence.afterSnapshotHash !== closeout.snapshot.hash || evidence.head !== closeout.snapshot.head || evidence.branch !== closeout.snapshot.branch) throw new Error("initiative evidence contract or repository snapshot provenance is stale");
+  const source = evidence.source;
+  if (!source || source.kind !== "bash-tool-result" || source.toolName !== "bash" || source.workflowRevision < closeout.checkpoint.revision || source.ownerId !== closeout.checkpoint.ownerId || source.sessionId !== closeout.checkpoint.sessionId || source.runtimeId !== closeout.checkpoint.runtimeId || source.branchLength === undefined || source.branchLength < closeout.checkpoint.branchLength || Date.parse(evidence.at) <= Date.parse(closeout.checkpoint.at)) throw new Error("initiative evidence is not a fresh protected-bash result from the closeout parent checkpoint");
+}
+function requireCompleteCloseoutVerification(workflow: Workflow): InitiativeCloseout {
+  requireCloseoutPhase(workflow);
+  const closeout = workflow.closeout;
+  if (!closeout) throw new Error("initiative closeout checkpoint is missing");
+  for (const planned of workflow.initiativeVerification) {
+    const latest = closeout.evidence.filter((item) => commandKey(item) === commandKey(planned)).at(-1);
+    if (!latest || latest.exitCode !== 0) throw new Error(`missing current passing final integration check: ${commandDisplay(planned)}`);
+    requireCloseoutEvidence(workflow, closeout, latest);
+  }
+  return closeout;
+}
+function addCloseoutFollowUp(workflow: Workflow, revision: WorkflowTaskRevision, now: string): WorkflowDecision {
+  requireCloseoutPhase(workflow);
+  const report = workflow.initiativeAcceptance;
+  if (!report || !["changes-requested", "failed", "needs-input"].includes(report.outcome) || report.outcome === "needs-input" && workflow.closeout?.manualValidation?.status !== "rejected") throw new Error("scoped follow-up work requires a final acceptance changes request or rejected manual validation");
+  if (workflow.tasks.some((task) => task.id === revision.id)) throw new Error(`duplicate task id ${revision.id}`);
+  const dependencies = new Set(revision.dependsOn ?? []);
+  for (const completed of workflow.tasks) dependencies.add(completed.id);
+  if (!revision.acceptance?.length || !revision.nonGoals?.length || revision.approaches === undefined) throw new Error("closeout follow-up requires explicit acceptance, non-goals, and approach assessment");
+  const task = normalizeTask({ ...revision, dependsOn: [...dependencies], kind: "implementation", status: "pending", phase: "pending" }, { contract: workflow.contract, compatibility: false });
+  if (!task.writeScope.length || !task.verification.length && !task.verificationDecision) throw new Error("closeout follow-up requires scoped implementation and objective verification or an explicit manual decision");
+  const tasks = [...workflow.tasks, task];
+  validateTaskGraph(tasks);
+  const history = appendHistory(workflow.orchestration.history, { id: `closeout-follow-up-${task.id}-${workflow.revision + 1}`, type: "closeout-follow-up", at: now, taskId: task.id, summary: `scoped follow-up created from ${report.outcome} final acceptance`, auditCritical: true });
+  return update(workflow, { tasks, closeout: undefined, initiativeAcceptance: undefined, status: "draft", orchestration: { ...workflow.orchestration, phase: "task-execution", activeRun: undefined, history } }, now, `created scoped closeout follow-up ${task.id}; implementation, independent review, integration, and verification are required`);
 }
 
 export function summarizeWorkflow(workflow: Workflow): string {
@@ -704,23 +832,43 @@ function parseV2(value: Record<string, unknown>): Workflow {
   if (value.status === "active" && !active.length) throw new Error("active workflow requires an active task");
   if (active.length && value.status !== "active" && value.status !== "paused") throw new Error("active task requires active or paused workflow status");
   const allDone = tasks.every((task) => ["complete", "deferred"].includes(task.status));
-  if (value.status === "complete" && (!allDone || phase !== "complete")) throw new Error("complete workflow status does not match task states or orchestration gates");
-  return {
-    version: WORKFLOW_VERSION, topic: value.topic as string, revision: value.revision as number, status: value.status as WorkflowStatus,
+  const planReview = value.planReview ? normalizeReport(value.planReview) : undefined;
+  const initiativeAcceptance = value.initiativeAcceptance ? normalizeReport(value.initiativeAcceptance) : undefined;
+  const closeout = value.closeout ? normalizeCloseout(value.closeout) : undefined;
+  const historicalMultiAgentCompletion = mode === "multi-agent" && value.status === "complete" && (!initiativeAcceptance || !closeout);
+  const parsedStatus = historicalMultiAgentCompletion ? "paused" as const : value.status as WorkflowStatus;
+  const parsedPhase = historicalMultiAgentCompletion ? approvedReport(planReview, contract.hash) ? "initiative-acceptance" as const : "plan-review" as const : phase as WorkflowPhase;
+  if (value.status === "complete" && (!allDone || phase !== "complete" || mode === "multi-agent" && !historicalMultiAgentCompletion && (!approvedReport(initiativeAcceptance, contract.hash) || !closeout))) throw new Error("complete workflow status does not match task states or orchestration gates");
+  const parsed: Workflow = {
+    version: WORKFLOW_VERSION, topic: value.topic as string, revision: value.revision as number, status: parsedStatus,
     goal: (value.goal as string).trim(), ...(typeof value.plan === "string" ? { plan: value.plan.trim() } : {}), contract,
-    orchestration: { mode: mode as "legacy" | "multi-agent", phase: phase as WorkflowPhase, nextFence: nextFence as number, ...(activeRun ? { activeRun } : {}), ...(parent ? { parent } : {}), history },
-    ...(value.planReview ? { planReview: normalizeReport(value.planReview) } : {}),
-    ...(value.initiativeAcceptance ? { initiativeAcceptance: normalizeReport(value.initiativeAcceptance) } : {}),
+    initiativeVerification: value.initiativeVerification === undefined ? deriveInitiativeVerification(tasks) : normalizeCommands(value.initiativeVerification, "initiative"),
+    orchestration: { mode: mode as "legacy" | "multi-agent", phase: parsedPhase, nextFence: nextFence as number, ...(activeRun ? { activeRun } : {}), ...(parent ? { parent } : {}), history },
+    ...(planReview ? { planReview } : {}),
+    ...(closeout ? { closeout } : {}),
+    ...(initiativeAcceptance ? { initiativeAcceptance } : {}),
     ...(typeof value.activeTask === "string" ? { activeTask: value.activeTask } : {}), tasks, updatedAt,
     ...(normalizeMigration(value.migration) ? { migration: normalizeMigration(value.migration)! } : {}),
     ...(normalizeWorkflowImport(value.importedFrom) ? { importedFrom: normalizeWorkflowImport(value.importedFrom)! } : {}),
   };
+  if (parsed.status === "complete" && parsed.orchestration.mode === "multi-agent") {
+    const completedCloseout = requireCompleteCloseoutVerification(parsed);
+    const report = parsed.initiativeAcceptance!;
+    requireReport(report, "final-acceptance", "final-reviewer", parsed.contract.hash);
+    if (report.provenance.snapshotHash !== completedCloseout.snapshot.hash || Date.parse(report.provenance.startedAt) <= Date.parse(completedCloseout.checkpoint.at) || report.findings.some((finding) => finding.status === "accepted-risk")) throw new Error("complete workflow has stale or invalid final acceptance");
+    const prior = [parsed.planReview, ...parsed.tasks.flatMap((task) => task.reports)].filter((item): item is StageReport => !!item);
+    if (prior.some((item) => item.provenance.runId === report.provenance.runId || item.provenance.actorId === report.provenance.actorId)) throw new Error("complete workflow reused a prior reviewer identity");
+    const auditMatches = parsed.orchestration.history.filter((entry) => entry.type === "final-acceptance" && entry.provenance && (entry.provenance.runId === report.provenance.runId || entry.provenance.actorId === report.provenance.actorId));
+    if (auditMatches.length !== 1 || completedCloseout.blockingRisks.length) throw new Error("complete workflow lacks unique audited acceptance or has unresolved closeout risks");
+  }
+  return parsed;
 }
 
 function upgradeV1View(value: Record<string, unknown>, readAt: string): Workflow {
   if (!isValidTopic(value.topic as string) || !Number.isSafeInteger(value.revision) || (value.revision as number) < 1 || !isStatus(value.status) || typeof value.goal !== "string" || !value.goal.trim() || !Array.isArray(value.tasks)) throw new Error("invalid v1 workflow state");
   const updatedAt = validTimestamp(value.updatedAt, "workflow updatedAt");
-  const contract = planIdentity(value.goal.trim(), typeof value.plan === "string" ? value.plan.trim() : undefined, undefined, 1);
+  const initiativeVerification = deriveInitiativeVerification(value.tasks as Array<Partial<WorkflowTask>>);
+  const contract = planIdentity(value.goal.trim(), typeof value.plan === "string" ? value.plan.trim() : undefined, undefined, 1, initiativeVerification);
   const rawTasks = value.tasks as Array<Partial<WorkflowTask> & Pick<WorkflowTask, "id" | "title">>;
   const tasks = rawTasks.map((raw) => {
     const terminal = raw.status === "complete" || raw.status === "deferred";
@@ -732,11 +880,48 @@ function upgradeV1View(value: Record<string, unknown>, readAt: string): Workflow
   const allDone = historicalTaskIds.length === tasks.length;
   return {
     version: WORKFLOW_VERSION, topic: value.topic as string, revision: value.revision as number,
-    status: allDone ? "complete" : "paused", goal: value.goal.trim(), ...(typeof value.plan === "string" && value.plan.trim() ? { plan: value.plan.trim() } : {}),
-    contract, orchestration: { mode: "multi-agent", phase: allDone ? "complete" : "plan-review", nextFence: 1, history: [] },
+    status: "paused", goal: value.goal.trim(), ...(typeof value.plan === "string" && value.plan.trim() ? { plan: value.plan.trim() } : {}),
+    contract, initiativeVerification, orchestration: { mode: "multi-agent", phase: "plan-review", nextFence: 1, history: [] },
     tasks, updatedAt, migration: { sourceVersion: 1, readAt: validTimestamp(readAt, "migration readAt"), historicalTaskIds },
     ...(normalizeWorkflowImport(value.importedFrom) ? { importedFrom: normalizeWorkflowImport(value.importedFrom)! } : {}),
   };
+}
+
+function normalizeRepositorySnapshot(value: unknown): RepositorySnapshot {
+  if (!record(value)) throw new Error("invalid repository snapshot");
+  const hash = boundedText(value.hash, "repository snapshot hash", 128);
+  const head = boundedText(value.head, "repository snapshot HEAD", 128);
+  const branch = value.branch === null ? null : boundedText(value.branch, "repository snapshot branch", 512);
+  const changedPaths = boundedStrings(value.changedPaths, "repository snapshot changed paths", 256, 512);
+  if (changedPaths.some((path) => !SAFE_SCOPE.test(path) || path.includes("*"))) throw new Error("repository snapshot contains an unsafe or non-exact path");
+  return { hash, head, branch, changedPaths, capturedAt: validTimestamp(value.capturedAt, "repository snapshot timestamp") };
+}
+function normalizeManualValidation(value: unknown): ManualValidationOutcome & { status: "approved" | "rejected"; decidedBy: string } {
+  if (!record(value) || !["approved", "rejected"].includes(value.status as string)) throw new Error("invalid manual validation outcome");
+  return { status: value.status as "approved" | "rejected", rationale: boundedText(value.rationale, "manual validation rationale"), decidedBy: boundedText(value.decidedBy, "manual validation decision owner", 128), at: validTimestamp(value.at, "manual validation timestamp") };
+}
+function normalizeCloseout(value: unknown): InitiativeCloseout {
+  if (!record(value) || !record(value.checkpoint)) throw new Error("invalid initiative closeout state");
+  const checkpoint = value.checkpoint;
+  if (!Number.isSafeInteger(checkpoint.revision) || (checkpoint.revision as number) < 1) throw new Error("invalid initiative closeout checkpoint");
+  const evidence = Array.isArray(value.evidence) ? value.evidence.map(normalizeEvidence) : (() => { throw new Error("initiative closeout evidence must be an array"); })();
+  if (evidence.length > 32) throw new Error("initiative closeout has too much evidence");
+  const manual = value.manualValidation === undefined ? undefined : value.manualValidation;
+  let manualValidation: ManualValidationOutcome | undefined;
+  if (record(manual) && manual.status === "required") manualValidation = { status: "required", rationale: boundedText(manual.rationale, "manual validation rationale"), at: validTimestamp(manual.at, "manual validation timestamp") };
+  else if (manual !== undefined) manualValidation = normalizeManualValidation(manual);
+  return {
+    snapshot: normalizeRepositorySnapshot(value.snapshot), cumulativeDeltaHash: requireDigest(value.cumulativeDeltaHash, "cumulative delta hash"),
+    checkpoint: { revision: checkpoint.revision as number, at: validTimestamp(checkpoint.at, "closeout checkpoint timestamp"), ownerId: boundedText(checkpoint.ownerId, "closeout owner", 128), sessionId: boundedText(checkpoint.sessionId, "closeout session", 128), runtimeId: boundedText(checkpoint.runtimeId, "closeout runtime", 128), branchLength: validBranchLength(checkpoint.branchLength) },
+    evidence, unresolvedRisks: boundedStrings(value.unresolvedRisks, "unresolved initiative risks", 64, 1024), blockingRisks: boundedStrings(value.blockingRisks ?? value.unresolvedRisks, "blocking initiative risks", 64, 1024), followUpTaskIds: boundedStrings(value.followUpTaskIds, "closeout follow-up task ids", MAX_TASKS, 64), ...(manualValidation ? { manualValidation } : {}),
+  };
+}
+function sameRepositorySnapshot(left: RepositorySnapshot, right: RepositorySnapshot): boolean { return left.hash === right.hash && left.head === right.head && left.branch === right.branch && sameStringSet(left.changedPaths, right.changedPaths); }
+function requireDigest(value: unknown, label: string): string { if (typeof value !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value)) throw new Error(`invalid ${label}`); return value; }
+function validBranchLength(value: unknown): number { if (!Number.isSafeInteger(value) || (value as number) < 0) throw new Error("invalid closeout branch length"); return value as number; }
+function deriveInitiativeVerification(tasks: Array<Partial<WorkflowTask>>): VerificationCommand[] {
+  const commands = tasks.flatMap((task) => Array.isArray(task.verification) ? task.verification : []).map(normalizeCommand);
+  return [...new Map(commands.map((command) => [commandKey(command), command])).values()];
 }
 
 function normalizeTask(task: Partial<WorkflowTask> & Pick<WorkflowTask, "id" | "title">, options: { contract: ContractIdentity; compatibility: boolean; previousContract?: ContractIdentity }): WorkflowTask {
@@ -797,9 +982,9 @@ function validateWorkflowInput(topic: string, goal: string, plan: string | undef
   if (plan?.trim() && plan.trim().length > MAX_TEXT) throw new Error("plan exceeds 2048 characters");
   if (!taskCount || taskCount > MAX_TASKS) throw new Error("workflow requires 1 to 100 tasks");
 }
-function planIdentity(goal: string, plan: string | undefined, linked: string | undefined, revision: number): ContractIdentity {
+function planIdentity(goal: string, plan: string | undefined, linked: string | undefined, revision: number, initiativeVerification: VerificationCommand[]): ContractIdentity {
   const linkedPlanHash = linked ? (linked.startsWith("sha256:") && !linked.includes("\n") ? linked : hashContract(linked)) : undefined;
-  return { revision, hash: hashContract({ goal, plan: plan ?? null, linkedPlanHash: linkedPlanHash ?? null }), ...(linkedPlanHash ? { linkedPlanHash } : {}) };
+  return { revision, hash: hashContract({ goal, plan: plan ?? null, linkedPlanHash: linkedPlanHash ?? null, initiativeVerification }), ...(linkedPlanHash ? { linkedPlanHash } : {}) };
 }
 function taskContractBasis(planHash: string, task: object): object { return { planContractHash: planHash, ...task }; }
 export function hashContract(value: unknown): string { return `sha256:${createHash("sha256").update(stableJson(value)).digest("hex")}`; }
@@ -842,8 +1027,8 @@ function resetRemediation(workflow: Workflow, event: Extract<WorkflowEvent, { ty
 }
 
 function workflowRunnerIdentities(workflow: Workflow): Set<string> {
-  const reports = [workflow.planReview, workflow.initiativeAcceptance, ...workflow.tasks.flatMap((task) => task.reports)].filter((report): report is StageReport => !!report);
-  return new Set(reports.flatMap((report) => [report.provenance.runId, report.provenance.actorId]));
+  const reports = [workflow.planReview, workflow.initiativeAcceptance, ...workflow.tasks.flatMap((task) => task.reports), ...workflow.orchestration.history.map((entry) => entry.provenance)].filter((report): report is StageReport | RunnerProvenance => !!report);
+  return new Set(reports.flatMap((report) => "provenance" in report ? [report.provenance.runId, report.provenance.actorId] : [report.runId, report.actorId]));
 }
 
 function appendTaskReport(task: WorkflowTask, report: StageReport): Partial<WorkflowTask> {
@@ -912,7 +1097,9 @@ function update(workflow: Workflow, patch: Partial<Workflow>, now: string, messa
 function changed(workflow: Workflow, patch: Partial<Workflow>, now: string, message: string): WorkflowDecision { return { workflow: { ...workflow, ...patch, revision: workflow.revision + 1, updatedAt: validTimestamp(now, "workflow timestamp") }, changed: true, message }; }
 function unchanged(workflow: Workflow, message: string): WorkflowDecision { return { workflow, changed: false, message }; }
 function conciseAssessment(task: WorkflowTask): string { const text = task.approaches.map((approach) => `${approach} (${task.approachReasons[approach]})`).join(", "); return text.length <= 300 ? text : `${text.slice(0, 297)}...`; }
-function commandKey(command: VerificationCommand): string { return [command.command, ...command.args].join(" ").trim(); }
+function commandKey(command: VerificationCommand): string { return JSON.stringify([command.command, command.args]); }
+function legacyCommandKey(command: VerificationCommand): string { return [command.command, ...command.args].join(" ").trim(); }
+function commandDisplay(command: VerificationCommand): string { return [command.command, ...command.args].join(" "); }
 function evidenceMatchesCheckpoint(evidence: VerificationEvidence, checkpoint: VerificationCheckpoint): boolean { return Date.parse(evidence.at) > Date.parse(checkpoint.at) && evidence.source?.kind === "bash-tool-result" && evidence.source.workflowRevision >= checkpoint.revision && (checkpoint.sessionId === undefined || evidence.source.sessionId === checkpoint.sessionId); }
 function normalizeCommands(value: unknown, taskId: string): VerificationCommand[] { if (value === undefined) return []; if (!Array.isArray(value) || value.length > 16) throw new Error(`task ${taskId} verification must be an array of at most 16 commands`); const commands = value.map(normalizeCommand); if (new Set(commands.map(commandKey)).size !== commands.length) throw new Error(`task ${taskId} has duplicate verification commands`); return commands; }
 function normalizeCommand(value: unknown): VerificationCommand {

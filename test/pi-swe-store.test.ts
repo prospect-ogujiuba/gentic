@@ -164,10 +164,8 @@ test("an independently reviewed no-change task still requires final initiative a
   current = reduceWorkflow(current, { type: "complete-task" }, "2026-02-01T00:00:05.000Z").workflow;
   assert.equal(current.status, "paused");
   assert.equal(current.orchestration.phase, "initiative-acceptance");
-  assert.throws(() => reduceWorkflow(current, { type: "complete-initiative" }), /final acceptance/i);
-  current = reduceWorkflow(current, { type: "record-initiative-acceptance", report: report("final-acceptance", "final-reviewer", "final", current.contract.hash) }, "2026-02-01T00:00:06.000Z").workflow;
-  current = reduceWorkflow(current, { type: "complete-initiative" }, "2026-02-01T00:00:07.000Z").workflow;
-  assert.equal(current.status, "complete");
+  assert.throws(() => reduceWorkflow(current, { type: "complete-initiative", observedSnapshot: { hash: "sha256:missing", head: "missing", branch: "main", changedPaths: [], capturedAt: "2026-02-01T00:00:06.000Z" }, branchLength: 0 }), /closeout checkpoint|final acceptance/i);
+  assert.equal(current.status, "paused");
 });
 
 test("v1 reads are non-mutating and the first service mutation upgrades atomically", async () => {

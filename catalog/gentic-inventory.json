@@ -294,6 +294,7 @@
       "entrypoint": "extensions/pi-swe/index.ts",
       "sourceFiles": [
         "extensions/pi-swe/index.ts",
+        "extensions/pi-swe/src/closeout.ts",
         "extensions/pi-swe/src/command.ts",
         "extensions/pi-swe/src/integrity.ts",
         "extensions/pi-swe/src/orchestration.ts",

@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 
+import { createHash } from "node:crypto";
+
 import type { AgentRunRequest, AgentRunner, RunnerResult } from "./runner.ts";
+import type { InitiativeCloseoutAuthority, InitiativeCloseoutInspector, InitiativeVerificationSubmission } from "./closeout.ts";
 import type { ManagedVerificationAuthority, ParentExecutionIdentity, ProtectedVerificationSubmission } from "./integrity.ts";
 import { WorkflowMutationService } from "./service.ts";
 import {
@@ -11,7 +14,9 @@ import {
   type StageReport,
   type TaskPhase,
   type VerificationEvidence,
+  type VerificationCommand,
   type Workflow,
+  type WorkflowTaskRevision,
   type WorkflowApproach,
   type WorkflowDecision,
   type WorkflowTask,
@@ -34,11 +39,12 @@ export type OrchestrationHandoff = {
   workflow: Workflow;
   taskId?: string;
   role?: RunnerRole;
-  verification?: { contractHash: string; snapshotHash: string; commands: WorkflowTask["verification"]; checkpoint: WorkflowTask["verificationCheckpoint"] };
+  verification?: { contractHash: string; snapshotHash: string; commands: VerificationCommand[]; checkpoint: WorkflowTask["verificationCheckpoint"] | NonNullable<Workflow["closeout"]>["checkpoint"] };
 };
 
 export type OrchestrationAdvanceInput = {
   verification?: ProtectedVerificationSubmission;
+  initiativeVerification?: InitiativeVerificationSubmission;
 };
 
 type EngineOptions = {
@@ -48,6 +54,8 @@ type EngineOptions = {
   ownerId: string;
   parent: ParentExecutionIdentity;
   verificationAuthority?: Pick<ManagedVerificationAuthority, "consume" | "assertCompletion">;
+  closeoutInspector?: InitiativeCloseoutInspector;
+  closeoutAuthority?: Pick<InitiativeCloseoutAuthority, "consume" | "assertCompletion" | "acquireCompletionFence">;
   provider: string;
   model: string;
   thinking: AgentRunRequest["thinking"];
@@ -58,7 +66,7 @@ type EngineOptions = {
   budgets?: AgentRunRequest["budgets"];
   now?: () => string;
   id?: (prefix: string) => string;
-  authorizeUserDecision?: (decision: { kind: "finding" | "remediation-reset"; taskId: string; decidedBy: string; reason: string }) => boolean;
+  authorizeUserDecision?: (decision: { kind: "finding" | "remediation-reset" | "manual-validation"; taskId?: string; decidedBy: string; reason: string }) => boolean;
 };
 
 type ChildOutcome =
@@ -109,7 +117,7 @@ export class OrchestrationEngine {
     if (workflow.orchestration.phase === "complete" || workflow.status === "complete") return this.handoff("complete", workflow, "workflow is complete");
 
     if (workflow.orchestration.phase === "plan-review") return this.advancePlanReview(topic, workflow);
-    if (workflow.orchestration.phase === "initiative-acceptance") return this.handoff("blocked", workflow, "initiative acceptance belongs to the later initiative-closeout phase");
+    if (workflow.orchestration.phase === "initiative-acceptance") return this.advanceCloseout(topic, workflow, input.initiativeVerification);
 
     const task = workflow.activeTask ? workflow.tasks.find((candidate) => candidate.id === workflow.activeTask) : undefined;
     if (!task) return this.advanceTaskSelection(topic, workflow);
@@ -145,9 +153,99 @@ export class OrchestrationEngine {
     return this.mutateExpected(topic, expectedRevision, (workflow) => reduceWorkflow(workflow, { type: "decide-finding", ...input }, this.now()));
   }
 
+  async addCloseoutFollowUp(topic: string, expectedRevision: number, task: WorkflowTaskRevision): Promise<OrchestrationHandoff> {
+    return this.mutateExpected(topic, expectedRevision, (workflow) => reduceWorkflow(workflow, { type: "add-closeout-follow-up", task }, this.now()));
+  }
+
+  async recordManualValidation(topic: string, expectedRevision: number, outcome: { status: "approved" | "rejected"; rationale: string; decidedBy: string }): Promise<OrchestrationHandoff> {
+    if (!this.options.authorizeUserDecision?.({ kind: "manual-validation", decidedBy: outcome.decidedBy, reason: outcome.rationale })) throw new Error("manual validation requires independently authorized user-decision provenance");
+    return this.mutateExpected(topic, expectedRevision, (workflow) => reduceWorkflow(workflow, { type: "record-manual-validation", outcome: { ...outcome, at: this.now() } }, this.now()));
+  }
+
   async resetRemediation(topic: string, expectedRevision: number, input: { taskId: string; max: number; reason: string; decidedBy: string }): Promise<OrchestrationHandoff> {
     if (!this.options.authorizeUserDecision?.({ kind: "remediation-reset", taskId: input.taskId, decidedBy: input.decidedBy, reason: input.reason })) throw new Error("remediation reset requires independently authorized user-decision provenance");
     return this.mutateExpected(topic, expectedRevision, (workflow) => reduceWorkflow(workflow, { type: "reset-remediation", ...input }, this.now()));
+  }
+
+  private async advanceCloseout(topic: string, workflow: Workflow, submission?: InitiativeVerificationSubmission): Promise<OrchestrationHandoff> {
+    const inspector = this.options.closeoutInspector;
+    if (!inspector) return this.handoff("blocked", workflow, "initiative closeout requires a final repository inspector");
+    if (!workflow.closeout) {
+      let inspection;
+      try { inspection = inspector.inspect(workflow); }
+      catch (error) { return this.handoff("blocked", workflow, `final repository inspection failed: ${message(error)}`); }
+      if (Buffer.byteLength(inspection.cumulativeDelta) > MAX_REVIEW_DELTA_BYTES) return this.handoff("blocked", workflow, `cumulative initiative delta exceeds ${MAX_REVIEW_DELTA_BYTES} byte review packet limit`);
+      const cumulativeDeltaHash = `sha256:${createHash("sha256").update(inspection.cumulativeDelta).digest("hex")}`;
+      const risks = this.closeoutRisks(workflow, inspection.unresolvedRisks);
+      return this.mutateStage(topic, workflow, { type: "begin-initiative-closeout", snapshot: inspection.snapshot, cumulativeDeltaHash, unresolvedRisks: risks.all, blockingRisks: risks.blocking, branchLength: this.options.parent.branchLength });
+    }
+    let currentInspection;
+    try { currentInspection = inspector.inspect(workflow); }
+    catch (error) { return this.handoff("blocked", workflow, `final repository inspection failed: ${message(error)}`); }
+    if (currentInspection.snapshot.hash !== workflow.closeout.snapshot.hash || currentInspection.snapshot.head !== workflow.closeout.snapshot.head || currentInspection.snapshot.branch !== workflow.closeout.snapshot.branch) return this.mutateStage(topic, workflow, { type: "invalidate-initiative-closeout", observedSnapshot: currentInspection.snapshot, reason: "repository source, HEAD, or branch changed during closeout" });
+    if (`sha256:${createHash("sha256").update(currentInspection.cumulativeDelta).digest("hex")}` !== workflow.closeout.cumulativeDeltaHash) return this.mutateStage(topic, workflow, { type: "invalidate-initiative-closeout", observedSnapshot: currentInspection.snapshot, reason: "cumulative initiative delta changed during closeout" });
+    const currentRisks = this.closeoutRisks(workflow, currentInspection.unresolvedRisks);
+    if (!sameStrings(currentRisks.all, workflow.closeout.unresolvedRisks) || !sameStrings(currentRisks.blocking, workflow.closeout.blockingRisks)) return this.mutateStage(topic, workflow, { type: "invalidate-initiative-closeout", observedSnapshot: currentInspection.snapshot, reason: "initiative risks changed during closeout" });
+    const missing = workflow.initiativeVerification.filter((planned) => {
+      const matches = workflow.closeout!.evidence.filter((evidence) => evidence.command === planned.command && evidence.args.length === planned.args.length && evidence.args.every((arg, index) => arg === planned.args[index]));
+      return matches.at(-1)?.exitCode !== 0;
+    });
+    if (missing.length) {
+      if (!submission) return {
+        ...this.handoff("verification-required", workflow, "parent protected-bash final integration verification is required"),
+        verification: { contractHash: workflow.contract.hash, snapshotHash: workflow.closeout.snapshot.hash, commands: missing, checkpoint: workflow.closeout.checkpoint },
+      };
+      if (!this.options.closeoutAuthority) return this.handoff("blocked", workflow, "final verification evidence lacks a live protected-bash closeout authority");
+      let consumed: InitiativeVerificationSubmission;
+      try { consumed = this.options.closeoutAuthority.consume(submission, workflow, this.options.parent); }
+      catch (error) { return this.handoff("blocked", workflow, message(error)); }
+      return this.mutateStage(topic, workflow, { type: "record-initiative-verification", evidence: consumed.evidence, observedSnapshot: consumed.observedSnapshot });
+    }
+    const acceptance = workflow.initiativeAcceptance;
+    if (acceptance?.outcome === "needs-input") return workflow.closeout.manualValidation?.status === "rejected"
+      ? this.handoff("blocked", workflow, "manual validation was rejected; create scoped follow-up work")
+      : this.handoff("needs-input", workflow, "final acceptance requires explicit user or manual validation");
+    if (acceptance && acceptance.outcome !== "approved") return this.handoff("blocked", workflow, "final acceptance requested scoped follow-up work; the orchestrator must not patch it directly");
+    if (!acceptance) {
+      let inspection;
+      try { inspection = inspector.inspect(workflow); }
+      catch (error) { return this.handoff("blocked", workflow, `final repository inspection failed: ${message(error)}`); }
+      if (inspection.snapshot.hash !== workflow.closeout.snapshot.hash || inspection.snapshot.head !== workflow.closeout.snapshot.head || inspection.snapshot.branch !== workflow.closeout.snapshot.branch) return this.handoff("stale", workflow, "final repository snapshot changed before independent acceptance");
+      const handoff = await this.runChildStage(topic, workflow, undefined, "final-reviewer", "initiative-acceptance", async (lease) => {
+        const request = this.finalAcceptanceRequest(workflow, lease, inspection);
+        const result = await this.runner.run(request);
+        return this.runnerOutcome(result, lease, workflow.contract.hash, "final-reviewer", workflow.closeout!.snapshot.hash);
+      }, (state, outcome) => outcome.ok
+        ? reduceWorkflow(state, { type: "record-initiative-acceptance", report: outcome.report }, this.now())
+        : reduceWorkflow(state, { type: "record-run-failure", stage: "initiative-acceptance", reason: outcome.reason }, this.now()));
+      return { ...handoff, stage: "initiative-acceptance" };
+    }
+    if (!this.options.closeoutAuthority) return this.handoff("blocked", workflow, "initiative completion requires the live closeout authority");
+    let release: (() => void) | undefined;
+    try {
+      release = this.options.closeoutAuthority.acquireCompletionFence(workflow, this.options.parent);
+      const completed = await this.mutateExpected(topic, workflow.revision, (state) => {
+        const latest = this.options.closeoutAuthority!.assertCompletion(state, this.options.parent);
+        return reduceWorkflow(state, { type: "complete-initiative", observedSnapshot: latest, branchLength: this.options.parent.branchLength }, this.now());
+      });
+      this.options.closeoutAuthority.assertCompletion(completed.workflow, this.options.parent);
+      return completed;
+    } catch (error) { return this.handoff("blocked", this.service.read(topic, true)?.workflow ?? workflow, message(error)); }
+    finally { release?.(); }
+  }
+
+  private finalAcceptanceRequest(workflow: Workflow, lease: RunLease, inspection: { snapshot: NonNullable<Workflow["closeout"]>["snapshot"]; cumulativeDelta: string; unresolvedRisks: string[] }): AgentRunRequest {
+    const request = this.request(workflow, undefined, "final-reviewer", lease, this.cwd, { hash: inspection.snapshot.hash, payload: { repositorySnapshot: inspection.snapshot } });
+    return {
+      ...request,
+      projectInstructions: [...request.projectInstructions, "Assess cumulative integrated behavior only. Do not implement, patch, commit, push, deploy, or release. Request scoped follow-up work for missing behavior."],
+      contractPacket: { hash: workflow.contract.hash, payload: {
+        originalGoal: workflow.goal, approvedPlan: workflow.plan, cumulativeInitiativeDelta: inspection.cumulativeDelta,
+        taskOutcomes: workflow.tasks.map((task) => ({ id: task.id, title: task.title, status: task.status, completedAt: task.completedAt, findings: task.findings, reports: task.reports.map((report) => ({ kind: report.kind, outcome: report.outcome, summary: report.summary })), verification: task.evidence.map((evidence) => ({ command: evidence.command, args: evidence.args, exitCode: evidence.exitCode })) })),
+        unresolvedRisks: workflow.closeout!.unresolvedRisks, manualValidation: workflow.closeout!.manualValidation, finalRepositorySnapshot: inspection.snapshot,
+        finalIntegrationChecks: workflow.initiativeVerification, finalVerificationEvidence: workflow.closeout!.evidence,
+      } },
+    };
   }
 
   private async advancePlanReview(topic: string, workflow: Workflow): Promise<OrchestrationHandoff> {
@@ -297,7 +395,7 @@ export class OrchestrationEngine {
     settle: (workflow: Workflow, result: T) => WorkflowDecision,
   ): Promise<OrchestrationHandoff> {
     const runId = this.id(role ?? String(stage));
-    const priorProvenance = [workflow.planReview, workflow.initiativeAcceptance, ...workflow.tasks.flatMap((candidate) => candidate.reports)].filter((report): report is StageReport => !!report).map((report) => report.provenance);
+    const priorProvenance = [workflow.planReview, workflow.initiativeAcceptance, ...workflow.tasks.flatMap((candidate) => candidate.reports)].filter((report): report is StageReport => !!report).map((report) => report.provenance).concat(workflow.orchestration.history.flatMap((entry) => entry.provenance ? [entry.provenance] : []));
     const actorId = role ? `${role}:${runId}` : undefined;
     if (priorProvenance.some((item) => item.runId === runId || (actorId && item.actorId === actorId))) return this.handoff("blocked", workflow, "fresh child run and actor identities must not be reused", task, role);
     let claimed: { workflow: Workflow; lease: RunLease };
@@ -358,12 +456,17 @@ export class OrchestrationEngine {
         payload: task ? {
           planContractHash: workflow.contract.hash, task: { id: task.id, title: task.title, kind: task.kind, dependsOn: task.dependsOn, acceptance: task.acceptance, approaches: task.approaches, approachReasons: task.approachReasons, writeScope: task.writeScope, nonGoals: task.nonGoals, verification: task.verification },
           ...(selectedConcerns.length ? { selectedConcerns } : {}),
-        } : { goal: workflow.goal, plan: workflow.plan, tasks: workflow.tasks.map((item) => ({ id: item.id, title: item.title, dependsOn: item.dependsOn, acceptance: item.acceptance, approaches: item.approaches, writeScope: item.writeScope, nonGoals: item.nonGoals, verification: item.verification })) },
+        } : { goal: workflow.goal, plan: workflow.plan, initiativeVerification: workflow.initiativeVerification, tasks: workflow.tasks.map((item) => ({ id: item.id, title: item.title, dependsOn: item.dependsOn, acceptance: item.acceptance, approaches: item.approaches, writeScope: item.writeScope, nonGoals: item.nonGoals, verification: item.verification })) },
       },
       ...(snapshotPacket ? { snapshotPacket } : {}), clarificationAnswers,
       readScope: this.options.readScope ?? ["**"], ...(role === "implementer" ? { writeScope: task!.writeScope } : {}),
       budgets: this.options.budgets ?? { timeoutMs: 30 * 60 * 1_000, maxTurns: 32, maxOutputBytes: 2 * 1024 * 1024, maxRetries: 1, killGraceMs: 2_000 },
     };
+  }
+
+  private closeoutRisks(workflow: Workflow, inspectorRisks: string[]): { all: string[]; blocking: string[] } {
+    const open = workflow.tasks.flatMap((task) => task.findings.filter((finding) => finding.status === "open").map((finding) => ({ text: `${task.id}/${finding.id} [${finding.severity}]: ${finding.summary}`, blocking: finding.severity === "blocking" })));
+    return { all: [...new Set([...inspectorRisks, ...open.map((item) => item.text)])], blocking: [...new Set([...inspectorRisks, ...open.filter((item) => item.blocking).map((item) => item.text)])] };
   }
 
   private boundedDelta(receipt: GitWorkspaceReceipt): string {
@@ -413,3 +516,4 @@ export class OrchestrationEngine {
 }
 
 function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
+function sameStrings(left: string[], right: string[]): boolean { const sorted = [...right].sort(); return left.length === right.length && [...left].sort().every((item, index) => item === sorted[index]); }
