@@ -1,11 +1,10 @@
 {
   "version": 1,
   "topic": "multi-agent-swe-orchestration",
-  "revision": 10,
+  "revision": 12,
   "status": "paused",
   "goal": "Make /swe a deterministic multi-agent software-engineering orchestrator: fresh-context agents perform plan review, scoped implementation, independent review, bounded remediation, and final initiative acceptance; approved changes are safely integrated and followed by protected verification. Enforce workflow participation and evidence freshness without claiming that worktrees or prompts are an OS security sandbox.",
   "plan": "Eight-task implementation, sequential execution by default. Keep workflow.json as authority. Separate contract identities from mutable state revisions; use fenced ownership, isolated fresh Pi children, typed reports/questions, Git workspace receipts, exact-snapshot review and protected verification. General review covers TDD/diagnosis/DSA; one additional composed reviewer covers applicable security/migration/performance/UX/operations concerns. Two remediation attempts then block. Final acceptance reviews the cumulative initiative. No automatic commit, push, deployment, recursive delegation, silent single-agent fallback, or mandatory external orchestration extension. Existing interactive-shell attachment is not the new runner UI. Bootstrap this extension under the installed v1 workflow; validate v2 in isolated fixtures before switching runtimes.",
-  "activeTask": "git-workspace",
   "tasks": [
     {
       "id": "schema-v2",
@@ -90,7 +89,7 @@
     {
       "id": "git-workspace",
       "title": "Build recoverable scoped workspaces and safe patch integration",
-      "status": "active",
+      "status": "complete",
       "dependsOn": [
         "schema-v2"
       ],
@@ -141,8 +140,29 @@
         "sessionId": "01a0a6da-e67b-737a-b68b-55758edb3e3b",
         "branchLength": 14
       },
-      "evidence": [],
-      "evidenceLinks": []
+      "evidence": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe-workspace.test.ts"
+          ],
+          "exitCode": 0,
+          "at": "2026-09-16T15:33:17.281Z"
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ],
+          "exitCode": 0,
+          "at": "2026-09-16T15:33:17.281Z"
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-16T15:33:17.281Z"
     },
     {
       "id": "agent-runner",
@@ -452,5 +472,5 @@
       "evidenceLinks": []
     }
   ],
-  "updatedAt": "2026-09-15T20:57:17.426Z"
+  "updatedAt": "2026-09-16T15:33:17.281Z"
 }

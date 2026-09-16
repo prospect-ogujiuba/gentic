@@ -197,8 +197,33 @@
         "baselineHash": { "type": "string", "minLength": 1, "maxLength": 128 },
         "snapshotHash": { "type": "string", "minLength": 1, "maxLength": 128 },
         "changedPaths": { "type": "array", "maxItems": 128, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 512 } },
-        "createdAt": { "$ref": "#/$defs/timestamp" }
+        "createdAt": { "$ref": "#/$defs/timestamp" },
+        "version": { "const": 1 },
+        "root": { "$ref": "#/$defs/text" },
+        "path": { "$ref": "#/$defs/text" },
+        "taskId": { "$ref": "#/$defs/taskId" },
+        "topic": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "baselineCommit": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "baselineRef": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "worktreeGitDir": { "$ref": "#/$defs/text" },
+        "ownershipToken": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "intentPath": { "$ref": "#/$defs/text" },
+        "workspaceHeadCommit": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "preparedResultCommit": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "preparedResultRef": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "preparedPatchHash": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "realHead": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "realIndexHash": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "realIndexTree": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "stagedPatchHash": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "unstagedPatchHash": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "realSourceSnapshotHash": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "includedUntracked": { "type": "array", "maxItems": 128, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 512 } },
+        "managedPaths": { "type": "array", "maxItems": 128, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 512 } },
+        "integrationBaseCommit": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "writeScope": { "type": "array", "maxItems": 64, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 512 } }
       },
+      "allOf": [{ "if": { "required": ["version"], "properties": { "version": { "const": 1 } } }, "then": { "required": ["root", "path", "taskId", "topic", "baselineCommit", "baselineRef", "worktreeGitDir", "ownershipToken", "intentPath", "workspaceHeadCommit", "realHead", "realIndexHash", "realIndexTree", "stagedPatchHash", "unstagedPatchHash", "realSourceSnapshotHash", "includedUntracked", "managedPaths", "writeScope"] } }],
       "additionalProperties": false
     },
     "integrationReceipt": {
@@ -209,8 +234,16 @@
         "preSnapshotHash": { "type": "string", "minLength": 1, "maxLength": 128 },
         "postSnapshotHash": { "type": "string", "minLength": 1, "maxLength": 128 },
         "patchHash": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "integratedAt": { "$ref": "#/$defs/timestamp" }
+        "integratedAt": { "$ref": "#/$defs/timestamp" },
+        "version": { "const": 1 },
+        "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "resultCommit": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "resultRef": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "observedHead": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "observedIndexHash": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "changedPaths": { "type": "array", "maxItems": 128, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 512 } }
       },
+      "allOf": [{ "if": { "required": ["version"], "properties": { "version": { "const": 1 } } }, "then": { "required": ["workspaceId", "resultCommit", "resultRef", "observedHead", "observedIndexHash", "changedPaths"] } }],
       "additionalProperties": false
     },
     "task": {

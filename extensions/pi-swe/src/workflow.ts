@@ -54,8 +54,51 @@ export type StageReport = {
   questions?: Clarification[];
   provenance: RunnerProvenance;
 };
-export type WorkspaceReceipt = { workspaceId: string; baselineHash: string; snapshotHash: string; changedPaths: string[]; createdAt: string };
-export type IntegrationReceipt = { integrationId: string; preSnapshotHash: string; postSnapshotHash: string; patchHash: string; integratedAt: string };
+export type WorkspaceReceipt = {
+  workspaceId: string;
+  baselineHash: string;
+  snapshotHash: string;
+  changedPaths: string[];
+  createdAt: string;
+  version?: 1;
+  root?: string;
+  path?: string;
+  taskId?: string;
+  topic?: string;
+  baselineCommit?: string;
+  baselineRef?: string;
+  worktreeGitDir?: string;
+  ownershipToken?: string;
+  intentPath?: string;
+  workspaceHeadCommit?: string;
+  preparedResultCommit?: string;
+  preparedResultRef?: string;
+  preparedPatchHash?: string;
+  realHead?: string;
+  realIndexHash?: string;
+  realIndexTree?: string;
+  stagedPatchHash?: string;
+  unstagedPatchHash?: string;
+  realSourceSnapshotHash?: string;
+  includedUntracked?: string[];
+  managedPaths?: string[];
+  integrationBaseCommit?: string;
+  writeScope?: string[];
+};
+export type IntegrationReceipt = {
+  integrationId: string;
+  preSnapshotHash: string;
+  postSnapshotHash: string;
+  patchHash: string;
+  integratedAt: string;
+  version?: 1;
+  workspaceId?: string;
+  resultCommit?: string;
+  resultRef?: string;
+  observedHead?: string;
+  observedIndexHash?: string;
+  changedPaths?: string[];
+};
 export type RunLease = {
   id: string;
   runId: string;
@@ -168,6 +211,29 @@ const MAX_WORKFLOW_BYTES = 512 * 1024;
 const CONCERN_APPROACHES = new Set<WorkflowApproach>(["security", "migration", "performance", "accessibility-ux", "operations"]);
 
 export function isValidTopic(value: string): boolean { return value.length <= 256 && TOPIC.test(value); }
+
+/** Match a normalized repository path against an exact, segment-glob, or recursive `/**` write scope. */
+export function scopeAllowsPath(scope: string, path: string): boolean {
+  const scopeSegments = scope.split("/");
+  const pathSegments = path.split("/");
+  const memo = new Map<string, boolean>();
+  const match = (scopeIndex: number, pathIndex: number): boolean => {
+    const key = `${scopeIndex}:${pathIndex}`;
+    const cached = memo.get(key);
+    if (cached !== undefined) return cached;
+    let result: boolean;
+    if (scopeIndex === scopeSegments.length) result = pathIndex === pathSegments.length;
+    else if (scopeSegments[scopeIndex] === "**") result = match(scopeIndex + 1, pathIndex) || (pathIndex < pathSegments.length && match(scopeIndex, pathIndex + 1));
+    else if (pathIndex >= pathSegments.length) result = false;
+    else {
+      const expression = scopeSegments[scopeIndex]!.split("*").map((part) => part.replace(/[|\\{}()[\]^$+?.]/g, "\\$&")).join(".*");
+      result = new RegExp(`^${expression}$`).test(pathSegments[pathIndex]!) && match(scopeIndex + 1, pathIndex + 1);
+    }
+    memo.set(key, result);
+    return result;
+  };
+  return match(0, 0);
+}
 
 export function createWorkflow(input: {
   topic: string;
@@ -346,13 +412,29 @@ function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowE
   if (event.type === "record-workspace") {
     requireTaskPhase(current, "workspace");
     const receipt = normalizeWorkspaceReceipt(event.receipt);
+    if (workflow.orchestration.mode === "multi-agent" && (receipt.version !== 1 || !receipt.preparedResultCommit || !receipt.preparedResultRef || !receipt.preparedPatchHash)) throw new Error("multi-agent execution requires a recoverable prepared workspace receipt");
     if (receipt.changedPaths.some((path) => !scopeAllows(current!.writeScope, path))) throw new Error("workspace receipt contains an out-of-scope path");
+    if (receipt.version === 1) {
+      const implementation = [...current!.reports].reverse().find((report) => report.kind === "implementation");
+      if (receipt.baselineHash !== receipt.realSourceSnapshotHash) throw new Error("workspace receipt baseline does not match its source preimage");
+      if (implementation?.provenance.snapshotHash !== receipt.snapshotHash) throw new Error("workspace receipt does not match the reviewed implementation snapshot");
+      if (!sameStringSet(implementation.changedPaths ?? [], receipt.changedPaths)) throw new Error("workspace receipt paths do not match the implementation report");
+      if (!sameStringSet(receipt.writeScope ?? [], current!.writeScope)) throw new Error("workspace receipt does not match the task write scope");
+    }
     return replaceTask(workflow, current!.id, { workspaceReceipt: receipt, phase: "integration" }, {}, now, `recorded workspace receipt for ${current!.id}`);
   }
   if (event.type === "record-integration") {
     requireTaskPhase(current, "integration");
     const receipt = normalizeIntegrationReceipt(event.receipt);
-    if (receipt.preSnapshotHash !== current!.workspaceReceipt?.baselineHash) throw new Error("integration receipt does not match the workspace baseline");
+    if (workflow.orchestration.mode === "multi-agent" && receipt.version !== 1) throw new Error("multi-agent execution requires a recoverable versioned integration receipt");
+    const workspaceReceipt = current!.workspaceReceipt;
+    if (receipt.preSnapshotHash !== workspaceReceipt?.baselineHash) throw new Error("integration receipt does not match the workspace baseline");
+    if (workspaceReceipt?.version === 1 && receipt.version !== 1) throw new Error("versioned workspace requires a recoverable integration receipt");
+    if (receipt.version === 1 && (
+      receipt.workspaceId !== workspaceReceipt?.workspaceId || receipt.postSnapshotHash !== workspaceReceipt.snapshotHash ||
+      receipt.resultCommit !== workspaceReceipt.preparedResultCommit || receipt.resultRef !== workspaceReceipt.preparedResultRef ||
+      receipt.patchHash !== workspaceReceipt.preparedPatchHash || receipt.observedHead !== workspaceReceipt.realHead || receipt.observedIndexHash !== workspaceReceipt.realIndexHash || !sameStringSet(receipt.changedPaths ?? [], workspaceReceipt.changedPaths)
+    )) throw new Error("integration receipt does not match the prepared workspace result");
     const phase: TaskPhase = current!.verification.length ? "verification" : current!.verificationDecision ? "ready-to-complete" : "verification";
     return replaceTask(workflow, current!.id, { integrationReceipt: receipt, phase, verificationCheckpoint: { revision: workflow.revision + 1, at: now } }, {}, now, `recorded integration receipt for ${current!.id}`);
   }
@@ -622,7 +704,7 @@ function cancelRun(workflow: Workflow, lease: RunLease, reason: string, now: str
   if (!active || active.id !== lease.id || active.fence !== lease.fence || active.runId !== lease.runId) throw new Error("stale run lease cannot cancel the active run");
   return update(workflow, { status: workflow.status === "active" ? "paused" : workflow.status, orchestration: { ...workflow.orchestration, activeRun: undefined, history: appendHistory(workflow.orchestration.history, { id: `run-${lease.fence}-cancelled`, type: "run-cancelled", at: now, summary: boundedText(reason, "cancellation reason"), ...(lease.taskId ? { taskId: lease.taskId } : {}), auditCritical: true }) } }, now, `cancelled run ${lease.runId}`);
 }
-function scopeAllows(scopes: string[], path: string): boolean { return scopes.some((scope) => scope.endsWith("/**") ? path === scope.slice(0, -3) || path.startsWith(scope.slice(0, -2)) : scope === path); }
+function scopeAllows(scopes: string[], path: string): boolean { return scopes.some((scope) => scopeAllowsPath(scope, path)); }
 function replaceTask(workflow: Workflow, id: string, taskPatch: Partial<WorkflowTask>, workflowPatch: Partial<Workflow>, now: string, message: string): WorkflowDecision { return changed(workflow, { ...workflowPatch, tasks: workflow.tasks.map((task) => task.id === id ? { ...task, ...taskPatch } : task) }, now, message); }
 function update(workflow: Workflow, patch: Partial<Workflow>, now: string, message: string): WorkflowDecision { return changed(workflow, patch, now, message); }
 function changed(workflow: Workflow, patch: Partial<Workflow>, now: string, message: string): WorkflowDecision { return { workflow: { ...workflow, ...patch, revision: workflow.revision + 1, updatedAt: validTimestamp(now, "workflow timestamp") }, changed: true, message }; }
@@ -637,8 +719,63 @@ function normalizeReport(value: unknown): StageReport { if (!record(value) || ![
 function normalizeProvenance(value: unknown): RunnerProvenance { if (!record(value) || typeof value.runId !== "string" || !value.runId || value.runId.length > 128 || !['plan-reviewer','implementer','general-reviewer','concern-reviewer','final-reviewer'].includes(value.role as string) || typeof value.actorId !== "string" || !value.actorId || value.actorId.length > 128 || typeof value.leaseId !== "string" || !value.leaseId || value.leaseId.length > 128 || !Number.isSafeInteger(value.leaseFence) || (value.leaseFence as number) < 1 || typeof value.contractHash !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.contractHash) || (value.snapshotHash !== undefined && (typeof value.snapshotHash !== "string" || !value.snapshotHash || value.snapshotHash.length > 128))) throw new Error("invalid runner provenance"); return { runId: value.runId, role: value.role as RunnerRole, actorId: value.actorId, leaseId: value.leaseId, leaseFence: value.leaseFence as number, contractHash: value.contractHash, ...(typeof value.snapshotHash === "string" ? { snapshotHash: value.snapshotHash } : {}), startedAt: validTimestamp(value.startedAt, "runner start"), completedAt: validTimestamp(value.completedAt, "runner completion") }; }
 function normalizeFinding(value: unknown): Finding { if (!record(value) || typeof value.id !== "string" || !TASK_ID.test(value.id) || !['blocking','warning'].includes(value.severity as string) || !['open','resolved','accepted-risk'].includes(value.status as string)) throw new Error("invalid finding"); return { id: value.id, severity: value.severity as Finding["severity"], status: value.status as Finding["status"], summary: boundedText(value.summary, "finding summary", 1024), evidence: boundedText(value.evidence, "finding evidence"), ...(typeof value.disposition === "string" && value.disposition.trim() ? { disposition: boundedText(value.disposition, "finding disposition") } : {}) }; }
 function normalizeClarification(value: unknown): Clarification { if (!record(value) || typeof value.id !== "string" || !TASK_ID.test(value.id) || typeof value.askedByRunId !== "string" || !value.askedByRunId) throw new Error("invalid clarification"); return { id: value.id, question: boundedText(value.question, "clarification question"), askedByRunId: value.askedByRunId, askedAt: validTimestamp(value.askedAt, "clarification timestamp"), ...(typeof value.answer === "string" ? { answer: boundedText(value.answer, "clarification answer") } : {}), ...(typeof value.answeredBy === "string" ? { answeredBy: boundedText(value.answeredBy, "clarification answerer", 128) } : {}), ...(typeof value.answeredAt === "string" ? { answeredAt: validTimestamp(value.answeredAt, "clarification answer timestamp") } : {}) }; }
-function normalizeWorkspaceReceipt(value: unknown): WorkspaceReceipt { if (!record(value) || typeof value.workspaceId !== "string" || !value.workspaceId || typeof value.baselineHash !== "string" || typeof value.snapshotHash !== "string") throw new Error("invalid workspace receipt"); return { workspaceId: boundedText(value.workspaceId, "workspace id", 128), baselineHash: boundedText(value.baselineHash, "baseline hash", 128), snapshotHash: boundedText(value.snapshotHash, "snapshot hash", 128), changedPaths: boundedStrings(value.changedPaths, "workspace changed paths", 128, 512), createdAt: validTimestamp(value.createdAt, "workspace receipt timestamp") }; }
-function normalizeIntegrationReceipt(value: unknown): IntegrationReceipt { if (!record(value) || typeof value.integrationId !== "string" || !value.integrationId || typeof value.preSnapshotHash !== "string" || typeof value.postSnapshotHash !== "string" || typeof value.patchHash !== "string") throw new Error("invalid integration receipt"); return { integrationId: boundedText(value.integrationId, "integration id", 128), preSnapshotHash: boundedText(value.preSnapshotHash, "pre snapshot hash", 128), postSnapshotHash: boundedText(value.postSnapshotHash, "post snapshot hash", 128), patchHash: boundedText(value.patchHash, "patch hash", 128), integratedAt: validTimestamp(value.integratedAt, "integration timestamp") }; }
+function normalizeWorkspaceReceipt(value: unknown): WorkspaceReceipt {
+  if (!record(value) || typeof value.workspaceId !== "string" || !value.workspaceId || typeof value.baselineHash !== "string" || typeof value.snapshotHash !== "string") throw new Error("invalid workspace receipt");
+  const receipt: WorkspaceReceipt = {
+    workspaceId: boundedText(value.workspaceId, "workspace id", 128), baselineHash: boundedText(value.baselineHash, "baseline hash", 128),
+    snapshotHash: boundedText(value.snapshotHash, "snapshot hash", 128), changedPaths: boundedStrings(value.changedPaths, "workspace changed paths", 128, 512),
+    createdAt: validTimestamp(value.createdAt, "workspace receipt timestamp"),
+  };
+  if (value.version !== undefined) {
+    if (value.version !== 1) throw new Error("unsupported workspace receipt version");
+    const required = ["root", "path", "taskId", "topic", "baselineCommit", "baselineRef", "worktreeGitDir", "ownershipToken", "intentPath", "workspaceHeadCommit", "realHead", "realIndexHash", "realIndexTree", "stagedPatchHash", "unstagedPatchHash", "realSourceSnapshotHash"] as const;
+    for (const field of required) if (typeof value[field] !== "string" || !value[field]) throw new Error(`invalid workspace receipt ${field}`);
+    Object.assign(receipt, {
+      version: 1, root: boundedText(value.root, "workspace root"), path: boundedText(value.path, "workspace path"),
+      taskId: boundedText(value.taskId, "workspace task id", 128), topic: boundedText(value.topic, "workspace topic", 256),
+      baselineCommit: boundedText(value.baselineCommit, "baseline commit", 128), baselineRef: boundedText(value.baselineRef, "baseline ref", 256),
+      worktreeGitDir: boundedText(value.worktreeGitDir, "worktree git directory"), ownershipToken: boundedText(value.ownershipToken, "workspace ownership token", 128),
+      intentPath: boundedText(value.intentPath, "workspace recovery intent path"), workspaceHeadCommit: boundedText(value.workspaceHeadCommit, "workspace HEAD commit", 128),
+      realHead: boundedText(value.realHead, "workspace real HEAD", 128), realIndexHash: boundedText(value.realIndexHash, "workspace index hash", 128),
+      realIndexTree: boundedText(value.realIndexTree, "workspace index tree", 128), stagedPatchHash: boundedText(value.stagedPatchHash, "workspace staged patch hash", 128),
+      unstagedPatchHash: boundedText(value.unstagedPatchHash, "workspace unstaged patch hash", 128), realSourceSnapshotHash: boundedText(value.realSourceSnapshotHash, "workspace source snapshot hash", 128),
+      includedUntracked: boundedStrings(value.includedUntracked, "workspace included untracked", 128, 512),
+      managedPaths: boundedStrings(value.managedPaths, "workspace managed paths", 128, 512),
+      writeScope: boundedStrings(value.writeScope, "workspace write scope", 64, 512),
+      ...(typeof value.integrationBaseCommit === "string" ? { integrationBaseCommit: boundedText(value.integrationBaseCommit, "integration base commit", 128) } : {}),
+    });
+    const prepared = [value.preparedResultCommit, value.preparedResultRef, value.preparedPatchHash];
+    if (prepared.some((item) => item !== undefined)) {
+      if (prepared.some((item) => typeof item !== "string" || !item)) throw new Error("incomplete prepared workspace receipt");
+      Object.assign(receipt, {
+        preparedResultCommit: boundedText(value.preparedResultCommit, "prepared result commit", 128),
+        preparedResultRef: boundedText(value.preparedResultRef, "prepared result ref", 256),
+        preparedPatchHash: boundedText(value.preparedPatchHash, "prepared patch hash", 128),
+      });
+    }
+  }
+  return receipt;
+}
+function normalizeIntegrationReceipt(value: unknown): IntegrationReceipt {
+  if (!record(value) || typeof value.integrationId !== "string" || !value.integrationId || typeof value.preSnapshotHash !== "string" || typeof value.postSnapshotHash !== "string" || typeof value.patchHash !== "string") throw new Error("invalid integration receipt");
+  const receipt: IntegrationReceipt = {
+    integrationId: boundedText(value.integrationId, "integration id", 128), preSnapshotHash: boundedText(value.preSnapshotHash, "pre snapshot hash", 128),
+    postSnapshotHash: boundedText(value.postSnapshotHash, "post snapshot hash", 128), patchHash: boundedText(value.patchHash, "patch hash", 128),
+    integratedAt: validTimestamp(value.integratedAt, "integration timestamp"),
+  };
+  if (value.version !== undefined) {
+    if (value.version !== 1) throw new Error("unsupported integration receipt version");
+    const required = ["workspaceId", "resultCommit", "resultRef", "observedHead", "observedIndexHash"] as const;
+    for (const field of required) if (typeof value[field] !== "string" || !value[field]) throw new Error(`invalid integration receipt ${field}`);
+    Object.assign(receipt, {
+      version: 1, workspaceId: boundedText(value.workspaceId, "integration workspace id", 128),
+      resultCommit: boundedText(value.resultCommit, "integration result commit", 128), resultRef: boundedText(value.resultRef, "integration result ref", 256),
+      observedHead: boundedText(value.observedHead, "integration observed HEAD", 128), observedIndexHash: boundedText(value.observedIndexHash, "integration observed index hash", 128),
+      changedPaths: boundedStrings(value.changedPaths, "integration changed paths", 128, 512),
+    });
+  }
+  return receipt;
+}
 function normalizeLease(value: unknown): RunLease { if (!record(value) || typeof value.id !== "string" || !value.id || typeof value.runId !== "string" || !value.runId || typeof value.ownerId !== "string" || !value.ownerId || !Number.isSafeInteger(value.fence) || (value.fence as number) < 1 || !['plan-review','task-execution','initiative-acceptance','complete','pending','implementation','general-review','concern-review','remediation','workspace','integration','verification','ready-to-complete','historical'].includes(value.stage as string)) throw new Error("invalid run lease"); const acquiredAt = validTimestamp(value.acquiredAt, "run lease acquiredAt"); const expiresAt = validTimestamp(value.expiresAt, "run lease expiresAt"); if (Date.parse(expiresAt) <= Date.parse(acquiredAt)) throw new Error("run lease must expire after acquisition"); return { id: boundedText(value.id, "lease id", 128), runId: boundedText(value.runId, "run id", 128), ownerId: boundedText(value.ownerId, "lease owner", 128), stage: value.stage as RunLease["stage"], ...(typeof value.taskId === "string" ? { taskId: value.taskId } : {}), fence: value.fence as number, acquiredAt, expiresAt }; }
 function normalizeContract(value: unknown): ContractIdentity { if (!record(value) || !Number.isSafeInteger(value.revision) || (value.revision as number) < 1 || typeof value.hash !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.hash)) throw new Error("invalid contract identity"); return { revision: value.revision as number, hash: value.hash, ...(typeof value.linkedPlanHash === "string" ? { linkedPlanHash: value.linkedPlanHash } : {}) }; }
 function normalizeCheckpoint(value: unknown): VerificationCheckpoint | undefined { if (value === undefined) return undefined; if (!record(value) || !Number.isSafeInteger(value.revision) || (value.revision as number) < 1) throw new Error("invalid verification checkpoint"); return { revision: value.revision as number, at: validTimestamp(value.at, "verification checkpoint"), ...(typeof value.sessionId === "string" && value.sessionId ? { sessionId: value.sessionId } : {}), ...(Number.isSafeInteger(value.branchLength) && (value.branchLength as number) >= 0 ? { branchLength: value.branchLength as number } : {}) }; }
@@ -646,6 +783,7 @@ function normalizeVerificationDecision(value: unknown): WorkflowTask["verificati
 function normalizeHistory(value: unknown): HistoryEntry[] { if (value === undefined) return []; if (!Array.isArray(value) || value.length > MAX_HISTORY) throw new Error(`workflow history exceeds ${MAX_HISTORY} entries`); return value.map((item) => { if (!record(item) || typeof item.id !== "string" || !item.id || typeof item.type !== "string" || !item.type) throw new Error("invalid workflow history"); return { id: boundedText(item.id, "history id", 128), type: boundedText(item.type, "history type", 128), at: validTimestamp(item.at, "history timestamp"), summary: boundedText(item.summary, "history summary"), ...(typeof item.taskId === "string" ? { taskId: item.taskId } : {}), ...(item.provenance ? { provenance: normalizeProvenance(item.provenance) } : {}), ...(item.auditCritical === true ? { auditCritical: true } : {}) }; }); }
 function appendHistory(history: HistoryEntry[], entry: HistoryEntry): HistoryEntry[] { const next = [...history, entry]; if (next.length <= MAX_HISTORY) return next; const removable = next.findIndex((item) => !item.auditCritical); if (removable < 0) throw new Error("workflow history is full of audit-critical provenance; archive before continuing"); return next.filter((_, index) => index !== removable); }
 function boundedAppend<T>(items: T[], value: T, max: number, label: string): T[] { if (items.length >= max) throw new Error(`${label} exceeds ${max} entries`); return [...items, value]; }
+function sameStringSet(left: string[], right: string[]): boolean { const orderedRight = [...right].sort(); return left.length === right.length && [...left].sort().every((value, index) => value === orderedRight[index]); }
 function boundedMergeById<T extends { id: string }>(items: T[], additions: T[], max: number, label: string): T[] { const map = new Map(items.map((item) => [item.id, item])); additions.forEach((item) => map.set(item.id, item)); if (map.size > max) throw new Error(`${label} exceeds ${max} entries`); return [...map.values()]; }
 function boundedStrings(value: unknown, label: string, maxItems: number, maxLength: number): string[] { if (value === undefined) return []; if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item.trim() || item.trim().length > maxLength)) throw new Error(`${label} contains an invalid value`); const normalized = [...new Set(value.map((item) => (item as string).trim()))]; if (normalized.length > maxItems) throw new Error(`${label} exceeds ${maxItems} items`); return normalized; }
 function boundedText(value: unknown, label: string, max = MAX_TEXT): string { if (typeof value !== "string" || !value.trim()) throw new Error(`${label} is required`); if (value.trim().length > max) throw new Error(`${label} exceeds ${max} characters`); return value.trim(); }

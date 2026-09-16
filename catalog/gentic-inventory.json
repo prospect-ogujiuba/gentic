@@ -295,9 +295,11 @@
       "sourceFiles": [
         "extensions/pi-swe/index.ts",
         "extensions/pi-swe/src/command.ts",
+        "extensions/pi-swe/src/service.ts",
         "extensions/pi-swe/src/store.ts",
         "extensions/pi-swe/src/tool.ts",
-        "extensions/pi-swe/src/workflow.ts"
+        "extensions/pi-swe/src/workflow.ts",
+        "extensions/pi-swe/src/workspace.ts"
       ],
       "registrations": {
         "commands": [

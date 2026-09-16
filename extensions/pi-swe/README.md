@@ -8,9 +8,9 @@ A small, opt-in workflow extension for durable multi-step software work. Normal 
 - **Commands/tools:** `/swe status`, `/swe config`, `/swe migrate`, `/swe work`; model-callable `swe_workflow`.
 - **Events:** none.
 - **State:** `.model-artifacts/initiatives/<topic>/workflow.json` is the sole mutable authority. The bundled schema describes canonical writes; the runtime explicitly normalizes older version-1 tasks missing assessment fields to `unassessed`.
-- **Modules:** `src/workflow.ts` owns types and the reducer; `src/store.ts` owns bounded atomic persistence and the legacy importer; `src/tool.ts` and `src/command.ts` are Pi adapters.
+- **Modules:** `src/workflow.ts` owns types and the reducer; `src/store.ts` owns bounded atomic persistence and the legacy importer; `src/workspace.ts` owns recoverable Git baselines, detached worktrees, and index-preserving integration; `src/tool.ts` and `src/command.ts` are Pi adapters.
 - **Tests:** `npm run test:swe`; use `npm run typecheck` and `npm run check` for package integration.
-- **Non-goals:** no global tool-call interception, generated reports, per-stage runner, review theater, peer-extension imports, hidden workflows, or multi-file transactions.
+- **Non-goals:** no generated review theater, peer-extension imports, hidden workflows, or multi-file filesystem transactions.
 
 ## Use
 
@@ -55,6 +55,14 @@ Evidence must be newer than the task's activation or latest revision timestamp, 
 Use `revise` with the desired full task graph to add, remove, or update planned work. Completed, active, and blocked tasks cannot be removed; statuses, evidence, evidence links, completion timestamps, and imported provenance are retained for matching tasks.
 
 Every activation path—commands, model-callable start/resume, and automatic advancement—returns the same coarse implementation guidance. It does not dispatch separate planning, implementation, verification, review, and finalization turns.
+
+### Git workspace safety
+
+`GitWorkspaceManager` preflights repository capabilities before mutation. It rejects non-root/bare or unborn repositories, unresolved operations/conflicts, submodules, sparse checkouts, and Git filters/LFS instead of falling back to shared-directory execution. It records real HEAD, index tree/hash, separate staged and unstaged patch hashes, and a bounded working-copy fingerprint. Untracked inputs are opt-in; ignored files, dependency/build trees, credentials, and other untracked files are not automatically captured. Selecting ambiguous or sensitive inputs is a user decision.
+
+Each task receives a detached worktree at a pinned synthetic baseline. Synthetic commits plus `refs/pi-swe/baselines/*` and prepared `refs/pi-swe/results/*` are local retention objects, not user commits. Bounded creation intents under the Git common directory recover crashes before a receipt can be persisted; versioned workflow receipts then bind the intent path, ownership marker, worktree administration directory, refs, preimage, and prepared result so restart/resume does not depend on conversation state. Workflow/runtime authority is excluded from source fingerprints and rejected as task output. Integration checks scope, path traversal, escaping symlinks, main-checkout HEAD/index/content drift, untracked collisions, prepared-patch integrity, patch size, and the observed post-image. It applies to the working tree without staging, stashing, resetting, committing on the user branch, or pushing.
+
+Failed, rejected, paused, interrupted, and unfinalized workspaces are retained. Exact expected post-images recover an apply/persist crash without reapplying. Cleanup is ownership-checked, compare-and-delete, and idempotent; it requires the matching finalized integration receipt or explicit discard authorization and removes the worktree, both retention refs, and creation intent. Remediation reconstructs the original task baseline plus its cumulative integrated delta while applying only the new repair delta. Git preimage checks reduce races but are not a filesystem transaction against arbitrary concurrent writers, and isolated worktrees are not an OS sandbox.
 
 ### pi-todo interoperability
 
