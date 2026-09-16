@@ -149,7 +149,24 @@
         "phase": { "enum": ["plan-review", "task-execution", "initiative-acceptance", "complete"] },
         "nextFence": { "type": "integer", "minimum": 1 },
         "activeRun": { "$ref": "#/$defs/lease" },
+        "parent": { "$ref": "#/$defs/parentAuthority" },
         "history": { "type": "array", "maxItems": 128, "items": { "$ref": "#/$defs/history" } }
+      },
+      "additionalProperties": false
+    },
+    "parentAuthority": {
+      "type": "object",
+      "required": ["ownerId", "sessionId", "runtimeId", "cwd", "claimedAt", "valid"],
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "runtimeId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "cwd": { "$ref": "#/$defs/text" },
+        "sessionFile": { "$ref": "#/$defs/text" },
+        "claimedAt": { "$ref": "#/$defs/timestamp" },
+        "valid": { "type": "boolean" },
+        "invalidatedAt": { "$ref": "#/$defs/timestamp" },
+        "invalidatedReason": { "$ref": "#/$defs/text" }
       },
       "additionalProperties": false
     },
@@ -175,14 +192,25 @@
         "at": { "$ref": "#/$defs/timestamp" },
         "contractHash": { "$ref": "#/$defs/hash" },
         "snapshotHash": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "cwd": { "$ref": "#/$defs/text" },
+        "branch": { "type": ["string", "null"], "minLength": 1, "maxLength": 512 },
+        "head": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "beforeSnapshotHash": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "afterSnapshotHash": { "type": "string", "minLength": 1, "maxLength": 128 },
         "source": {
           "type": "object",
           "required": ["kind", "toolCallId", "workflowRevision"],
           "properties": {
             "kind": { "const": "bash-tool-result" },
             "toolCallId": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "toolName": { "const": "bash" },
             "workflowRevision": { "type": "integer", "minimum": 1 },
-            "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 }
+            "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "runtimeId": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "sessionFile": { "$ref": "#/$defs/text" },
+            "sessionBranchId": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "branchLength": { "type": "integer", "minimum": 0 }
           },
           "additionalProperties": false
         }
@@ -213,12 +241,14 @@
         "preparedResultRef": { "type": "string", "minLength": 1, "maxLength": 256 },
         "preparedPatchHash": { "type": "string", "minLength": 1, "maxLength": 128 },
         "realHead": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "realBranch": { "type": ["string", "null"], "minLength": 1, "maxLength": 512 },
         "realIndexHash": { "type": "string", "minLength": 1, "maxLength": 128 },
         "realIndexTree": { "type": "string", "minLength": 1, "maxLength": 128 },
         "stagedPatchHash": { "type": "string", "minLength": 1, "maxLength": 128 },
         "unstagedPatchHash": { "type": "string", "minLength": 1, "maxLength": 128 },
         "realSourceSnapshotHash": { "type": "string", "minLength": 1, "maxLength": 128 },
         "includedUntracked": { "type": "array", "maxItems": 128, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 512 } },
+        "baselineUntrackedPathHashes": { "type": "array", "maxItems": 512, "uniqueItems": true, "items": { "$ref": "#/$defs/hash" } },
         "managedPaths": { "type": "array", "maxItems": 128, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 512 } },
         "integrationBaseCommit": { "type": "string", "minLength": 1, "maxLength": 128 },
         "writeScope": { "type": "array", "maxItems": 64, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 512 } }
@@ -240,6 +270,7 @@
         "resultCommit": { "type": "string", "minLength": 1, "maxLength": 128 },
         "resultRef": { "type": "string", "minLength": 1, "maxLength": 256 },
         "observedHead": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "observedBranch": { "type": ["string", "null"], "minLength": 1, "maxLength": 512 },
         "observedIndexHash": { "type": "string", "minLength": 1, "maxLength": 128 },
         "changedPaths": { "type": "array", "maxItems": 128, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 512 } }
       },

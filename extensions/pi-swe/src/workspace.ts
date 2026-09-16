@@ -14,6 +14,7 @@ const DEFAULT_LIMITS: WorkspaceLimits = {
 };
 const AUTHORITY_PREFIXES = [".model-artifacts/initiatives/", ".model-artifacts/system/"];
 const MAX_RECEIPT_PATHS = 128;
+const MAX_BASELINE_UNTRACKED_PATHS = 512;
 const MAX_WRITE_SCOPES = 64;
 const MAX_RECEIPT_PATH_LENGTH = 512;
 const ZERO = Buffer.from([0]);
@@ -46,12 +47,14 @@ export type GitWorkspaceReceipt = WorkspaceReceipt & {
   preparedResultRef?: string;
   preparedPatchHash?: string;
   realHead: string;
+  realBranch?: string | null;
   realIndexHash: string;
   realIndexTree: string;
   stagedPatchHash: string;
   unstagedPatchHash: string;
   realSourceSnapshotHash: string;
   includedUntracked: string[];
+  baselineUntrackedPathHashes?: string[];
   managedPaths: string[];
   integrationBaseCommit?: string;
   writeScope: string[];
@@ -78,7 +81,7 @@ type WorkspaceCreationIntent = {
   managedPaths: string[];
   changedPaths: string[];
   before: RepositoryPreflight;
-  input: { topic: string; taskId: string; writeScope: string[]; includedUntracked: string[]; createdAt: string };
+  input: { topic: string; taskId: string; writeScope: string[]; includedUntracked: string[]; baselineUntrackedPathHashes: string[]; createdAt: string };
   receipt?: GitWorkspaceReceipt;
 };
 
@@ -88,6 +91,7 @@ export type GitIntegrationReceipt = IntegrationReceipt & {
   resultCommit: string;
   resultRef: string;
   observedHead: string;
+  observedBranch?: string | null;
   observedIndexHash: string;
   changedPaths: string[];
 };
@@ -139,6 +143,21 @@ export class GitWorkspaceManager {
     return { root: this.root, gitDir, head, branch: this.optionalText(["symbolic-ref", "--short", "HEAD"]), indexHash, indexTree, stagedPatchHash, unstagedPatchHash, sourceSnapshotHash };
   }
 
+  inspectVerificationSource(receipt: GitWorkspaceReceipt, integration: GitIntegrationReceipt): { hash: string; head: string; branch: string | null; changedPaths: string[] } {
+    this.validateReceiptShape(receipt);
+    if (integration.workspaceId !== receipt.workspaceId || integration.resultCommit !== receipt.preparedResultCommit || integration.postSnapshotHash !== receipt.snapshotHash) throw new Error("verification receipts do not describe the same integrated source snapshot");
+    if (!receipt.baselineUntrackedPathHashes) throw new Error("workspace receipt lacks the bounded baseline untracked inventory required for verification");
+    const baselineUntracked = new Set(receipt.baselineUntrackedPathHashes);
+    const known = new Set([...receipt.includedUntracked, ...receipt.managedPaths]);
+    const unexpectedUntracked = this.eligibleUntrackedPaths().filter((path) => !known.has(path) && !baselineUntracked.has(hash(Buffer.from(path))));
+    const current = this.preflight([...this.receiptSourcePaths(receipt), ...unexpectedUntracked]);
+    const changedPaths = [...new Set([
+      ...splitZero(this.git(["diff", "--name-only", "-z", integration.resultCommit, "--"])).filter(Boolean).filter((path) => !isAuthorityPath(path)),
+      ...unexpectedUntracked,
+    ])].sort(compareUtf8);
+    return { hash: current.sourceSnapshotHash, head: current.head, branch: current.branch, changedPaths };
+  }
+
   createWorkspace(input: { topic: string; taskId: string; writeScope: string[]; includeUntracked?: string[]; workspaceId?: string; createdAt?: string }): GitWorkspaceReceipt {
     if (!input.writeScope.length) throw new Error("workspace requires a non-empty write scope");
     if (input.writeScope.length > MAX_WRITE_SCOPES) throw new Error(`workspace write scope exceeds ${MAX_WRITE_SCOPES} entries`);
@@ -147,7 +166,9 @@ export class GitWorkspaceManager {
     const writeScope = input.writeScope.map(validateScope);
     const createdAt = validTimestamp(input.createdAt ?? new Date().toISOString(), "workspace creation timestamp");
     const workspaceId = safeId(input.workspaceId ?? randomUUID(), "workspace id");
-    const includedUntracked = this.validateIncludedUntracked(input.includeUntracked ?? []);
+    const eligibleUntracked = this.eligibleUntrackedPaths();
+    const includedUntracked = this.validateIncludedUntracked(input.includeUntracked ?? [], eligibleUntracked);
+    const baselineUntrackedPathHashes = eligibleUntracked.map((path) => hash(Buffer.from(path))).sort();
     const before = this.preflight(includedUntracked);
     const baseline = this.captureCommit(before.head, includedUntracked, `pi-swe baseline ${workspaceId}`);
     const baselineRef = `refs/pi-swe/baselines/${workspaceId}`;
@@ -159,7 +180,7 @@ export class GitWorkspaceManager {
     const intent: WorkspaceCreationIntent = {
       version: 1, workspaceId, workspacePath, ownershipToken, baselineCommit: baseline, baselineRef,
       workspaceHeadCommit: baseline, managedPaths: [], changedPaths: [], before,
-      input: { topic: input.topic, taskId, writeScope, includedUntracked, createdAt },
+      input: { topic: input.topic, taskId, writeScope, includedUntracked, baselineUntrackedPathHashes, createdAt },
     };
     this.writeIntent(intent, true);
     let registered = false;
@@ -177,10 +198,10 @@ export class GitWorkspaceManager {
         version: 1, workspaceId, root: this.root, path: workspacePath, taskId,
         topic: input.topic, baselineHash: before.sourceSnapshotHash, baselineCommit: baseline, baselineRef,
         worktreeGitDir, ownershipToken, intentPath, workspaceHeadCommit: baseline, snapshotHash,
-        realHead: before.head, realIndexHash: before.indexHash, realIndexTree: before.indexTree,
+        realHead: before.head, realBranch: before.branch, realIndexHash: before.indexHash, realIndexTree: before.indexTree,
         stagedPatchHash: before.stagedPatchHash, unstagedPatchHash: before.unstagedPatchHash,
         realSourceSnapshotHash: before.sourceSnapshotHash,
-        includedUntracked, managedPaths: [], writeScope, changedPaths: [], createdAt,
+        includedUntracked, baselineUntrackedPathHashes, managedPaths: [], writeScope, changedPaths: [], createdAt,
       };
       this.writeIntent({ ...intent, receipt });
       return receipt;
@@ -218,9 +239,10 @@ export class GitWorkspaceManager {
       topic: intent.input.topic, baselineHash: intent.before.sourceSnapshotHash, baselineCommit: intent.baselineCommit, baselineRef: intent.baselineRef,
       worktreeGitDir, ownershipToken: intent.ownershipToken, intentPath: this.intentPath(intent.workspaceId), workspaceHeadCommit: intent.workspaceHeadCommit,
       ...(intent.integrationBaseCommit ? { integrationBaseCommit: intent.integrationBaseCommit } : {}),
-      snapshotHash: this.fingerprintTree(intent.workspaceHeadCommit), realHead: intent.before.head, realIndexHash: intent.before.indexHash,
+      snapshotHash: this.fingerprintTree(intent.workspaceHeadCommit), realHead: intent.before.head, realBranch: intent.before.branch, realIndexHash: intent.before.indexHash,
       realIndexTree: intent.before.indexTree, stagedPatchHash: intent.before.stagedPatchHash, unstagedPatchHash: intent.before.unstagedPatchHash,
       realSourceSnapshotHash: intent.before.sourceSnapshotHash, includedUntracked: intent.input.includedUntracked,
+      baselineUntrackedPathHashes: intent.input.baselineUntrackedPathHashes,
       managedPaths: intent.managedPaths, writeScope: intent.input.writeScope, changedPaths: intent.changedPaths, createdAt: intent.input.createdAt,
     };
     this.validateReceipt(receipt);
@@ -353,7 +375,7 @@ export class GitWorkspaceManager {
     const intent: WorkspaceCreationIntent = {
       version: 1, workspaceId: id, workspacePath: path, ownershipToken, baselineCommit: receipt.baselineCommit, baselineRef: ref,
       workspaceHeadCommit: integrated.resultCommit, integrationBaseCommit: integrated.resultCommit, managedPaths, changedPaths: integrated.changedPaths,
-      before: current, input: { topic: receipt.topic, taskId: receipt.taskId, writeScope: receipt.writeScope, includedUntracked: receipt.includedUntracked, createdAt },
+      before: current, input: { topic: receipt.topic, taskId: receipt.taskId, writeScope: receipt.writeScope, includedUntracked: receipt.includedUntracked, baselineUntrackedPathHashes: receipt.baselineUntrackedPathHashes ?? this.eligibleUntrackedPaths().map((item) => hash(Buffer.from(item))).sort(), createdAt },
     };
     const intentPath = this.intentPath(id);
     this.writeIntent(intent, true);
@@ -371,7 +393,8 @@ export class GitWorkspaceManager {
         worktreeGitDir, ownershipToken, intentPath, workspaceHeadCommit: integrated.resultCommit,
         preparedResultCommit: undefined, preparedResultRef: undefined, preparedPatchHash: undefined,
         baselineHash: current.sourceSnapshotHash, snapshotHash: this.fingerprintTree(integrated.resultCommit), changedPaths: integrated.changedPaths,
-        managedPaths, realHead: current.head, realIndexHash: current.indexHash, realIndexTree: current.indexTree,
+        managedPaths, baselineUntrackedPathHashes: intent.input.baselineUntrackedPathHashes,
+        realHead: current.head, realBranch: current.branch, realIndexHash: current.indexHash, realIndexTree: current.indexTree,
         stagedPatchHash: current.stagedPatchHash, unstagedPatchHash: current.unstagedPatchHash,
         realSourceSnapshotHash: current.sourceSnapshotHash, createdAt,
       };
@@ -409,7 +432,7 @@ export class GitWorkspaceManager {
     const intent: WorkspaceCreationIntent = {
       version: 1, workspaceId: id, workspacePath: path, ownershipToken, baselineCommit: receipt.baselineCommit, baselineRef: ref,
       workspaceHeadCommit: currentCommit, integrationBaseCommit: currentCommit, managedPaths, changedPaths: cumulativePaths,
-      before: current, input: { topic: receipt.topic, taskId: receipt.taskId, writeScope: receipt.writeScope, includedUntracked: receipt.includedUntracked, createdAt },
+      before: current, input: { topic: receipt.topic, taskId: receipt.taskId, writeScope: receipt.writeScope, includedUntracked: receipt.includedUntracked, baselineUntrackedPathHashes: receipt.baselineUntrackedPathHashes ?? this.eligibleUntrackedPaths().map((item) => hash(Buffer.from(item))).sort(), createdAt },
     };
     const intentPath = this.intentPath(id);
     this.writeIntent(intent, true);
@@ -427,7 +450,8 @@ export class GitWorkspaceManager {
         worktreeGitDir, ownershipToken, intentPath, workspaceHeadCommit: currentCommit,
         preparedResultCommit: undefined, preparedResultRef: undefined, preparedPatchHash: undefined,
         baselineHash: current.sourceSnapshotHash, snapshotHash: this.fingerprintTree(currentCommit), changedPaths: cumulativePaths,
-        managedPaths, realHead: current.head, realIndexHash: current.indexHash, realIndexTree: current.indexTree,
+        managedPaths, baselineUntrackedPathHashes: intent.input.baselineUntrackedPathHashes,
+        realHead: current.head, realBranch: current.branch, realIndexHash: current.indexHash, realIndexTree: current.indexTree,
         stagedPatchHash: current.stagedPatchHash, unstagedPatchHash: current.unstagedPatchHash,
         realSourceSnapshotHash: current.sourceSnapshotHash, createdAt,
       };
@@ -593,10 +617,16 @@ export class GitWorkspaceManager {
     return entries.filter((path) => entryExists(resolve(this.root, path)));
   }
 
-  private validateIncludedUntracked(paths: string[]): string[] {
+  private eligibleUntrackedPaths(): string[] {
+    const paths = splitZero(this.git(["ls-files", "--others", "--exclude-standard", "-z"])).filter(Boolean).map(validatePath).filter((path) => !isAuthorityPath(path)).sort(compareUtf8);
+    if (paths.length > MAX_BASELINE_UNTRACKED_PATHS) throw new Error(`eligible untracked path inventory exceeds ${MAX_BASELINE_UNTRACKED_PATHS} entries`);
+    return paths;
+  }
+
+  private validateIncludedUntracked(paths: string[], eligible = this.eligibleUntrackedPaths()): string[] {
     const normalized = [...new Set(paths.map(validatePath))].sort();
     if (normalized.length > MAX_RECEIPT_PATHS) throw new Error(`included untracked inputs exceed ${MAX_RECEIPT_PATHS} receipt entries`);
-    const untracked = new Set(splitZero(this.git(["ls-files", "--others", "--exclude-standard", "-z"])));
+    const untracked = new Set(eligible);
     for (const path of normalized) {
       if (isAuthorityPath(path)) throw new Error(`workflow/runtime authority cannot be included in a source baseline: ${path}`);
       if (!untracked.has(path)) throw new Error(`explicit untracked input is not an eligible untracked file: ${path}`);
@@ -635,7 +665,7 @@ export class GitWorkspaceManager {
     return {
       version: 1, integrationId: randomUUID(), workspaceId: prepared.receipt.workspaceId,
       preSnapshotHash: prepared.receipt.realSourceSnapshotHash, postSnapshotHash, patchHash: prepared.patchHash,
-      resultCommit: prepared.resultCommit, resultRef: prepared.resultRef, observedHead: observed.head,
+      resultCommit: prepared.resultCommit, resultRef: prepared.resultRef, observedHead: observed.head, observedBranch: observed.branch,
       observedIndexHash: observed.indexHash, changedPaths: prepared.changedPaths, integratedAt,
     };
   }
@@ -680,6 +710,7 @@ export class GitWorkspaceManager {
     if (receipt.baselineRef !== `refs/pi-swe/baselines/${receipt.workspaceId}`) throw new Error("workspace baseline ref does not match its owner");
     if (receipt.intentPath !== this.intentPath(receipt.workspaceId)) throw new Error("workspace recovery intent path does not match its owner");
     if (receipt.preparedResultRef && receipt.preparedResultRef !== `refs/pi-swe/results/${receipt.workspaceId}`) throw new Error("workspace result ref does not match its owner");
+    if (receipt.baselineUntrackedPathHashes && (receipt.baselineUntrackedPathHashes.length > MAX_BASELINE_UNTRACKED_PATHS || receipt.baselineUntrackedPathHashes.some((item) => !/^sha256:[a-f0-9]{64}$/.test(item)))) throw new Error("workspace baseline untracked inventory is invalid");
     for (const path of this.receiptSourcePaths(receipt)) {
       validatePath(path);
       if (isAuthorityPath(path)) throw new Error(`workspace receipt includes authority path: ${path}`);
@@ -748,11 +779,13 @@ export class GitWorkspaceManager {
     if (!tempRelative || tempRelative.includes(sep) || tempRelative === ".." || tempRelative.startsWith(`..${sep}`) || !/^pi-swe-[A-Za-z0-9._-]+$/.test(tempRelative)) throw new Error("workspace creation intent path escapes the recovery root");
     if (!/^[a-f0-9]{40,64}$/.test(value.baselineCommit) || value.baselineRef !== `refs/pi-swe/baselines/${workspaceId}`) throw new Error("workspace creation intent baseline is invalid");
     safeId(value.ownershipToken, "workspace ownership token");
-    if (typeof value.input.topic !== "string" || !isValidTopic(value.input.topic) || typeof value.input.taskId !== "string" || !Array.isArray(value.input.writeScope) || !Array.isArray(value.input.includedUntracked) || typeof value.input.createdAt !== "string") throw new Error("workspace creation intent input is invalid");
+    if (typeof value.input.topic !== "string" || !isValidTopic(value.input.topic) || typeof value.input.taskId !== "string" || !Array.isArray(value.input.writeScope) || !Array.isArray(value.input.includedUntracked) || !Array.isArray(value.input.baselineUntrackedPathHashes) || typeof value.input.createdAt !== "string") throw new Error("workspace creation intent input is invalid");
     if (typeof value.before.head !== "string" || typeof value.before.indexHash !== "string" || typeof value.before.indexTree !== "string" || typeof value.before.stagedPatchHash !== "string" || typeof value.before.unstagedPatchHash !== "string" || typeof value.before.sourceSnapshotHash !== "string") throw new Error("workspace creation intent preflight is invalid");
     const intent = value as unknown as WorkspaceCreationIntent;
     intent.input.writeScope = intent.input.writeScope.map(validateScope);
     intent.input.includedUntracked = intent.input.includedUntracked.map(validatePath);
+    intent.input.baselineUntrackedPathHashes = intent.input.baselineUntrackedPathHashes.map((item) => { if (typeof item !== "string" || !/^sha256:[a-f0-9]{64}$/.test(item)) throw new Error("workspace creation intent has an invalid untracked path hash"); return item; });
+    if (intent.input.baselineUntrackedPathHashes.length > MAX_BASELINE_UNTRACKED_PATHS) throw new Error("workspace creation intent untracked inventory exceeds bounds");
     intent.managedPaths = intent.managedPaths.map(validatePath);
     intent.changedPaths = intent.changedPaths.map(validatePath);
     if (!/^[a-f0-9]{40,64}$/.test(intent.workspaceHeadCommit) || (intent.integrationBaseCommit !== undefined && !/^[a-f0-9]{40,64}$/.test(intent.integrationBaseCommit))) throw new Error("workspace creation intent HEAD is invalid");

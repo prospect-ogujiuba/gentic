@@ -6,9 +6,9 @@ A small, opt-in workflow extension for durable multi-step software work. Normal 
 
 - **What it does:** stores a goal and dependency-ordered tasks in one file, instructs the agent to assess applicable engineering approaches during planning, selects at most one active workflow task per repository, binds protected bash results as verification evidence, and advances completed work.
 - **Commands/tools:** `/swe status`, `/swe config`, `/swe migrate`, `/swe work`; model-callable `swe_workflow`.
-- **Events:** none.
+- **Events:** the v2 integrity controller defines fail-closed `tool_call`/`tool_result`, user-shell, agent-start, and session-shutdown guards. The installed v1 entrypoint intentionally does not register that controller until a production fenced-orchestration surface is delivered; isolated fixtures exercise it meanwhile. Version-1 compatibility views are always excluded until explicit migration.
 - **State:** `.model-artifacts/initiatives/<topic>/workflow.json` is the sole mutable authority. The bundled schema describes canonical writes; the runtime explicitly normalizes older version-1 tasks missing assessment fields to `unassessed`.
-- **Modules:** `src/workflow.ts` owns types and the reducer; `src/store.ts` owns bounded atomic persistence and the legacy importer; `src/workspace.ts` owns recoverable Git baselines, detached worktrees, and index-preserving integration; `src/tool.ts` and `src/command.ts` are Pi adapters.
+- **Modules:** `src/workflow.ts` owns types and the reducer; `src/store.ts` owns bounded atomic persistence and the legacy importer; `src/workspace.ts` owns recoverable Git baselines, detached worktrees, index-preserving integration, and whole-source fingerprints; `src/integrity.ts` owns parent capability and protected-verification authority; `src/tool.ts` and `src/command.ts` are Pi adapters.
 - **Tests:** `npm run test:swe`; use `npm run typecheck` and `npm run check` for package integration.
 - **Non-goals:** no generated review theater, peer-extension imports, hidden workflows, or multi-file filesystem transactions.
 
@@ -32,7 +32,7 @@ Small tasks should use normal Pi tools. Create a workflow only when work must su
         "performance": "latency is the reason for the change"
       },
       "acceptance": ["Repeated reads hit the cache"],
-      "verification": [{ "command": "npm test", "args": [] }]
+      "verification": [{ "command": "npm", "args": ["test"] }]
     },
     { "id": "T2", "title": "Integrate callers", "dependsOn": ["T1"], "approaches": [] }
   ]
@@ -55,6 +55,16 @@ Evidence must be newer than the task's activation or latest revision timestamp, 
 Use `revise` with the desired full task graph to add, remove, or update planned work. Completed, active, and blocked tasks cannot be removed; statuses, evidence, evidence links, completion timestamps, and imported provenance are retained for matching tasks.
 
 Every activation path—commands, model-callable start/resume, and automatic advancement—returns the same coarse implementation guidance. It does not dispatch separate planning, implementation, verification, review, and finalization turns.
+
+### Managed parent integrity
+
+The isolated v2 controller claims one parent owner, Pi session, extension-runtime nonce, repository cwd, and session-branch checkpoint. A competing parent, resumed/forked session, or reloaded runtime cannot inherit that authority. Shutdown invalidates the claim and any in-memory one-shot verification authorizations; the later recovery surface must establish fresh checkpoints rather than reuse stale evidence. The controller is not registered by the installed v1 entrypoint during this staged rollout, so version-1 workflows remain governed by the compatibility runtime and native v2 workflows cannot be activated through a partial production path.
+
+During managed execution the model parent may use only captured, provenance-stable read-only tools and read-only workflow status. Direct `edit`, `write`, general `bash`, alternate shells, `ctx_execute`, MCP execution, `interactive_shell`, batch/nested wrappers, and unknown or dynamically replaced tools fail closed. Protected `bash` is enabled only in the verification phase for the exact planned executable/arguments and cwd. Echo-style fabricated checks are invalid contracts.
+
+Each protected result is bound to its tool-call ID, current parent/session/runtime, workflow revision, task contract, cwd, Git HEAD/branch, and the same whole-source snapshot before and after execution. The snapshot covers every relevant tracked file—including configuration, tests, and lockfiles—plus explicitly selected untracked inputs. A later failure supersedes an earlier pass. Missing checks, results absent from the active session branch, source-changing checks, external-editor drift, and completion-time drift block completion. Source changes enter cumulative remediation and complete independent re-review; the parent does not patch, roll back, or discard accepted deltas directly.
+
+These controls are workflow capability and evidence-integrity checks, **not an OS sandbox**. Pi extensions run with the user's permissions. A malicious same-user process, a trusted extension that executes code behind an approved surface, or a user deliberately disabling the extension can bypass runtime interception. User-issued shell commands and external editors remain user-controlled; subsequent snapshot checks invalidate affected approvals and evidence instead of treating them as still current.
 
 ### Git workspace safety
 

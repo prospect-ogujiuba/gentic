@@ -11,6 +11,7 @@ import {
   type OrchestrationWorkspace,
 } from "../extensions/pi-swe/src/orchestration.ts";
 import type { AgentRunRequest, RunnerResult } from "../extensions/pi-swe/src/runner.ts";
+import { ManagedVerificationAuthority, renderVerificationCommand, type RelevantSourceInspector, type RelevantSourceSnapshot } from "../extensions/pi-swe/src/integrity.ts";
 import { WorkflowMutationService } from "../extensions/pi-swe/src/service.ts";
 import {
   createWorkflow,
@@ -18,7 +19,6 @@ import {
   type Finding,
   type RunLease,
   type StageReport,
-  type VerificationEvidence,
   type Workflow,
   type WorkflowApproach,
 } from "../extensions/pi-swe/src/workflow.ts";
@@ -138,19 +138,33 @@ class FakeWorkspace implements OrchestrationWorkspace {
   }
 }
 
+class EngineSnapshotInspector implements RelevantSourceInspector {
+  override?: RelevantSourceSnapshot;
+  sequence: RelevantSourceSnapshot[] = [];
+  inspect(workflow: Workflow): RelevantSourceSnapshot {
+    if (this.sequence.length) return structuredClone(this.sequence.shift()!);
+    if (this.override) return structuredClone(this.override);
+    const receipt = workflow.tasks[0]!.integrationReceipt;
+    return { hash: receipt?.postSnapshotHash ?? "not-integrated", head: receipt?.observedHead ?? "head", branch: "main", changedPaths: [] };
+  }
+}
+
 async function setup(approaches?: WorkflowApproach[], runner?: FakeRunner, workspace?: FakeWorkspace) {
   const cwd = mkdtempSync(join(tmpdir(), "pi-swe-engine-"));
   const service = new WorkflowMutationService(cwd);
   await service.create(workflow(approaches));
   const actualRunner = runner ?? new FakeRunner();
   const actualWorkspace = workspace ?? new FakeWorkspace();
+  const inspector = new EngineSnapshotInspector();
+  const parent = { ownerId: "parent", sessionId: "parent-session", runtimeId: "runtime-1", cwd, sessionBranchId: "leaf-1", branchLength: 10 };
+  const verificationAuthority = new ManagedVerificationAuthority(cwd, inspector, { now, id: (() => { let id = 0; return () => `auth-${++id}`; })() });
   const engine = new OrchestrationEngine(cwd, {
     service, runner: actualRunner, workspace: actualWorkspace,
-    ownerId: "parent", provider: "fixture", model: "fixture", thinking: "high", now,
+    ownerId: "parent", parent, verificationAuthority, provider: "fixture", model: "fixture", thinking: "high", now,
     id: (() => { let id = 0; return (prefix: string) => `${prefix}-${++id}`; })(),
     authorizeUserDecision: (decision) => decision.decidedBy === "user",
   });
-  return { cwd, service, runner: actualRunner, workspace: actualWorkspace, engine };
+  return { cwd, service, runner: actualRunner, workspace: actualWorkspace, engine, parent, verificationAuthority, inspector };
 }
 
 function current(service: WorkflowMutationService): Workflow { return service.read("engine-test", false)!.workflow; }
@@ -165,9 +179,13 @@ async function reachIntegration(value: Awaited<ReturnType<typeof setup>>): Promi
   await advance(value);
 }
 async function reachVerification(value: Awaited<ReturnType<typeof setup>>): Promise<void> { await reachIntegration(value); await advance(value); }
-function evidence(state: Workflow, exitCode = 0): VerificationEvidence {
+function protectedSubmission(value: Awaited<ReturnType<typeof setup>>, exitCode = 0, after?: RelevantSourceSnapshot) {
+  const state = current(value.service);
   const task = state.tasks[0]!;
-  return { command: "node", args: ["--test"], exitCode, at: now(), contractHash: task.contract.hash, snapshotHash: task.integrationReceipt!.postSnapshotHash, source: { kind: "bash-tool-result", toolCallId: `tool-${clock}`, workflowRevision: state.revision, sessionId: "parent" } };
+  const toolCallId = `tool-${clock}`;
+  const authorization = value.verificationAuthority.authorize({ workflow: state, taskId: task.id, toolName: "bash", toolCallId, commandLine: renderVerificationCommand(task.verification[0]!), parent: value.parent });
+  if (after) value.inspector.override = after;
+  return value.verificationAuthority.finish({ authorizationId: authorization.id, workflow: state, taskId: task.id, toolCallId, exitCode, parent: value.parent });
 }
 
 test("explicit FSM advances one stage at a time and does not skip required gates", async () => {
@@ -212,6 +230,24 @@ test("concurrent duplicate advances are fenced and spawn one fresh child", async
   const outcomes = await Promise.all([first, second]);
   assert.equal(runner.requests.length, 1);
   assert.equal(outcomes.filter((item) => item.kind === "stale").length, 1);
+});
+
+test("competing parent sessions cannot transfer workflow authority", async () => {
+  const value = await setup();
+  await advance(value); // claims parent and completes plan review
+  const state = current(value.service);
+  const competingRunner = new FakeRunner();
+  const competingParent = { ownerId: "parent-b", sessionId: "session-b", runtimeId: "runtime-b", cwd: value.cwd, sessionBranchId: "leaf-b", branchLength: 1 };
+  const competing = new OrchestrationEngine(value.cwd, {
+    service: value.service, runner: competingRunner, workspace: value.workspace,
+    ownerId: "parent-b", parent: competingParent, verificationAuthority: value.verificationAuthority,
+    provider: "fixture", model: "fixture", thinking: "high", now,
+  });
+  const result = await competing.advance("engine-test", state.revision);
+  assert.equal(result.kind, "blocked");
+  assert.match(result.message, /competing|stale parent/i);
+  assert.equal(competingRunner.requests.length, 0);
+  assert.equal(current(value.service).orchestration.parent?.ownerId, "parent");
 });
 
 test("cancelled lease fences stale child completion", async () => {
@@ -410,13 +446,8 @@ test("verification failure and source-changing verification use the same fresh r
     const value = await setup(undefined, undefined, workspace);
     await reachVerification(value);
     const state = current(value.service);
-    const failureEvidence = evidence(state, sourceChanged ? 0 : 1);
-    if (sourceChanged) {
-      const needsPaths = await value.engine.advance("engine-test", state.revision, { verification: { evidence: failureEvidence, observedSnapshotHash: "mutated-source" } });
-      assert.equal(needsPaths.kind, "needs-input");
-      assert.equal(current(value.service).revision, state.revision);
-    }
-    const handoff = await value.engine.advance("engine-test", state.revision, { verification: { evidence: failureEvidence, observedSnapshotHash: sourceChanged ? "mutated-source" : failureEvidence.snapshotHash!, observedChangedPaths: sourceChanged ? ["src/a.ts"] : [] } });
+    const submission = protectedSubmission(value, sourceChanged ? 0 : 1, sourceChanged ? { hash: "mutated-source", head: state.tasks[0]!.integrationReceipt!.observedHead!, branch: "main", changedPaths: ["src/a.ts"] } : undefined);
+    const handoff = await value.engine.advance("engine-test", state.revision, { verification: submission });
     assert.equal(handoff.kind, "blocked");
     assert.equal(current(value.service).tasks[0]!.phase, "remediation");
     await advance(value); // resume
@@ -425,6 +456,33 @@ test("verification failure and source-changing verification use the same fresh r
     if (sourceChanged) assert.deepEqual(workspace.driftPaths, ["src/a.ts"]);
     assert.equal(current(value.service).tasks[0]!.phase, "general-review");
   }
+});
+
+test("source drift outside task scope still invalidates approvals and enters remediation", async () => {
+  const value = await setup();
+  await reachVerification(value);
+  const state = current(value.service);
+  const submission = protectedSubmission(value, 0, { hash: "mutated-config", head: state.tasks[0]!.integrationReceipt!.observedHead!, branch: "main", changedPaths: ["package-lock.json"] });
+  const result = await value.engine.advance("engine-test", state.revision, { verification: submission });
+  assert.equal(result.kind, "blocked");
+  assert.equal(current(value.service).tasks[0]!.phase, "remediation");
+  assert.deepEqual(current(value.service).tasks[0]!.verificationDriftPaths, ["package-lock.json"]);
+});
+
+test("forged and stale verification submissions cannot advance the engine", async () => {
+  const value = await setup();
+  await reachVerification(value);
+  const state = current(value.service);
+  const forged = {
+    authorizationId: "model-authored", topic: state.topic, taskId: "T1", workflowRevision: state.revision,
+    evidence: { command: "node", args: ["--test"], exitCode: 0, at: now(), contractHash: state.tasks[0]!.contract.hash, snapshotHash: state.tasks[0]!.integrationReceipt!.postSnapshotHash },
+    beforeSnapshotHash: state.tasks[0]!.integrationReceipt!.postSnapshotHash, afterSnapshotHash: state.tasks[0]!.integrationReceipt!.postSnapshotHash,
+    sourceChanged: false, observedChangedPaths: [],
+  };
+  const result = await value.engine.advance("engine-test", state.revision, { verification: forged });
+  assert.equal(result.kind, "blocked");
+  assert.match(result.message, /forged|stale|protected/i);
+  assert.equal(current(value.service).revision, state.revision);
 });
 
 test("successful verification is snapshot-bound and initializes only after integration", async () => {
@@ -437,7 +495,24 @@ test("successful verification is snapshot-bound and initializes only after integ
   const waiting = await advance(value);
   assert.equal(waiting.kind, "verification-required");
   state = current(value.service);
-  await value.engine.advance("engine-test", state.revision, { verification: { evidence: evidence(state), observedSnapshotHash: state.tasks[0]!.integrationReceipt!.postSnapshotHash } });
+  const submission = protectedSubmission(value);
+  await value.engine.advance("engine-test", state.revision, { verification: submission });
+  assert.equal(current(value.service).tasks[0]!.phase, "ready-to-complete");
+});
+
+test("completion checks the source again inside the final CAS to catch TOCTOU drift", async () => {
+  const value = await setup();
+  await reachVerification(value);
+  let state = current(value.service);
+  await value.engine.advance("engine-test", state.revision, { verification: protectedSubmission(value) });
+  state = current(value.service);
+  assert.equal(state.tasks[0]!.phase, "ready-to-complete");
+  const stable = { hash: state.tasks[0]!.integrationReceipt!.postSnapshotHash, head: state.tasks[0]!.integrationReceipt!.observedHead!, branch: "main", changedPaths: [] };
+  value.inspector.sequence = [stable, { ...stable, hash: "toctou-change", changedPaths: ["test/a.test.ts"] }];
+  const result = await value.engine.advance("engine-test", state.revision);
+  assert.equal(result.kind, "blocked");
+  assert.match(result.message, /source snapshot changed/i);
+  assert.equal(current(value.service).revision, state.revision);
   assert.equal(current(value.service).tasks[0]!.phase, "ready-to-complete");
 });
 

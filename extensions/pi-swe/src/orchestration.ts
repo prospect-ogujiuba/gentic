@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { AgentRunRequest, AgentRunner, RunnerResult } from "./runner.ts";
+import type { ManagedVerificationAuthority, ParentExecutionIdentity, ProtectedVerificationSubmission } from "./integrity.ts";
 import { WorkflowMutationService } from "./service.ts";
 import {
   reduceWorkflow,
@@ -37,7 +38,7 @@ export type OrchestrationHandoff = {
 };
 
 export type OrchestrationAdvanceInput = {
-  verification?: { evidence: VerificationEvidence; observedSnapshotHash: string; observedChangedPaths?: string[] };
+  verification?: ProtectedVerificationSubmission;
 };
 
 type EngineOptions = {
@@ -45,6 +46,8 @@ type EngineOptions = {
   runner: OrchestrationRunner;
   workspace?: OrchestrationWorkspace;
   ownerId: string;
+  parent: ParentExecutionIdentity;
+  verificationAuthority?: Pick<ManagedVerificationAuthority, "consume" | "assertCompletion">;
   provider: string;
   model: string;
   thinking: AgentRunRequest["thinking"];
@@ -76,6 +79,7 @@ export class OrchestrationEngine {
 
   constructor(cwd: string, options: EngineOptions) {
     if (!options.ownerId.trim() || !options.provider.trim() || !options.model.trim()) throw new Error("orchestration owner, provider, and model are required");
+    if (options.parent.ownerId !== options.ownerId || !options.parent.sessionId.trim() || !options.parent.runtimeId.trim() || !options.parent.cwd.trim()) throw new Error("orchestration parent identity must match the owner and bind session, runtime, and cwd");
     this.cwd = cwd;
     this.options = options;
     this.service = options.service ?? new WorkflowMutationService(cwd);
@@ -86,8 +90,20 @@ export class OrchestrationEngine {
   async advance(topic: string, expectedRevision: number, input: OrchestrationAdvanceInput = {}): Promise<OrchestrationHandoff> {
     const located = this.service.read(topic, true);
     if (!located) throw new Error(`workflow ${topic} was not found`);
-    const workflow = located.workflow;
+    let workflow = located.workflow;
     if (workflow.revision !== expectedRevision) return this.handoff("stale", workflow, "workflow revision changed before advance");
+    try {
+      if (!workflow.orchestration.parent) {
+        const claimed = await this.service.mutate(topic, workflow.revision, (state) => reduceWorkflow(state, { type: "claim-parent", authority: {
+          ownerId: this.options.ownerId, sessionId: this.options.parent.sessionId, runtimeId: this.options.parent.runtimeId,
+          cwd: this.cwd, ...(this.options.parent.sessionFile ? { sessionFile: this.options.parent.sessionFile } : {}),
+          claimedAt: this.now(), valid: true,
+        } }, this.now()));
+        workflow = claimed.workflow;
+      } else this.assertParent(workflow);
+    } catch (error) {
+      return this.handoff("blocked", workflow, message(error));
+    }
     if (workflow.orchestration.mode !== "multi-agent") return this.handoff("blocked", workflow, "multi-agent orchestration requires an explicitly migrated v2 workflow");
     if (workflow.orchestration.activeRun && Date.parse(workflow.orchestration.activeRun.expiresAt) > Date.parse(this.now())) return this.handoff("stale", workflow, `run ${workflow.orchestration.activeRun.runId} is already active`);
     if (workflow.orchestration.phase === "complete" || workflow.status === "complete") return this.handoff("complete", workflow, "workflow is complete");
@@ -106,7 +122,21 @@ export class OrchestrationEngine {
     if (task.phase === "workspace") return this.mutateStage(topic, workflow, { type: "record-workspace", receipt: task.workspaceReceipt! });
     if (task.phase === "integration") return this.integrate(topic, workflow, task);
     if (task.phase === "verification") return this.verify(topic, workflow, task, input.verification);
-    if (task.phase === "ready-to-complete") return this.mutateStage(topic, workflow, { type: "complete-task" });
+    if (task.phase === "ready-to-complete") {
+      if (!this.options.verificationAuthority) return this.handoff("blocked", workflow, "task completion requires the managed verification authority", task);
+      try { this.options.verificationAuthority.assertCompletion(workflow, task, this.options.parent); }
+      catch (error) { return this.handoff("blocked", workflow, message(error), task); }
+      try {
+        return await this.mutateExpected(topic, workflow.revision, (state) => {
+          const current = state.activeTask ? state.tasks.find((candidate) => candidate.id === state.activeTask) : undefined;
+          if (!current) throw new Error("active task disappeared before completion");
+          this.options.verificationAuthority!.assertCompletion(state, current, this.options.parent);
+          return reduceWorkflow(state, { type: "complete-task" }, this.now());
+        });
+      } catch (error) {
+        return this.handoff("blocked", this.service.read(topic, true)?.workflow ?? workflow, message(error), task);
+      }
+    }
     return this.handoff("blocked", workflow, `no advance is valid from task phase ${task.phase}`, task);
   }
 
@@ -230,15 +260,19 @@ export class OrchestrationEngine {
   private async verify(topic: string, workflow: Workflow, task: WorkflowTask, verification?: OrchestrationAdvanceInput["verification"]): Promise<OrchestrationHandoff> {
     if (!verification) return {
       ...this.handoff("verification-required", workflow, "parent protected-bash verification is required", task),
-      verification: { contractHash: task.contract.hash, snapshotHash: task.integrationReceipt!.postSnapshotHash, commands: task.verification, checkpoint: task.verificationCheckpoint },
+      verification: { contractHash: task.contract.hash, snapshotHash: task.integrationReceipt?.postSnapshotHash ?? task.workspaceReceipt!.snapshotHash, commands: task.verification, checkpoint: task.verificationCheckpoint },
     };
-    const sourceChanged = verification.observedSnapshotHash !== task.integrationReceipt?.postSnapshotHash;
-    const observedChangedPaths = verification.observedChangedPaths ?? [];
+    if (!this.options.verificationAuthority) return this.handoff("blocked", workflow, "verification evidence lacks a live protected-bash authority", task);
+    let protectedResult: ProtectedVerificationSubmission;
+    try { protectedResult = this.options.verificationAuthority.consume(verification, workflow, task, this.options.parent); }
+    catch (error) { return this.handoff("blocked", workflow, message(error), task); }
+    const expectedSnapshot = task.integrationReceipt?.postSnapshotHash ?? task.workspaceReceipt?.snapshotHash;
+    const sourceChanged = protectedResult.sourceChanged || protectedResult.afterSnapshotHash !== expectedSnapshot;
+    const observedChangedPaths = protectedResult.observedChangedPaths;
     if (sourceChanged && !observedChangedPaths.length) return this.handoff("needs-input", workflow, "source-changing verification requires explicit changed paths before cumulative remediation", task);
-    if (observedChangedPaths.some((path) => !task.writeScope.some((scope) => scopeAllowsPath(scope, path)))) return this.handoff("blocked", workflow, "verification changed an out-of-scope path; explicit scope decision required", task);
-    const event = verification.evidence.exitCode !== 0 || sourceChanged
-      ? { type: "record-verification-failure" as const, evidence: verification.evidence, observedSnapshotHash: verification.observedSnapshotHash, observedChangedPaths, reason: sourceChanged ? `expected ${task.integrationReceipt?.postSnapshotHash}, observed ${verification.observedSnapshotHash}` : `command exited ${verification.evidence.exitCode}` }
-      : { type: "record-verification" as const, evidence: verification.evidence };
+    const event = protectedResult.evidence.exitCode !== 0 || sourceChanged
+      ? { type: "record-verification-failure" as const, evidence: protectedResult.evidence, observedSnapshotHash: protectedResult.afterSnapshotHash, observedChangedPaths, reason: sourceChanged ? `expected ${expectedSnapshot}, observed ${protectedResult.afterSnapshotHash}` : `command exited ${protectedResult.evidence.exitCode}` }
+      : { type: "record-verification" as const, evidence: protectedResult.evidence };
     return this.mutateStage(topic, workflow, event);
   }
 
@@ -367,6 +401,11 @@ export class OrchestrationEngine {
       : workflow.orchestration.phase === "initiative-acceptance" ? "initiative-acceptance"
       : task?.phase ?? (workflow.orchestration.phase === "plan-review" ? "plan-review" : "pending");
     return { kind, stage, message: messageText, workflow, ...(task ? { taskId: task.id } : {}), ...(role ? { role } : {}) };
+  }
+
+  private assertParent(workflow: Workflow): void {
+    const parent = workflow.orchestration.parent;
+    if (!parent?.valid || parent.ownerId !== this.options.ownerId || parent.sessionId !== this.options.parent.sessionId || parent.runtimeId !== this.options.parent.runtimeId || parent.cwd !== this.cwd) throw new Error("managed workflow belongs to a competing or stale parent session/runtime");
   }
 
   private now(): string { return this.options.now?.() ?? new Date().toISOString(); }

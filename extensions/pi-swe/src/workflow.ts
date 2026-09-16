@@ -10,6 +10,7 @@ export type WorkflowApproach = typeof WORKFLOW_APPROACHES[number];
 export type ApproachReasons = Partial<Record<WorkflowApproach, string>>;
 export type AssessmentStatus = "assessed" | "unassessed";
 export type VerificationCheckpoint = { revision: number; at: string; sessionId?: string; branchLength?: number };
+export type ParentAuthority = { ownerId: string; sessionId: string; runtimeId: string; cwd: string; sessionFile?: string; claimedAt: string; valid: boolean; invalidatedAt?: string; invalidatedReason?: string };
 export type ContractIdentity = { revision: number; hash: string; linkedPlanHash?: string };
 export type TaskKind = "implementation" | "coordination";
 export type TaskPhase = "pending" | "implementation" | "general-review" | "concern-review" | "remediation" | "workspace" | "integration" | "verification" | "ready-to-complete" | "historical";
@@ -75,12 +76,14 @@ export type WorkspaceReceipt = {
   preparedResultRef?: string;
   preparedPatchHash?: string;
   realHead?: string;
+  realBranch?: string | null;
   realIndexHash?: string;
   realIndexTree?: string;
   stagedPatchHash?: string;
   unstagedPatchHash?: string;
   realSourceSnapshotHash?: string;
   includedUntracked?: string[];
+  baselineUntrackedPathHashes?: string[];
   managedPaths?: string[];
   integrationBaseCommit?: string;
   writeScope?: string[];
@@ -96,6 +99,7 @@ export type IntegrationReceipt = {
   resultCommit?: string;
   resultRef?: string;
   observedHead?: string;
+  observedBranch?: string | null;
   observedIndexHash?: string;
   changedPaths?: string[];
 };
@@ -117,7 +121,23 @@ export type VerificationEvidence = VerificationCommand & {
   at: string;
   contractHash?: string;
   snapshotHash?: string;
-  source?: { kind: "bash-tool-result"; toolCallId: string; workflowRevision: number; sessionId?: string };
+  cwd?: string;
+  branch?: string | null;
+  head?: string;
+  beforeSnapshotHash?: string;
+  afterSnapshotHash?: string;
+  source?: {
+    kind: "bash-tool-result";
+    toolCallId: string;
+    toolName?: "bash";
+    workflowRevision: number;
+    sessionId?: string;
+    ownerId?: string;
+    runtimeId?: string;
+    sessionFile?: string;
+    sessionBranchId?: string;
+    branchLength?: number;
+  };
 };
 export type ImportedTaskProvenance = {
   kind: "pi-swe-v2-contract";
@@ -170,7 +190,7 @@ export type Workflow = {
   goal: string;
   plan?: string;
   contract: ContractIdentity;
-  orchestration: { mode: "legacy" | "multi-agent"; phase: WorkflowPhase; nextFence: number; activeRun?: RunLease; history: HistoryEntry[] };
+  orchestration: { mode: "legacy" | "multi-agent"; phase: WorkflowPhase; nextFence: number; activeRun?: RunLease; parent?: ParentAuthority; history: HistoryEntry[] };
   planReview?: StageReport;
   initiativeAcceptance?: StageReport;
   activeTask?: string;
@@ -190,6 +210,7 @@ export type WorkflowEvent =
   | { type: "record-review"; report: StageReport }
   | { type: "record-run-failure"; stage: WorkflowPhase | TaskPhase; taskId?: string; reason: string }
   | { type: "record-verification-failure"; evidence: VerificationEvidence; observedSnapshotHash: string; observedChangedPaths: string[]; reason: string }
+  | { type: "invalidate-integrated-source"; observedSnapshotHash: string; observedChangedPaths: string[]; reason: string }
   | { type: "decide-finding"; taskId: string; findingId: string; disposition: string; decidedBy: string }
   | { type: "reset-remediation"; taskId: string; max: number; reason: string; decidedBy: string }
   | { type: "record-workspace"; receipt: WorkspaceReceipt }
@@ -200,7 +221,9 @@ export type WorkflowEvent =
   | { type: "complete-initiative" }
   | { type: "claim-run"; lease: RunLease }
   | { type: "cancel-run"; lease: RunLease; reason: string }
-  | { type: "respond-clarification"; taskId?: string; questionId: string; answer: string; answeredBy: string };
+  | { type: "respond-clarification"; taskId?: string; questionId: string; answer: string; answeredBy: string }
+  | { type: "claim-parent"; authority: ParentAuthority }
+  | { type: "invalidate-parent"; ownerId: string; sessionId: string; runtimeId: string; reason: string };
 
 export type WorkflowDecision = { workflow: Workflow; changed: boolean; message: string };
 export type WorkflowTaskRevision = Pick<WorkflowTask, "id" | "title"> & Partial<Pick<WorkflowTask, "kind" | "dependsOn" | "acceptance" | "approaches" | "approachReasons" | "writeScope" | "nonGoals" | "verification" | "verificationDecision">>;
@@ -355,6 +378,8 @@ export function reduceWorkflow(workflow: Workflow, event: WorkflowEvent, now = n
 
 function reduceWorkflowStep(workflow: Workflow, event: WorkflowEvent, now: string): WorkflowDecision {
   validTimestamp(now, "workflow timestamp");
+  if (event.type === "claim-parent") return claimParent(workflow, event.authority, now);
+  if (event.type === "invalidate-parent") return invalidateParent(workflow, event, now);
   if (event.type === "claim-run") return claimRun(workflow, event.lease, now);
   if (event.type === "cancel-run") return cancelRun(workflow, event.lease, event.reason, now);
   if (event.type === "respond-clarification") return respondClarification(workflow, event, now);
@@ -368,7 +393,7 @@ function reduceWorkflowStep(workflow: Workflow, event: WorkflowEvent, now: strin
   return reduceOrchestratedWorkflow(workflow, event, now);
 }
 
-function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, { type: "claim-run" | "cancel-run" | "pause" | "record-plan-review" | "record-run-failure" }>, now: string): WorkflowDecision {
+function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, { type: "claim-parent" | "invalidate-parent" | "claim-run" | "cancel-run" | "pause" | "record-plan-review" | "record-run-failure" }>, now: string): WorkflowDecision {
   const current = activeTask(workflow);
   if ((event.type === "start" || event.type === "resume") && workflow.status === "complete") return unchanged(workflow, "workflow is already complete");
   if (event.type !== "block" && !approvedReport(workflow.planReview, workflow.contract.hash)) throw new Error("current plan contract requires independent plan review approval before task execution");
@@ -429,8 +454,8 @@ function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowE
     if (report.outcome === "failed") return replaceTask(workflow, current.id, { ...patch, status: "blocked", blockedReason: `${expectedKind} failed` }, { status: "blocked", activeTask: undefined }, now, `${current.id} review failed`);
     if (report.outcome === "changes-requested" || unresolved) return replaceTask(workflow, current.id, { ...patch, status: "blocked", phase: "remediation", blockedReason: "review has unresolved blocking findings" }, { status: "blocked", activeTask: undefined }, now, `${current.id} requires remediation`);
     if (report.outcome !== "approved") throw new Error("review must approve, request changes, or report blocking findings");
-    const nextPhase: TaskPhase = current.phase === "general-review" && requiresConcernReview(current) ? "concern-review" : implementation.outcome === "no-change" ? "ready-to-complete" : "workspace";
-    return replaceTask(workflow, current.id, { ...patch, phase: nextPhase }, {}, now, `recorded ${expectedKind} for ${current.id}`);
+    const nextPhase: TaskPhase = current.phase === "general-review" && requiresConcernReview(current) ? "concern-review" : implementation.outcome === "no-change" ? (current.verification.length ? "verification" : "ready-to-complete") : "workspace";
+    return replaceTask(workflow, current.id, { ...patch, phase: nextPhase, ...(nextPhase === "verification" ? { verificationCheckpoint: { revision: workflow.revision + 1, at: now } } : {}) }, {}, now, `recorded ${expectedKind} for ${current.id}`);
   }
   if (event.type === "record-workspace") {
     requireTaskPhase(current, "workspace");
@@ -464,7 +489,7 @@ function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowE
     if (receipt.version === 1 && (
       receipt.workspaceId !== workspaceReceipt?.workspaceId || receipt.postSnapshotHash !== workspaceReceipt.snapshotHash ||
       receipt.resultCommit !== workspaceReceipt.preparedResultCommit || receipt.resultRef !== workspaceReceipt.preparedResultRef ||
-      receipt.patchHash !== workspaceReceipt.preparedPatchHash || receipt.observedHead !== workspaceReceipt.realHead || receipt.observedIndexHash !== workspaceReceipt.realIndexHash || !sameStringSet(receipt.changedPaths ?? [], workspaceReceipt.changedPaths)
+      receipt.patchHash !== workspaceReceipt.preparedPatchHash || receipt.observedHead !== workspaceReceipt.realHead || receipt.observedBranch !== workspaceReceipt.realBranch || receipt.observedIndexHash !== workspaceReceipt.realIndexHash || !sameStringSet(receipt.changedPaths ?? [], workspaceReceipt.changedPaths)
     )) throw new Error("integration receipt does not match the prepared workspace result");
     const phase: TaskPhase = current!.verification.length ? "verification" : current!.verificationDecision ? "ready-to-complete" : "verification";
     return replaceTask(workflow, current!.id, { integrationReceipt: receipt, phase, verificationCheckpoint: { revision: workflow.revision + 1, at: now } }, {}, now, `recorded integration receipt for ${current!.id}`);
@@ -475,17 +500,28 @@ function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowE
     if (evidence.exitCode !== 0) throw new Error("failing verification must enter remediation");
     if (!current!.verificationCheckpoint || !evidenceMatchesCheckpoint(evidence, current!.verificationCheckpoint)) throw new Error("verification evidence is not a fresh protected-bash result after integration");
     if (evidence.contractHash !== current!.contract.hash) throw new Error("verification evidence has a stale contract");
-    if (evidence.snapshotHash !== current!.integrationReceipt?.postSnapshotHash) throw new Error("verification evidence has a stale snapshot");
+    if (evidence.snapshotHash !== taskVerificationSnapshot(current!)) throw new Error("verification evidence has a stale snapshot");
     const nextEvidence = boundedAppend(current!.evidence, evidence, 32, "verification evidence");
     const phase = verificationSatisfied(current!, nextEvidence) ? "ready-to-complete" : "verification";
     return replaceTask(workflow, current!.id, { evidence: nextEvidence, phase }, {}, now, `recorded verification for ${current!.id}`);
+  }
+  if (event.type === "invalidate-integrated-source") {
+    if (!current || !["verification", "ready-to-complete"].includes(current.phase) || !taskVerificationSnapshot(current)) throw new Error("integrated source invalidation is not valid in the current task stage");
+    if (event.observedSnapshotHash === taskVerificationSnapshot(current)) return unchanged(workflow, "integrated source snapshot is unchanged");
+    const observedChangedPaths = boundedStrings(event.observedChangedPaths, "source drift paths", 128, 512);
+    if (!observedChangedPaths.length || observedChangedPaths.some((path) => !SAFE_SCOPE.test(path) || path.includes("*"))) throw new Error("source drift requires bounded exact changed paths");
+    const finding: Finding = { id: `source-drift-${current.remediation.used}-${current.evidence.length + 1}`, severity: "blocking", status: "open", summary: "verification changed the protected source snapshot", evidence: boundedText(event.reason, "source drift reason") };
+    return replaceTask(workflow, current.id, {
+      evidence: [], findings: boundedMergeFindings(current.findings, [finding], MAX_FINDINGS), verificationDriftPaths: observedChangedPaths,
+      status: "blocked", phase: "remediation", blockedReason: "integrated source changed; cumulative remediation and complete re-review required",
+    }, { status: "blocked", activeTask: undefined }, now, `${current.id} source drift requires remediation`);
   }
   if (event.type === "record-verification-failure") {
     requireTaskPhase(current, "verification");
     const evidence = normalizeEvidence(event.evidence);
     if (!current!.verificationCheckpoint || !evidenceMatchesCheckpoint(evidence, current!.verificationCheckpoint)) throw new Error("verification failure is not a fresh protected-bash result after integration");
-    if (evidence.contractHash !== current!.contract.hash || evidence.snapshotHash !== current!.integrationReceipt?.postSnapshotHash) throw new Error("verification failure evidence is stale");
-    const sourceChanged = event.observedSnapshotHash !== current!.integrationReceipt?.postSnapshotHash;
+    if (evidence.contractHash !== current!.contract.hash || evidence.snapshotHash !== taskVerificationSnapshot(current!)) throw new Error("verification failure evidence is stale");
+    const sourceChanged = event.observedSnapshotHash !== taskVerificationSnapshot(current!);
     if (evidence.exitCode === 0 && !sourceChanged) throw new Error("passing unchanged verification is not a failure");
     const observedChangedPaths = boundedStrings(event.observedChangedPaths, "verification changed paths", 128, 512);
     if (observedChangedPaths.some((path) => !SAFE_SCOPE.test(path) || path.includes("*"))) throw new Error("verification changed paths contain an unsafe or non-exact path");
@@ -516,7 +552,7 @@ function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowE
   throw new Error("event is not valid in the current orchestration stage");
 }
 
-function reduceLegacyWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, { type: "claim-run" | "cancel-run" | "pause" | "record-plan-review" | "record-run-failure" }>, now: string): WorkflowDecision {
+function reduceLegacyWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, { type: "claim-parent" | "invalidate-parent" | "claim-run" | "cancel-run" | "pause" | "record-plan-review" | "record-run-failure" }>, now: string): WorkflowDecision {
   const current = activeTask(workflow);
   if (event.type === "start" || event.type === "resume") {
     if (workflow.status === "complete") return unchanged(workflow, "workflow is already complete");
@@ -550,6 +586,33 @@ function reduceLegacyWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, 
   if (next) return replaceTask(completed, next.id, { status: "active", phase: "implementation", verificationCheckpoint: { revision: completed.revision + 1, at: now } }, { status: "active", activeTask: next.id }, now, `completed ${current.id}; started ${next.id}`);
   const unfinished = completed.tasks.some((task) => ["pending", "active", "blocked"].includes(task.status));
   return update(completed, { status: unfinished ? "blocked" : "complete", orchestration: { ...completed.orchestration, phase: unfinished ? "task-execution" : "complete" } }, now, unfinished ? `completed ${current.id}; remaining work is blocked` : `completed ${current.id}; workflow complete`);
+}
+
+function claimParent(workflow: Workflow, raw: ParentAuthority, now: string): WorkflowDecision {
+  if (workflow.orchestration.mode !== "multi-agent" || workflow.orchestration.phase === "complete") throw new Error("parent authority is available only during managed multi-agent execution");
+  const authority = normalizeParentAuthority(raw);
+  if (!authority.valid) throw new Error("new parent authority must be valid");
+  const current = workflow.orchestration.parent;
+  if (current) {
+    if (current.valid && current.ownerId === authority.ownerId && current.sessionId === authority.sessionId && current.runtimeId === authority.runtimeId && current.cwd === authority.cwd) return unchanged(workflow, "parent authority already claimed by this runtime");
+    throw new Error(current.valid ? "managed workflow is owned by a competing parent session" : "parent authority was invalidated; explicit recovery and fresh checkpoints are required");
+  }
+  return update(workflow, { orchestration: { ...workflow.orchestration, parent: authority } }, now, `claimed parent authority for ${authority.ownerId}`);
+}
+
+function invalidateParent(workflow: Workflow, event: Extract<WorkflowEvent, { type: "invalidate-parent" }>, now: string): WorkflowDecision {
+  const parent = workflow.orchestration.parent;
+  if (!parent || !parent.valid || parent.ownerId !== event.ownerId || parent.sessionId !== event.sessionId || parent.runtimeId !== event.runtimeId) throw new Error("parent invalidation does not match current authority");
+  const reason = boundedText(event.reason, "parent invalidation reason");
+  const tasks = workflow.tasks.map((task) => {
+    if (task.id !== workflow.activeTask) return task;
+    const mustReverify = task.phase === "verification" || task.phase === "ready-to-complete";
+    return { ...task, ...(mustReverify ? { phase: "verification" as const, evidence: [] } : {}), verificationCheckpoint: undefined };
+  });
+  return update(workflow, {
+    status: workflow.status === "complete" ? workflow.status : "paused", tasks,
+    orchestration: { ...workflow.orchestration, parent: { ...parent, valid: false, invalidatedAt: now, invalidatedReason: reason } },
+  }, now, `invalidated parent authority: ${reason}`);
 }
 
 function recordRunFailure(workflow: Workflow, event: Extract<WorkflowEvent, { type: "record-run-failure" }>, now: string): WorkflowDecision {
@@ -588,6 +651,7 @@ function completeOrchestratedTask(workflow: Workflow, current: WorkflowTask | un
   if (!snapshot || general.provenance.snapshotHash !== snapshot || (requiresConcernReview(current!) && concern?.provenance.snapshotHash !== snapshot)) throw new Error("task completion requires approvals on the exact cumulative source snapshot");
   if (!approvedReport(general, current!.contract.hash) || (requiresConcernReview(current!) && !approvedReport(concern, current!.contract.hash))) throw new Error("task completion requires all independent approvals on the current contract");
   if (current!.findings.some((finding) => finding.severity === "blocking" && finding.status === "open")) throw new Error("task completion has an unresolved blocking finding");
+  if (current!.verification.length && !verificationSatisfied(current!, current!.evidence)) throw new Error("task completion requires every planned objective check with no newer failure");
   if (implementation.outcome === "no-change") {
     if (!implementation.rationale) throw new Error("no-change completion requires explicit rationale");
   } else {
@@ -630,6 +694,7 @@ function parseV2(value: Record<string, unknown>): Workflow {
   if (!['legacy', 'multi-agent'].includes(mode as string) || !['plan-review', 'task-execution', 'initiative-acceptance', 'complete'].includes(phase as string)) throw new Error("invalid orchestration state");
   const history = normalizeHistory(value.orchestration.history);
   const activeRun = value.orchestration.activeRun === undefined ? undefined : normalizeLease(value.orchestration.activeRun);
+  const parent = value.orchestration.parent === undefined ? undefined : normalizeParentAuthority(value.orchestration.parent);
   const nextFence = value.orchestration.nextFence;
   if (!Number.isSafeInteger(nextFence) || (nextFence as number) < 1) throw new Error("invalid orchestration fence");
   const tasks = (value.tasks as unknown[]).map((task) => normalizeTask(task as Partial<WorkflowTask> & Pick<WorkflowTask, "id" | "title">, { contract, compatibility: true }));
@@ -643,7 +708,7 @@ function parseV2(value: Record<string, unknown>): Workflow {
   return {
     version: WORKFLOW_VERSION, topic: value.topic as string, revision: value.revision as number, status: value.status as WorkflowStatus,
     goal: (value.goal as string).trim(), ...(typeof value.plan === "string" ? { plan: value.plan.trim() } : {}), contract,
-    orchestration: { mode: mode as "legacy" | "multi-agent", phase: phase as WorkflowPhase, nextFence: nextFence as number, ...(activeRun ? { activeRun } : {}), history },
+    orchestration: { mode: mode as "legacy" | "multi-agent", phase: phase as WorkflowPhase, nextFence: nextFence as number, ...(activeRun ? { activeRun } : {}), ...(parent ? { parent } : {}), history },
     ...(value.planReview ? { planReview: normalizeReport(value.planReview) } : {}),
     ...(value.initiativeAcceptance ? { initiativeAcceptance: normalizeReport(value.initiativeAcceptance) } : {}),
     ...(typeof value.activeTask === "string" ? { activeTask: value.activeTask } : {}), tasks, updatedAt,
@@ -789,9 +854,13 @@ function appendTaskReport(task: WorkflowTask, report: StageReport): Partial<Work
 }
 function verificationSatisfied(task: WorkflowTask, evidence: VerificationEvidence[]): boolean {
   if (!task.verification.length) return !!task.verificationDecision;
-  const snapshot = task.integrationReceipt?.postSnapshotHash;
-  return task.verification.every((planned) => evidence.some((item) => item.exitCode === 0 && item.contractHash === task.contract.hash && item.snapshotHash === snapshot && commandKey(item) === commandKey(planned)));
+  const snapshot = taskVerificationSnapshot(task);
+  return task.verification.every((planned) => {
+    const latest = evidence.filter((item) => commandKey(item) === commandKey(planned)).at(-1);
+    return latest?.exitCode === 0 && latest.contractHash === task.contract.hash && latest.snapshotHash === snapshot;
+  });
 }
+function taskVerificationSnapshot(task: WorkflowTask): string | undefined { return task.integrationReceipt?.postSnapshotHash ?? task.workspaceReceipt?.snapshotHash; }
 function blockForDecision(workflow: Workflow, task: WorkflowTask, reason: string, now: string): WorkflowDecision { return replaceTask(workflow, task.id, { status: "blocked", blockedReason: reason }, { status: "blocked", activeTask: undefined }, now, `${task.id} blocked: ${reason}`); }
 function claimRun(workflow: Workflow, lease: RunLease, now: string): WorkflowDecision {
   const normalized = normalizeLease(lease);
@@ -846,8 +915,41 @@ function conciseAssessment(task: WorkflowTask): string { const text = task.appro
 function commandKey(command: VerificationCommand): string { return [command.command, ...command.args].join(" ").trim(); }
 function evidenceMatchesCheckpoint(evidence: VerificationEvidence, checkpoint: VerificationCheckpoint): boolean { return Date.parse(evidence.at) > Date.parse(checkpoint.at) && evidence.source?.kind === "bash-tool-result" && evidence.source.workflowRevision >= checkpoint.revision && (checkpoint.sessionId === undefined || evidence.source.sessionId === checkpoint.sessionId); }
 function normalizeCommands(value: unknown, taskId: string): VerificationCommand[] { if (value === undefined) return []; if (!Array.isArray(value) || value.length > 16) throw new Error(`task ${taskId} verification must be an array of at most 16 commands`); const commands = value.map(normalizeCommand); if (new Set(commands.map(commandKey)).size !== commands.length) throw new Error(`task ${taskId} has duplicate verification commands`); return commands; }
-function normalizeCommand(value: unknown): VerificationCommand { if (!record(value) || typeof value.command !== "string" || !value.command.trim() || value.command.trim().length > 256 || (value.args !== undefined && !Array.isArray(value.args))) throw new Error("invalid verification command"); const args = Array.isArray(value.args) ? value.args.map((arg) => { if (typeof arg !== "string" || arg.length > 512) throw new Error("invalid verification argument"); return arg; }) : []; if (args.length > 64) throw new Error("too many verification arguments"); return { command: value.command.trim(), args }; }
-function normalizeEvidence(value: unknown): VerificationEvidence { const command = normalizeCommand(value); if (!record(value) || !Number.isInteger(value.exitCode)) throw new Error("invalid verification evidence"); const at = validTimestamp(value.at, "verification evidence timestamp"); if (value.contractHash !== undefined && (typeof value.contractHash !== "string" || value.contractHash.length > 80)) throw new Error("invalid verification contract hash"); if (value.snapshotHash !== undefined && (typeof value.snapshotHash !== "string" || value.snapshotHash.length > 128)) throw new Error("invalid verification snapshot hash"); if (value.source !== undefined && (!record(value.source) || value.source.kind !== "bash-tool-result" || typeof value.source.toolCallId !== "string" || !value.source.toolCallId || !Number.isSafeInteger(value.source.workflowRevision) || (value.source.workflowRevision as number) < 1)) throw new Error("invalid verification evidence source"); const source = record(value.source) ? { kind: "bash-tool-result" as const, toolCallId: value.source.toolCallId as string, workflowRevision: value.source.workflowRevision as number, ...(typeof value.source.sessionId === "string" ? { sessionId: value.source.sessionId } : {}) } : undefined; return { ...command, exitCode: value.exitCode as number, at, ...(typeof value.contractHash === "string" ? { contractHash: value.contractHash } : {}), ...(typeof value.snapshotHash === "string" ? { snapshotHash: value.snapshotHash } : {}), ...(source ? { source } : {}) }; }
+function normalizeCommand(value: unknown): VerificationCommand {
+  if (!record(value) || typeof value.command !== "string" || !value.command.trim() || value.command.trim().length > 256 || (value.args !== undefined && !Array.isArray(value.args))) throw new Error("invalid verification command");
+  const command = value.command.trim();
+  const args = Array.isArray(value.args) ? value.args.map((arg) => { if (typeof arg !== "string" || arg.length > 512) throw new Error("invalid verification argument"); return arg; }) : [];
+  if (args.length > 64) throw new Error("too many verification arguments");
+  const executable = command.replaceAll("\\", "/").split("/").at(-1)!.toLowerCase();
+  if (["echo", "printf", "true", ":"].includes(executable) || (["sh", "bash", "zsh", "dash", "cmd", "powershell", "pwsh"].includes(executable) && /^(?:-[a-z]*c\s+)?(?:echo|printf|true|:)\b/i.test(args.join(" ").trim()))) throw new Error("verification command must be an objective check, not an echo-style fabricated pass");
+  return { command, args };
+}
+function normalizeEvidence(value: unknown): VerificationEvidence {
+  const command = normalizeCommand(value);
+  if (!record(value) || !Number.isInteger(value.exitCode)) throw new Error("invalid verification evidence");
+  const at = validTimestamp(value.at, "verification evidence timestamp");
+  if (value.contractHash !== undefined && (typeof value.contractHash !== "string" || value.contractHash.length > 80)) throw new Error("invalid verification contract hash");
+  for (const field of ["snapshotHash", "beforeSnapshotHash", "afterSnapshotHash", "head"] as const) if (value[field] !== undefined && (typeof value[field] !== "string" || !(value[field] as string).length || (value[field] as string).length > 128)) throw new Error(`invalid verification ${field}`);
+  if (value.cwd !== undefined && (typeof value.cwd !== "string" || !value.cwd || value.cwd.length > 2_048)) throw new Error("invalid verification cwd");
+  if (value.branch !== undefined && value.branch !== null && (typeof value.branch !== "string" || !value.branch || value.branch.length > 512)) throw new Error("invalid verification branch");
+  if (value.source !== undefined && (!record(value.source) || value.source.kind !== "bash-tool-result" || typeof value.source.toolCallId !== "string" || !value.source.toolCallId || !Number.isSafeInteger(value.source.workflowRevision) || (value.source.workflowRevision as number) < 1)) throw new Error("invalid verification evidence source");
+  const sourceValue = record(value.source) ? value.source : undefined;
+  if (sourceValue?.toolName !== undefined && sourceValue.toolName !== "bash") throw new Error("invalid verification source tool");
+  const source = sourceValue ? {
+    kind: "bash-tool-result" as const, toolCallId: sourceValue.toolCallId as string, workflowRevision: sourceValue.workflowRevision as number,
+    ...(sourceValue.toolName === "bash" ? { toolName: "bash" as const } : {}),
+    ...stringField(sourceValue, "sessionId"), ...stringField(sourceValue, "ownerId"), ...stringField(sourceValue, "runtimeId"),
+    ...stringField(sourceValue, "sessionFile"), ...stringField(sourceValue, "sessionBranchId"),
+    ...(Number.isSafeInteger(sourceValue.branchLength) && (sourceValue.branchLength as number) >= 0 ? { branchLength: sourceValue.branchLength as number } : {}),
+  } : undefined;
+  return {
+    ...command, exitCode: value.exitCode as number, at,
+    ...stringField(value, "contractHash"), ...stringField(value, "snapshotHash"), ...stringField(value, "cwd"),
+    ...(value.branch === null || typeof value.branch === "string" ? { branch: value.branch as string | null } : {}),
+    ...stringField(value, "head"), ...stringField(value, "beforeSnapshotHash"), ...stringField(value, "afterSnapshotHash"),
+    ...(source ? { source } : {}),
+  };
+}
 function normalizeReport(value: unknown): StageReport { if (!record(value) || !['plan-review','implementation','general-review','concern-review','final-acceptance'].includes(value.kind as string) || !['approved','changes-requested','needs-input','completed','no-change','failed'].includes(value.outcome as string) || !Array.isArray(value.findings)) throw new Error("invalid stage report"); const summary = boundedText(value.summary, "stage report summary"); const findings = value.findings.map(normalizeFinding); if (findings.length > MAX_FINDINGS) throw new Error("stage report has too many findings"); const changedPaths = value.changedPaths === undefined ? undefined : boundedStrings(value.changedPaths, "changed paths", 128, 512); const questions = value.questions === undefined ? undefined : (Array.isArray(value.questions) ? value.questions.map(normalizeClarification) : (() => { throw new Error("stage report questions must be an array"); })()); if (questions && questions.length > 32) throw new Error("stage report has too many questions"); return { kind: value.kind as StageReport["kind"], outcome: value.outcome as StageReport["outcome"], summary, ...(typeof value.rationale === "string" && value.rationale.trim() ? { rationale: boundedText(value.rationale, "stage report rationale") } : {}), ...(changedPaths ? { changedPaths } : {}), findings, ...(questions ? { questions } : {}), provenance: normalizeProvenance(value.provenance) }; }
 function normalizeProvenance(value: unknown): RunnerProvenance { if (!record(value) || typeof value.runId !== "string" || !value.runId || value.runId.length > 128 || !['plan-reviewer','implementer','general-reviewer','concern-reviewer','final-reviewer'].includes(value.role as string) || typeof value.actorId !== "string" || !value.actorId || value.actorId.length > 128 || typeof value.leaseId !== "string" || !value.leaseId || value.leaseId.length > 128 || !Number.isSafeInteger(value.leaseFence) || (value.leaseFence as number) < 1 || typeof value.contractHash !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.contractHash) || (value.snapshotHash !== undefined && (typeof value.snapshotHash !== "string" || !value.snapshotHash || value.snapshotHash.length > 128))) throw new Error("invalid runner provenance"); return { runId: value.runId, role: value.role as RunnerRole, actorId: value.actorId, leaseId: value.leaseId, leaseFence: value.leaseFence as number, contractHash: value.contractHash, ...(typeof value.snapshotHash === "string" ? { snapshotHash: value.snapshotHash } : {}), startedAt: validTimestamp(value.startedAt, "runner start"), completedAt: validTimestamp(value.completedAt, "runner completion") }; }
 function normalizeFinding(value: unknown): Finding { if (!record(value) || typeof value.id !== "string" || !TASK_ID.test(value.id) || !['blocking','warning'].includes(value.severity as string) || !['open','resolved','accepted-risk'].includes(value.status as string)) throw new Error("invalid finding"); return { id: value.id, severity: value.severity as Finding["severity"], status: value.status as Finding["status"], summary: boundedText(value.summary, "finding summary", 1024), evidence: boundedText(value.evidence, "finding evidence"), ...(typeof value.disposition === "string" && value.disposition.trim() ? { disposition: boundedText(value.disposition, "finding disposition") } : {}) }; }
@@ -869,10 +971,11 @@ function normalizeWorkspaceReceipt(value: unknown): WorkspaceReceipt {
       baselineCommit: boundedText(value.baselineCommit, "baseline commit", 128), baselineRef: boundedText(value.baselineRef, "baseline ref", 256),
       worktreeGitDir: boundedText(value.worktreeGitDir, "worktree git directory"), ownershipToken: boundedText(value.ownershipToken, "workspace ownership token", 128),
       intentPath: boundedText(value.intentPath, "workspace recovery intent path"), workspaceHeadCommit: boundedText(value.workspaceHeadCommit, "workspace HEAD commit", 128),
-      realHead: boundedText(value.realHead, "workspace real HEAD", 128), realIndexHash: boundedText(value.realIndexHash, "workspace index hash", 128),
+      realHead: boundedText(value.realHead, "workspace real HEAD", 128), ...(value.realBranch === null || typeof value.realBranch === "string" ? { realBranch: value.realBranch as string | null } : {}), realIndexHash: boundedText(value.realIndexHash, "workspace index hash", 128),
       realIndexTree: boundedText(value.realIndexTree, "workspace index tree", 128), stagedPatchHash: boundedText(value.stagedPatchHash, "workspace staged patch hash", 128),
       unstagedPatchHash: boundedText(value.unstagedPatchHash, "workspace unstaged patch hash", 128), realSourceSnapshotHash: boundedText(value.realSourceSnapshotHash, "workspace source snapshot hash", 128),
       includedUntracked: boundedStrings(value.includedUntracked, "workspace included untracked", 128, 512),
+      ...(value.baselineUntrackedPathHashes !== undefined ? { baselineUntrackedPathHashes: boundedStrings(value.baselineUntrackedPathHashes, "workspace baseline untracked path hashes", 512, 80) } : {}),
       managedPaths: boundedStrings(value.managedPaths, "workspace managed paths", 128, 512),
       writeScope: boundedStrings(value.writeScope, "workspace write scope", 64, 512),
       ...(typeof value.integrationBaseCommit === "string" ? { integrationBaseCommit: boundedText(value.integrationBaseCommit, "integration base commit", 128) } : {}),
@@ -903,13 +1006,14 @@ function normalizeIntegrationReceipt(value: unknown): IntegrationReceipt {
     Object.assign(receipt, {
       version: 1, workspaceId: boundedText(value.workspaceId, "integration workspace id", 128),
       resultCommit: boundedText(value.resultCommit, "integration result commit", 128), resultRef: boundedText(value.resultRef, "integration result ref", 256),
-      observedHead: boundedText(value.observedHead, "integration observed HEAD", 128), observedIndexHash: boundedText(value.observedIndexHash, "integration observed index hash", 128),
+      observedHead: boundedText(value.observedHead, "integration observed HEAD", 128), ...(value.observedBranch === null || typeof value.observedBranch === "string" ? { observedBranch: value.observedBranch as string | null } : {}), observedIndexHash: boundedText(value.observedIndexHash, "integration observed index hash", 128),
       changedPaths: boundedStrings(value.changedPaths, "integration changed paths", 128, 512),
     });
   }
   return receipt;
 }
 function normalizeLease(value: unknown): RunLease { if (!record(value) || typeof value.id !== "string" || !value.id || typeof value.runId !== "string" || !value.runId || typeof value.ownerId !== "string" || !value.ownerId || !Number.isSafeInteger(value.fence) || (value.fence as number) < 1 || !['plan-review','task-execution','initiative-acceptance','complete','pending','implementation','general-review','concern-review','remediation','workspace','integration','verification','ready-to-complete','historical'].includes(value.stage as string)) throw new Error("invalid run lease"); const acquiredAt = validTimestamp(value.acquiredAt, "run lease acquiredAt"); const expiresAt = validTimestamp(value.expiresAt, "run lease expiresAt"); if (Date.parse(expiresAt) <= Date.parse(acquiredAt)) throw new Error("run lease must expire after acquisition"); return { id: boundedText(value.id, "lease id", 128), runId: boundedText(value.runId, "run id", 128), ownerId: boundedText(value.ownerId, "lease owner", 128), stage: value.stage as RunLease["stage"], ...(typeof value.taskId === "string" ? { taskId: value.taskId } : {}), fence: value.fence as number, acquiredAt, expiresAt }; }
+function normalizeParentAuthority(value: unknown): ParentAuthority { if (!record(value) || typeof value.ownerId !== "string" || !value.ownerId || typeof value.sessionId !== "string" || !value.sessionId || typeof value.runtimeId !== "string" || !value.runtimeId || typeof value.cwd !== "string" || !value.cwd || typeof value.valid !== "boolean") throw new Error("invalid parent authority"); return { ownerId: boundedText(value.ownerId, "parent owner", 128), sessionId: boundedText(value.sessionId, "parent session", 128), runtimeId: boundedText(value.runtimeId, "parent runtime", 128), cwd: boundedText(value.cwd, "parent cwd"), ...(typeof value.sessionFile === "string" && value.sessionFile ? { sessionFile: boundedText(value.sessionFile, "parent session file") } : {}), claimedAt: validTimestamp(value.claimedAt, "parent authority claimedAt"), valid: value.valid, ...(typeof value.invalidatedAt === "string" ? { invalidatedAt: validTimestamp(value.invalidatedAt, "parent authority invalidatedAt") } : {}), ...(typeof value.invalidatedReason === "string" ? { invalidatedReason: boundedText(value.invalidatedReason, "parent authority invalidation reason") } : {}) }; }
 function normalizeContract(value: unknown): ContractIdentity { if (!record(value) || !Number.isSafeInteger(value.revision) || (value.revision as number) < 1 || typeof value.hash !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.hash)) throw new Error("invalid contract identity"); return { revision: value.revision as number, hash: value.hash, ...(typeof value.linkedPlanHash === "string" ? { linkedPlanHash: value.linkedPlanHash } : {}) }; }
 function normalizeCheckpoint(value: unknown): VerificationCheckpoint | undefined { if (value === undefined) return undefined; if (!record(value) || !Number.isSafeInteger(value.revision) || (value.revision as number) < 1) throw new Error("invalid verification checkpoint"); return { revision: value.revision as number, at: validTimestamp(value.at, "verification checkpoint"), ...(typeof value.sessionId === "string" && value.sessionId ? { sessionId: value.sessionId } : {}), ...(Number.isSafeInteger(value.branchLength) && (value.branchLength as number) >= 0 ? { branchLength: value.branchLength as number } : {}) }; }
 function normalizeVerificationDecision(value: unknown): WorkflowTask["verificationDecision"] { if (value === undefined) return undefined; if (!record(value) || value.kind !== "manual" || typeof value.decidedBy !== "string" || !value.decidedBy) throw new Error("invalid manual verification decision"); return { kind: "manual", rationale: boundedText(value.rationale, "manual verification rationale"), decidedBy: boundedText(value.decidedBy, "manual verification decision owner", 128), at: validTimestamp(value.at, "manual verification decision timestamp") }; }
@@ -973,4 +1077,5 @@ function normalizeTaskImport(value: unknown): ImportedTaskProvenance | undefined
   }
   return { kind: "pi-swe-v2-contract", contractPath: boundedText(value.contractPath, "legacy contract path"), ...(typeof value.contentHash === "string" ? { contentHash: boundedText(value.contentHash, "legacy content hash", 128) } : {}), ...(normalizedCompletion ? { completion: normalizedCompletion } : {}) };
 }
+function stringField<T extends string>(value: Record<string, unknown>, field: T): Partial<Record<T, string>> { const item = value[field]; return typeof item === "string" && item ? { [field]: item } as Partial<Record<T, string>> : {}; }
 function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }

@@ -52,8 +52,8 @@ test("workflow parser rejects missing dependencies and cycles", () => {
 });
 
 test("workflow normalization enforces schema bounds without rewriting command arguments", () => {
-  const workflow = createWorkflow({ topic: "arguments", goal: "Check arguments", tasks: [{ id: "A", title: "A", approaches: [], verification: [{ command: "printf", args: ["%s", "same", "same"] }] }] });
-  assert.deepEqual(workflow.tasks[0]!.verification[0]!.args, ["%s", "same", "same"]);
+  const workflow = createWorkflow({ topic: "arguments", goal: "Check arguments", tasks: [{ id: "A", title: "A", approaches: [], verification: [{ command: "node", args: ["--eval", "process.exit(0)", "same", "same"] }] }] });
+  assert.deepEqual(workflow.tasks[0]!.verification[0]!.args, ["--eval", "process.exit(0)", "same", "same"]);
   assert.throws(() => createWorkflow({ topic: "too-long", goal: "x".repeat(2049), tasks: [{ id: "A", title: "A" }] }), /goal exceeds/);
   assert.throws(() => createWorkflow({ topic: "duplicates", goal: "x", tasks: [{ id: "A", title: "A", verification: [{ command: "npm test", args: [] }, { command: "npm test", args: [] }] }] }), /duplicate verification/);
 });

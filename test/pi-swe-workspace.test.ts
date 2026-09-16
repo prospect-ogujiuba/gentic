@@ -126,7 +126,7 @@ test("integration applies additions, deletions, renames, modes and symlinks with
     assert.equal(git(cwd, ["rev-parse", integrated.resultRef]), integrated.resultCommit);
     assert.equal(integrated.preSnapshotHash, receipt.baselineHash);
     assert.equal(integrated.postSnapshotHash, manager.preflight(integrated.changedPaths).sourceSnapshotHash);
-    const workflow = createWorkflow({ topic: "receipt-roundtrip", goal: "persist recovery", tasks: [{ id: "T1", title: "task", writeScope: ["src/**"], nonGoals: ["none"], verification: [{ command: "true", args: [] }] }] });
+    const workflow = createWorkflow({ topic: "receipt-roundtrip", goal: "persist recovery", tasks: [{ id: "T1", title: "task", writeScope: ["src/**"], nonGoals: ["none"], verification: [{ command: "node", args: ["--version"] }] }] });
     const serialized = structuredClone(workflow);
     serialized.tasks[0]!.workspaceReceipt = prepared.receipt;
     serialized.tasks[0]!.integrationReceipt = integrated;
@@ -137,7 +137,7 @@ test("integration applies additions, deletions, renames, modes and symlinks with
     assert.equal(parsed.tasks[0]!.workspaceReceipt?.preparedResultCommit, prepared.resultCommit);
     assert.equal(parsed.tasks[0]!.integrationReceipt?.resultRef, integrated.resultRef);
 
-    let reduced = createWorkflow({ topic: "receipt-reducer", goal: "accept real receipts", now: "2026-02-01T00:00:00.000Z", tasks: [{ id: "T1", title: "task", writeScope: ["src/**"], nonGoals: ["none"], verification: [{ command: "true", args: [] }] }] });
+    let reduced = createWorkflow({ topic: "receipt-reducer", goal: "accept real receipts", now: "2026-02-01T00:00:00.000Z", tasks: [{ id: "T1", title: "task", writeScope: ["src/**"], nonGoals: ["none"], verification: [{ command: "node", args: ["--version"] }] }] });
     reduced = reduceWorkflow(reduced, { type: "record-plan-review", report: stageReport("plan-review", "plan-reviewer", reduced.contract.hash, "plan") }, "2026-02-01T00:00:02.000Z").workflow;
     reduced = reduceWorkflow(reduced, { type: "start" }, "2026-02-01T00:00:03.000Z").workflow;
     const taskContract = reduced.tasks[0]!.contract.hash;
@@ -325,7 +325,7 @@ test("integration resumes from an exact post-image after an apply/persist crash"
     const prepared = manager.prepareIntegration(receipt);
     receipt = prepared.receipt;
     execFileSync("git", ["apply", "--binary", "--whitespace=nowarn", "-"], { cwd, input: prepared.patch });
-    const carrier = createWorkflow({ topic: "crash-recovery", goal: "resume", tasks: [{ id: "T1", title: "task", writeScope: ["src/**"], nonGoals: ["none"], verification: [{ command: "true", args: [] }] }] });
+    const carrier = createWorkflow({ topic: "crash-recovery", goal: "resume", tasks: [{ id: "T1", title: "task", writeScope: ["src/**"], nonGoals: ["none"], verification: [{ command: "node", args: ["--version"] }] }] });
     carrier.tasks[0]!.workspaceReceipt = prepared.receipt;
     const persisted = parseWorkflow(structuredClone(carrier)).tasks[0]!.workspaceReceipt as GitWorkspaceReceipt;
     const recovered = manager.integrate(manager.resumePreparedIntegration(persisted), "2026-02-01T00:00:09.000Z");

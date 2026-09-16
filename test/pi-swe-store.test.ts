@@ -155,6 +155,12 @@ test("an independently reviewed no-change task still requires final initiative a
   const noChangeReceipt = { ...preparedReceipt(), topic: "no-change", writeScope: ["src/**"] };
   current = reduceWorkflow(current, { type: "record-implementation", report: implementation, receipt: noChangeReceipt }, "2026-02-01T00:00:03.000Z").workflow;
   current = reduceWorkflow(current, { type: "record-review", report: report("general-review", "general-reviewer", "review", current.tasks[0]!.contract.hash) }, "2026-02-01T00:00:04.000Z").workflow;
+  assert.equal(current.tasks[0]!.phase, "verification");
+  current = reduceWorkflow(current, { type: "record-verification", evidence: {
+    command: "npm", args: ["test"], exitCode: 0, at: "2026-02-01T00:00:04.500Z",
+    contractHash: current.tasks[0]!.contract.hash, snapshotHash: noChangeReceipt.snapshotHash,
+    source: { kind: "bash-tool-result", toolCallId: "no-change-check", workflowRevision: current.revision },
+  } }, "2026-02-01T00:00:04.500Z").workflow;
   current = reduceWorkflow(current, { type: "complete-task" }, "2026-02-01T00:00:05.000Z").workflow;
   assert.equal(current.status, "paused");
   assert.equal(current.orchestration.phase, "initiative-acceptance");
