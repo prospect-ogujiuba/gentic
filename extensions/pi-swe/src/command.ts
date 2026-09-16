@@ -2,9 +2,10 @@ import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { coordinatedActiveTodo } from "../../../src/lifecycle-coordination.ts";
-import { activeWorkflowTopics, loadWorkflow, resolveTopic } from "./store.ts";
+import { loadWorkflow, resolveTopic } from "./store.ts";
 import { WorkflowMutationService } from "./service.ts";
-import { bindVerificationCheckpoint, reduceWorkflow, summarizeWorkflow, type Workflow, type WorkflowApproach, type WorkflowTask } from "./workflow.ts";
+import { identityFromContext, renderRunTails, sweRuntimeRegistry, WorkflowControlService } from "./ux.ts";
+import { reduceWorkflow, type Workflow, type WorkflowApproach, type WorkflowTask } from "./workflow.ts";
 
 const APPROACH_INSTRUCTIONS: Record<WorkflowApproach, string> = {
   tdd: "Establish a failing or characterization test before changing production code, then make it pass.",
@@ -19,14 +20,20 @@ const APPROACH_INSTRUCTIONS: Record<WorkflowApproach, string> = {
 
 const ROOT: AutocompleteItem[] = [
   { value: "status", label: "status", description: "/swe status [topic] — show workflow state" },
-  { value: "work", label: "work", description: "/swe work <start|resume|pause|stop|status> [topic] — control one workflow" },
+  { value: "work", label: "work", description: "/swe work <start|resume|pause|stop|status|inspect|runs> [topic] — control or inspect one workflow" },
   { value: "migrate", label: "migrate", description: "/swe migrate <topic> — import an existing pi-swe v2 initiative" },
   { value: "config", label: "config", description: "/swe config — explain the zero-config replacement" },
 ];
 const WORK: AutocompleteItem[] = [
-  { value: "work status", label: "status", description: "/swe work status [topic] — show workflow state" },
-  { value: "work start", label: "start", description: "/swe work start [topic] — start ready work in one agent run" },
+  { value: "work status", label: "status", description: "/swe work status [topic] — show bounded workflow and run state" },
+  { value: "work inspect", label: "inspect", description: "/swe work inspect [topic] — inspect stage, decisions, and recovery" },
+  { value: "work runs", label: "runs", description: "/swe work runs [topic] — show bounded recent report/output tails" },
+  { value: "work start", label: "start", description: "/swe work start [topic] — start orchestrated work" },
   { value: "work resume", label: "resume", description: "/swe work resume [topic] — resume paused or blocked work" },
+  { value: "work retry", label: "retry", description: "/swe work retry [topic] — explicitly retry recoverable blocked work" },
+  { value: "work answer", label: "answer", description: "/swe work answer [topic] [question] — answer a clarification" },
+  { value: "work reset", label: "reset", description: "/swe work reset [topic] — explicitly reset remediation budget" },
+  { value: "work validate", label: "validate", description: "/swe work validate [topic] <approve|reject> — record manual validation" },
   { value: "work pause", label: "pause", description: "/swe work pause [topic] — pause durable work" },
   { value: "work stop", label: "stop", description: "/swe work stop [topic] — pause without deleting state" },
 ];
@@ -59,40 +66,73 @@ export function registerSweCommand(pi: ExtensionAPI): void {
         const workAction = root === "work" ? args[1] ?? "status" : root;
         const topicArg = root === "work" ? args[2] : args[1];
         const topic = resolveTopic(ctx.cwd, topicArg);
-        if (workAction === "status") {
-          const located = loadWorkflow(ctx.cwd, topic);
-          if (!located) throw new Error(`workflow ${topic} was not found`);
-          ctx.ui.notify(summarizeWorkflow(located.workflow), "info");
+        const control = new WorkflowControlService(ctx.cwd);
+        const identity = identityFromContext(ctx);
+        if (workAction === "status" || workAction === "inspect") {
+          ctx.ui.notify(control.inspect(topic, identity), "info");
           return;
         }
-        if (!["start", "resume", "pause", "stop"].includes(workAction)) throw new Error("usage: /swe <status|config|migrate|work>");
-        if (workAction === "start" || workAction === "resume") {
+        if (workAction === "runs") {
+          const located = loadWorkflow(ctx.cwd, topic);
+          if (!located) throw new Error(`workflow ${topic} was not found`);
+          ctx.ui.notify(renderRunTails(located.workflow, sweRuntimeRegistry.list(topic)), "info");
+          return;
+        }
+        if (["answer", "reset", "validate"].includes(workAction)) {
+          if (!ctx.hasUI) throw new Error(`${workAction} requires an interactive keyboard-accessible user decision`);
+          const located = control.mutations.read(topic);
+          if (!located) throw new Error(`workflow ${topic} was not found`);
+          const current = located.workflow;
+          if (workAction === "answer") {
+            const questions = [...(current.planReview?.questions ?? []), ...current.tasks.flatMap((task) => task.clarifications), ...(current.initiativeAcceptance?.questions ?? [])].filter((question) => !question.answer);
+            if (!questions.length) throw new Error("no unanswered clarification is available");
+            const requested = args[3];
+            const questionId = requested ?? await ctx.ui.select("Choose clarification", questions.map((question) => `${question.id}: ${question.question}`)).then((choice) => choice?.split(":", 1)[0]);
+            const question = questions.find((item) => item.id === questionId);
+            if (!question) throw new Error(`clarification ${questionId ?? "selection"} was not found`);
+            const answer = await ctx.ui.input(question.question, "Type an explicit answer");
+            if (!answer?.trim()) throw new Error("clarification answer was cancelled or empty");
+            const taskId = current.tasks.find((task) => task.clarifications.some((item) => item.id === question.id))?.id;
+            const decision = await control.mutations.mutate(topic, current.revision, (state) => reduceWorkflow(state, { type: "respond-clarification", ...(taskId ? { taskId } : {}), questionId: question.id, answer, answeredBy: `interactive-user:${identity.sessionId}` }));
+            ctx.ui.notify(`${decision.message}\n${control.inspect(topic, identity)}`, "info");
+            return;
+          }
+          if (workAction === "reset") {
+            const task = current.tasks.find((item) => item.status === "blocked" && item.phase === "remediation");
+            if (!task) throw new Error("no remediation-blocked task is available to reset");
+            const reason = await ctx.ui.input(`Reset remediation budget for ${task.id}?`, "Reason for explicit reset");
+            if (!reason?.trim() || !await ctx.ui.confirm("Reset remediation budget", `${task.id}: ${reason}`)) throw new Error("remediation reset was not confirmed");
+            const decision = await control.mutations.mutate(topic, current.revision, (state) => reduceWorkflow(state, { type: "reset-remediation", taskId: task.id, max: task.remediation.max + 1, reason, decidedBy: `interactive-user:${identity.sessionId}` }));
+            ctx.ui.notify(`${decision.message}\n${control.inspect(topic, identity)}`, "info");
+            return;
+          }
+          const disposition = args[3];
+          if (disposition !== "approve" && disposition !== "reject") throw new Error("usage: /swe work validate <topic> <approve|reject>");
+          if (current.closeout?.manualValidation?.status !== "required") throw new Error("manual validation is not currently required");
+          const rationale = await ctx.ui.input(`Manual validation: ${disposition}`, "Observed result and rationale");
+          if (!rationale?.trim() || !await ctx.ui.confirm("Record manual validation", `${disposition}: ${rationale}`)) throw new Error("manual validation was not confirmed");
+          const decision = await control.mutations.mutate(topic, current.revision, (state) => reduceWorkflow(state, { type: "record-manual-validation", outcome: { status: disposition === "approve" ? "approved" : "rejected", rationale, decidedBy: `interactive-user:${identity.sessionId}`, at: new Date().toISOString() } }));
+          ctx.ui.notify(`${decision.message}\n${control.inspect(topic, identity)}`, "info");
+          return;
+        }
+        const transitionAction = workAction === "retry" ? "resume" : workAction;
+        if (!["start", "resume", "pause", "stop"].includes(transitionAction)) throw new Error("usage: /swe work <start|resume|retry|pause|stop|status|inspect|runs|answer|reset|validate> [topic]");
+        if (transitionAction === "start" || transitionAction === "resume") {
           const todo = await coordinatedActiveTodo(ctx);
           if (todo) throw new Error(`cannot activate while todo '${todo.title}' is active; finish or block that todo first`);
-          const active = activeWorkflowTopics(ctx.cwd, topic);
-          if (active.length) throw new Error(`cannot activate ${topic} while workflow ${active.join(", ")} is active; pause or complete it first`);
         }
-        const service = new WorkflowMutationService(ctx.cwd);
-        const located = service.read(topic);
+        const located = control.mutations.read(topic);
         if (!located) throw new Error(`workflow ${topic} was not found`);
-        const workflow = located.workflow;
-        const event = workAction === "stop" ? { type: "pause" as const } : { type: workAction as "start" | "resume" | "pause" };
-        const decision = await service.mutate(topic, workflow.revision, (current) => {
-          if (workAction === "start" || workAction === "resume") {
-            const active = activeWorkflowTopics(ctx.cwd, topic);
-            if (active.length) throw new Error(`cannot activate ${topic} while workflow ${active.join(", ")} is active; pause or complete it first`);
-          }
-          const next = reduceWorkflow(current, event);
-          if (next.changed && (workAction === "start" || workAction === "resume")) next.workflow = bindVerificationCheckpoint(next.workflow, ctx.sessionManager.getSessionId(), ctx.sessionManager.getBranch().length);
-          return next;
-        });
-        ctx.ui.notify(`pi-swe ${decision.message}`, decision.changed ? "info" : "warning");
-        if (decision.changed && (workAction === "start" || workAction === "resume") && decision.workflow.activeTask) {
-          const task = decision.workflow.tasks.find((item) => item.id === decision.workflow.activeTask)!;
-          if (task.assessmentStatus !== "assessed") return;
-          const path = located.path === ".model-artifacts/initiatives/" + topic + "/specs/manifest.json" ? located.path : `.model-artifacts/initiatives/${topic}/workflow.json`;
-          pi.sendUserMessage(buildTaskExecutionPrompt(decision.workflow, task, path));
+        const outcome = await control.transition(topic, transitionAction as "start" | "resume" | "pause" | "stop", identity);
+        const { decision } = outcome;
+        ctx.ui.notify(`pi-swe ${decision.message}\n${control.inspect(topic, identity)}`, decision.changed ? "info" : "warning");
+        if (!decision.changed || (transitionAction !== "start" && transitionAction !== "resume")) return;
+        if (outcome.prompt) {
+          pi.sendUserMessage(outcome.prompt);
+          return;
         }
+        const task = decision.workflow.activeTask ? decision.workflow.tasks.find((item) => item.id === decision.workflow.activeTask) : undefined;
+        if (task?.assessmentStatus === "assessed") pi.sendUserMessage(buildTaskExecutionPrompt(decision.workflow, task, located.path));
       } catch (error) {
         ctx.ui.notify(`pi-swe: ${error instanceof Error ? error.message : String(error)}`, "error");
       }

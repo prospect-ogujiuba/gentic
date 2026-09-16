@@ -21,6 +21,8 @@ export type RunnerProvenance = {
   runId: string;
   role: RunnerRole;
   actorId: string;
+  provider?: string;
+  model?: string;
   leaseId: string;
   leaseFence: number;
   contractHash: string;
@@ -243,7 +245,8 @@ export type WorkflowEvent =
   | { type: "cancel-run"; lease: RunLease; reason: string }
   | { type: "respond-clarification"; taskId?: string; questionId: string; answer: string; answeredBy: string }
   | { type: "claim-parent"; authority: ParentAuthority }
-  | { type: "invalidate-parent"; ownerId: string; sessionId: string; runtimeId: string; reason: string };
+  | { type: "invalidate-parent"; ownerId: string; sessionId: string; runtimeId: string; reason: string }
+  | { type: "recover-parent"; authority: ParentAuthority; reason: string; decidedBy: string };
 
 export type WorkflowDecision = { workflow: Workflow; changed: boolean; message: string };
 export type WorkflowTaskRevision = Pick<WorkflowTask, "id" | "title"> & Partial<Pick<WorkflowTask, "kind" | "dependsOn" | "acceptance" | "approaches" | "approachReasons" | "writeScope" | "nonGoals" | "verification" | "verificationDecision">>;
@@ -403,6 +406,7 @@ function reduceWorkflowStep(workflow: Workflow, event: WorkflowEvent, now: strin
   validTimestamp(now, "workflow timestamp");
   if (event.type === "claim-parent") return claimParent(workflow, event.authority, now);
   if (event.type === "invalidate-parent") return invalidateParent(workflow, event, now);
+  if (event.type === "recover-parent") return recoverParent(workflow, event, now);
   if (event.type === "claim-run") return claimRun(workflow, event.lease, now);
   if (event.type === "cancel-run") return cancelRun(workflow, event.lease, event.reason, now);
   if (event.type === "respond-clarification") return respondClarification(workflow, event, now);
@@ -416,7 +420,7 @@ function reduceWorkflowStep(workflow: Workflow, event: WorkflowEvent, now: strin
   return reduceOrchestratedWorkflow(workflow, event, now);
 }
 
-function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, { type: "claim-parent" | "invalidate-parent" | "claim-run" | "cancel-run" | "pause" | "record-plan-review" | "record-run-failure" }>, now: string): WorkflowDecision {
+function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, { type: "claim-parent" | "invalidate-parent" | "recover-parent" | "claim-run" | "cancel-run" | "pause" | "record-plan-review" | "record-run-failure" }>, now: string): WorkflowDecision {
   const current = activeTask(workflow);
   if ((event.type === "start" || event.type === "resume") && workflow.status === "complete") return unchanged(workflow, "workflow is already complete");
   if (event.type !== "block" && !approvedReport(workflow.planReview, workflow.contract.hash)) throw new Error("current plan contract requires independent plan review approval before task execution");
@@ -627,7 +631,7 @@ function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowE
   throw new Error("event is not valid in the current orchestration stage");
 }
 
-function reduceLegacyWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, { type: "claim-parent" | "invalidate-parent" | "claim-run" | "cancel-run" | "pause" | "record-plan-review" | "record-run-failure" }>, now: string): WorkflowDecision {
+function reduceLegacyWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, { type: "claim-parent" | "invalidate-parent" | "recover-parent" | "claim-run" | "cancel-run" | "pause" | "record-plan-review" | "record-run-failure" }>, now: string): WorkflowDecision {
   const current = activeTask(workflow);
   if (event.type === "start" || event.type === "resume") {
     if (workflow.status === "complete") return unchanged(workflow, "workflow is already complete");
@@ -689,6 +693,25 @@ function invalidateParent(workflow: Workflow, event: Extract<WorkflowEvent, { ty
     ...(workflow.orchestration.phase === "initiative-acceptance" ? { closeout: undefined, initiativeAcceptance: undefined } : {}),
     orchestration: { ...workflow.orchestration, parent: { ...parent, valid: false, invalidatedAt: now, invalidatedReason: reason } },
   }, now, `invalidated parent authority: ${reason}`);
+}
+
+function recoverParent(workflow: Workflow, event: Extract<WorkflowEvent, { type: "recover-parent" }>, now: string): WorkflowDecision {
+  const current = workflow.orchestration.parent;
+  if (!current || current.valid) throw new Error("parent recovery requires an explicitly invalidated authority");
+  if (workflow.orchestration.activeRun && Date.parse(workflow.orchestration.activeRun.expiresAt) > Date.parse(now)) throw new Error("parent recovery cannot take ownership from a live child run");
+  const authority = normalizeParentAuthority(event.authority);
+  if (!authority.valid || authority.cwd !== current.cwd) throw new Error("recovered parent must be valid and remain in the same repository");
+  const decidedBy = boundedText(event.decidedBy, "parent recovery decision owner", 128);
+  const reason = boundedText(event.reason, "parent recovery reason");
+  const tasks = workflow.tasks.map((task) => task.id === workflow.activeTask && ["verification", "ready-to-complete"].includes(task.phase)
+    ? { ...task, phase: "verification" as const, evidence: [], verificationCheckpoint: undefined }
+    : task);
+  const history = appendHistory(workflow.orchestration.history, { id: `parent-recovery-${workflow.revision + 1}`, type: "parent-recovered", at: now, summary: `${reason}; decided by ${decidedBy}`, auditCritical: true });
+  return update(workflow, {
+    status: "paused", tasks,
+    ...(workflow.orchestration.phase === "initiative-acceptance" ? { closeout: undefined, initiativeAcceptance: undefined } : {}),
+    orchestration: { ...workflow.orchestration, parent: authority, activeRun: undefined, history },
+  }, now, `recovered parent authority for ${authority.ownerId}; fresh checkpoints are required`);
 }
 
 function recordRunFailure(workflow: Workflow, event: Extract<WorkflowEvent, { type: "record-run-failure" }>, now: string): WorkflowDecision {
@@ -1138,7 +1161,7 @@ function normalizeEvidence(value: unknown): VerificationEvidence {
   };
 }
 function normalizeReport(value: unknown): StageReport { if (!record(value) || !['plan-review','implementation','general-review','concern-review','final-acceptance'].includes(value.kind as string) || !['approved','changes-requested','needs-input','completed','no-change','failed'].includes(value.outcome as string) || !Array.isArray(value.findings)) throw new Error("invalid stage report"); const summary = boundedText(value.summary, "stage report summary"); const findings = value.findings.map(normalizeFinding); if (findings.length > MAX_FINDINGS) throw new Error("stage report has too many findings"); const changedPaths = value.changedPaths === undefined ? undefined : boundedStrings(value.changedPaths, "changed paths", 128, 512); const questions = value.questions === undefined ? undefined : (Array.isArray(value.questions) ? value.questions.map(normalizeClarification) : (() => { throw new Error("stage report questions must be an array"); })()); if (questions && questions.length > 32) throw new Error("stage report has too many questions"); return { kind: value.kind as StageReport["kind"], outcome: value.outcome as StageReport["outcome"], summary, ...(typeof value.rationale === "string" && value.rationale.trim() ? { rationale: boundedText(value.rationale, "stage report rationale") } : {}), ...(changedPaths ? { changedPaths } : {}), findings, ...(questions ? { questions } : {}), provenance: normalizeProvenance(value.provenance) }; }
-function normalizeProvenance(value: unknown): RunnerProvenance { if (!record(value) || typeof value.runId !== "string" || !value.runId || value.runId.length > 128 || !['plan-reviewer','implementer','general-reviewer','concern-reviewer','final-reviewer'].includes(value.role as string) || typeof value.actorId !== "string" || !value.actorId || value.actorId.length > 128 || typeof value.leaseId !== "string" || !value.leaseId || value.leaseId.length > 128 || !Number.isSafeInteger(value.leaseFence) || (value.leaseFence as number) < 1 || typeof value.contractHash !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.contractHash) || (value.snapshotHash !== undefined && (typeof value.snapshotHash !== "string" || !value.snapshotHash || value.snapshotHash.length > 128))) throw new Error("invalid runner provenance"); return { runId: value.runId, role: value.role as RunnerRole, actorId: value.actorId, leaseId: value.leaseId, leaseFence: value.leaseFence as number, contractHash: value.contractHash, ...(typeof value.snapshotHash === "string" ? { snapshotHash: value.snapshotHash } : {}), startedAt: validTimestamp(value.startedAt, "runner start"), completedAt: validTimestamp(value.completedAt, "runner completion") }; }
+function normalizeProvenance(value: unknown): RunnerProvenance { if (!record(value) || typeof value.runId !== "string" || !value.runId || value.runId.length > 128 || !['plan-reviewer','implementer','general-reviewer','concern-reviewer','final-reviewer'].includes(value.role as string) || typeof value.actorId !== "string" || !value.actorId || value.actorId.length > 128 || typeof value.leaseId !== "string" || !value.leaseId || value.leaseId.length > 128 || !Number.isSafeInteger(value.leaseFence) || (value.leaseFence as number) < 1 || typeof value.contractHash !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.contractHash) || (value.snapshotHash !== undefined && (typeof value.snapshotHash !== "string" || !value.snapshotHash || value.snapshotHash.length > 128))) throw new Error("invalid runner provenance"); for (const field of ["provider", "model"] as const) if (value[field] !== undefined && (typeof value[field] !== "string" || !value[field] || value[field].length > 256)) throw new Error(`invalid runner ${field}`); return { runId: value.runId, role: value.role as RunnerRole, actorId: value.actorId, ...(typeof value.provider === "string" ? { provider: value.provider } : {}), ...(typeof value.model === "string" ? { model: value.model } : {}), leaseId: value.leaseId, leaseFence: value.leaseFence as number, contractHash: value.contractHash, ...(typeof value.snapshotHash === "string" ? { snapshotHash: value.snapshotHash } : {}), startedAt: validTimestamp(value.startedAt, "runner start"), completedAt: validTimestamp(value.completedAt, "runner completion") }; }
 function normalizeFinding(value: unknown): Finding { if (!record(value) || typeof value.id !== "string" || !TASK_ID.test(value.id) || !['blocking','warning'].includes(value.severity as string) || !['open','resolved','accepted-risk'].includes(value.status as string)) throw new Error("invalid finding"); return { id: value.id, severity: value.severity as Finding["severity"], status: value.status as Finding["status"], summary: boundedText(value.summary, "finding summary", 1024), evidence: boundedText(value.evidence, "finding evidence"), ...(typeof value.disposition === "string" && value.disposition.trim() ? { disposition: boundedText(value.disposition, "finding disposition") } : {}) }; }
 function normalizeClarification(value: unknown): Clarification { if (!record(value) || typeof value.id !== "string" || !TASK_ID.test(value.id) || typeof value.askedByRunId !== "string" || !value.askedByRunId) throw new Error("invalid clarification"); return { id: value.id, question: boundedText(value.question, "clarification question"), askedByRunId: value.askedByRunId, askedAt: validTimestamp(value.askedAt, "clarification timestamp"), ...(typeof value.answer === "string" ? { answer: boundedText(value.answer, "clarification answer") } : {}), ...(typeof value.answeredBy === "string" ? { answeredBy: boundedText(value.answeredBy, "clarification answerer", 128) } : {}), ...(typeof value.answeredAt === "string" ? { answeredAt: validTimestamp(value.answeredAt, "clarification answer timestamp") } : {}) }; }
 function normalizeWorkspaceReceipt(value: unknown): WorkspaceReceipt {

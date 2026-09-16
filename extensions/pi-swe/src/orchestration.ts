@@ -6,6 +6,7 @@ import type { AgentRunRequest, AgentRunner, RunnerResult } from "./runner.ts";
 import type { InitiativeCloseoutAuthority, InitiativeCloseoutInspector, InitiativeVerificationSubmission } from "./closeout.ts";
 import type { ManagedVerificationAuthority, ParentExecutionIdentity, ProtectedVerificationSubmission } from "./integrity.ts";
 import { WorkflowMutationService } from "./service.ts";
+import { sweRuntimeRegistry, type RunOutcome, type SweRuntimeRegistry } from "./ux.ts";
 import {
   reduceWorkflow,
   scopeAllowsPath,
@@ -67,6 +68,7 @@ type EngineOptions = {
   now?: () => string;
   id?: (prefix: string) => string;
   authorizeUserDecision?: (decision: { kind: "finding" | "remediation-reset" | "manual-validation"; taskId?: string; decidedBy: string; reason: string }) => boolean;
+  runtimeRegistry?: SweRuntimeRegistry;
 };
 
 type ChildOutcome =
@@ -211,9 +213,9 @@ export class OrchestrationEngine {
       try { inspection = inspector.inspect(workflow); }
       catch (error) { return this.handoff("blocked", workflow, `final repository inspection failed: ${message(error)}`); }
       if (inspection.snapshot.hash !== workflow.closeout.snapshot.hash || inspection.snapshot.head !== workflow.closeout.snapshot.head || inspection.snapshot.branch !== workflow.closeout.snapshot.branch) return this.handoff("stale", workflow, "final repository snapshot changed before independent acceptance");
-      const handoff = await this.runChildStage(topic, workflow, undefined, "final-reviewer", "initiative-acceptance", async (lease) => {
+      const handoff = await this.runChildStage(topic, workflow, undefined, "final-reviewer", "initiative-acceptance", async (lease, signal) => {
         const request = this.finalAcceptanceRequest(workflow, lease, inspection);
-        const result = await this.runner.run(request);
+        const result = await this.runner.run(request, { signal });
         return this.runnerOutcome(result, lease, workflow.contract.hash, "final-reviewer", workflow.closeout!.snapshot.hash);
       }, (state, outcome) => outcome.ok
         ? reduceWorkflow(state, { type: "record-initiative-acceptance", report: outcome.report }, this.now())
@@ -255,8 +257,8 @@ export class OrchestrationEngine {
       if (prior.outcome === "needs-input" && unanswered.length) return this.handoff("needs-input", workflow, "plan review needs clarification");
       if (prior.outcome === "changes-requested" || prior.outcome === "failed") return this.handoff("blocked", workflow, "revise the current plan contract before requesting another independent review");
     }
-    const handoff = await this.runChildStage(topic, workflow, undefined, "plan-reviewer", "plan-review", async (lease) => {
-      const result = await this.runner.run(this.request(workflow, undefined, "plan-reviewer", lease, this.cwd));
+    const handoff = await this.runChildStage(topic, workflow, undefined, "plan-reviewer", "plan-review", async (lease, signal) => {
+      const result = await this.runner.run(this.request(workflow, undefined, "plan-reviewer", lease, this.cwd), { signal });
       return this.runnerOutcome(result, lease, workflow.contract.hash, "plan-reviewer");
     }, (state, outcome) => outcome.ok
       ? reduceWorkflow(state, { type: "record-plan-review", report: outcome.report }, this.now())
@@ -276,7 +278,7 @@ export class OrchestrationEngine {
   }
 
   private async runImplementation(topic: string, workflow: Workflow, task: WorkflowTask): Promise<OrchestrationHandoff> {
-    return this.runChildStage(topic, workflow, task, "implementer", "implementation", async (lease) => {
+    return this.runChildStage(topic, workflow, task, "implementer", "implementation", async (lease, signal) => {
       let receipt: GitWorkspaceReceipt;
       try {
         receipt = this.implementationWorkspace(workflow, task);
@@ -292,7 +294,7 @@ export class OrchestrationEngine {
           openFindings: task.findings.filter((finding) => finding.status === "open"),
         },
       });
-      const result = await this.runner.run(request);
+      const result = await this.runner.run(request, { signal });
       const outcome = this.runnerOutcome(result, lease, task.contract.hash, "implementer");
       if (!outcome.ok) return outcome;
       try {
@@ -314,7 +316,7 @@ export class OrchestrationEngine {
   private async runReview(topic: string, workflow: Workflow, task: WorkflowTask, role: "general-reviewer" | "concern-reviewer"): Promise<OrchestrationHandoff> {
     const receipt = task.workspaceReceipt;
     if (!receipt?.preparedResultCommit) return this.handoff("blocked", workflow, "review requires a prepared cumulative workspace result", task);
-    return this.runChildStage(topic, workflow, task, role, task.phase, async (lease) => {
+    return this.runChildStage(topic, workflow, task, role, task.phase, async (lease, signal) => {
       let delta: string;
       try { delta = this.boundedDelta(receipt as GitWorkspaceReceipt); }
       catch (error) { return { ok: false, reason: `cumulative review delta unavailable: ${message(error)}` }; }
@@ -329,7 +331,7 @@ export class OrchestrationEngine {
           objectiveEvidence: task.evidence.map((item) => ({ command: item.command, args: item.args, exitCode: item.exitCode, advisory: true })),
         },
       }, selectedConcerns);
-      const result = await this.runner.run(request);
+      const result = await this.runner.run(request, { signal });
       const outcome = this.runnerOutcome(result, lease, task.contract.hash, role, receipt.snapshotHash);
       if (!outcome.ok) return outcome;
       const implementation = [...task.reports].reverse().find((report) => report.kind === "implementation");
@@ -391,7 +393,7 @@ export class OrchestrationEngine {
     task: WorkflowTask | undefined,
     role: RunnerRole | undefined,
     stage: RunLease["stage"],
-    child: (lease: RunLease) => Promise<T>,
+    child: (lease: RunLease, signal: AbortSignal) => Promise<T>,
     settle: (workflow: Workflow, result: T) => WorkflowDecision,
   ): Promise<OrchestrationHandoff> {
     const runId = this.id(role ?? String(stage));
@@ -404,9 +406,17 @@ export class OrchestrationEngine {
     } catch (error) {
       return this.staleOrThrow(topic, error);
     }
+    const controller = new AbortController();
+    const registry = this.options.runtimeRegistry ?? sweRuntimeRegistry;
+    registry.begin({ topic, runId, ...(role ? { role } : {}), stage, ...(task ? { taskId: task.id } : {}), provider: this.options.provider, model: this.options.model, startedAt: this.now(), outcome: "running", controller });
     let outcome: T;
-    try { outcome = await child(claimed.lease); }
+    try { outcome = await child(claimed.lease, controller.signal); }
     catch (error) { outcome = { ok: false, reason: `orchestration infrastructure failure: ${message(error)}` } as T; }
+    registry.settle(topic, runId, {
+      outcome: outcome.ok && "report" in outcome ? classifyReportOutcome(outcome.report) : outcome.ok ? "completed" : classifyRuntimeOutcome(outcome.reason), completedAt: this.now(),
+      reportTail: outcome.ok && "report" in outcome ? outcome.report.summary : outcome.ok ? "integration receipt recorded" : outcome.reason,
+      outputTail: outcome.ok && "report" in outcome ? outcome.report.rationale : undefined,
+    });
     try {
       const decision = await this.service.settleRun(topic, claimed.workflow.revision, claimed.lease, (state) => settle(state, outcome));
       const resolvedTask = task ? decision.workflow.tasks.find((candidate) => candidate.id === task.id) : undefined;
@@ -515,5 +525,19 @@ export class OrchestrationEngine {
   private id(prefix: string): string { return this.options.id?.(prefix) ?? `${prefix}-${randomUUID()}`; }
 }
 
+function classifyReportOutcome(report: StageReport): RunOutcome {
+  if (report.outcome === "changes-requested") return "changes-requested";
+  if (report.outcome === "needs-input" || report.findings.some((finding) => finding.severity === "blocking" && finding.status === "open")) return "blocked";
+  if (report.outcome === "failed") return "crashed";
+  return "completed";
+}
+function classifyRuntimeOutcome(reason: string): RunOutcome {
+  if (/cancel/i.test(reason)) return "cancelled";
+  if (/deadline|timed?[- ]?out|timeout/i.test(reason)) return "timed-out";
+  if (/changes.requested/i.test(reason)) return "changes-requested";
+  if (/interrupt|orphan|expired|stale/i.test(reason)) return "interrupted";
+  if (/spawn|crash|premature|nonzero|model-error|missing-report|malformed|infrastructure/i.test(reason)) return "crashed";
+  return "blocked";
+}
 function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 function sameStrings(left: string[], right: string[]): boolean { const sorted = [...right].sort(); return left.length === right.length && [...left].sort().every((item, index) => item === sorted[index]); }

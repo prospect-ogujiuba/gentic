@@ -63,6 +63,8 @@
         "runId": { "type": "string", "minLength": 1, "maxLength": 128 },
         "role": { "enum": ["plan-reviewer", "implementer", "general-reviewer", "concern-reviewer", "final-reviewer"] },
         "actorId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "provider": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "model": { "type": "string", "minLength": 1, "maxLength": 256 },
         "leaseId": { "type": "string", "minLength": 1, "maxLength": 128 },
         "leaseFence": { "type": "integer", "minimum": 1 },
         "contractHash": { "$ref": "#/$defs/hash" },

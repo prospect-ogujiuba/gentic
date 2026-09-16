@@ -6,7 +6,9 @@ import { execFileSync } from "node:child_process";
 import test from "node:test";
 
 import { listWorkflowTopics } from "../extensions/pi-swe/src/store.ts";
-import { createWorkflow, reduceWorkflow } from "../extensions/pi-swe/src/workflow.ts";
+import { createWorkflow, reduceWorkflow, type StageReport } from "../extensions/pi-swe/src/workflow.ts";
+import { registerSweWorkflowTool } from "../extensions/pi-swe/src/tool.ts";
+import { SweRuntimeRegistry, WorkflowControlService, type WorkflowControlIdentity } from "../extensions/pi-swe/src/ux.ts";
 import { hasActiveSweWorkflow } from "../extensions/pi-todo/src/pi/swe-ownership.ts";
 import {
   ManagedVerificationAuthority,
@@ -296,4 +298,110 @@ test("bounded workflow ownership scans fail closed when completeness cannot be p
   } finally {
     rmSync(cwd, { recursive: true, force: true });
   }
+});
+
+const UX_NOW = "2026-09-20T00:00:00.000Z";
+const UX_IDENTITY: WorkflowControlIdentity = { sessionId: "session-tool", runtimeId: "runtime-tool", provider: "fixture-provider", model: "fixture-model", thinking: "medium", branchLength: 0 };
+
+function uxWorkflow(topic: string) {
+  const value = createWorkflow({ topic, goal: "tool parity", now: UX_NOW, tasks: [{ id: "T1", title: "work", assessmentStatus: "assessed", approaches: [], approachReasons: {}, writeScope: ["src/**"], nonGoals: ["no external effects"], verification: [{ command: "node", args: ["--test"] }] }] });
+  const report: StageReport = { kind: "plan-review", outcome: "approved", summary: "approved", findings: [], provenance: { runId: "plan", role: "plan-reviewer", actorId: "plan-reviewer:plan", leaseId: "lease-plan", leaseFence: 1, contractHash: value.contract.hash, startedAt: "2026-09-19T23:00:00.000Z", completedAt: "2026-09-19T23:01:00.000Z" } };
+  return { ...value, planReview: report };
+}
+
+function writeUxWorkflow(cwd: string, value: Workflow) {
+  const directory = join(cwd, ".model-artifacts", "initiatives", value.topic);
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(join(directory, "workflow.json"), `${JSON.stringify(value)}\n`);
+}
+
+function toolHarness(cwd: string) {
+  let definition: any;
+  registerSweWorkflowTool({ registerTool: (value: any) => { definition = value; } } as never);
+  const ctx = { cwd, model: { provider: UX_IDENTITY.provider, id: UX_IDENTITY.model }, thinkingLevel: UX_IDENTITY.thinking, sessionManager: { getSessionId: () => UX_IDENTITY.sessionId, getBranch: () => [] } };
+  return (params: any) => definition.execute("tool-call", params, new AbortController().signal, undefined, ctx);
+}
+
+test("tool start and slash-command control share the same orchestrator ownership and stage service", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-tool-parity-"));
+  try {
+    writeUxWorkflow(cwd, uxWorkflow("tool-parity"));
+    const execute = toolHarness(cwd);
+    const result = await execute({ action: "start", topic: "tool-parity" });
+    const text = result.content[0].text as string;
+    assert.match(text, /Use the v2 OrchestrationEngine/);
+    assert.match(text, /do not implement in this parent/);
+    assert.match(text, /fixture-provider\/fixture-model/);
+    assert.equal(result.details.workflow.status, "active");
+    assert.equal(result.details.workflow.activeTask, "T1");
+    assert.equal(result.details.workflow.orchestration.phase, "task-execution");
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
+});
+
+test("tool status, inspect, and runs use bounded native inspection without attach claims", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-tool-inspect-"));
+  try {
+    writeUxWorkflow(cwd, uxWorkflow("tool-inspect"));
+    const execute = toolHarness(cwd);
+    for (const action of ["status", "inspect"] as const) {
+      const result = await execute({ action, topic: "tool-inspect" });
+      const text = result.content[0].text as string;
+      assert.match(text, /stage:/);
+      assert.match(text, /retry\/remediation:/);
+      assert.match(text, /Native non-PTY runs cannot be opened with interactive-shell \/attach/);
+      assert.ok(text.length <= 12_000);
+    }
+    const runs = await execute({ action: "runs", topic: "tool-inspect" });
+    assert.match(runs.content[0].text, /plan.*completed/s);
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
+});
+
+test("expired leases are fenced before tool resume and stale live leases are rejected", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-tool-lease-"));
+  try {
+    let value = uxWorkflow("tool-lease");
+    value = { ...value, status: "paused", activeTask: "T1", tasks: value.tasks.map((task) => ({ ...task, status: "active" as const, phase: "implementation" as const })), orchestration: { ...value.orchestration, phase: "task-execution", activeRun: { id: "old", runId: "orphan", ownerId: "owner", stage: "implementation", taskId: "T1", fence: 1, acquiredAt: "2000-01-01T00:00:00.000Z", expiresAt: "2000-01-01T01:00:00.000Z" } } };
+    writeUxWorkflow(cwd, value);
+    const service = new WorkflowControlService(cwd, { runtimes: new SweRuntimeRegistry() });
+    const resumed = await service.transition("tool-lease", "resume", UX_IDENTITY);
+    assert.equal(resumed.decision.workflow.orchestration.activeRun, undefined);
+    assert.ok(resumed.decision.workflow.orchestration.history.some((entry) => entry.type === "run-cancelled" && /orphaned/.test(entry.summary)));
+
+    const current = resumed.decision.workflow;
+    const live = { ...current, status: "paused" as const, orchestration: { ...current.orchestration, activeRun: { id: "live", runId: "live-child", ownerId: "owner", stage: "implementation" as const, taskId: "T1", fence: current.orchestration.nextFence, acquiredAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString() } } };
+    writeUxWorkflow(cwd, live);
+    await assert.rejects(() => service.transition("tool-lease", "resume", UX_IDENTITY), /still active/);
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
+});
+
+test("pause and stop preserve workflow evidence while distinguishing interrupted and cancelled runtime outcomes", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-tool-stop-"));
+  try {
+    const registry = new SweRuntimeRegistry();
+    const value = uxWorkflow("tool-stop");
+    writeUxWorkflow(cwd, value);
+    const controller = new AbortController();
+    registry.begin({ topic: value.topic, runId: "child", role: "implementer", stage: "implementation", provider: "p", model: "m", startedAt: UX_NOW, outcome: "running", controller });
+    const control = new WorkflowControlService(cwd, { runtimes: registry });
+    await control.transition(value.topic, "pause", UX_IDENTITY);
+    assert.equal(controller.signal.aborted, true);
+    assert.equal(registry.list(value.topic)[0]!.outcome, "interrupted");
+    assert.equal(control.mutations.read(value.topic)!.workflow.planReview?.summary, "approved");
+
+    const second = new AbortController();
+    registry.begin({ topic: value.topic, runId: "child-2", role: "implementer", stage: "implementation", provider: "p", model: "m", startedAt: UX_NOW, outcome: "running", controller: second });
+    await control.transition(value.topic, "stop", UX_IDENTITY);
+    assert.equal(registry.list(value.topic).find((run) => run.runId === "child-2")!.outcome, "cancelled");
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
+});
+
+test("dismissing runtime output never removes accepted workflow report metadata", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-tool-dismiss-"));
+  try {
+    writeUxWorkflow(cwd, uxWorkflow("tool-dismiss"));
+    const registry = new SweRuntimeRegistry();
+    registry.begin({ topic: "tool-dismiss", runId: "plan", role: "plan-reviewer", stage: "plan-review", provider: "p", model: "m", startedAt: UX_NOW, outcome: "completed" });
+    assert.equal(registry.dismiss("tool-dismiss", "plan"), true);
+    assert.equal(new WorkflowControlService(cwd).mutations.read("tool-dismiss")!.workflow.planReview?.provenance.runId, "plan");
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
 });

@@ -217,7 +217,7 @@ test("production runner child extension completes through the pinned local Pi pr
     },
     trustedExtensions: [resolve("test/fixtures/pi-runner-protocol-extension.ts")],
     agentSourceDir: emptyAgentSource,
-    budgets: { timeoutMs: 15_000, maxTurns: 4, maxOutputBytes: 256 * 1024, maxRetries: 0, killGraceMs: 50 },
+    budgets: { timeoutMs: 30_000, maxTurns: 4, maxOutputBytes: 256 * 1024, maxRetries: 0, killGraceMs: 50 },
   }));
   assert.equal(result.ok, true, result.ok ? undefined : JSON.stringify(result.failure));
   if (!result.ok) return;

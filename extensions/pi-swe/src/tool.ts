@@ -4,11 +4,12 @@ import { Type } from "typebox";
 
 import { coordinatedActiveTodo } from "../../../src/lifecycle-coordination.ts";
 import { buildTaskExecutionPrompt } from "./command.ts";
-import { activeWorkflowTopics, loadWorkflow, resolveTopic, workflowPath } from "./store.ts";
+import { loadWorkflow, resolveTopic, workflowPath } from "./store.ts";
 import { WorkflowMutationService } from "./service.ts";
+import { identityFromContext, renderRunTails, sweRuntimeRegistry, WorkflowControlService } from "./ux.ts";
 import { bindVerificationCheckpoint, createWorkflow, reduceWorkflow, reviseWorkflow, summarizeWorkflow, WORKFLOW_APPROACHES, type ApproachReasons, type VerificationCommand, type Workflow, type WorkflowApproach, type WorkflowEvent } from "./workflow.ts";
 
-const Action = StringEnum(["status", "create", "migrate", "revise", "start", "pause", "resume", "verify", "complete", "block"] as const);
+const Action = StringEnum(["status", "inspect", "runs", "dismiss-run", "create", "migrate", "revise", "start", "pause", "stop", "resume", "verify", "complete", "block"] as const);
 const Command = Type.Object({
   command: Type.String({ minLength: 1, maxLength: 256 }),
   args: Type.Optional(Type.Array(Type.String({ maxLength: 512 }), { maxItems: 64 })),
@@ -41,15 +42,17 @@ export const sweWorkflowParameters = Type.Object({
   plan: Type.Optional(Type.String({ maxLength: 2048, description: "Optional project-relative plan path or concise plan summary" })),
   tasks: Type.Optional(Type.Array(Task, { minItems: 1, maxItems: 100 })),
   reason: Type.Optional(Type.String({ minLength: 1, maxLength: 2048 })),
+  runId: Type.Optional(Type.String({ minLength: 1, maxLength: 128, description: "Exited runtime entry to dismiss; accepted workflow reports are never deleted" })),
 });
 
 export type SweWorkflowInput = {
-  action: "status" | "create" | "migrate" | "revise" | "start" | "pause" | "resume" | "verify" | "complete" | "block";
+  action: "status" | "inspect" | "runs" | "dismiss-run" | "create" | "migrate" | "revise" | "start" | "pause" | "stop" | "resume" | "verify" | "complete" | "block";
   topic?: string;
   goal?: string;
   plan?: string;
   tasks?: Array<{ id: string; title: string; kind?: "implementation" | "coordination"; dependsOn?: string[]; acceptance?: string[]; approaches: WorkflowApproach[]; approachReasons?: ApproachReasons; writeScope: string[]; nonGoals: string[]; verification?: VerificationCommand[]; verificationDecision?: { kind: "manual"; rationale: string; decidedBy: string; at: string } }>;
   reason?: string;
+  runId?: string;
 };
 
 export function registerSweWorkflowTool(pi: ExtensionAPI): void {
@@ -68,11 +71,17 @@ export function registerSweWorkflowTool(pi: ExtensionAPI): void {
     ],
     parameters: sweWorkflowParameters,
     async execute(_toolCallId, params: SweWorkflowInput, _signal, onUpdate, ctx) {
-      if (params.action === "status") {
+      if (["status", "inspect", "runs", "dismiss-run"].includes(params.action)) {
         const topic = resolveTopic(ctx.cwd, params.topic);
         const located = loadWorkflow(ctx.cwd, topic);
         if (!located) throw new Error(`workflow ${topic} was not found`);
-        return result(summarizeWorkflow(located.workflow), located.workflow, located.kind);
+        const control = new WorkflowControlService(ctx.cwd);
+        if (params.action === "dismiss-run") {
+          const dismissed = sweRuntimeRegistry.dismiss(topic, required(params.runId, "runId"));
+          return result(`${dismissed ? "dismissed exited runtime entry" : "no exited runtime entry matched"}; accepted reports remain in workflow.json\n${control.inspect(topic, identityFromContext(ctx))}`, located.workflow, located.kind);
+        }
+        const text = params.action === "runs" ? renderRunTails(located.workflow, sweRuntimeRegistry.list(topic)) : control.inspect(topic, identityFromContext(ctx));
+        return result(text, located.workflow, located.kind);
       }
       const topic = params.action === "create" ? required(params.topic, "topic") : resolveTopic(ctx.cwd, params.topic);
       const service = new WorkflowMutationService(ctx.cwd);
@@ -89,6 +98,17 @@ export function registerSweWorkflowTool(pi: ExtensionAPI): void {
       if (!located) throw new Error(`workflow ${topic} was not found`);
       const workflow = located.workflow;
       if (params.action === "start" || params.action === "resume") await requireNoActiveTodo(ctx);
+      if (["start", "resume", "pause", "stop"].includes(params.action)) {
+        const control = new WorkflowControlService(ctx.cwd, { mutations: service });
+        const transition = await control.transition(topic, params.action as "start" | "resume" | "pause" | "stop", identityFromContext(ctx));
+        let text = `${transition.decision.message}\n${control.inspect(topic, identityFromContext(ctx))}`;
+        if (transition.prompt) text += `\n\n${transition.prompt}`;
+        else if ((params.action === "start" || params.action === "resume") && transition.decision.changed) {
+          const task = activeTask(transition.decision.workflow);
+          if (task?.assessmentStatus === "assessed") text += `\n\n${buildTaskExecutionPrompt(transition.decision.workflow, task, workflowPath(topic))}`;
+        }
+        return result(text, transition.decision.workflow, "native");
+      }
       if (params.action === "revise") {
         const decision = await service.mutate(topic, workflow.revision, (current) => {
           const next = reviseWorkflow(current, { goal: params.goal, plan: params.plan, linkedPlanContent: service.linkedPlanContent(params.plan ?? current.plan), tasks: params.tasks ?? [] });
@@ -113,21 +133,19 @@ export function registerSweWorkflowTool(pi: ExtensionAPI): void {
         return result(`${decision.message}; exit ${evidence.exitCode}`, decision.workflow, "native");
       }
       let event: WorkflowEvent;
+      if (params.action === "complete" && workflow.orchestration.mode === "multi-agent") throw new Error("managed multi-agent completion must advance through OrchestrationEngine so live ownership, snapshot, review, verification, and final acceptance gates cannot diverge");
       if (params.action === "complete") ensureNoImplementationAfterVerification(ctx.sessionManager.getBranch(), workflow);
       if (params.action === "block") event = { type: "block", reason: required(params.reason, "reason") };
       else if (params.action === "complete") event = { type: "complete-task" };
-      else if (params.action === "start" || params.action === "resume" || params.action === "pause") event = { type: params.action };
       else throw new Error(`unsupported workflow action ${params.action}`);
       const decision = await service.mutate(topic, workflow.revision, (current) => {
-        if (params.action === "start" || params.action === "resume") requireNoOtherActiveWorkflow(ctx.cwd, topic);
         const next = reduceWorkflow(current, event);
         const activated = activeTask(next.workflow);
-        const didActivate = next.changed && ((params.action === "start" || params.action === "resume") || (params.action === "complete" && activated?.id !== current.activeTask));
-        if (didActivate) next.workflow = bindVerificationCheckpoint(next.workflow, ctx.sessionManager.getSessionId(), ctx.sessionManager.getBranch().length);
+        if (next.changed && params.action === "complete" && activated?.id !== current.activeTask) next.workflow = bindVerificationCheckpoint(next.workflow, ctx.sessionManager.getSessionId(), ctx.sessionManager.getBranch().length);
         return next;
       });
       const activated = activeTask(decision.workflow);
-      const didActivate = decision.changed && ((params.action === "start" || params.action === "resume") || (params.action === "complete" && activated?.id !== workflow.activeTask));
+      const didActivate = decision.changed && params.action === "complete" && activated?.id !== workflow.activeTask;
       let text = `${decision.message}\n${summarizeWorkflow(decision.workflow)}`;
       if (didActivate && activated?.assessmentStatus === "assessed") text += `\n\n${buildTaskExecutionPrompt(decision.workflow, activated, workflowPath(topic))}`;
       return result(text, decision.workflow, "native");
@@ -135,10 +153,6 @@ export function registerSweWorkflowTool(pi: ExtensionAPI): void {
   });
 }
 
-function requireNoOtherActiveWorkflow(cwd: string, topic: string): void {
-  const active = activeWorkflowTopics(cwd, topic);
-  if (active.length) throw new Error(`cannot activate ${topic} while workflow ${active.join(", ")} is active; pause or complete it first`);
-}
 async function requireNoActiveTodo(ctx: { cwd: string; sessionManager: { getBranch(): readonly unknown[] } }): Promise<void> {
   const todo = await coordinatedActiveTodo(ctx);
   if (todo) throw new Error(`cannot activate pi-swe while todo '${todo.title}' is active; finish or block that todo first`);

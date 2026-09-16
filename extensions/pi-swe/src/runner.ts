@@ -682,6 +682,8 @@ function materializeReport(raw: RawRunnerReport, request: AgentRunRequest, start
       runId: request.runId,
       role: request.role,
       actorId: request.actorId,
+      provider: request.provider,
+      model: request.model,
       leaseId: request.lease.id,
       leaseFence: request.lease.fence,
       contractHash: request.contractPacket.hash,

@@ -304,6 +304,7 @@
         "extensions/pi-swe/src/service.ts",
         "extensions/pi-swe/src/store.ts",
         "extensions/pi-swe/src/tool.ts",
+        "extensions/pi-swe/src/ux.ts",
         "extensions/pi-swe/src/workflow.ts",
         "extensions/pi-swe/src/workspace.ts"
       ],
