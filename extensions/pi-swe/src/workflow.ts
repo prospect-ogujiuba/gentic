@@ -194,7 +194,8 @@ export type WorkflowEvent =
   | { type: "record-initiative-acceptance"; report: StageReport }
   | { type: "complete-initiative" }
   | { type: "claim-run"; lease: RunLease }
-  | { type: "cancel-run"; lease: RunLease; reason: string };
+  | { type: "cancel-run"; lease: RunLease; reason: string }
+  | { type: "respond-clarification"; taskId?: string; questionId: string; answer: string; answeredBy: string };
 
 export type WorkflowDecision = { workflow: Workflow; changed: boolean; message: string };
 export type WorkflowTaskRevision = Pick<WorkflowTask, "id" | "title"> & Partial<Pick<WorkflowTask, "kind" | "dependsOn" | "acceptance" | "approaches" | "approachReasons" | "writeScope" | "nonGoals" | "verification" | "verificationDecision">>;
@@ -350,6 +351,7 @@ function reduceWorkflowStep(workflow: Workflow, event: WorkflowEvent, now: strin
   validTimestamp(now, "workflow timestamp");
   if (event.type === "claim-run") return claimRun(workflow, event.lease, now);
   if (event.type === "cancel-run") return cancelRun(workflow, event.lease, event.reason, now);
+  if (event.type === "respond-clarification") return respondClarification(workflow, event, now);
   if (event.type === "pause") {
     if (workflow.status === "complete") return unchanged(workflow, "workflow is already complete");
     return update(workflow, { status: "paused" }, now, "workflow paused");
@@ -703,6 +705,38 @@ function cancelRun(workflow: Workflow, lease: RunLease, reason: string, now: str
   const active = workflow.orchestration.activeRun;
   if (!active || active.id !== lease.id || active.fence !== lease.fence || active.runId !== lease.runId) throw new Error("stale run lease cannot cancel the active run");
   return update(workflow, { status: workflow.status === "active" ? "paused" : workflow.status, orchestration: { ...workflow.orchestration, activeRun: undefined, history: appendHistory(workflow.orchestration.history, { id: `run-${lease.fence}-cancelled`, type: "run-cancelled", at: now, summary: boundedText(reason, "cancellation reason"), ...(lease.taskId ? { taskId: lease.taskId } : {}), auditCritical: true }) } }, now, `cancelled run ${lease.runId}`);
+}
+function respondClarification(workflow: Workflow, event: Extract<WorkflowEvent, { type: "respond-clarification" }>, now: string): WorkflowDecision {
+  if (workflow.status === "complete") throw new Error("completed workflow clarifications are immutable");
+  if (!TASK_ID.test(event.questionId)) throw new Error("invalid clarification id");
+  const answer = boundedText(event.answer, "clarification answer");
+  const answeredBy = boundedText(event.answeredBy, "clarification answerer", 128);
+  const apply = (question: Clarification): Clarification => {
+    if (question.id !== event.questionId) return question;
+    if (question.answer !== undefined) throw new Error(`clarification ${event.questionId} is already answered`);
+    return { ...question, answer, answeredBy, answeredAt: now };
+  };
+  const updateReport = (report: StageReport): StageReport => report.questions?.some((question) => question.id === event.questionId)
+    ? { ...report, questions: report.questions.map(apply) }
+    : report;
+  if (event.taskId) {
+    const task = workflow.tasks.find((candidate) => candidate.id === event.taskId);
+    if (!task) throw new Error(`task ${event.taskId} was not found`);
+    if (task.status === "complete") throw new Error(`completed task ${event.taskId} clarifications are immutable`);
+    if (!task.clarifications.some((question) => question.id === event.questionId)) throw new Error(`clarification ${event.questionId} was not found on ${event.taskId}`);
+    return replaceTask(workflow, task.id, {
+      clarifications: task.clarifications.map(apply),
+      reports: task.reports.map(updateReport),
+    }, {}, now, `answered clarification ${event.questionId}`);
+  }
+  const reportKey = workflow.planReview?.questions?.some((question) => question.id === event.questionId)
+    ? "planReview"
+    : workflow.initiativeAcceptance?.questions?.some((question) => question.id === event.questionId)
+      ? "initiativeAcceptance"
+      : undefined;
+  if (!reportKey) throw new Error(`clarification ${event.questionId} was not found`);
+  const report = updateReport(workflow[reportKey]!);
+  return update(workflow, { [reportKey]: report }, now, `answered clarification ${event.questionId}`);
 }
 function scopeAllows(scopes: string[], path: string): boolean { return scopes.some((scope) => scopeAllowsPath(scope, path)); }
 function replaceTask(workflow: Workflow, id: string, taskPatch: Partial<WorkflowTask>, workflowPatch: Partial<Workflow>, now: string, message: string): WorkflowDecision { return changed(workflow, { ...workflowPatch, tasks: workflow.tasks.map((task) => task.id === id ? { ...task, ...taskPatch } : task) }, now, message); }
