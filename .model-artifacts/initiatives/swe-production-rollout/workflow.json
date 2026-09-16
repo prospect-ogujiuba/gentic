@@ -1,13 +1,13 @@
 {
   "version": 2,
   "topic": "swe-production-rollout",
-  "revision": 4,
+  "revision": 10,
   "status": "draft",
   "goal": "Migrate every supported pi-swe workflow safely, activate the complete v2 orchestration runtime with simplified start/resume operation, cut production over with bounded rollback, and retire obsolete v1 execution paths while retaining required compatibility readers.",
-  "plan": "One dependency-enforced 17-task rollout. Complete migration inventory, policy, atomic apply, operator surfaces, and qualification first. Then compose and atomically register the complete v2 runtime, add its autonomous driver and contextual UX, qualify recovery and the production entrypoint, rehearse cutover, migrate repository workflows under explicit control, make v2 the default with bounded rollback, retire v1 execution only, and finish release qualification. Retain v1 read/migration compatibility through the documented Gentic 1.0 boundary. No push, publish, deployment, release, self-upgrade, compatibility-reader deletion, or other external side effect without separate authorization. The production entrypoint must preserve pi-todo ownership precedence, dirty-index and file-fidelity guarantees, distinct terminal outcomes, durable evidence retention, explicit cutover authorization, and clean-checkout release-report evidence. The active rollout workflow is never a migration target. Runtime cutover and rollback use a no-child durable self-hosting handoff, and clean-checkout release verification runs separately from the control checkout that owns workflow.json.",
+  "plan": "One dependency-enforced 17-task rollout. Complete migration inventory, policy, atomic apply, operator surfaces, and qualification first. Then compose and atomically register the complete v2 runtime, add its autonomous driver and contextual UX, qualify recovery and the production entrypoint, rehearse cutover, migrate repository workflows under explicit control, make v2 the default with bounded rollback, retire v1 execution only, and finish release qualification. Retain v1 read/migration compatibility through the documented Gentic 1.0 boundary. No push, publish, deployment, release, self-upgrade, compatibility-reader deletion, or other external side effect without separate authorization. The production entrypoint must preserve pi-todo ownership precedence, dirty-index and file-fidelity guarantees, distinct terminal outcomes, durable evidence retention, explicit cutover authorization, and clean-checkout release-report evidence. The active rollout workflow is never a migration target. Runtime cutover and rollback use a no-child durable self-hosting handoff, and clean-checkout release verification runs separately from the control checkout that owns workflow.json. Bootstrap execution is explicit: before native v2 is registered, do not start this workflow through /swe. Implement the migration and activation segment in dependency order from the Git commit containing this approved plan, retaining scoped Git diffs, exact checks, and review evidence; commits occur only with separate explicit authorization. Activation qualification must adopt that bounded bootstrap delta through a dedicated authorized reducer event after fresh cumulative independent review; only then may native v2 take lifecycle authority at cutover-readiness. Kind-first artifact relocation remains solely owned by pi-artifacts, registration preflights precede hook side effects, and secrets never enter retained workflow evidence.",
   "contract": {
-    "revision": 3,
-    "hash": "sha256:5d6c51231979d373d1e0be0b1ca7d8a24f061939597d4048abec1babec4ea50c"
+    "revision": 6,
+    "hash": "sha256:3894b64f481fc360ba799bba914eeb08f88e1f85b18fad6d33b5e2e25c47f78f"
   },
   "initiativeVerification": [
     {
@@ -50,6 +50,13 @@
         "run",
         "typecheck"
       ]
+    },
+    {
+      "command": "git",
+      "args": [
+        "diff",
+        "--check"
+      ]
     }
   ],
   "orchestration": {
@@ -69,7 +76,9 @@
       "acceptance": [
         "A read-only inventory classifies native v1 workflow.json, current workflows, historical manifest/contracts initiatives, canonical/legacy layout conflicts, malformed or unsupported topics, and already-complete topics without mutating bytes.",
         "Inventory output is deterministic, bounded, machine-readable, and identifies the exact migration action or blocker per topic.",
-        "Symlinked ancestry, excessive directory breadth/depth, oversized files, and ambiguous layouts fail closed."
+        "Symlinked ancestry, excessive directory breadth/depth, oversized files, and ambiguous layouts fail closed.",
+        "Kind-first artifact relocation remains owned by pi-artifacts: SWE audit reports migration-required guidance and never becomes a second writer or silently combines artifact relocation with workflow semantic upgrade.",
+        "Inventory and migration reports are metadata-only and bounded: secret values, workflow payload bodies, prompts, child output, and credential-like untracked content are redacted or represented only by approved hashes and classifications."
       ],
       "approaches": [
         "tdd",
@@ -95,8 +104,8 @@
         "Deleting legacy files"
       ],
       "contract": {
-        "revision": 3,
-        "hash": "sha256:f434bad32034f31ab70b38f2276d85f453afba2e90dfab77d6e8e9ebd4846831"
+        "revision": 7,
+        "hash": "sha256:e00ef8f80b80cbfd8029b63c5762605b4f3c83eaaad1f5bc2ce9d6987d817d36"
       },
       "verification": [
         {
@@ -166,8 +175,8 @@
         "Performing production rollout"
       ],
       "contract": {
-        "revision": 3,
-        "hash": "sha256:0de7b7fd1d0b5817dc2c7702637f02dc4ec7fb1079007a8f4a72936a0217f9c2"
+        "revision": 6,
+        "hash": "sha256:39565bbe3b159957f6a4918a89fc20da371c608fcce33d51178e820e46dcf9fd"
       },
       "verification": [
         {
@@ -212,7 +221,8 @@
         "Interrupted apply is recoverable and repeated apply is idempotent; stale plans and concurrent writers are rejected.",
         "Canonical/legacy conflicts, malformed workflows, unknown versions, and unsupported repositories remain unchanged on failure.",
         "Old artifacts remain read-only migration history until separately authorized retention cleanup.",
-        "Rollback is compare-and-restore against the exact migrated postimage, refuses intervening edits, and retains recovery evidence until an explicit retention decision."
+        "Rollback is compare-and-restore against the exact migrated postimage, refuses intervening edits, and retains recovery evidence until an explicit retention decision.",
+        "SWE semantic migration and pi-artifacts layout relocation are mutually exclusive: either active claim, transaction journal, or recovery record blocks the other writer until recovery/finalization, and concurrent attempts leave both authorities unchanged."
       ],
       "approaches": [
         "tdd",
@@ -231,7 +241,10 @@
         "extensions/pi-swe/src/migration.ts",
         "extensions/pi-swe/src/store.ts",
         "extensions/pi-swe/src/service.ts",
-        "test/pi-swe-migration.test.ts"
+        "test/pi-swe-migration.test.ts",
+        "extensions/pi-artifacts/src/app/transaction.ts",
+        "extensions/pi-artifacts/src/domain/inventory.ts",
+        "test/pi-artifacts.test.ts"
       ],
       "nonGoals": [
         "Batch orchestration",
@@ -239,8 +252,8 @@
         "Changing the production runtime entrypoint"
       ],
       "contract": {
-        "revision": 3,
-        "hash": "sha256:211f4d4c0ae7c2d5949a61256fecff45d25be5b8a785191b3d6d0226cf53afaf"
+        "revision": 7,
+        "hash": "sha256:7cbc934b9451beee901c37a01cf8a34665db3cd370d2c0c200d249a18c7857a1"
       },
       "verification": [
         {
@@ -249,7 +262,8 @@
             "--experimental-strip-types",
             "--test",
             "test/pi-swe-migration.test.ts",
-            "test/pi-swe-store.test.ts"
+            "test/pi-swe-store.test.ts",
+            "test/pi-artifacts.test.ts"
           ]
         },
         {
@@ -284,7 +298,8 @@
         "Slash-command and tool surfaces share the same migration service, classifications, preimage checks, mutation gates, and recovery outcomes.",
         "Repository-wide audit is read-only; batch apply requires explicit selection and reports each topic independently without hiding partial failures.",
         "Keyboard-accessible confirmations are required for historical-completion disposition and any destructive retention decision.",
-        "Output names the next legal action and remains bounded."
+        "Output names the next legal action and remains bounded.",
+        "Every mutating entry point—including start, resume/retry, revise, block, verify, complete, and automatic advancement—checks migration eligibility first; legacy state returns explicit migration-required guidance, and no implicit first-mutation upgrade can bypass inventory, disposition, preimage validation, or recovery receipts."
       ],
       "approaches": [
         "tdd",
@@ -316,8 +331,8 @@
         "Release or deployment"
       ],
       "contract": {
-        "revision": 3,
-        "hash": "sha256:50c41cc295e0fe069199337de569853e75fd8c082dbf9cf323fd463e246b6a06"
+        "revision": 7,
+        "hash": "sha256:8db64b168db5c88c508a12c75830083280068efcff5b30e0a59787b691de0dd3"
       },
       "verification": [
         {
@@ -385,7 +400,8 @@
         "test/pi-swe-migration.test.ts",
         "test/fixtures/pi-swe-migration/**",
         "catalog/gentic-inventory.json",
-        "catalog/pi-native-capabilities.json"
+        "catalog/pi-native-capabilities.json",
+        "scripts/check-model-artifact-layout.ts"
       ],
       "nonGoals": [
         "Registering v2 runtime hooks",
@@ -393,8 +409,8 @@
         "Publishing or deploying"
       ],
       "contract": {
-        "revision": 3,
-        "hash": "sha256:277487a2857c282bbe8d7512083714f82b33b986518697fc0642fba2942a22c6"
+        "revision": 6,
+        "hash": "sha256:8b28d01b0ca3feb60e0a139cad5256e8301f0c69c5c6f8f9791ed6c659abe134"
       },
       "verification": [
         {
@@ -449,7 +465,8 @@
         "One production factory constructs OrchestrationEngine, AgentRunner, GitWorkspaceManager, ManagedVerificationAuthority, InitiativeCloseoutAuthority, WorkflowMutationService, runtime registry, and required inspectors from explicit dependencies.",
         "Provider/model selection, timeouts, output bounds, repository limits, and extension loading have validated production defaults and deterministic test overrides.",
         "No module-level singleton can transfer parent authority, verification grants, or leases across reload or session boundaries.",
-        "Construction fails closed when required Pi APIs, repository capabilities, or dependency setup are unavailable."
+        "Construction fails closed when required Pi APIs, repository capabilities, or dependency setup are unavailable.",
+        "Provider credentials and other secrets are passed only through the child process credential boundary and are redacted from prompts, reports, diagnostics, retained tails, receipts, and workflow.json."
       ],
       "approaches": [
         "tdd",
@@ -478,8 +495,8 @@
         "Publishing or deployment"
       ],
       "contract": {
-        "revision": 3,
-        "hash": "sha256:ce16a7a10f7b899509a560beff69747116a17051acb2d4b1ce091bf7a1a55fa0"
+        "revision": 6,
+        "hash": "sha256:d494864f2f252b86efe77fad7b11c9e32ef4437416f4b224f0750ede876d3943"
       },
       "verification": [
         {
@@ -526,7 +543,8 @@
         "Reload, session replacement, and shutdown invalidate parent authority, abort active children, and preserve durable workflow evidence.",
         "Command and tool surfaces resolve the same active runtime and cannot bypass engine ownership or completion gates.",
         "pi-todo and pi-swe use the same lifecycle coordinator: active todo ownership blocks SWE activation, active SWE ownership blocks todo restructuring, and paused/blocked/complete states release ownership according to the documented precedence.",
-        "Production documentation and runtime diagnostics state that tool interception, leases, worktrees, and snapshot checks are workflow integrity controls, not an OS sandbox; only explicitly trusted tool identities receive capabilities."
+        "Production documentation and runtime diagnostics state that tool interception, leases, worktrees, and snapshot checks are workflow integrity controls, not an OS sandbox; only explicitly trusted tool identities receive capabilities.",
+        "Registration is two-phase: validate every dependency, Pi API, tool identity, repository condition, and runtime configuration before installing any hook or adapter; after side effects begin, any registration failure aborts extension startup rather than leaving a compatibility/v2 mixture."
       ],
       "approaches": [
         "tdd",
@@ -560,8 +578,8 @@
         "Running real-model children in ordinary CI"
       ],
       "contract": {
-        "revision": 4,
-        "hash": "sha256:6d703a1d493796015897bc7f106728b84f562155d715692283ede79d4a20792d"
+        "revision": 7,
+        "hash": "sha256:51cef3a604581f1244d464fe0dee0c9d9562b151b20e649d108012a51a600b20"
       },
       "verification": [
         {
@@ -629,7 +647,10 @@
         "extensions/pi-swe/src/ux.ts",
         "test/pi-swe-driver.test.ts",
         "test/pi-swe-orchestration.test.ts",
-        "test/pi-swe-agent-runner.test.ts"
+        "test/pi-swe-agent-runner.test.ts",
+        "extensions/pi-swe/src/workflow.ts",
+        "extensions/pi-swe/src/service.ts",
+        "extensions/pi-swe/workflow.schema.json"
       ],
       "nonGoals": [
         "Automatically answering clarification",
@@ -637,8 +658,8 @@
         "External side effects after workflow completion"
       ],
       "contract": {
-        "revision": 3,
-        "hash": "sha256:7464b39d5202070f46222e8e79217e8aeb27286921988ec9e303cd73927d119f"
+        "revision": 6,
+        "hash": "sha256:eb3a28fdec32f7c48f51cdf5ca329429ed7b319a4d121d0e7c8c2453ff9b3f38"
       },
       "verification": [
         {
@@ -715,8 +736,8 @@
         "Auto-approving user decisions"
       ],
       "contract": {
-        "revision": 3,
-        "hash": "sha256:5da9671d239168805df782fdaab92d02d67d34f6264d16e7a4e0135ad15fd99d"
+        "revision": 6,
+        "hash": "sha256:53a2d476f87a52df087f06df40f1629041ad0d8c68b3acbd1a2cc8214c2cc6cf"
       },
       "verification": [
         {
@@ -797,8 +818,8 @@
         "Real-model smoke tests without authorization"
       ],
       "contract": {
-        "revision": 3,
-        "hash": "sha256:376f626207c524c6c3756f4331d0f8a163734d46ea3da5822adc8e8e13960ef3"
+        "revision": 6,
+        "hash": "sha256:93ef4d99fc5f1341823c1fe9a1438d87abcc422be693e1270ee8b601c4a7f769"
       },
       "verification": [
         {
@@ -850,7 +871,12 @@
         "An optional bounded real-model smoke test runs only with credentials and explicit authorization; otherwise its skip is recorded honestly.",
         "Fixtures cover plan rejection, inadequate tests, reviewer disagreement, clarification/response, failed and source-changing verification, cumulative remediation, scoped follow-up tasks, manual validation, and successful multi-task closeout.",
         "Fixtures confirm pi-todo coexistence and ownership precedence through the production entrypoint, including restart and blocked-state release.",
-        "Task-local or stale evidence, historical labels, command actions, UI actions, runtime dismissal, and rollback state cannot bypass final initiative acceptance."
+        "Task-local or stale evidence, historical labels, command actions, UI actions, runtime dismissal, and rollback state cannot bypass final initiative acceptance.",
+        "Bootstrap adoption binds to the Git commit containing this approved rollout plan, accepts only its bounded descendant source delta and recorded check receipts, and refuses drift, unrelated history, missing task order, or a workflow that has already started.",
+        "Before native takeover, fresh independent reviewers assess the complete bootstrap delta and every blocking finding is resolved or explicitly decided; an authorized reducer event records bootstrap provenance and completes the pre-activation tasks without fabricating ordinary child reports.",
+        "Bootstrap adoption cannot satisfy final initiative acceptance: after takeover at cutover-readiness, current protected checks and a fresh final reviewer still cover the full cumulative rollout.",
+        "Bootstrap adoption requires a fresh plan reviewer to approve the task-to-delta mapping, a fresh general reviewer to assess the complete cumulative bootstrap delta, and fresh composed concern review for every selected specialist concern before any bootstrap task is recorded complete.",
+        "Every exact verification command declared by every bootstrap task is rerun through protected v2 authority against the same unchanged bootstrap snapshot; missing, stale, source-changing, or superseded checks block adoption."
       ],
       "approaches": [
         "tdd",
@@ -883,7 +909,11 @@
         "test/pi-swe-closeout.test.ts",
         "test/pi-swe-tool.test.ts",
         "test/pi-swe-workspace.test.ts",
-        "test/pi-todo-qualification.test.ts"
+        "test/pi-todo-qualification.test.ts",
+        "extensions/pi-swe/src/workflow.ts",
+        "extensions/pi-swe/src/service.ts",
+        "extensions/pi-swe/workflow.schema.json",
+        "test/pi-swe-store.test.ts"
       ],
       "nonGoals": [
         "Enabling v2 by default for every repository",
@@ -891,8 +921,8 @@
         "Publishing, deployment, or release"
       ],
       "contract": {
-        "revision": 3,
-        "hash": "sha256:519a2e45f3f9596d774708727da5fdffaf1e2156de6b435cf66616d8b62eb665"
+        "revision": 6,
+        "hash": "sha256:e6efba1a17d67dc23e60ffc9bac8095fa148fc84315b586bdc7540243cfb9efb"
       },
       "verification": [
         {
@@ -989,8 +1019,8 @@
         "Publishing or deploying"
       ],
       "contract": {
-        "revision": 3,
-        "hash": "sha256:8bffa70666053fa3c8d008d4221c44ca671f7d64df5b7af3822f7edfd43a710a"
+        "revision": 6,
+        "hash": "sha256:2dfa28727c91001732df0b744ababee9a5b1b1d838cfbd9d58c0f435490444eb"
       },
       "verification": [
         {
@@ -1062,8 +1092,8 @@
         "Real-model execution"
       ],
       "contract": {
-        "revision": 3,
-        "hash": "sha256:bf40cab94db6d536b7b828e7ccc76e58bcec34eacd9a691c116cfb82f8cf3eea"
+        "revision": 6,
+        "hash": "sha256:c2f5b71703561891a413075e59a5aa0b04f56214f0e77d7d867db5f7cc8f7b74"
       },
       "verification": [
         {
@@ -1134,8 +1164,8 @@
         "Migrating or rewriting the active swe-production-rollout workflow"
       ],
       "contract": {
-        "revision": 3,
-        "hash": "sha256:007d4b81da128327fedd3eccfc9b6c97af69f5d837338225a1988011d74127c4"
+        "revision": 6,
+        "hash": "sha256:e7a9e1a185c8e1f6b9a19aa528ddc0ac847d5d5b67ec5b983a042b8b0306b7a1"
       },
       "verification": [
         {
@@ -1201,7 +1231,11 @@
         "extensions/pi-swe/src/command.ts",
         "extensions/pi-swe/src/tool.ts",
         "test/pi-swe-cutover.test.ts",
-        "test/pi-swe-runtime.test.ts"
+        "test/pi-swe-runtime.test.ts",
+        "extensions/pi-swe/src/workflow.ts",
+        "extensions/pi-swe/src/service.ts",
+        "extensions/pi-swe/workflow.schema.json",
+        "extensions/pi-swe/runtime.schema.json"
       ],
       "nonGoals": [
         "Removing v1 execution code",
@@ -1209,8 +1243,8 @@
         "Publishing or deployment"
       ],
       "contract": {
-        "revision": 3,
-        "hash": "sha256:9689672785106e5650b1ebd6866905c29871ba1ff70f0b35e759d2834391a856"
+        "revision": 6,
+        "hash": "sha256:7e660077480cb940791fac7d9dc9cd6b0fc95b3b25aabaf010ae0f36019894de"
       },
       "verification": [
         {
@@ -1256,7 +1290,8 @@
         "Obsolete v1 start, verify, complete, and single-parent execution branches are removed or reduced to explicit migration-required guidance.",
         "V1 workflow and legacy artifact readers remain available through the documented Gentic 1.0 compatibility boundary.",
         "No command, tool, prompt, catalog entry, or documentation suggests an unsupported fallback or direct managed completion path.",
-        "Tests prove historical workflows remain inspectable/migratable while all new and migrated execution uses v2."
+        "Tests prove historical workflows remain inspectable/migratable while all new and migrated execution uses v2.",
+        "Closing the rollback window removes or tombstones every selector that can start the retired v1 execution runtime; later rollback requests fail with explicit migration/recovery guidance rather than a missing or partial runtime."
       ],
       "approaches": [
         "tdd",
@@ -1291,8 +1326,8 @@
         "External release operations"
       ],
       "contract": {
-        "revision": 3,
-        "hash": "sha256:b4c845d6489a6ab7d3e752735352a5c21e95a8d4885949556b819c9a451838e2"
+        "revision": 7,
+        "hash": "sha256:cad65244de78231b3d62e475c7c7f9391447ee47f42744582775caafe618efe1"
       },
       "verification": [
         {
@@ -1340,7 +1375,8 @@
         "Catalog, inventory, command metadata, package resources, changelog/release documentation, CI, full tests, SWE tests, typecheck, checks, command inventory, performance budgets, model-artifact validation, and diff hygiene pass.",
         "Repeated adversarial review finds no concrete blocker in lifecycle bypasses, migration loss, concurrent-parent races, late child results, rollback, evidence retention, accessibility, or misleading sandbox claims.",
         "Any real-model smoke test is bounded and runs only with credentials plus explicit user authorization; otherwise the skip is recorded honestly.",
-        "Release verification runs in a disposable clean checkout at the candidate commit while workflow.json remains authoritative in the control checkout; its bounded authorized report is imported as evidence without modifying candidate source, and package, lockfile, Pi contract, catalog, inventory, command, and resource metadata agree before handoff."
+        "Release verification runs in a disposable clean checkout at the candidate commit while workflow.json remains authoritative in the control checkout; its bounded authorized report is imported as evidence without modifying candidate source, and package, lockfile, Pi contract, catalog, inventory, command, and resource metadata agree before handoff.",
+        "Release review explicitly classifies the default-runtime and public behavior changes under Gentic semantic-version policy, records any breaking migration requirements, and keeps package version, changelog, and compatibility guidance consistent."
       ],
       "approaches": [
         "tdd",
@@ -1382,8 +1418,8 @@
         "Deleting migration or rollback evidence"
       ],
       "contract": {
-        "revision": 3,
-        "hash": "sha256:3227aaecdd087ccf92f1224e9344482d062a0b84b539dbdbafb54ff278cc0788"
+        "revision": 7,
+        "hash": "sha256:572df2bc068d1ea6bbed41cc8ac019f36b9f5f142e3b7065eb450a048ff22d95"
       },
       "verification": [
         {
@@ -1426,6 +1462,13 @@
             "run",
             "typecheck"
           ]
+        },
+        {
+          "command": "git",
+          "args": [
+            "diff",
+            "--check"
+          ]
         }
       ],
       "evidence": [],
@@ -1440,5 +1483,5 @@
       "verificationDriftPaths": []
     }
   ],
-  "updatedAt": "2026-09-16T21:54:29.048Z"
+  "updatedAt": "2026-09-16T22:13:51.592Z"
 }
