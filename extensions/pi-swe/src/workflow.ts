@@ -295,10 +295,10 @@ function reduceWorkflowStep(workflow: Workflow, event: WorkflowEvent, now: strin
 
 function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, { type: "claim-run" | "cancel-run" | "pause" | "record-plan-review" }>, now: string): WorkflowDecision {
   const current = activeTask(workflow);
+  if ((event.type === "start" || event.type === "resume") && workflow.status === "complete") return unchanged(workflow, "workflow is already complete");
   if (event.type !== "block" && !approvedReport(workflow.planReview, workflow.contract.hash)) throw new Error("current plan contract requires independent plan review approval before task execution");
   if (["record-implementation", "record-review", "record-workspace", "record-integration", "record-verification", "complete-task"].includes(event.type) && workflow.status !== "active") throw new Error("task stage mutation requires an active workflow");
   if (event.type === "start" || event.type === "resume") {
-    if (workflow.status === "complete") return unchanged(workflow, "workflow is already complete");
     const next = current ?? (event.type === "resume" ? workflow.tasks.find((task) => task.status === "blocked") : undefined) ?? readyTasks(workflow)[0];
     if (!next) return unchanged(workflow, "no dependency-ready task is available");
     if (next.assessmentStatus === "unassessed") return unchanged(workflow, `${next.id} is unassessed; revise the workflow before execution`);

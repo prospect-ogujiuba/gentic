@@ -88,6 +88,21 @@ test("contract identities are independent from mutation revision and include lin
   assert.equal(revised.initiativeAcceptance, undefined);
 });
 
+test("completed workflows report completion before plan-review requirements", () => {
+  const initial = workflow();
+  const completed = {
+    ...initial,
+    status: "complete" as const,
+    tasks: initial.tasks.map((task) => ({ ...task, status: "complete" as const, completedAt: at })),
+  };
+
+  for (const type of ["start", "resume"] as const) {
+    const decision = reduceWorkflow(completed, { type }, "2026-02-01T00:00:02.000Z");
+    assert.equal(decision.changed, false);
+    assert.equal(decision.message, "workflow is already complete");
+  }
+});
+
 test("implementation execution blocks without objective checks or an explicit manual decision", () => {
   const missing = createWorkflow({ topic: "missing-check", goal: "x", now: at, tasks: [{ id: "T1", title: "Implement", writeScope: ["src/**"], nonGoals: [] }] });
   const planApproved = reduceWorkflow(missing, {
