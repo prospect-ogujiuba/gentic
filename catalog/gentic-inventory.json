@@ -41,7 +41,8 @@
       "extensions/pi-todo/index.ts"
     ],
     "skills": [
-      "skills/add-skill/SKILL.md"
+      "skills/add-skill/SKILL.md",
+      "skills/swe-orchestration/SKILL.md"
     ],
     "prompts": [
       "extensions/pi-git/prompts/git-commit.md",
