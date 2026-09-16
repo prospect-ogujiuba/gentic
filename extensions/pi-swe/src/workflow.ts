@@ -156,6 +156,7 @@ export type WorkflowTask = {
   remediation: { used: number; max: number };
   workspaceReceipt?: WorkspaceReceipt;
   integrationReceipt?: IntegrationReceipt;
+  verificationDriftPaths: string[];
   blockedReason?: string;
   completedAt?: string;
   importedFrom?: ImportedTaskProvenance;
@@ -185,8 +186,12 @@ export type WorkflowEvent =
   | { type: "resume" }
   | { type: "block"; reason: string }
   | { type: "record-plan-review"; report: StageReport }
-  | { type: "record-implementation"; report: StageReport }
+  | { type: "record-implementation"; report: StageReport; receipt?: WorkspaceReceipt }
   | { type: "record-review"; report: StageReport }
+  | { type: "record-run-failure"; stage: WorkflowPhase | TaskPhase; taskId?: string; reason: string }
+  | { type: "record-verification-failure"; evidence: VerificationEvidence; observedSnapshotHash: string; observedChangedPaths: string[]; reason: string }
+  | { type: "decide-finding"; taskId: string; findingId: string; disposition: string; decidedBy: string }
+  | { type: "reset-remediation"; taskId: string; max: number; reason: string; decidedBy: string }
   | { type: "record-workspace"; receipt: WorkspaceReceipt }
   | { type: "record-integration"; receipt: IntegrationReceipt }
   | { type: "record-verification"; evidence: VerificationEvidence }
@@ -303,6 +308,7 @@ export function reviseWorkflow(workflow: Workflow, input: { goal?: string; plan?
       ...(!contractChanged && previous.verificationCheckpoint ? { verificationCheckpoint: previous.verificationCheckpoint } : {}),
       ...(!contractChanged && previous.workspaceReceipt ? { workspaceReceipt: previous.workspaceReceipt } : {}),
       ...(!contractChanged && previous.integrationReceipt ? { integrationReceipt: previous.integrationReceipt } : {}),
+      verificationDriftPaths: contractChanged ? [] : previous.verificationDriftPaths,
       ...(previous.blockedReason ? { blockedReason: previous.blockedReason } : {}),
       ...(previous.importedFrom ? { importedFrom: previous.importedFrom } : {}),
     };
@@ -352,6 +358,7 @@ function reduceWorkflowStep(workflow: Workflow, event: WorkflowEvent, now: strin
   if (event.type === "claim-run") return claimRun(workflow, event.lease, now);
   if (event.type === "cancel-run") return cancelRun(workflow, event.lease, event.reason, now);
   if (event.type === "respond-clarification") return respondClarification(workflow, event, now);
+  if (event.type === "record-run-failure") return recordRunFailure(workflow, event, now);
   if (event.type === "pause") {
     if (workflow.status === "complete") return unchanged(workflow, "workflow is already complete");
     return update(workflow, { status: "paused" }, now, "workflow paused");
@@ -361,7 +368,7 @@ function reduceWorkflowStep(workflow: Workflow, event: WorkflowEvent, now: strin
   return reduceOrchestratedWorkflow(workflow, event, now);
 }
 
-function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, { type: "claim-run" | "cancel-run" | "pause" | "record-plan-review" }>, now: string): WorkflowDecision {
+function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, { type: "claim-run" | "cancel-run" | "pause" | "record-plan-review" | "record-run-failure" }>, now: string): WorkflowDecision {
   const current = activeTask(workflow);
   if ((event.type === "start" || event.type === "resume") && workflow.status === "complete") return unchanged(workflow, "workflow is already complete");
   if (event.type !== "block" && !approvedReport(workflow.planReview, workflow.contract.hash)) throw new Error("current plan contract requires independent plan review approval before task execution");
@@ -374,8 +381,10 @@ function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowE
     if (next.kind === "implementation" && !next.verification.length && !next.verificationDecision) return blockForDecision(workflow, next, "implementation task has no objective verification; an explicit manual-validation decision is required", now);
     const remediation = next.phase === "remediation" ? { used: next.remediation.used + 1, max: next.remediation.max } : next.remediation;
     if (remediation.used > remediation.max) return blockForDecision(workflow, next, `remediation budget exhausted (${next.remediation.max}); explicit reset or scope decision required`, now);
-    const phase = current && workflow.status === "paused" && current.status === "active" ? current.phase : "implementation";
-    return replaceTask(workflow, next.id, { status: "active", phase, remediation, blockedReason: undefined, verificationCheckpoint: { revision: workflow.revision + 1, at: now } }, { status: "active", activeTask: next.id, orchestration: { ...workflow.orchestration, phase: "task-execution" } }, now, `${event.type === "resume" ? "resumed" : "started"} ${next.id}`);
+    const phase: TaskPhase = current && workflow.status === "paused" && current.status === "active"
+      ? current.phase
+      : next.phase === "pending" || next.phase === "remediation" ? "implementation" : next.phase;
+    return replaceTask(workflow, next.id, { status: "active", phase, remediation, blockedReason: undefined }, { status: "active", activeTask: next.id, orchestration: { ...workflow.orchestration, phase: "task-execution" } }, now, `${event.type === "resume" ? "resumed" : "started"} ${next.id}`);
   }
   if (event.type === "block") {
     if (!current) return unchanged(workflow, "no active task to block");
@@ -389,9 +398,16 @@ function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowE
     if (report.changedPaths?.some((path) => !scopeAllows(current!.writeScope, path))) throw new Error("implementation report contains an out-of-scope path");
     if (report.outcome === "no-change" && (!report.rationale || report.rationale.length < 8 || report.changedPaths?.length)) throw new Error("no-change implementation requires explicit rationale and no changed paths");
     if (!['completed', 'no-change', 'needs-input', 'failed'].includes(report.outcome)) throw new Error("invalid implementation outcome");
-    const patch: Partial<WorkflowTask> = appendTaskReport(current!, report);
-    if (report.outcome === "needs-input") return replaceTask(workflow, current!.id, { ...patch, status: "blocked", phase: "remediation", blockedReason: "implementation needs clarification" }, { status: "blocked", activeTask: undefined }, now, `${current!.id} needs input`);
-    if (report.outcome === "failed") return replaceTask(workflow, current!.id, { ...patch, status: "blocked", phase: "remediation", blockedReason: "implementation failed" }, { status: "blocked", activeTask: undefined }, now, `${current!.id} implementation failed`);
+    const receipt = event.receipt ? normalizeWorkspaceReceipt(event.receipt) : undefined;
+    if (receipt) {
+      if (workflow.orchestration.mode === "multi-agent" && (receipt.version !== 1 || !receipt.preparedResultCommit || !receipt.preparedResultRef || !receipt.preparedPatchHash)) throw new Error("implementation requires a recoverable prepared workspace receipt");
+      if (receipt.changedPaths.some((path) => !scopeAllows(current!.writeScope, path))) throw new Error("workspace receipt contains an out-of-scope path");
+      if (report.provenance.snapshotHash !== receipt.snapshotHash || !sameStringSet(report.changedPaths ?? [], receipt.changedPaths)) throw new Error("implementation report does not match its prepared cumulative source snapshot");
+    }
+    if (["completed", "no-change"].includes(report.outcome) && !receipt) throw new Error("implementation completion requires a prepared workspace receipt");
+    const patch: Partial<WorkflowTask> = { ...appendTaskReport(current!, report), ...(receipt ? { workspaceReceipt: receipt, integrationReceipt: undefined, verificationDriftPaths: [] } : {}) };
+    if (report.outcome === "needs-input") return replaceTask(workflow, current!.id, { ...patch, status: "blocked", phase: "implementation", blockedReason: "implementation needs clarification" }, { status: "blocked", activeTask: undefined }, now, `${current!.id} needs input`);
+    if (report.outcome === "failed") return replaceTask(workflow, current!.id, { ...patch, status: "blocked", phase: "implementation", blockedReason: "implementation failed" }, { status: "blocked", activeTask: undefined }, now, `${current!.id} implementation failed`);
     return replaceTask(workflow, current!.id, { ...patch, phase: "general-review" }, {}, now, `recorded implementation report for ${current!.id}`);
   }
   if (event.type === "record-review") {
@@ -400,12 +416,17 @@ function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowE
     const expectedRole = current.phase === "general-review" ? "general-reviewer" : "concern-reviewer";
     const report = normalizeReport(event.report);
     requireReport(report, expectedKind, expectedRole, current.contract.hash, workflow.orchestration.activeRun);
-    const implementation = current.reports.find((item) => item.kind === "implementation");
+    const implementation = [...current.reports].reverse().find((item) => item.kind === "implementation");
     if (!implementation) throw new Error("review requires an implementation report");
     if (implementation.provenance.runId === report.provenance.runId || implementation.provenance.actorId === report.provenance.actorId) throw new Error("self-review is not permitted");
-    if (!implementation.provenance.snapshotHash || report.provenance.snapshotHash !== implementation.provenance.snapshotHash) throw new Error("review report has a stale source snapshot");
+    const priorGeneral = [...current.reports].reverse().find((item) => item.kind === "general-review");
+    if (expectedKind === "concern-review" && priorGeneral && (priorGeneral.provenance.runId === report.provenance.runId || priorGeneral.provenance.actorId === report.provenance.actorId)) throw new Error("independent reviewers must use distinct fresh actors");
+    if (!implementation.provenance.snapshotHash || report.provenance.snapshotHash !== implementation.provenance.snapshotHash || report.provenance.snapshotHash !== current.workspaceReceipt?.snapshotHash) throw new Error("review report has a stale source snapshot");
+    if (report.findings.some((finding) => finding.status === "accepted-risk")) throw new Error("reviewers cannot accept blocking risk on the user's behalf");
     const patch = appendTaskReport(current, report);
-    const unresolved = report.findings.some((finding) => finding.severity === "blocking" && finding.status === "open");
+    const unresolved = patch.findings!.some((finding) => finding.severity === "blocking" && finding.status === "open");
+    if (report.outcome === "needs-input") return replaceTask(workflow, current.id, { ...patch, status: "blocked", blockedReason: `${expectedKind} needs clarification` }, { status: "blocked", activeTask: undefined }, now, `${current.id} needs input`);
+    if (report.outcome === "failed") return replaceTask(workflow, current.id, { ...patch, status: "blocked", blockedReason: `${expectedKind} failed` }, { status: "blocked", activeTask: undefined }, now, `${current.id} review failed`);
     if (report.outcome === "changes-requested" || unresolved) return replaceTask(workflow, current.id, { ...patch, status: "blocked", phase: "remediation", blockedReason: "review has unresolved blocking findings" }, { status: "blocked", activeTask: undefined }, now, `${current.id} requires remediation`);
     if (report.outcome !== "approved") throw new Error("review must approve, request changes, or report blocking findings");
     const nextPhase: TaskPhase = current.phase === "general-review" && requiresConcernReview(current) ? "concern-review" : implementation.outcome === "no-change" ? "ready-to-complete" : "workspace";
@@ -414,10 +435,13 @@ function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowE
   if (event.type === "record-workspace") {
     requireTaskPhase(current, "workspace");
     const receipt = normalizeWorkspaceReceipt(event.receipt);
+    const implementation = [...current!.reports].reverse().find((report) => report.kind === "implementation");
+    const general = [...current!.reports].reverse().find((report) => report.kind === "general-review");
+    const concern = [...current!.reports].reverse().find((report) => report.kind === "concern-review");
     if (workflow.orchestration.mode === "multi-agent" && (receipt.version !== 1 || !receipt.preparedResultCommit || !receipt.preparedResultRef || !receipt.preparedPatchHash)) throw new Error("multi-agent execution requires a recoverable prepared workspace receipt");
+    if (!implementation || !approvedReport(general, current!.contract.hash) || general?.provenance.snapshotHash !== receipt.snapshotHash || (requiresConcernReview(current!) && (!approvedReport(concern, current!.contract.hash) || concern?.provenance.snapshotHash !== receipt.snapshotHash))) throw new Error("workspace cannot advance without current snapshot-bound independent approvals");
     if (receipt.changedPaths.some((path) => !scopeAllows(current!.writeScope, path))) throw new Error("workspace receipt contains an out-of-scope path");
     if (receipt.version === 1) {
-      const implementation = [...current!.reports].reverse().find((report) => report.kind === "implementation");
       if (receipt.baselineHash !== receipt.realSourceSnapshotHash) throw new Error("workspace receipt baseline does not match its source preimage");
       if (implementation?.provenance.snapshotHash !== receipt.snapshotHash) throw new Error("workspace receipt does not match the reviewed implementation snapshot");
       if (!sameStringSet(implementation.changedPaths ?? [], receipt.changedPaths)) throw new Error("workspace receipt paths do not match the implementation report");
@@ -427,6 +451,11 @@ function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowE
   }
   if (event.type === "record-integration") {
     requireTaskPhase(current, "integration");
+    const workspaceSnapshot = current!.workspaceReceipt?.snapshotHash;
+    const implementation = [...current!.reports].reverse().find((report) => report.kind === "implementation");
+    const general = [...current!.reports].reverse().find((report) => report.kind === "general-review");
+    const concern = [...current!.reports].reverse().find((report) => report.kind === "concern-review");
+    if (!workspaceSnapshot || implementation?.provenance.snapshotHash !== workspaceSnapshot || general?.provenance.snapshotHash !== workspaceSnapshot || !approvedReport(general, current!.contract.hash) || (requiresConcernReview(current!) && (concern?.provenance.snapshotHash !== workspaceSnapshot || !approvedReport(concern, current!.contract.hash)))) throw new Error("integration requires all current snapshot-bound independent approvals");
     const receipt = normalizeIntegrationReceipt(event.receipt);
     if (workflow.orchestration.mode === "multi-agent" && receipt.version !== 1) throw new Error("multi-agent execution requires a recoverable versioned integration receipt");
     const workspaceReceipt = current!.workspaceReceipt;
@@ -443,12 +472,34 @@ function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowE
   if (event.type === "record-verification") {
     requireTaskPhase(current, "verification");
     const evidence = normalizeEvidence(event.evidence);
+    if (evidence.exitCode !== 0) throw new Error("failing verification must enter remediation");
+    if (!current!.verificationCheckpoint || !evidenceMatchesCheckpoint(evidence, current!.verificationCheckpoint)) throw new Error("verification evidence is not a fresh protected-bash result after integration");
     if (evidence.contractHash !== current!.contract.hash) throw new Error("verification evidence has a stale contract");
     if (evidence.snapshotHash !== current!.integrationReceipt?.postSnapshotHash) throw new Error("verification evidence has a stale snapshot");
     const nextEvidence = boundedAppend(current!.evidence, evidence, 32, "verification evidence");
     const phase = verificationSatisfied(current!, nextEvidence) ? "ready-to-complete" : "verification";
     return replaceTask(workflow, current!.id, { evidence: nextEvidence, phase }, {}, now, `recorded verification for ${current!.id}`);
   }
+  if (event.type === "record-verification-failure") {
+    requireTaskPhase(current, "verification");
+    const evidence = normalizeEvidence(event.evidence);
+    if (!current!.verificationCheckpoint || !evidenceMatchesCheckpoint(evidence, current!.verificationCheckpoint)) throw new Error("verification failure is not a fresh protected-bash result after integration");
+    if (evidence.contractHash !== current!.contract.hash || evidence.snapshotHash !== current!.integrationReceipt?.postSnapshotHash) throw new Error("verification failure evidence is stale");
+    const sourceChanged = event.observedSnapshotHash !== current!.integrationReceipt?.postSnapshotHash;
+    if (evidence.exitCode === 0 && !sourceChanged) throw new Error("passing unchanged verification is not a failure");
+    const observedChangedPaths = boundedStrings(event.observedChangedPaths, "verification changed paths", 128, 512);
+    if (observedChangedPaths.some((path) => !SAFE_SCOPE.test(path) || path.includes("*"))) throw new Error("verification changed paths contain an unsafe or non-exact path");
+    if (sourceChanged && !observedChangedPaths.length) throw new Error("source-changing verification requires explicit changed paths for cumulative remediation");
+    const id = `verification-${current!.remediation.used}-${current!.evidence.length + 1}`;
+    const finding: Finding = { id, severity: "blocking", status: "open", summary: sourceChanged ? "verification changed the protected source snapshot" : "protected verification failed", evidence: boundedText(event.reason, "verification failure reason") };
+    return replaceTask(workflow, current!.id, {
+      evidence: boundedAppend(current!.evidence, evidence, 32, "verification evidence"),
+      findings: boundedMergeFindings(current!.findings, [finding], MAX_FINDINGS), verificationDriftPaths: observedChangedPaths, status: "blocked", phase: "remediation",
+      blockedReason: sourceChanged ? "verification changed source; cumulative remediation and re-review required" : "verification failed; cumulative remediation and re-review required",
+    }, { status: "blocked", activeTask: undefined }, now, `${current!.id} verification requires remediation`);
+  }
+  if (event.type === "decide-finding") return decideFinding(workflow, event, now);
+  if (event.type === "reset-remediation") return resetRemediation(workflow, event, now);
   if (event.type === "complete-task") return completeOrchestratedTask(workflow, current, now);
   if (event.type === "record-initiative-acceptance") {
     if (workflow.orchestration.phase !== "initiative-acceptance" || workflow.tasks.some((task) => !["complete", "deferred"].includes(task.status))) throw new Error("initiative acceptance cannot be recorded before all task gates complete");
@@ -465,7 +516,7 @@ function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowE
   throw new Error("event is not valid in the current orchestration stage");
 }
 
-function reduceLegacyWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, { type: "claim-run" | "cancel-run" | "pause" | "record-plan-review" }>, now: string): WorkflowDecision {
+function reduceLegacyWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, { type: "claim-run" | "cancel-run" | "pause" | "record-plan-review" | "record-run-failure" }>, now: string): WorkflowDecision {
   const current = activeTask(workflow);
   if (event.type === "start" || event.type === "resume") {
     if (workflow.status === "complete") return unchanged(workflow, "workflow is already complete");
@@ -501,6 +552,22 @@ function reduceLegacyWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, 
   return update(completed, { status: unfinished ? "blocked" : "complete", orchestration: { ...completed.orchestration, phase: unfinished ? "task-execution" : "complete" } }, now, unfinished ? `completed ${current.id}; remaining work is blocked` : `completed ${current.id}; workflow complete`);
 }
 
+function recordRunFailure(workflow: Workflow, event: Extract<WorkflowEvent, { type: "record-run-failure" }>, now: string): WorkflowDecision {
+  const lease = workflow.orchestration.activeRun;
+  if (!lease || lease.stage !== event.stage || lease.taskId !== event.taskId) throw new Error("run failure does not match the active fenced stage");
+  const reason = boundedText(event.reason, "run failure reason");
+  const history = appendHistory(workflow.orchestration.history, {
+    id: `run-${lease.fence}-failed`, type: "run-failed", at: now, summary: reason,
+    ...(event.taskId ? { taskId: event.taskId } : {}), auditCritical: true,
+  });
+  if (!event.taskId) return update(workflow, { status: "blocked", orchestration: { ...workflow.orchestration, history } }, now, `plan review blocked: ${reason}`);
+  const task = workflow.tasks.find((candidate) => candidate.id === event.taskId);
+  if (!task || workflow.activeTask !== task.id || task.status !== "active") throw new Error("run failure does not match the active task");
+  return replaceTask(workflow, task.id, { status: "blocked", blockedReason: reason }, {
+    status: "blocked", activeTask: undefined, orchestration: { ...workflow.orchestration, history },
+  }, now, `${task.id} blocked: ${reason}`);
+}
+
 function recordPlanReview(workflow: Workflow, raw: StageReport, now: string): WorkflowDecision {
   if (workflow.orchestration.mode === "multi-agent" && workflow.orchestration.phase !== "plan-review") throw new Error("plan review report is not valid after task execution begins");
   const report = normalizeReport(raw);
@@ -512,11 +579,13 @@ function recordPlanReview(workflow: Workflow, raw: StageReport, now: string): Wo
 
 function completeOrchestratedTask(workflow: Workflow, current: WorkflowTask | undefined, now: string): WorkflowDecision {
   requireTaskPhase(current, "ready-to-complete");
-  const implementation = current!.reports.find((report) => report.kind === "implementation");
+  const implementation = [...current!.reports].reverse().find((report) => report.kind === "implementation");
   const general = [...current!.reports].reverse().find((report) => report.kind === "general-review");
   const concern = [...current!.reports].reverse().find((report) => report.kind === "concern-review");
   if (!implementation || !general) throw new Error("task completion requires implementation and independent general-review reports");
   if (implementation.provenance.runId === general.provenance.runId || implementation.provenance.actorId === general.provenance.actorId) throw new Error("self-review is not permitted");
+  const snapshot = implementation.provenance.snapshotHash;
+  if (!snapshot || general.provenance.snapshotHash !== snapshot || (requiresConcernReview(current!) && concern?.provenance.snapshotHash !== snapshot)) throw new Error("task completion requires approvals on the exact cumulative source snapshot");
   if (!approvedReport(general, current!.contract.hash) || (requiresConcernReview(current!) && !approvedReport(concern, current!.contract.hash))) throw new Error("task completion requires all independent approvals on the current contract");
   if (current!.findings.some((finding) => finding.severity === "blocking" && finding.status === "open")) throw new Error("task completion has an unresolved blocking finding");
   if (implementation.outcome === "no-change") {
@@ -647,6 +716,7 @@ function normalizeTask(task: Partial<WorkflowTask> & Pick<WorkflowTask, "id" | "
     id: task.id, title, kind, status, phase, dependsOn, acceptance, approaches, approachReasons, assessmentStatus, writeScope, nonGoals, contract, verification,
     ...(verificationDecision ? { verificationDecision } : {}), ...(normalizeCheckpoint(task.verificationCheckpoint) ? { verificationCheckpoint: normalizeCheckpoint(task.verificationCheckpoint)! } : {}),
     evidence, evidenceLinks: boundedStrings(task.evidenceLinks, `task ${task.id} evidence links`, 64, MAX_TEXT), reports, clarifications, findings, remediation,
+    verificationDriftPaths: boundedStrings(task.verificationDriftPaths, `task ${task.id} verification drift paths`, 128, 512),
     ...(task.workspaceReceipt ? { workspaceReceipt: normalizeWorkspaceReceipt(task.workspaceReceipt) } : {}),
     ...(task.integrationReceipt ? { integrationReceipt: normalizeIntegrationReceipt(task.integrationReceipt) } : {}),
     ...(typeof task.blockedReason === "string" && task.blockedReason.trim() ? { blockedReason: boundedText(task.blockedReason, `task ${task.id} blocked reason`) } : {}),
@@ -682,9 +752,38 @@ function requireReport(report: StageReport, kind: StageReport["kind"], role: Run
 }
 function approvedReport(report: StageReport | undefined, contractHash: string): boolean { return !!report && report.outcome === "approved" && report.provenance.contractHash === contractHash && !report.findings.some((finding) => finding.severity === "blocking" && finding.status === "open"); }
 function requiresConcernReview(task: WorkflowTask): boolean { return task.approaches.some((approach) => CONCERN_APPROACHES.has(approach)); }
+function decideFinding(workflow: Workflow, event: Extract<WorkflowEvent, { type: "decide-finding" }>, now: string): WorkflowDecision {
+  const task = workflow.tasks.find((candidate) => candidate.id === event.taskId);
+  if (!task || task.status === "complete") throw new Error(`finding task ${event.taskId} is not mutable`);
+  const finding = task.findings.find((candidate) => candidate.id === event.findingId);
+  if (!finding || finding.status !== "open") throw new Error(`open finding ${event.findingId} was not found`);
+  const decidedBy = boundedText(event.decidedBy, "finding decision owner", 128);
+  if (workflowRunnerIdentities(workflow).has(decidedBy)) throw new Error("a workflow child cannot decide its own finding disposition");
+  const disposition = boundedText(event.disposition, "finding disposition");
+  const findings = task.findings.map((candidate) => candidate.id === finding.id ? { ...candidate, status: "accepted-risk" as const, disposition: `${disposition} (decided by ${decidedBy})` } : candidate);
+  const history = appendHistory(workflow.orchestration.history, { id: `finding-${finding.id}-${workflow.revision + 1}`, type: "finding-decision", at: now, taskId: task.id, summary: `${decidedBy}: ${disposition}`, auditCritical: true });
+  return replaceTask(workflow, task.id, { findings }, { orchestration: { ...workflow.orchestration, history } }, now, `recorded explicit decision for ${finding.id}`);
+}
+
+function resetRemediation(workflow: Workflow, event: Extract<WorkflowEvent, { type: "reset-remediation" }>, now: string): WorkflowDecision {
+  const task = workflow.tasks.find((candidate) => candidate.id === event.taskId);
+  if (!task || task.status === "complete") throw new Error(`remediation task ${event.taskId} is not mutable`);
+  if (!Number.isSafeInteger(event.max) || event.max < task.remediation.used || event.max > 8) throw new Error("remediation reset max must preserve used attempts and be at most 8");
+  const decidedBy = boundedText(event.decidedBy, "remediation reset owner", 128);
+  if (workflowRunnerIdentities(workflow).has(decidedBy)) throw new Error("a workflow child cannot reset its own remediation budget");
+  const reason = boundedText(event.reason, "remediation reset reason");
+  const history = appendHistory(workflow.orchestration.history, { id: `remediation-reset-${task.id}-${workflow.revision + 1}`, type: "remediation-reset", at: now, taskId: task.id, summary: `${decidedBy}: ${reason}; max ${event.max}`, auditCritical: true });
+  return replaceTask(workflow, task.id, { remediation: { used: task.remediation.used, max: event.max } }, { orchestration: { ...workflow.orchestration, history } }, now, `reset remediation budget for ${task.id}`);
+}
+
+function workflowRunnerIdentities(workflow: Workflow): Set<string> {
+  const reports = [workflow.planReview, workflow.initiativeAcceptance, ...workflow.tasks.flatMap((task) => task.reports)].filter((report): report is StageReport => !!report);
+  return new Set(reports.flatMap((report) => [report.provenance.runId, report.provenance.actorId]));
+}
+
 function appendTaskReport(task: WorkflowTask, report: StageReport): Partial<WorkflowTask> {
   const reports = boundedAppend(task.reports, report, MAX_REPORTS, "task reports");
-  const findings = boundedMergeById(task.findings, report.findings, MAX_FINDINGS, "task findings");
+  const findings = boundedMergeFindings(task.findings, report.findings, MAX_FINDINGS);
   const clarifications = boundedMergeById(task.clarifications, report.questions ?? [], 32, "task clarifications");
   return { reports, findings, clarifications };
 }
@@ -819,6 +918,19 @@ function appendHistory(history: HistoryEntry[], entry: HistoryEntry): HistoryEnt
 function boundedAppend<T>(items: T[], value: T, max: number, label: string): T[] { if (items.length >= max) throw new Error(`${label} exceeds ${max} entries`); return [...items, value]; }
 function sameStringSet(left: string[], right: string[]): boolean { const orderedRight = [...right].sort(); return left.length === right.length && [...left].sort().every((value, index) => value === orderedRight[index]); }
 function boundedMergeById<T extends { id: string }>(items: T[], additions: T[], max: number, label: string): T[] { const map = new Map(items.map((item) => [item.id, item])); additions.forEach((item) => map.set(item.id, item)); if (map.size > max) throw new Error(`${label} exceeds ${max} entries`); return [...map.values()]; }
+function boundedMergeFindings(items: Finding[], additions: Finding[], max: number): Finding[] {
+  const map = new Map(items.map((item) => [item.id, item]));
+  for (const addition of additions) {
+    const previous = map.get(addition.id);
+    if (!previous && addition.status !== "open") throw new Error(`finding ${addition.id} cannot be resolved before it is recorded`);
+    if (previous && (previous.severity !== addition.severity || previous.summary !== addition.summary || previous.evidence !== addition.evidence)) throw new Error(`finding ${addition.id} identity was changed`);
+    if (previous && previous.status !== "open" && addition.status === "open") throw new Error(`finding ${addition.id} cannot be reopened without an explicit decision`);
+    if (addition.status !== "open" && !addition.disposition) throw new Error(`finding ${addition.id} resolution requires a disposition`);
+    map.set(addition.id, addition);
+  }
+  if (map.size > max) throw new Error(`task findings exceeds ${max} entries`);
+  return [...map.values()];
+}
 function boundedStrings(value: unknown, label: string, maxItems: number, maxLength: number): string[] { if (value === undefined) return []; if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item.trim() || item.trim().length > maxLength)) throw new Error(`${label} contains an invalid value`); const normalized = [...new Set(value.map((item) => (item as string).trim()))]; if (normalized.length > maxItems) throw new Error(`${label} exceeds ${maxItems} items`); return normalized; }
 function boundedText(value: unknown, label: string, max = MAX_TEXT): string { if (typeof value !== "string" || !value.trim()) throw new Error(`${label} is required`); if (value.trim().length > max) throw new Error(`${label} exceeds ${max} characters`); return value.trim(); }
 function validTimestamp(value: unknown, label: string): string { if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) throw new Error(`invalid ${label}`); return value; }

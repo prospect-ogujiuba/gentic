@@ -289,6 +289,7 @@
         },
         "workspaceReceipt": { "$ref": "#/$defs/workspaceReceipt" },
         "integrationReceipt": { "$ref": "#/$defs/integrationReceipt" },
+        "verificationDriftPaths": { "type": "array", "maxItems": 128, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 512 } },
         "blockedReason": { "$ref": "#/$defs/text" },
         "completedAt": { "$ref": "#/$defs/timestamp" },
         "importedFrom": { "type": "object", "required": ["kind", "contractPath"], "properties": { "kind": { "const": "pi-swe-v2-contract" }, "contractPath": { "$ref": "#/$defs/text" }, "contentHash": { "type": "string", "maxLength": 128 }, "completion": { "type": "object", "maxProperties": 16 } }, "additionalProperties": false }

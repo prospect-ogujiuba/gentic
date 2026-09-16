@@ -22,7 +22,7 @@ export type ChildRunConfig = {
   };
 };
 
-export type RawRunnerFinding = { severity: "blocking" | "warning"; summary: string; evidence: string };
+export type RawRunnerFinding = { id?: string; severity: "blocking" | "warning"; status?: "open" | "resolved"; summary: string; evidence: string; disposition?: string };
 export type RawRunnerReport = {
   outcome: "approved" | "changes-requested" | "needs-input" | "completed" | "no-change" | "failed";
   summary: string;

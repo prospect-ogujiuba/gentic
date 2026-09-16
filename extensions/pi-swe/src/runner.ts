@@ -629,7 +629,7 @@ function normalizeRawReport(value: unknown, role: RunnerRole): RawRunnerReport {
     return path.replace(/^\.\//, "");
   });
   if (role !== "implementer" && changedPaths?.length) throw new Error("review reports cannot claim changed paths");
-  const findings = value.findings === undefined ? [] : normalizeRawFindings(value.findings);
+  const findings = value.findings === undefined ? [] : normalizeRawFindings(value.findings, role);
   const questions = value.questions === undefined ? [] : boundedStringArray(value.questions, "questions", 32, 2_048);
   if (value.outcome === "needs-input" && !questions.length) throw new Error("needs-input requires at least one question");
   if (value.outcome !== "needs-input" && questions.length) throw new Error("questions are only valid with a needs-input outcome");
@@ -637,25 +637,32 @@ function normalizeRawReport(value: unknown, role: RunnerRole): RawRunnerReport {
   return { outcome: value.outcome as RawRunnerReport["outcome"], summary, ...(rationale ? { rationale } : {}), ...(changedPaths ? { changedPaths } : {}), findings, ...(questions.length ? { questions } : {}) };
 }
 
-function normalizeRawFindings(value: unknown): RawRunnerReport["findings"] {
+function normalizeRawFindings(value: unknown, role: RunnerRole): RawRunnerReport["findings"] {
   if (!Array.isArray(value) || value.length > 64) throw new Error("findings must be a bounded array");
   return value.map((finding) => {
     if (!record(finding) || !["blocking", "warning"].includes(String(finding.severity))) throw new Error("invalid report finding");
+    const id = finding.id === undefined ? undefined : boundedId(String(finding.id), "finding id");
+    const status = finding.status === undefined ? "open" : finding.status;
+    if (!["open", "resolved"].includes(String(status)) || (role === "implementer" && (id || status !== "open"))) throw new Error("only an independent reviewer can confirm an existing finding");
+    const disposition = finding.disposition === undefined ? undefined : boundedText(finding.disposition, "finding disposition", 2_048);
+    if (status === "resolved" && (!id || !disposition)) throw new Error("resolved finding requires its stable id and a disposition");
     return {
-      severity: finding.severity as "blocking" | "warning",
+      ...(id ? { id } : {}), severity: finding.severity as "blocking" | "warning", status: status as "open" | "resolved",
       summary: boundedText(finding.summary, "finding summary", 1_024),
       evidence: boundedText(finding.evidence, "finding evidence", 2_048),
+      ...(disposition ? { disposition } : {}),
     };
   });
 }
 
 function materializeReport(raw: RawRunnerReport, request: AgentRunRequest, startedAt: string, completedAt: string): StageReport {
   const findings: Finding[] = (raw.findings ?? []).map((finding, index) => ({
-    id: correlatedId(request.runId, "f", index),
+    id: finding.id ?? correlatedId(request.runId, "f", index),
     severity: finding.severity,
-    status: "open",
+    status: finding.status ?? "open",
     summary: finding.summary,
     evidence: finding.evidence,
+    ...(finding.disposition ? { disposition: finding.disposition } : {}),
   }));
   const questions: Clarification[] | undefined = raw.questions?.map((question, index) => ({
     id: correlatedId(request.runId, "q", index),

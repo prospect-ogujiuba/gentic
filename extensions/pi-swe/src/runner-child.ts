@@ -166,6 +166,7 @@ export default function runnerChildExtension(pi: ExtensionAPI): void {
       "Use runner_report as the final action; ordinary text is not a report.",
       "Use needs-input with concrete questions when a parent decision is required.",
       "Child-run tests are advisory and do not replace parent protected verification.",
+      "When independently confirming an existing finding, preserve its id, severity, summary, and evidence; set status to resolved with a concrete disposition.",
     ],
     parameters: Type.Object({
       outcome: Type.Union([
@@ -176,9 +177,12 @@ export default function runnerChildExtension(pi: ExtensionAPI): void {
       rationale: Type.Optional(Type.String({ minLength: 1, maxLength: 2_048 })),
       changedPaths: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 512 }), { maxItems: 128 })),
       findings: Type.Optional(Type.Array(Type.Object({
+        id: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
         severity: Type.Union([Type.Literal("blocking"), Type.Literal("warning")]),
+        status: Type.Optional(Type.Union([Type.Literal("open"), Type.Literal("resolved")])),
         summary: Type.String({ minLength: 1, maxLength: 1_024 }),
         evidence: Type.String({ minLength: 1, maxLength: 2_048 }),
+        disposition: Type.Optional(Type.String({ minLength: 1, maxLength: 2_048 })),
       }), { maxItems: 64 })),
       questions: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 2_048 }), { maxItems: 32 })),
     }),

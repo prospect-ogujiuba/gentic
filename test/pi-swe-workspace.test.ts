@@ -141,7 +141,7 @@ test("integration applies additions, deletions, renames, modes and symlinks with
     reduced = reduceWorkflow(reduced, { type: "record-plan-review", report: stageReport("plan-review", "plan-reviewer", reduced.contract.hash, "plan") }, "2026-02-01T00:00:02.000Z").workflow;
     reduced = reduceWorkflow(reduced, { type: "start" }, "2026-02-01T00:00:03.000Z").workflow;
     const taskContract = reduced.tasks[0]!.contract.hash;
-    reduced = reduceWorkflow(reduced, { type: "record-implementation", report: { ...stageReport("implementation", "implementer", taskContract, "impl", prepared.receipt.snapshotHash), changedPaths: integrated.changedPaths } }, "2026-02-01T00:00:04.000Z").workflow;
+    reduced = reduceWorkflow(reduced, { type: "record-implementation", report: { ...stageReport("implementation", "implementer", taskContract, "impl", prepared.receipt.snapshotHash), changedPaths: integrated.changedPaths }, receipt: prepared.receipt }, "2026-02-01T00:00:04.000Z").workflow;
     reduced = reduceWorkflow(reduced, { type: "record-review", report: stageReport("general-review", "general-reviewer", taskContract, "review", prepared.receipt.snapshotHash) }, "2026-02-01T00:00:05.000Z").workflow;
     assert.throws(() => reduceWorkflow(reduced, { type: "record-workspace", receipt: { workspaceId: "legacy", baselineHash: "old", snapshotHash: "old", changedPaths: [], createdAt: "2026-02-01T00:00:05.000Z" } }, "2026-02-01T00:00:06.000Z"), /recoverable prepared workspace receipt/);
     reduced = reduceWorkflow(reduced, { type: "record-workspace", receipt: prepared.receipt }, "2026-02-01T00:00:06.000Z").workflow;

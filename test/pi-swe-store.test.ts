@@ -40,6 +40,18 @@ function report(kind: StageReport["kind"], role: RunnerProvenance["role"], runId
   };
 }
 
+function preparedReceipt(taskId = "T1", changedPaths: string[] = []) {
+  return {
+    version: 1 as const, workspaceId: "ws-1", root: "/repo", path: "/work/ws-1", taskId, topic: "schema-v2",
+    baselineHash: "sha256:baseline", snapshotHash: "sha256:snapshot", changedPaths, createdAt: at,
+    baselineCommit: "base", baselineRef: "refs/pi-swe/baselines/ws-1", worktreeGitDir: "/git/ws-1", ownershipToken: "owner",
+    intentPath: "/intent/ws-1", workspaceHeadCommit: "base", preparedResultCommit: "result", preparedResultRef: "refs/pi-swe/results/ws-1",
+    preparedPatchHash: "sha256:patch", realHead: "head", realIndexHash: "index", realIndexTree: "tree", stagedPatchHash: "staged",
+    unstagedPatchHash: "unstaged", realSourceSnapshotHash: "sha256:baseline", includedUntracked: [], managedPaths: [],
+    writeScope: ["extensions/pi-swe/**", "test/pi-swe*.test.ts"],
+  };
+}
+
 function workflow() {
   return createWorkflow({
     topic: "schema-v2",
@@ -122,7 +134,7 @@ test("stage reducer rejects skipped stages, self-review, stale reports, and unre
   current = reduceWorkflow(current, { type: "start" }, "2026-02-01T00:00:02.000Z").workflow;
   const taskHash = current.tasks[0]!.contract.hash;
   assert.throws(() => reduceWorkflow(current, { type: "record-implementation", report: report("implementation", "implementer", "impl-stale", `sha256:${"0".repeat(64)}`, "completed") }), /stale contract/i);
-  current = reduceWorkflow(current, { type: "record-implementation", report: report("implementation", "implementer", "same-run", taskHash, "completed") }, "2026-02-01T00:00:03.000Z").workflow;
+  current = reduceWorkflow(current, { type: "record-implementation", report: report("implementation", "implementer", "same-run", taskHash, "completed"), receipt: preparedReceipt() }, "2026-02-01T00:00:03.000Z").workflow;
   assert.throws(() => reduceWorkflow(current, { type: "record-review", report: report("general-review", "general-reviewer", "same-run", taskHash) }), /self-review/i);
   const blocked = report("general-review", "general-reviewer", "review-1", taskHash);
   blocked.findings = [{ id: "F1", severity: "blocking", status: "open", summary: "Broken authorization", evidence: "test fixture" }];
@@ -140,7 +152,8 @@ test("an independently reviewed no-change task still requires final initiative a
   const implementation = report("implementation", "implementer", "impl", current.tasks[0]!.contract.hash, "no-change");
   implementation.rationale = "The requested behavior is already present and covered.";
   implementation.changedPaths = [];
-  current = reduceWorkflow(current, { type: "record-implementation", report: implementation }, "2026-02-01T00:00:03.000Z").workflow;
+  const noChangeReceipt = { ...preparedReceipt(), topic: "no-change", writeScope: ["src/**"] };
+  current = reduceWorkflow(current, { type: "record-implementation", report: implementation, receipt: noChangeReceipt }, "2026-02-01T00:00:03.000Z").workflow;
   current = reduceWorkflow(current, { type: "record-review", report: report("general-review", "general-reviewer", "review", current.tasks[0]!.contract.hash) }, "2026-02-01T00:00:04.000Z").workflow;
   current = reduceWorkflow(current, { type: "complete-task" }, "2026-02-01T00:00:05.000Z").workflow;
   assert.equal(current.status, "paused");

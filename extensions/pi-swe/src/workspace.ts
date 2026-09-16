@@ -326,7 +326,15 @@ export class GitWorkspaceManager {
     return this.integrationReceipt(prepared, after, expectedPost, integratedAt);
   }
 
-  createRemediationWorkspace(receipt: GitWorkspaceReceipt, integrated: GitIntegrationReceipt, workspaceId = randomUUID()): GitWorkspaceReceipt {
+  cumulativeDiff(receipt: GitWorkspaceReceipt): Buffer {
+    this.validateReceipt(receipt);
+    if (!receipt.preparedResultCommit) throw new Error("workspace receipt has no prepared cumulative result");
+    const patch = this.git(["diff", "--binary", "--full-index", "--find-renames", receipt.baselineCommit, receipt.preparedResultCommit]);
+    if (patch.byteLength > this.limits.maxPatchBytes) throw new Error(`cumulative delta exceeds ${this.limits.maxPatchBytes} byte limit`);
+    return patch;
+  }
+
+  createRemediationWorkspace(receipt: GitWorkspaceReceipt, integrated: GitIntegrationReceipt, workspaceId: string = randomUUID()): GitWorkspaceReceipt {
     this.validateReceipt(receipt);
     if (this.requiredCommit(receipt.baselineRef, "workspace baseline ref is missing") !== receipt.baselineCommit) throw new Error("workspace baseline ref drifted");
     if (integrated.workspaceId !== receipt.workspaceId || integrated.resultRef !== `refs/pi-swe/results/${receipt.workspaceId}`) throw new Error("integration receipt does not belong to the workspace");
@@ -367,6 +375,63 @@ export class GitWorkspaceManager {
         stagedPatchHash: current.stagedPatchHash, unstagedPatchHash: current.unstagedPatchHash,
         realSourceSnapshotHash: current.sourceSnapshotHash, createdAt,
       };
+      this.writeIntent({ ...intent, receipt: remediation });
+      return remediation;
+    } catch (error) {
+      if (registered) this.gitBestEffort(["worktree", "remove", "--force", path]);
+      if (acquired) this.gitBestEffort(["update-ref", "-d", ref, receipt.baselineCommit]);
+      rmSync(path, { recursive: true, force: true });
+      rmSync(intentPath, { force: true });
+      this.gitBestEffort(["worktree", "prune", "--expire", "now"]);
+      throw error;
+    }
+  }
+
+  createDriftRemediationWorkspace(receipt: GitWorkspaceReceipt, integrated: GitIntegrationReceipt, workspaceId: string = randomUUID(), observedChangedPaths: string[] = []): GitWorkspaceReceipt {
+    this.validateReceipt(receipt);
+    if (integrated.workspaceId !== receipt.workspaceId || integrated.resultCommit !== receipt.preparedResultCommit) throw new Error("integration receipt does not belong to the prepared workspace");
+    const explicitDriftPaths = [...new Set(observedChangedPaths.map(validatePath))].sort();
+    if (explicitDriftPaths.length > MAX_RECEIPT_PATHS || explicitDriftPaths.some(isAuthorityPath)) throw new Error("verification drift paths exceed bounds or include workflow authority");
+    const sourcePaths = [...new Set([...this.receiptSourcePaths(receipt), ...integrated.changedPaths, ...explicitDriftPaths])].sort();
+    const current = this.preflight(sourcePaths);
+    this.assertMainHeadAndIndexUnchanged(receipt, current);
+    const currentCommit = this.captureCommit(current.head, sourcePaths.filter((path) => !this.optionalText(["ls-files", "--error-unmatch", "--", path])), `pi-swe drift baseline ${workspaceId}`);
+    const cumulativePaths = this.changedPaths(receipt.baselineCommit, currentCommit);
+    if (cumulativePaths.length > MAX_RECEIPT_PATHS) throw new Error(`drift remediation change set exceeds ${MAX_RECEIPT_PATHS} receipt entries`);
+    const id = safeId(workspaceId, "workspace id");
+    const ref = `refs/pi-swe/baselines/${id}`;
+    const resultRef = `refs/pi-swe/results/${id}`;
+    if (this.refCommit(ref) || this.refCommit(resultRef)) throw new Error(`workspace retention ref already exists: ${id}`);
+    const path = mkdtempSync(join(tmpdir(), `pi-swe-${id.slice(0, 12)}-`));
+    const ownershipToken = randomUUID();
+    const createdAt = new Date().toISOString();
+    const managedPaths = [...new Set([...receipt.managedPaths, ...cumulativePaths])].sort();
+    const intent: WorkspaceCreationIntent = {
+      version: 1, workspaceId: id, workspacePath: path, ownershipToken, baselineCommit: receipt.baselineCommit, baselineRef: ref,
+      workspaceHeadCommit: currentCommit, integrationBaseCommit: currentCommit, managedPaths, changedPaths: cumulativePaths,
+      before: current, input: { topic: receipt.topic, taskId: receipt.taskId, writeScope: receipt.writeScope, includedUntracked: receipt.includedUntracked, createdAt },
+    };
+    const intentPath = this.intentPath(id);
+    this.writeIntent(intent, true);
+    let registered = false;
+    let acquired = false;
+    try {
+      this.acquireRef(ref, receipt.baselineCommit);
+      acquired = true;
+      this.git(["worktree", "add", "--detach", path, currentCommit]);
+      registered = true;
+      const worktreeGitDir = this.gitText(["-C", path, "rev-parse", "--absolute-git-dir"]);
+      writeFileSync(join(worktreeGitDir, "pi-swe-owner"), ownershipToken, { encoding: "utf8", flag: "wx", mode: 0o600 });
+      const remediation: GitWorkspaceReceipt = {
+        ...receipt, workspaceId: id, path, baselineRef: ref, integrationBaseCommit: currentCommit,
+        worktreeGitDir, ownershipToken, intentPath, workspaceHeadCommit: currentCommit,
+        preparedResultCommit: undefined, preparedResultRef: undefined, preparedPatchHash: undefined,
+        baselineHash: current.sourceSnapshotHash, snapshotHash: this.fingerprintTree(currentCommit), changedPaths: cumulativePaths,
+        managedPaths, realHead: current.head, realIndexHash: current.indexHash, realIndexTree: current.indexTree,
+        stagedPatchHash: current.stagedPatchHash, unstagedPatchHash: current.unstagedPatchHash,
+        realSourceSnapshotHash: current.sourceSnapshotHash, createdAt,
+      };
+      this.validateChangedPaths(remediation, currentCommit, cumulativePaths);
       this.writeIntent({ ...intent, receipt: remediation });
       return remediation;
     } catch (error) {

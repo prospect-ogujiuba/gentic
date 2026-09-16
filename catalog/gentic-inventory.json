@@ -295,6 +295,7 @@
       "sourceFiles": [
         "extensions/pi-swe/index.ts",
         "extensions/pi-swe/src/command.ts",
+        "extensions/pi-swe/src/orchestration.ts",
         "extensions/pi-swe/src/runner-child.ts",
         "extensions/pi-swe/src/runner-protocol.ts",
         "extensions/pi-swe/src/runner.ts",
