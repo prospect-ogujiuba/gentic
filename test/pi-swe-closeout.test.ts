@@ -21,7 +21,10 @@ function terminalWorkflow(): Workflow {
   const base = createWorkflow({
     topic: "closeout-test", goal: "Deliver integrated behavior", plan: "Implement, independently review, integrate, and verify.", now: AT,
     initiativeVerification: [check],
-    tasks: [{ id: "T1", title: "implement", acceptance: ["works across boundaries"], approaches: ["tdd"], approachReasons: { tdd: "integration behavior is deterministic" }, assessmentStatus: "assessed", writeScope: ["src/**", "test/**"], nonGoals: ["release"], verification: [check] }],
+    tasks: [
+      { id: "T1", title: "implement", acceptance: ["works across boundaries"], approaches: ["tdd"], approachReasons: { tdd: "integration behavior is deterministic" }, assessmentStatus: "assessed", writeScope: ["src/**", "test/**"], nonGoals: ["release"], verification: [check] },
+      { id: "T2", title: "integrate caller", dependsOn: ["T1"], acceptance: ["caller uses integrated behavior"], approaches: ["tdd"], approachReasons: { tdd: "integration behavior is deterministic" }, assessmentStatus: "assessed", writeScope: ["src/**", "test/**"], nonGoals: ["release"], verification: [check] },
+    ],
   });
   const planReview: StageReport = { kind: "plan-review", outcome: "approved", summary: "plan approved", findings: [], provenance: { runId: "plan-1", role: "plan-reviewer", actorId: "plan-reviewer:plan-1", leaseId: "lease-plan", leaseFence: 1, contractHash: base.contract.hash, startedAt: AT, completedAt: "2026-04-01T00:00:00.250Z" } };
   return parseWorkflow({
@@ -205,7 +208,7 @@ test("completion authority holds a cooperative repository fence through completi
   assert.throws(() => unfenced.acquireCompletionFence(workflow, parent), /repository mutation fence|not an OS sandbox/i);
 });
 
-test("engine persists a successful fenced completion and returns complete", async () => {
+test("engine persists a successful fenced multi-task closeout and returns complete", async () => {
   const root = mkdtempSync(join(tmpdir(), "pi-swe-complete-"));
   const base = approved();
   const workflow = parseWorkflow({ ...base, orchestration: { ...base.orchestration, parent: { ...base.orchestration.parent, cwd: root } }, closeout: { ...base.closeout, evidence: base.closeout!.evidence.map((item) => ({ ...item, cwd: root })) } });
@@ -217,6 +220,8 @@ test("engine persists a successful fenced completion and returns complete", asyn
   const result = await engine.advance(workflow.topic, workflow.revision);
   assert.equal(result.kind, "complete", result.message);
   assert.equal(result.workflow.status, "complete");
+  assert.equal(result.workflow.tasks.length, 2);
+  assert.ok(result.workflow.tasks.every((task) => task.status === "complete" && task.phase === "historical"));
   assert.equal(held, false);
 });
 
@@ -238,6 +243,7 @@ test("fresh final reviewer receives the full initiative packet and is forbidden 
   assert.equal(packet.approvedPlan, workflow.plan);
   assert.equal(packet.cumulativeInitiativeDelta, delta);
   assert.ok(Array.isArray(packet.taskOutcomes));
+  assert.equal((packet.taskOutcomes as unknown[]).length, 2);
   assert.deepEqual(packet.unresolvedRisks, []);
   assert.deepEqual(packet.manualValidation, manualValidation);
   assert.deepEqual(packet.finalRepositorySnapshot, workflow.closeout!.snapshot);

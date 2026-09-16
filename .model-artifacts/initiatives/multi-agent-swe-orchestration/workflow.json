@@ -1,8 +1,8 @@
 {
   "version": 1,
   "topic": "multi-agent-swe-orchestration",
-  "revision": 20,
-  "status": "paused",
+  "revision": 21,
+  "status": "complete",
   "goal": "Make /swe a deterministic multi-agent software-engineering orchestrator: fresh-context agents perform plan review, scoped implementation, independent review, bounded remediation, and final initiative acceptance; approved changes are safely integrated and followed by protected verification. Enforce workflow participation and evidence freshness without claiming that worktrees or prompts are an OS security sandbox.",
   "plan": "Eight-task implementation, sequential execution by default. Keep workflow.json as authority. Separate contract identities from mutable state revisions; use fenced ownership, isolated fresh Pi children, typed reports/questions, Git workspace receipts, exact-snapshot review and protected verification. General review covers TDD/diagnosis/DSA; one additional composed reviewer covers applicable security/migration/performance/UX/operations concerns. Two remediation attempts then block. Final acceptance reviews the cumulative initiative. No automatic commit, push, deployment, recursive delegation, silent single-agent fallback, or mandatory external orchestration extension. Existing interactive-shell attachment is not the new runner UI. Bootstrap this extension under the installed v1 workflow; validate v2 in isolated fixtures before switching runtimes.",
   "tasks": [
@@ -519,7 +519,7 @@
     {
       "id": "docs-e2e",
       "title": "Document trust boundaries and verify the full initiative lifecycle",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "command-ux-recovery"
       ],
@@ -576,9 +576,46 @@
           ]
         }
       ],
-      "evidence": [],
-      "evidenceLinks": []
+      "evidence": [
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "test:swe"
+          ],
+          "exitCode": 0,
+          "at": "2026-09-16T20:33:30.000Z"
+        },
+        {
+          "command": "npm",
+          "args": [
+            "test"
+          ],
+          "exitCode": 0,
+          "at": "2026-09-16T20:35:30.000Z"
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check"
+          ],
+          "exitCode": 0,
+          "at": "2026-09-16T20:36:30.000Z"
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ],
+          "exitCode": 0,
+          "at": "2026-09-16T20:37:36.609Z"
+        }
+      ],
+      "evidenceLinks": [],
+      "completedAt": "2026-09-16T20:37:36.609Z"
     }
   ],
-  "updatedAt": "2026-09-16T20:07:49.679Z"
+  "updatedAt": "2026-09-16T20:37:36.609Z"
 }

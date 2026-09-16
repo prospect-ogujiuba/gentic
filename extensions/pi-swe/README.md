@@ -6,7 +6,7 @@ A small, opt-in workflow extension for durable multi-step software work. Normal 
 
 - **What it does:** stores a goal and dependency-ordered tasks in one file, instructs the agent to assess applicable engineering approaches during planning, selects at most one active workflow task per repository, binds protected bash results as verification evidence, and advances completed work.
 - **Commands/tools:** `/swe status`, `/swe config`, `/swe migrate`, `/swe work`; model-callable `swe_workflow`.
-- **Events:** the v2 integrity controller defines fail-closed `tool_call`/`tool_result`, user-shell, agent-start, and session-shutdown guards. The installed v1 entrypoint intentionally does not register that controller until a production fenced-orchestration surface is delivered; isolated fixtures exercise it meanwhile. Version-1 compatibility views are always excluded until explicit migration.
+- **Events:** the v2 integrity controller defines fail-closed `tool_call`/`tool_result`, user-shell, agent-start, and session-shutdown guards. The installed v1 runtime remains the production runtime: its entrypoint intentionally does not register the v2 controller until a production fenced-orchestration surface is delivered. Isolated tests exercise v2 with a deterministic fixture provider. Do not hot-reload, self-upgrade, or partially activate v2. Version-1 compatibility views are always excluded until explicit migration.
 - **State:** `.model-artifacts/initiatives/<topic>/workflow.json` is the sole mutable authority. The bundled schema describes canonical writes; the runtime explicitly normalizes older version-1 tasks missing assessment fields to `unassessed`.
 - **Modules:** `src/workflow.ts` owns types and the reducer; `src/store.ts` owns bounded atomic persistence and the legacy importer; `src/workspace.ts` owns recoverable Git baselines, detached worktrees, index-preserving integration, and whole-source fingerprints; `src/integrity.ts` owns parent capability and protected-verification authority; `src/tool.ts` and `src/command.ts` are Pi adapters.
 - **Tests:** `npm run test:swe`; use `npm run typecheck` and `npm run check` for package integration.
@@ -55,6 +55,60 @@ Evidence must be newer than the task's activation or latest revision timestamp, 
 Use `revise` with the desired full task graph to add, remove, or update planned work. Completed, active, and blocked tasks cannot be removed; statuses, evidence, evidence links, completion timestamps, and imported provenance are retained for matching tasks.
 
 Every activation path—commands, model-callable start/resume, and automatic advancement—returns the same coarse implementation guidance. It does not dispatch separate planning, implementation, verification, review, and finalization turns.
+
+## Managed v2 lifecycle
+
+The isolated v2 engine advances one durable stage at a time: plan review, implementation, independent review, optional concern review, safe integration, protected checks, task completion, and final initiative acceptance. Neither `/swe` nor `swe_workflow` may jump a stage. Slash-command and tool control both use `WorkflowControlService`, the same ownership scan, parent claim, lease fencing, mutation service, recovery rules, and completion gates. The command surface intentionally exposes no direct managed completion action; the tool rejects managed `complete` and requires `OrchestrationEngine` advancement.
+
+### Role and concern routing
+
+A fresh `plan-reviewer` must approve the complete contract before any implementer runs. An `implementer` receives only the task contract and its isolated workspace. A fresh `general-reviewer` receives the exact cumulative delta, bounded relevant files, and objective evidence, but not the implementation conversation or its verdict. When the task assessment selects `security`, `performance`, `migration`, `accessibility-ux`, or `operations`, one composed `concern-reviewer` receives only those selected specialist concerns. `tdd`, `diagnosis`, and `dsa` guide implementation and general review rather than creating ceremonial agents. A fresh `final-reviewer` judges the full integrated initiative after every task and final check.
+
+Role routing does not authorize side effects. Reviewers cannot patch, integrate, commit, push, deploy, or release. Final completion means implementation accepted; commit, push, deploy, release, and production rollout each require separate authorization.
+
+### Fresh context and independent judgment
+
+Each role attempt starts in a fresh process with an explicit provider/model, bounded packet, isolated cache, and explicit extension list. Fresh context prevents accidental conversation leakage; it does not guarantee independent judgment when runs use the same model family, provider, prompt design, or training data. Independence here is enforceable provenance separation: a reviewer must have a distinct actor and run, must not self-review, and must review the current snapshot without the implementer's verdict. Use genuinely different reviewers when policy requires stronger organizational or model independence.
+
+### Clarification
+
+A child may return `needs-input` with a stable question ID instead of guessing. The parent stops, displays the question through `/swe work inspect`, and records a durable answer with `/swe work answer`; the tool and engine consume the same workflow response. The resumed stage uses a fresh process and the correlated answer. Clarification is two-way, survives parent restart, and does not consume remediation budget. An unanswered, stale, or mismatched response cannot advance the stage.
+
+### Workflow and task transitions
+
+`workflow.json` is the sole mutable authority. The workflow moves through `plan-review`, `task-execution`, `initiative-acceptance`, and `complete`. A task moves through `pending`, `implementation`, `general-review`, optional `concern-review`, `workspace`, `integration`, `verification`, `ready-to-complete`, and `historical`; rejection enters bounded `remediation`. `paused`, `blocked`, and `complete` are durable workflow states. Runtime outcomes remain distinct: `cancelled`, `interrupted`, `crashed`, `timed-out`, `changes-requested`, `blocked`, and `completed` are never inferred from process exit alone.
+
+Every child holds a fenced, expiring lease. Two concurrent parents cannot share authority. Cancellation invalidates the lease before process termination, so a late result or clean exit cannot become success. Parent restart invalidates in-memory grants and reports orphaned or expired leases; explicit resume establishes a new parent checkpoint. Accepted reports, findings, workspace and integration receipts, clarification responses, manual decisions, and recovery history live in `workflow.json`, so dismissing a bounded runtime tail cannot delete them.
+
+### Dependency setup
+
+Install the repository's pinned dependencies with `npm install` (or the lockfile-equivalent clean install used by CI) before running fixtures. Native child processes resolve the pinned Pi CLI and required packages from the isolated workspace bootstrap; symlinked dependency trees are rejected. Ordinary CI uses local process fixtures and a deterministic fixture provider—no network, discovery, hot reload, self-upgrade, or production activation is required.
+
+Run `npm run test:swe`, `npm test`, `npm run check`, and `npm run typecheck`. A real-model smoke test is optional and must be skipped unless credentials and explicit user authorization are both available; record the skip honestly. A smoke test never substitutes for deterministic CI.
+
+### Manual validation
+
+When behavior cannot be checked objectively (for example, target hardware or a human-perception judgment), the plan records an explicit manual-validation decision rather than a fabricated passing command. `/swe work validate` requires a keyboard-accessible approval or rejection, rationale, confirmation, actor, and timestamp. Manual validation cannot replace independent final acceptance: after an approved manual observation, a fresh final reviewer must still accept the current initiative snapshot. Rejection creates scoped follow-up work that re-enters implementation, review, integration, and verification.
+
+### Post-integration repair
+
+Failed checks, inadequate tests, reviewer disagreement, source-changing verification, and whole-snapshot drift invalidate approval. They enter the same cumulative remediation path; the parent never patches or silently rolls back integrated work. Repair starts from the original baseline plus every accepted delta, then receives complete independent re-review. Follow-up tasks need bounded write scope, non-goals, acceptance criteria, and verification. The remediation budget is durable and cumulative; exhaustion blocks until a keyboard-confirmed, reasoned reset is recorded.
+
+### Native run inspection
+
+Native SWE children are non-PTY processes. Inspect durable stage, role, provider/model, elapsed time, outcome, findings, clarifications, retry budget, workspace receipts, and recovery advice with `/swe work inspect <topic>` or `swe_workflow action=inspect`. Use `/swe work runs <topic>` or `swe_workflow action=runs` for bounded report and output tails. Full transcripts and unbounded diagnostics are not retained; authorized initiative diagnostics belong only in its `logs/` or `reports/` directories.
+
+Interactive-shell `/attach` does not apply to native SWE runs because they are not interactive-shell sessions and have no PTY to attach. Pause or stop through the workflow controls; do not infer state from an OS process alone.
+
+### Upgrade and migration
+
+Version-1 reads are non-mutating. For a native v1 workflow, the first mutation performs an atomic v2 upgrade while preserving prior task evidence and provenance; historical completion labels remain historical and cannot satisfy fresh review or final acceptance. Former manifest/contracts initiatives require explicit migration. A legacy kind-first layout is read-only, and a canonical/legacy layout conflict blocks instead of choosing or shadowing one. Production remains on the installed v1 entrypoint until a separately reviewed rollout authorizes v2 registration.
+
+Dirty index and working-tree content are captured separately without staging or resetting. Untracked inputs require explicit selection; ambiguous or sensitive files require a user decision and are never selected implicitly. Binary content, file mode changes, and symlinks are fingerprinted and integrated exactly, with escaping links rejected. Bare, non-root, unborn, conflicted, sparse, submodule, filter, and LFS repositories are unsupported and fail before mutation.
+
+### Explicit tool trust
+
+Managed execution allows only an explicitly trusted tool identity with stable provenance. Reads are bounded; protected `bash` is a one-shot capability for the exact planned command, arguments, cwd, parent, contract, branch, and whole-source snapshot. Unknown, dynamically replaced, nested, alternate-shell, write, MCP execution, and interactive execution surfaces fail closed. These controls are integrity mechanisms, not an OS sandbox: extensions and same-user processes retain the user's operating-system permissions, while later snapshot checks detect drift.
 
 ### Managed parent integrity
 
