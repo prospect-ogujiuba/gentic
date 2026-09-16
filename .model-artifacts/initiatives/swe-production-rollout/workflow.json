@@ -1,0 +1,1444 @@
+{
+  "version": 2,
+  "topic": "swe-production-rollout",
+  "revision": 4,
+  "status": "draft",
+  "goal": "Migrate every supported pi-swe workflow safely, activate the complete v2 orchestration runtime with simplified start/resume operation, cut production over with bounded rollback, and retire obsolete v1 execution paths while retaining required compatibility readers.",
+  "plan": "One dependency-enforced 17-task rollout. Complete migration inventory, policy, atomic apply, operator surfaces, and qualification first. Then compose and atomically register the complete v2 runtime, add its autonomous driver and contextual UX, qualify recovery and the production entrypoint, rehearse cutover, migrate repository workflows under explicit control, make v2 the default with bounded rollback, retire v1 execution only, and finish release qualification. Retain v1 read/migration compatibility through the documented Gentic 1.0 boundary. No push, publish, deployment, release, self-upgrade, compatibility-reader deletion, or other external side effect without separate authorization. The production entrypoint must preserve pi-todo ownership precedence, dirty-index and file-fidelity guarantees, distinct terminal outcomes, durable evidence retention, explicit cutover authorization, and clean-checkout release-report evidence. The active rollout workflow is never a migration target. Runtime cutover and rollback use a no-child durable self-hosting handoff, and clean-checkout release verification runs separately from the control checkout that owns workflow.json.",
+  "contract": {
+    "revision": 3,
+    "hash": "sha256:5d6c51231979d373d1e0be0b1ca7d8a24f061939597d4048abec1babec4ea50c"
+  },
+  "initiativeVerification": [
+    {
+      "command": "npm",
+      "args": [
+        "run",
+        "test:swe"
+      ]
+    },
+    {
+      "command": "npm",
+      "args": [
+        "test"
+      ]
+    },
+    {
+      "command": "npm",
+      "args": [
+        "run",
+        "check"
+      ]
+    },
+    {
+      "command": "npm",
+      "args": [
+        "run",
+        "check:commands"
+      ]
+    },
+    {
+      "command": "npm",
+      "args": [
+        "run",
+        "check:performance"
+      ]
+    },
+    {
+      "command": "npm",
+      "args": [
+        "run",
+        "typecheck"
+      ]
+    }
+  ],
+  "orchestration": {
+    "mode": "multi-agent",
+    "phase": "plan-review",
+    "nextFence": 1,
+    "history": []
+  },
+  "tasks": [
+    {
+      "id": "migration-inventory",
+      "title": "Add bounded repository-wide workflow migration inventory and dry-run classification",
+      "kind": "implementation",
+      "status": "pending",
+      "phase": "pending",
+      "dependsOn": [],
+      "acceptance": [
+        "A read-only inventory classifies native v1 workflow.json, current workflows, historical manifest/contracts initiatives, canonical/legacy layout conflicts, malformed or unsupported topics, and already-complete topics without mutating bytes.",
+        "Inventory output is deterministic, bounded, machine-readable, and identifies the exact migration action or blocker per topic.",
+        "Symlinked ancestry, excessive directory breadth/depth, oversized files, and ambiguous layouts fail closed."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "migration",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Inventory classification and no-write guarantees require deterministic fixtures.",
+        "security": "Traversal, symlink, bounds, and hostile legacy inputs are trust-boundary concerns.",
+        "migration": "The task defines compatibility classification and upgrade eligibility.",
+        "operations": "Operators need bounded dry-run output and actionable blockers before cutover."
+      },
+      "assessmentStatus": "assessed",
+      "writeScope": [
+        "extensions/pi-swe/src/migration.ts",
+        "extensions/pi-swe/src/store.ts",
+        "test/pi-swe-migration.test.ts"
+      ],
+      "nonGoals": [
+        "Mutating any workflow",
+        "Activating v2 runtime hooks",
+        "Deleting legacy files"
+      ],
+      "contract": {
+        "revision": 3,
+        "hash": "sha256:f434bad32034f31ab70b38f2276d85f453afba2e90dfab77d6e8e9ebd4846831"
+      },
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe-migration.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": []
+    },
+    {
+      "id": "migration-policy",
+      "title": "Define historical completion, active-work, evidence, and rollback policy",
+      "kind": "implementation",
+      "status": "pending",
+      "phase": "pending",
+      "dependsOn": [
+        "migration-inventory"
+      ],
+      "acceptance": [
+        "Completed v1 tasks become immutable historical records and cannot satisfy fresh v2 review or final acceptance.",
+        "Incomplete or active work is paused with stale execution evidence removed while durable user-authored evidence and provenance are preserved.",
+        "Previously complete workflows receive a deterministic explicit disposition: reopen for v2 acceptance, retain as grandfathered read-only history by authorized decision, or block for operator review.",
+        "Migration records before/after hashes and a recovery receipt without treating workflow controls as an OS sandbox."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "migration",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Policy branches must be executable and regression-tested.",
+        "security": "Stale evidence and historical labels must not bypass v2 gates.",
+        "migration": "This is the semantic compatibility contract for old workflow states.",
+        "operations": "Rollback receipts and explicit operator dispositions are needed for recoverability."
+      },
+      "assessmentStatus": "assessed",
+      "writeScope": [
+        "extensions/pi-swe/src/migration.ts",
+        "extensions/pi-swe/src/workflow.ts",
+        "extensions/pi-swe/workflow.schema.json",
+        "test/pi-swe-migration.test.ts"
+      ],
+      "nonGoals": [
+        "Automatically approving historical work",
+        "Deleting accepted evidence",
+        "Performing production rollout"
+      ],
+      "contract": {
+        "revision": 3,
+        "hash": "sha256:0de7b7fd1d0b5817dc2c7702637f02dc4ec7fb1079007a8f4a72936a0217f9c2"
+      },
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe-migration.test.ts",
+            "test/pi-swe-store.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": []
+    },
+    {
+      "id": "migration-apply",
+      "title": "Implement atomic per-topic migration, recovery, and idempotency",
+      "kind": "implementation",
+      "status": "pending",
+      "phase": "pending",
+      "dependsOn": [
+        "migration-policy"
+      ],
+      "acceptance": [
+        "Apply validates a dry-run decision, acquires the workflow mutation lock, checks preimage hashes, writes atomically, and persists a bounded recovery receipt.",
+        "Interrupted apply is recoverable and repeated apply is idempotent; stale plans and concurrent writers are rejected.",
+        "Canonical/legacy conflicts, malformed workflows, unknown versions, and unsupported repositories remain unchanged on failure.",
+        "Old artifacts remain read-only migration history until separately authorized retention cleanup.",
+        "Rollback is compare-and-restore against the exact migrated postimage, refuses intervening edits, and retains recovery evidence until an explicit retention decision."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "migration",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Crash points, CAS loss, and idempotency require fault-injection tests.",
+        "security": "Preimage binding and atomic writes protect lifecycle authority.",
+        "migration": "The task performs the version and layout transition.",
+        "operations": "Recovery and restart behavior are production requirements."
+      },
+      "assessmentStatus": "assessed",
+      "writeScope": [
+        "extensions/pi-swe/src/migration.ts",
+        "extensions/pi-swe/src/store.ts",
+        "extensions/pi-swe/src/service.ts",
+        "test/pi-swe-migration.test.ts"
+      ],
+      "nonGoals": [
+        "Batch orchestration",
+        "Deleting rollback evidence",
+        "Changing the production runtime entrypoint"
+      ],
+      "contract": {
+        "revision": 3,
+        "hash": "sha256:211f4d4c0ae7c2d5949a61256fecff45d25be5b8a785191b3d6d0226cf53afaf"
+      },
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe-migration.test.ts",
+            "test/pi-swe-store.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": []
+    },
+    {
+      "id": "migration-surfaces",
+      "title": "Expose safe audit, migrate, and recovery surfaces for operators",
+      "kind": "implementation",
+      "status": "pending",
+      "phase": "pending",
+      "dependsOn": [
+        "migration-apply"
+      ],
+      "acceptance": [
+        "Slash-command and tool surfaces share the same migration service, classifications, preimage checks, mutation gates, and recovery outcomes.",
+        "Repository-wide audit is read-only; batch apply requires explicit selection and reports each topic independently without hiding partial failures.",
+        "Keyboard-accessible confirmations are required for historical-completion disposition and any destructive retention decision.",
+        "Output names the next legal action and remains bounded."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "migration",
+        "accessibility-ux",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Command/tool parity and batch isolation need adapter-level tests.",
+        "security": "Model-authored inputs must not impersonate operator migration decisions.",
+        "migration": "The task exposes the supported transition workflow.",
+        "accessibility-ux": "Operators need keyboard decisions and concise next-action guidance.",
+        "operations": "Batch failures and recovery must be diagnosable."
+      },
+      "assessmentStatus": "assessed",
+      "writeScope": [
+        "extensions/pi-swe/src/migration.ts",
+        "extensions/pi-swe/src/command.ts",
+        "extensions/pi-swe/src/tool.ts",
+        "extensions/pi-swe/src/ux.ts",
+        "test/pi-swe-command.test.ts",
+        "test/pi-swe-tool.test.ts",
+        "test/pi-swe-migration.test.ts"
+      ],
+      "nonGoals": [
+        "Automatically migrating every discovered topic",
+        "Production activation",
+        "Release or deployment"
+      ],
+      "contract": {
+        "revision": 3,
+        "hash": "sha256:50c41cc295e0fe069199337de569853e75fd8c082dbf9cf323fd463e246b6a06"
+      },
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe-migration.test.ts",
+            "test/pi-swe-command.test.ts",
+            "test/pi-swe-tool.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": []
+    },
+    {
+      "id": "migration-qualification",
+      "title": "Rehearse migration corpus and document cutover prerequisites",
+      "kind": "implementation",
+      "status": "pending",
+      "phase": "pending",
+      "dependsOn": [
+        "migration-surfaces"
+      ],
+      "acceptance": [
+        "Deterministic fixtures cover all supported v1 workflow states, historical imports, conflicts, corruption, crashes, concurrent mutation, and rollback/recovery.",
+        "A repository migration rehearsal proves inventory, selected apply, restart, re-audit, and idempotent completion without production activation.",
+        "Documentation explains per-topic and batch operation, historical-completion decisions, retention, rollback, and the Gentic 1.0 compatibility boundary.",
+        "Catalog, inventory, prompt/resource metadata, SWE tests, repository tests, checks, typecheck, and diff hygiene pass."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "migration",
+        "accessibility-ux",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "The migration corpus is the executable compatibility guarantee.",
+        "security": "Adversarial fixtures prove stale evidence and hostile files cannot bypass gates.",
+        "migration": "Qualification establishes readiness for the next activation initiative.",
+        "accessibility-ux": "Docs and operator output must make risky decisions understandable.",
+        "operations": "Rehearsal, recovery, metadata, and complete repository checks gate handoff."
+      },
+      "assessmentStatus": "assessed",
+      "writeScope": [
+        "extensions/pi-swe/README.md",
+        "docs/model-artifacts.md",
+        "test/pi-swe-migration.test.ts",
+        "test/fixtures/pi-swe-migration/**",
+        "catalog/gentic-inventory.json",
+        "catalog/pi-native-capabilities.json"
+      ],
+      "nonGoals": [
+        "Registering v2 runtime hooks",
+        "Removing v1 read compatibility",
+        "Publishing or deploying"
+      ],
+      "contract": {
+        "revision": 3,
+        "hash": "sha256:277487a2857c282bbe8d7512083714f82b33b986518697fc0642fba2942a22c6"
+      },
+      "verification": [
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "test:swe"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "test"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": []
+    },
+    {
+      "id": "runtime-composition",
+      "title": "Build a single production composition root for the complete v2 runtime",
+      "kind": "implementation",
+      "status": "pending",
+      "phase": "pending",
+      "dependsOn": [
+        "migration-qualification"
+      ],
+      "acceptance": [
+        "One production factory constructs OrchestrationEngine, AgentRunner, GitWorkspaceManager, ManagedVerificationAuthority, InitiativeCloseoutAuthority, WorkflowMutationService, runtime registry, and required inspectors from explicit dependencies.",
+        "Provider/model selection, timeouts, output bounds, repository limits, and extension loading have validated production defaults and deterministic test overrides.",
+        "No module-level singleton can transfer parent authority, verification grants, or leases across reload or session boundaries.",
+        "Construction fails closed when required Pi APIs, repository capabilities, or dependency setup are unavailable."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "performance",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Composition and dependency failure behavior need deterministic contract tests.",
+        "security": "Authority and one-shot capabilities must not leak across runtime instances.",
+        "performance": "Production defaults must enforce process, packet, and output bounds.",
+        "operations": "Dependency setup, configuration, and startup failures must be actionable."
+      },
+      "assessmentStatus": "assessed",
+      "writeScope": [
+        "extensions/pi-swe/src/runtime.ts",
+        "extensions/pi-swe/src/runner.ts",
+        "extensions/pi-swe/src/integrity.ts",
+        "extensions/pi-swe/src/closeout.ts",
+        "extensions/pi-swe/src/workspace.ts",
+        "test/pi-swe-runtime.test.ts"
+      ],
+      "nonGoals": [
+        "Registering the runtime in the extension entrypoint",
+        "Changing migration semantics",
+        "Publishing or deployment"
+      ],
+      "contract": {
+        "revision": 3,
+        "hash": "sha256:ce16a7a10f7b899509a560beff69747116a17051acb2d4b1ce091bf7a1a55fa0"
+      },
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-swe-agent-runner.test.ts",
+            "test/pi-swe-tool.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": []
+    },
+    {
+      "id": "runtime-registration",
+      "title": "Register v2 hooks and adapters atomically behind a fail-closed activation gate",
+      "kind": "implementation",
+      "status": "pending",
+      "phase": "pending",
+      "dependsOn": [
+        "runtime-composition"
+      ],
+      "acceptance": [
+        "The entrypoint either registers the complete v2 runtime and every integrity hook or remains on the compatibility runtime; partial registration is impossible.",
+        "Activation checks migration readiness, pinned Pi API compatibility, extension-runtime identity, required tools, and repository support before managed work can start.",
+        "Reload, session replacement, and shutdown invalidate parent authority, abort active children, and preserve durable workflow evidence.",
+        "Command and tool surfaces resolve the same active runtime and cannot bypass engine ownership or completion gates.",
+        "pi-todo and pi-swe use the same lifecycle coordinator: active todo ownership blocks SWE activation, active SWE ownership blocks todo restructuring, and paused/blocked/complete states release ownership according to the documented precedence.",
+        "Production documentation and runtime diagnostics state that tool interception, leases, worktrees, and snapshot checks are workflow integrity controls, not an OS sandbox; only explicitly trusted tool identities receive capabilities."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "migration",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Registration order and rollback need extension-harness tests.",
+        "security": "Missing hooks or split adapters would create lifecycle bypasses.",
+        "migration": "Activation must be blocked until repository workflow migration is safe.",
+        "operations": "Startup, reload, and shutdown behavior determine production recoverability."
+      },
+      "assessmentStatus": "assessed",
+      "writeScope": [
+        "extensions/pi-swe/index.ts",
+        "extensions/pi-swe/src/runtime.ts",
+        "extensions/pi-swe/src/integrity.ts",
+        "extensions/pi-swe/src/command.ts",
+        "extensions/pi-swe/src/tool.ts",
+        "test/pi-swe-runtime.test.ts",
+        "test/pi-swe-tool.test.ts",
+        "test/pi-swe-command.test.ts",
+        "src/lifecycle-coordination.ts",
+        "extensions/pi-todo/src/pi/swe-ownership.ts",
+        "test/pi-todo-qualification.test.ts"
+      ],
+      "nonGoals": [
+        "Enabling v2 by default",
+        "Deleting v1 compatibility readers",
+        "Running real-model children in ordinary CI"
+      ],
+      "contract": {
+        "revision": 4,
+        "hash": "sha256:6d703a1d493796015897bc7f106728b84f562155d715692283ede79d4a20792d"
+      },
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-swe-tool.test.ts",
+            "test/pi-swe-command.test.ts",
+            "test/pi-todo-qualification.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": []
+    },
+    {
+      "id": "orchestration-driver",
+      "title": "Add the production autonomous driver for legal stage advancement",
+      "kind": "implementation",
+      "status": "pending",
+      "phase": "pending",
+      "dependsOn": [
+        "runtime-registration"
+      ],
+      "acceptance": [
+        "One start or resume action drives successive legal stages until completion or a genuine terminal handoff: user input, manual validation, budget exhaustion, unsupported repository, cancellation, or infrastructure failure.",
+        "The driver advances by workflow revision and fenced lease, never busy-loops, never runs two children concurrently for one workflow, and stops on stale ownership.",
+        "Pause, stop, shutdown, deadline, and parent restart terminate process groups and prevent late results from becoming success.",
+        "Driver state is reconstructible from workflow.json and receipts; conversation state is never lifecycle authority."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "performance",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "The asynchronous state machine and every stopping condition need deterministic fake-provider tests.",
+        "security": "Revision and lease fencing prevent duplicate or stale execution.",
+        "performance": "Loop pacing, process concurrency, and retained output require hard bounds.",
+        "operations": "Cancellation, restart, deadlines, and resumability are core production behavior."
+      },
+      "assessmentStatus": "assessed",
+      "writeScope": [
+        "extensions/pi-swe/src/driver.ts",
+        "extensions/pi-swe/src/runtime.ts",
+        "extensions/pi-swe/src/orchestration.ts",
+        "extensions/pi-swe/src/ux.ts",
+        "test/pi-swe-driver.test.ts",
+        "test/pi-swe-orchestration.test.ts",
+        "test/pi-swe-agent-runner.test.ts"
+      ],
+      "nonGoals": [
+        "Automatically answering clarification",
+        "Automatically approving manual validation or budget resets",
+        "External side effects after workflow completion"
+      ],
+      "contract": {
+        "revision": 3,
+        "hash": "sha256:7464b39d5202070f46222e8e79217e8aeb27286921988ec9e303cd73927d119f"
+      },
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe-driver.test.ts",
+            "test/pi-swe-orchestration.test.ts",
+            "test/pi-swe-agent-runner.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": []
+    },
+    {
+      "id": "contextual-operator-ux",
+      "title": "Make start and resume primary while surfacing contextual next actions",
+      "kind": "implementation",
+      "status": "pending",
+      "phase": "pending",
+      "dependsOn": [
+        "orchestration-driver"
+      ],
+      "acceptance": [
+        "The normal happy path requires only `/swe work start <topic>`; after restart it requires only `/swe work resume <topic>`.",
+        "Inspection always shows one next legal action and, when UI is available, offers keyboard-accessible contextual actions for answer, validate, retry, reset, pause, and stop.",
+        "Advanced commands remain discoverable through autocomplete but are not presented as steps users must memorize.",
+        "Non-PTY inspection and bounded run tails are clear; the UI never suggests interactive-shell `/attach` for native children.",
+        "Command and tool views report identical ownership, stage, mutation, recovery, and completion state."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "accessibility-ux",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Contextual action selection and adapter parity need UI-harness tests.",
+        "security": "Contextual actions must preserve explicit user-decision provenance.",
+        "accessibility-ux": "The goal is a keyboard-accessible two-command normal workflow with actionable prompts.",
+        "operations": "Inspection and recovery guidance must remain useful after crashes."
+      },
+      "assessmentStatus": "assessed",
+      "writeScope": [
+        "extensions/pi-swe/src/command.ts",
+        "extensions/pi-swe/src/tool.ts",
+        "extensions/pi-swe/src/ux.ts",
+        "extensions/pi-swe/src/driver.ts",
+        "extensions/pi-swe/README.md",
+        "test/pi-swe-command.test.ts",
+        "test/pi-swe-tool.test.ts",
+        "test/pi-swe-driver.test.ts"
+      ],
+      "nonGoals": [
+        "Removing advanced commands",
+        "Adding a PTY or attachable child session",
+        "Auto-approving user decisions"
+      ],
+      "contract": {
+        "revision": 3,
+        "hash": "sha256:5da9671d239168805df782fdaab92d02d67d34f6264d16e7a4e0135ad15fd99d"
+      },
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe-command.test.ts",
+            "test/pi-swe-tool.test.ts",
+            "test/pi-swe-driver.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": []
+    },
+    {
+      "id": "activation-recovery",
+      "title": "Qualify production restart, crash, and retained-workspace recovery",
+      "kind": "implementation",
+      "status": "pending",
+      "phase": "pending",
+      "dependsOn": [
+        "contextual-operator-ux"
+      ],
+      "acceptance": [
+        "Process fixtures prove recovery from crashes before and after workspace creation, report persistence, prepared integration, protected checks, task completion, and initiative acceptance.",
+        "Parent restart recovers orphaned or expired leases, invalidates one-shot grants, preserves accepted reports/findings/receipts, and requires fresh sensitive checkpoints.",
+        "Two concurrent sessions, runtime reload, stale child results, late exits, cancellation, and whole-snapshot drift remain fenced through the production entrypoint.",
+        "Cleanup remains ownership-checked and never discards unfinalized or rejected work without explicit authorization.",
+        "Production-entrypoint fixtures preserve dirty index and working-tree bytes, require explicit sensitive/untracked selection, round-trip binary files, file modes, and safe symlinks, and reject unsupported repositories before mutation.",
+        "Cancelled, interrupted, crashed, timed-out, changes-requested, blocked, and completed outcomes remain distinct; process exit or a late result cannot turn a terminated child into success.",
+        "Dismissing bounded runtime entries cannot remove accepted reports, findings, workspace/integration receipts, clarifications, manual decisions, or recovery evidence from workflow.json."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "performance",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Fault injection and process fixtures are required for recovery confidence.",
+        "security": "Restart must not revive stale authority or verification grants.",
+        "performance": "Recovery scans and retained diagnostics must remain bounded.",
+        "operations": "Crash and restart behavior gates production activation."
+      },
+      "assessmentStatus": "assessed",
+      "writeScope": [
+        "extensions/pi-swe/src/runtime.ts",
+        "extensions/pi-swe/src/driver.ts",
+        "extensions/pi-swe/src/ux.ts",
+        "extensions/pi-swe/src/workspace.ts",
+        "test/pi-swe-runtime.test.ts",
+        "test/pi-swe-driver.test.ts",
+        "test/pi-swe-workspace.test.ts",
+        "test/pi-swe-command.test.ts",
+        "test/pi-swe-tool.test.ts",
+        "test/pi-swe-orchestration.test.ts"
+      ],
+      "nonGoals": [
+        "Deleting retained workspaces automatically",
+        "Production deployment",
+        "Real-model smoke tests without authorization"
+      ],
+      "contract": {
+        "revision": 3,
+        "hash": "sha256:376f626207c524c6c3756f4331d0f8a163734d46ea3da5822adc8e8e13960ef3"
+      },
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-swe-driver.test.ts",
+            "test/pi-swe-workspace.test.ts",
+            "test/pi-swe-command.test.ts",
+            "test/pi-swe-tool.test.ts",
+            "test/pi-swe-orchestration.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": []
+    },
+    {
+      "id": "activation-qualification",
+      "title": "Prove full production-entrypoint lifecycle with deterministic providers",
+      "kind": "implementation",
+      "status": "pending",
+      "phase": "pending",
+      "dependsOn": [
+        "activation-recovery"
+      ],
+      "acceptance": [
+        "End-to-end tests load the actual extension entrypoint and prove plan review, implementation, independent review, concern routing, integration, protected checks, remediation, multi-task closeout, and final acceptance from start/resume.",
+        "Slash-command and tool entry points cannot skip ownership, review, snapshot, verification, recovery, or completion gates.",
+        "Migration-ready v1 fixtures activate only after supported upgrade; unresolved migration conflicts block before children spawn.",
+        "Catalog, inventory, command metadata, package resources, CI, SWE tests, repository tests, checks, typecheck, performance budgets, and diff hygiene pass.",
+        "An optional bounded real-model smoke test runs only with credentials and explicit authorization; otherwise its skip is recorded honestly.",
+        "Fixtures cover plan rejection, inadequate tests, reviewer disagreement, clarification/response, failed and source-changing verification, cumulative remediation, scoped follow-up tasks, manual validation, and successful multi-task closeout.",
+        "Fixtures confirm pi-todo coexistence and ownership precedence through the production entrypoint, including restart and blocked-state release.",
+        "Task-local or stale evidence, historical labels, command actions, UI actions, runtime dismissal, and rollback state cannot bypass final initiative acceptance."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "migration",
+        "performance",
+        "accessibility-ux",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "The production entrypoint must be proven by deterministic end-to-end fixtures.",
+        "security": "Bypass tests validate the complete registered guard set.",
+        "migration": "Activation must interoperate with upgraded workflow state.",
+        "performance": "Process, output, scan, and retained-state budgets must be enforced.",
+        "accessibility-ux": "The primary start/resume and decision flows need final keyboard validation.",
+        "operations": "CI, metadata, recovery, and smoke-test policy gate cutover."
+      },
+      "assessmentStatus": "assessed",
+      "writeScope": [
+        "extensions/pi-swe/index.ts",
+        "extensions/pi-swe/README.md",
+        "test/pi-swe-runtime.test.ts",
+        "test/pi-swe-driver.test.ts",
+        "test/pi-swe-docs-e2e.test.ts",
+        ".github/workflows/ci.yml",
+        "catalog/gentic-inventory.json",
+        "catalog/pi-native-capabilities.json",
+        "skills/swe-orchestration/**",
+        "test/pi-swe-orchestration.test.ts",
+        "test/pi-swe-closeout.test.ts",
+        "test/pi-swe-tool.test.ts",
+        "test/pi-swe-workspace.test.ts",
+        "test/pi-todo-qualification.test.ts"
+      ],
+      "nonGoals": [
+        "Enabling v2 by default for every repository",
+        "Removing v1 execution paths",
+        "Publishing, deployment, or release"
+      ],
+      "contract": {
+        "revision": 3,
+        "hash": "sha256:519a2e45f3f9596d774708727da5fdffaf1e2156de6b435cf66616d8b62eb665"
+      },
+      "verification": [
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "test:swe"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "test"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check:commands"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check:performance"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": []
+    },
+    {
+      "id": "cutover-readiness",
+      "title": "Define executable cutover and rollback readiness gates",
+      "kind": "implementation",
+      "status": "pending",
+      "phase": "pending",
+      "dependsOn": [
+        "activation-qualification"
+      ],
+      "acceptance": [
+        "A deterministic readiness check requires completed migration and activation contracts, clean migration audit, supported Pi/Node versions, no active workflow or todo other than the controlling swe-production-rollout authority, clean recovery state, and all release checks.",
+        "The check distinguishes code readiness, repository migration readiness, runtime activation readiness, and external release authorization.",
+        "Failure output is bounded and gives one next action; no failed readiness check mutates workflows or runtime selection.",
+        "Rollback criteria, retention period, responsible decision, and evidence requirements are explicit.",
+        "A passing readiness result is evidence, not authorization: changing the production default still requires a separately recorded operator cutover decision."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "migration",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Every readiness gate and no-write failure path requires fixtures.",
+        "security": "Cutover must fail closed on active ownership, stale state, or missing guards.",
+        "migration": "Repository migration readiness is a prerequisite to default selection.",
+        "operations": "Rollback criteria and actionable readiness output govern production change."
+      },
+      "assessmentStatus": "assessed",
+      "writeScope": [
+        "extensions/pi-swe/src/cutover.ts",
+        "scripts/release-verify.ts",
+        "test/pi-swe-cutover.test.ts",
+        "docs/release.md"
+      ],
+      "nonGoals": [
+        "Changing the runtime default",
+        "Migrating workflows",
+        "Publishing or deploying"
+      ],
+      "contract": {
+        "revision": 3,
+        "hash": "sha256:8bffa70666053fa3c8d008d4221c44ca671f7d64df5b7af3822f7edfd43a710a"
+      },
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe-cutover.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": []
+    },
+    {
+      "id": "cutover-rehearsal",
+      "title": "Rehearse full repository migration and reversible v2 activation",
+      "kind": "implementation",
+      "status": "pending",
+      "phase": "pending",
+      "dependsOn": [
+        "cutover-readiness"
+      ],
+      "acceptance": [
+        "A disposable-checkout rehearsal inventories and migrates every supported fixture, activates the production v2 entrypoint, runs a complete multi-task workflow, restarts the parent, and resumes to final acceptance.",
+        "The rehearsal executes rollback before and after runtime selection and proves workflow bytes, receipts, retained workspaces, and accepted evidence recover as specified.",
+        "Unsupported or conflicted topics remain unchanged and block cutover with exact remediation guidance.",
+        "The real repository is not mutated by the rehearsal and no external side effects occur."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "migration",
+        "performance",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "The rehearsal is an automated end-to-end release fixture.",
+        "security": "Rollback must not weaken ownership or restore stale grants.",
+        "migration": "All supported workflow states must survive transition and rollback.",
+        "performance": "Rehearsal time, output, and retained artifacts need CI-safe bounds.",
+        "operations": "Disposable rehearsal is required before touching production state."
+      },
+      "assessmentStatus": "assessed",
+      "writeScope": [
+        "extensions/pi-swe/src/cutover.ts",
+        "test/pi-swe-cutover.test.ts",
+        "test/fixtures/pi-swe-cutover/**",
+        "scripts/release-verify.ts"
+      ],
+      "nonGoals": [
+        "Migrating the live repository",
+        "Changing default runtime selection",
+        "Real-model execution"
+      ],
+      "contract": {
+        "revision": 3,
+        "hash": "sha256:bf40cab94db6d536b7b828e7ccc76e58bcec34eacd9a691c116cfb82f8cf3eea"
+      },
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe-cutover.test.ts",
+            "test/pi-swe-migration.test.ts",
+            "test/pi-swe-runtime.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": []
+    },
+    {
+      "id": "repository-migration",
+      "title": "Run and validate the repository workflow migration under explicit operator control",
+      "kind": "coordination",
+      "status": "pending",
+      "phase": "pending",
+      "dependsOn": [
+        "cutover-rehearsal"
+      ],
+      "acceptance": [
+        "A fresh read-only audit is reviewed before any apply and every selected topic has an explicit disposition.",
+        "Migration apply records per-topic before/after hashes and recovery receipts, then a second audit reports no unresolved supported-workflow migration.",
+        "Previously complete workflows are not silently granted v2 acceptance; their historical or reopened disposition is visible and authorized.",
+        "Rollback evidence is retained through the cutover window and no legacy history is deleted.",
+        "The migration target set explicitly excludes the active swe-production-rollout workflow and every workflow with live ownership; the controller cannot migrate, rewrite, or invalidate its own lifecycle authority."
+      ],
+      "approaches": [
+        "security",
+        "migration",
+        "operations"
+      ],
+      "approachReasons": {
+        "security": "Operator authorization and evidence preservation prevent silent lifecycle rewriting.",
+        "migration": "This task performs the controlled repository state transition.",
+        "operations": "Audit, receipts, validation, and rollback retention are operational controls."
+      },
+      "assessmentStatus": "assessed",
+      "writeScope": [
+        ".model-artifacts/initiatives/**/workflow.json",
+        ".model-artifacts/system/logs/**",
+        ".model-artifacts/system/reports/**"
+      ],
+      "nonGoals": [
+        "Editing application or extension source",
+        "Deleting legacy artifacts or migration receipts",
+        "Publishing, deployment, or release",
+        "Migrating or rewriting the active swe-production-rollout workflow"
+      ],
+      "contract": {
+        "revision": 3,
+        "hash": "sha256:007d4b81da128327fedd3eccfc9b6c97af69f5d837338225a1988011d74127c4"
+      },
+      "verification": [
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check:model-artifacts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "test:swe"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": []
+    },
+    {
+      "id": "default-v2-runtime",
+      "title": "Make the complete v2 runtime the production default with bounded rollback",
+      "kind": "implementation",
+      "status": "pending",
+      "phase": "pending",
+      "dependsOn": [
+        "repository-migration"
+      ],
+      "acceptance": [
+        "The production entrypoint selects the complete v2 runtime by default only when readiness passes; there is no mixed v1/v2 managed execution.",
+        "A bounded, explicit rollback selector restores the compatibility runtime without rewriting migrated workflow evidence or transferring active ownership.",
+        "Startup reports the selected runtime and blocks managed execution on ambiguous or unsupported state.",
+        "Command, tool, UI, and engine paths share one runtime selection and identical lifecycle gates.",
+        "Changing the default requires an explicit operator cutover decision with actor, rationale, timestamp, reviewed readiness evidence, and rollback window; model-authored or stale decisions are rejected.",
+        "Cutover uses a two-phase self-hosting handoff: reach a no-child durable checkpoint, persist the selected runtime decision, reload atomically, reclaim the same controlling workflow under fresh v2 parent authority, and resume without reusing v1 leases or one-shot grants; rollback follows the symmetric fenced handoff."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "migration",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Default and rollback selection need entrypoint and restart tests.",
+        "security": "Mixed runtime ownership or implicit fallback would permit bypasses.",
+        "migration": "Runtime selection must respect migrated workflow versions and compatibility state.",
+        "operations": "A bounded rollback mechanism is required during cutover."
+      },
+      "assessmentStatus": "assessed",
+      "writeScope": [
+        "extensions/pi-swe/index.ts",
+        "extensions/pi-swe/src/runtime.ts",
+        "extensions/pi-swe/src/cutover.ts",
+        "extensions/pi-swe/src/command.ts",
+        "extensions/pi-swe/src/tool.ts",
+        "test/pi-swe-cutover.test.ts",
+        "test/pi-swe-runtime.test.ts"
+      ],
+      "nonGoals": [
+        "Removing v1 execution code",
+        "Removing v1 read compatibility",
+        "Publishing or deployment"
+      ],
+      "contract": {
+        "revision": 3,
+        "hash": "sha256:9689672785106e5650b1ebd6866905c29871ba1ff70f0b35e759d2834391a856"
+      },
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe-cutover.test.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-swe-command.test.ts",
+            "test/pi-swe-tool.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": []
+    },
+    {
+      "id": "retire-v1-execution",
+      "title": "Remove obsolete v1 execution paths after the rollback decision",
+      "kind": "implementation",
+      "status": "pending",
+      "phase": "pending",
+      "dependsOn": [
+        "default-v2-runtime"
+      ],
+      "acceptance": [
+        "Obsolete v1 start, verify, complete, and single-parent execution branches are removed or reduced to explicit migration-required guidance.",
+        "V1 workflow and legacy artifact readers remain available through the documented Gentic 1.0 compatibility boundary.",
+        "No command, tool, prompt, catalog entry, or documentation suggests an unsupported fallback or direct managed completion path.",
+        "Tests prove historical workflows remain inspectable/migratable while all new and migrated execution uses v2."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "migration",
+        "accessibility-ux",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Removing fallbacks needs regression coverage for both execution and read compatibility.",
+        "security": "Dead execution paths must not remain as lifecycle bypasses.",
+        "migration": "Compatibility readers must survive execution retirement.",
+        "accessibility-ux": "Migration-required guidance must be clear and actionable.",
+        "operations": "Rollback-window closure and dead-code removal require explicit evidence."
+      },
+      "assessmentStatus": "assessed",
+      "writeScope": [
+        "extensions/pi-swe/src/workflow.ts",
+        "extensions/pi-swe/src/store.ts",
+        "extensions/pi-swe/src/service.ts",
+        "extensions/pi-swe/src/tool.ts",
+        "extensions/pi-swe/src/command.ts",
+        "extensions/pi-swe/README.md",
+        "test/pi-swe.test.ts",
+        "test/pi-swe-store.test.ts",
+        "test/pi-swe-tool.test.ts",
+        "test/pi-swe-command.test.ts"
+      ],
+      "nonGoals": [
+        "Removing v1 read compatibility before Gentic 1.0",
+        "Deleting historical artifacts",
+        "External release operations"
+      ],
+      "contract": {
+        "revision": 3,
+        "hash": "sha256:b4c845d6489a6ab7d3e752735352a5c21e95a8d4885949556b819c9a451838e2"
+      },
+      "verification": [
+        {
+          "command": "node",
+          "args": [
+            "--experimental-strip-types",
+            "--test",
+            "test/pi-swe.test.ts",
+            "test/pi-swe-store.test.ts",
+            "test/pi-swe-tool.test.ts",
+            "test/pi-swe-command.test.ts"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": []
+    },
+    {
+      "id": "cutover-release-qualification",
+      "title": "Complete production acceptance, documentation, and release qualification",
+      "kind": "implementation",
+      "status": "pending",
+      "phase": "pending",
+      "dependsOn": [
+        "retire-v1-execution"
+      ],
+      "acceptance": [
+        "Fresh deterministic end-to-end tests prove the default v2 entrypoint, migration path, rollback boundary, simplified start/resume UX, recovery, and final initiative acceptance.",
+        "The operator guide and swe-orchestration skill describe the production behavior, contextual decisions, migration, rollback, non-PTY inspection, trust boundary, and external-authorization boundary without stale v1 claims.",
+        "Catalog, inventory, command metadata, package resources, changelog/release documentation, CI, full tests, SWE tests, typecheck, checks, command inventory, performance budgets, model-artifact validation, and diff hygiene pass.",
+        "Repeated adversarial review finds no concrete blocker in lifecycle bypasses, migration loss, concurrent-parent races, late child results, rollback, evidence retention, accessibility, or misleading sandbox claims.",
+        "Any real-model smoke test is bounded and runs only with credentials plus explicit user authorization; otherwise the skip is recorded honestly.",
+        "Release verification runs in a disposable clean checkout at the candidate commit while workflow.json remains authoritative in the control checkout; its bounded authorized report is imported as evidence without modifying candidate source, and package, lockfile, Pi contract, catalog, inventory, command, and resource metadata agree before handoff."
+      ],
+      "approaches": [
+        "tdd",
+        "security",
+        "migration",
+        "performance",
+        "accessibility-ux",
+        "operations"
+      ],
+      "approachReasons": {
+        "tdd": "Final acceptance depends on the complete deterministic regression suite.",
+        "security": "Adversarial review must close lifecycle and rollback bypasses.",
+        "migration": "Production docs and tests must match the final compatibility boundary.",
+        "performance": "Default runtime resource budgets must pass release checks.",
+        "accessibility-ux": "Operators should need only start/resume plus contextual actions.",
+        "operations": "Release qualification, rollback evidence, and metadata complete the cutover."
+      },
+      "assessmentStatus": "assessed",
+      "writeScope": [
+        "extensions/pi-swe/README.md",
+        "skills/swe-orchestration/**",
+        "CHANGELOG.md",
+        "docs/release.md",
+        ".github/workflows/ci.yml",
+        "scripts/release-verify.ts",
+        "catalog/gentic-inventory.json",
+        "catalog/pi-native-capabilities.json",
+        "test/pi-swe-docs-e2e.test.ts",
+        "test/pi-swe-cutover.test.ts",
+        "package.json",
+        "package-lock.json",
+        "src/pi-contract.ts",
+        "extensions/README.md",
+        ".model-artifacts/system/reports/release/**"
+      ],
+      "nonGoals": [
+        "Push, publish, deployment, release, or production rollout without separate authorization",
+        "Removing v1 read compatibility before Gentic 1.0",
+        "Deleting migration or rollback evidence"
+      ],
+      "contract": {
+        "revision": 3,
+        "hash": "sha256:3227aaecdd087ccf92f1224e9344482d062a0b84b539dbdbafb54ff278cc0788"
+      },
+      "verification": [
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "test:swe"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "test"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check:commands"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "check:performance"
+          ]
+        },
+        {
+          "command": "npm",
+          "args": [
+            "run",
+            "typecheck"
+          ]
+        }
+      ],
+      "evidence": [],
+      "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": []
+    }
+  ],
+  "updatedAt": "2026-09-16T21:54:29.048Z"
+}
