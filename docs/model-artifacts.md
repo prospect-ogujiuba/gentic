@@ -47,6 +47,22 @@ Apply retains the ledger and payload bundle under `.model-artifacts/system/logs/
 
 If post-migration verification fails, stop release and use the retained ledger/bundle unless the failure is understood and an approved in-scope correction is safer. Rollback refuses modified v2 bytes. `/artifacts finalize <ledger-path>` irreversibly deletes payloads; do not finalize until the release retention decision explicitly accepts loss of rollback.
 
+## pi-swe semantic migration
+
+Artifact relocation and workflow semantic migration are separate, mutually exclusive transactions. Finish or recover `/artifacts` first, then operate pi-swe per topic:
+
+1. `/swe migrate audit` — bounded, repository-wide, read-only classification.
+2. Select one topic. Resolve malformed, unknown-version, mixed-layout, and unsupported cases without changing their authority bytes.
+3. For incomplete work, `/swe migrate apply <topic>`. For completed work, use the keyboard-confirmed `reopen` or `grandfather-read-only` disposition; leaving it for operator review writes nothing.
+4. Restart the operator session/process, run `/swe migrate audit`, and repeat the same selected apply to prove idempotency.
+5. Run the SWE and repository checks before any production activation.
+
+Apply binds the decision to source paths plus an exact preimage hash, uses the workflow mutation lock, and retains before/after hashes and recovery data under `.model-artifacts/system/logs/pi-swe-migration/`. `/swe migrate recover <topic>` reconciles an interrupted publish. `/swe migrate rollback <topic>` is keyboard-confirmed, refuses intervening edits, restores only the exact retained preimage, and preserves the receipt. Retention cleanup is a separate destructive decision and is not part of migration apply.
+
+Historical completed tasks remain immutable and cannot count as fresh v2 review, verification, or final acceptance. `reopen` requires new v2 initiative acceptance; `grandfather-read-only` cannot be started, resumed, revised, verified, blocked, completed, or automatically advanced. All other v1 mutation attempts return the next legal migration action. Gentic retains v1 read and explicit-migration compatibility through the 1.0 boundary; removing those readers needs a separate reviewed release.
+
+For multiple topics, select and apply each independently and preserve every result. A failure does not hide prior successes and is never converted into migrate-all behavior. Do not run pi-artifacts while a SWE semantic journal or applied recovery receipt exists, and do not run SWE apply while a pi-artifacts claim, journal, or transaction bundle exists.
+
 ## Remaining v1 references
 
 `npm run check:model-artifacts` blocks non-v2 artifacts and unclassified kind-first strings. Allowed matches are bounded to migration compatibility code/docs, v1 reader code/docs, explicit test fixtures, retained transaction evidence, and historical initiative/runtime evidence. New runtime writers, public examples, workflows, and release paths must use v2.

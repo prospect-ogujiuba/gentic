@@ -86,6 +86,24 @@ export type RecoveryAssessment = {
   nextAction: string;
 };
 
+export type ContextualWorkflowAction = {
+  id: "start" | "resume" | "inspect" | "answer" | "validate" | "retry" | "reset" | "pause" | "stop";
+  command: string;
+  label: string;
+  primary: boolean;
+};
+
+/** Ordered, keyboard-addressable actions derived only from durable workflow state. */
+export function contextualWorkflowActions(workflow: Workflow): ContextualWorkflowAction[] {
+  const primaryCommand = nextAction(workflow);
+  const id = actionId(primaryCommand);
+  const actions: ContextualWorkflowAction[] = id ? [{ id, command: primaryCommand, label: actionLabel(id), primary: true }] : [];
+  if (["active", "blocked", "paused"].includes(workflow.status)) {
+    for (const control of ["pause", "stop"] as const) if (control !== id) actions.push({ id: control, command: `/swe work ${control} ${workflow.topic}`, label: actionLabel(control), primary: false });
+  }
+  return actions;
+}
+
 export class WorkflowControlService {
   readonly cwd: string;
   readonly mutations: WorkflowMutationService;
@@ -225,6 +243,7 @@ export function renderWorkflowInspection(workflow: Workflow, runtimeRuns: Runtim
     `workspace: ${recovery.preservedWorkspace}`,
     `recovery: ${recovery.issues.length ? recovery.issues.slice(0, MAX_ITEMS).join(" | ") : "none"}`,
     `next: ${recovery.nextAction}`,
+    `actions: ${contextualWorkflowActions(workflow).map((action) => `${action.primary ? "primary" : "secondary"}:${action.label} (${action.command})`).join(" | ") || "none"}`,
     "inspect: /swe work inspect [topic] or swe_workflow action=inspect; /swe work runs [topic] shows bounded report/output tails. Native non-PTY runs cannot be opened with interactive-shell /attach.",
   ];
   if (runs.length) lines.push("recent runs:", ...runs.slice(0, 5).map((run) => `- ${run.runId} ${run.role ?? roleForStage(run.stage) ?? "stage"} ${run.outcome} ${elapsed(run.startedAt, now)}${run.reportTail ? ` — ${boundedLine(run.reportTail, 240)}` : ""}`));
@@ -280,6 +299,12 @@ function nextAction(workflow: Workflow): string {
   if (workflow.status === "blocked") return `/swe work retry ${workflow.topic} after resolving the displayed blocker; tool calls cannot fabricate a user decision.`;
   if (workflow.orchestration.activeRun) return `/swe work inspect ${workflow.topic}`;
   return `/swe work start ${workflow.topic}`;
+}
+function actionId(command: string): ContextualWorkflowAction["id"] | undefined {
+  return (["answer", "validate", "reset", "resume", "retry", "inspect", "start"] as const).find((id) => command.includes(`/swe work ${id} `));
+}
+function actionLabel(id: ContextualWorkflowAction["id"]): string {
+  return ({ start: "Start workflow", resume: "Resume workflow", inspect: "Inspect active run", answer: "Answer clarification", validate: "Record manual validation", retry: "Retry blocked stage", reset: "Reset remediation budget", pause: "Pause safely", stop: "Stop child work" })[id];
 }
 function elapsed(start: string | undefined, now: Date): string {
   if (!start || !Number.isFinite(Date.parse(start))) return "n/a";

@@ -33,8 +33,8 @@ else console.log(`model-artifacts: canonical files=${inventory.totals["canonical
 
 function classifyLegacyReference(path: string): string | undefined {
   if (path.startsWith("test/")) return "compatibility-fixture";
-  if (path.startsWith("extensions/pi-artifacts/")) return "migration-compatibility";
-  if (path === "extensions/pi-swe/src/planning.ts" || path === "extensions/pi-swe/README.md") return "v1-read-compatibility";
+  if (path.startsWith("extensions/pi-artifacts/") || path === "extensions/pi-swe/src/migration.ts") return "migration-compatibility";
+  if (path === "extensions/pi-swe/src/planning.ts" || path === "extensions/pi-swe/README.md" || path === "docs/model-artifacts.md") return "v1-read-compatibility";
   if (path.startsWith(".model-artifacts/system/logs/model-artifact-migration/")) return "retained-transaction-evidence";
   if (path.startsWith(".model-artifacts/initiatives/")) return "historical-initiative-evidence";
   if (path === ".pi/model-artifacts-migration.json") return "migration-mapping";

@@ -519,6 +519,15 @@ test("migration apply is hash-gated, exclusive, byte-preserving, and idempotent"
   assert.equal(applyMigration({ cwd: root, planPath: planned.planPath, ownerToken: "owner-a" }).status, "already-applied");
 });
 
+test("pi-artifacts apply refuses an active SWE semantic recovery authority", () => {
+  const root = fixture();
+  write(root, ".model-artifacts/reports/2026-05-01_1201-a.md", "# a\nTopic: demo\n");
+  const planned = planMigration({ cwd: root, generatedAt: "2026-05-01T13:00:00.000Z" });
+  write(root, ".model-artifacts/system/logs/pi-swe-migration/ZGVtbw/receipt.json", `${JSON.stringify({ schemaVersion: 1, state: "applied" })}\n`);
+  assert.throws(() => applyMigration({ cwd: root, planPath: planned.planPath, ownerToken: "owner-a" }), /SWE semantic migration recovery receipt/);
+  assert.ok(existsSync(join(root, ".model-artifacts/reports/2026-05-01_1201-a.md")));
+});
+
 test("migration apply refuses stale sources, occupied destinations, and concurrent claims", () => {
   for (const mode of ["stale", "destination", "claim"] as const) {
     const root = fixture();

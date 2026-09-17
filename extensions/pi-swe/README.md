@@ -43,6 +43,25 @@ On `create`, the agent is instructed to assess each task; on `revise`, it reasse
 
 Then use `swe_workflow` actions `start`, `verify`, and `complete`. Every selected approach requires a concise reason. Migrated tasks are explicitly `unassessed`; an imported active selection is paused until revision and resume. Add objective approach-specific checks to `verification` wherever possible.
 
+## Explicit workflow migration
+
+Migration never occurs on first mutation. Audit is read-only and bounded:
+
+```text
+/swe migrate audit
+/swe migrate apply <topic>
+/swe migrate apply <topic> reopen
+/swe migrate apply <topic> grandfather-read-only
+/swe migrate recover <topic>
+/swe migrate rollback <topic>
+```
+
+Apply is per-topic and requires the selected dry-run classification, exact preimage hash, shared mutation lock, atomic workflow write, and retained recovery receipt under `.model-artifacts/system/logs/pi-swe-migration/`. Repeating the same apply is idempotent; stale plans, concurrent writers, malformed or unknown versions, layout conflicts, and edited rollback postimages fail closed. An interrupted postimage can be finalized with `recover`; rollback compare-and-restores the exact retained preimage and keeps its receipt.
+
+Incomplete or active v1 work is paused, stale execution evidence and leases are cleared, and durable evidence links/import provenance remain. Completed tasks stay immutable historical records and never satisfy fresh v2 review. A completed workflow requires a keyboard-confirmed choice: `reopen` for fresh v2 final acceptance, `grandfather-read-only` for immutable history, or no apply pending operator review. The model-callable tool cannot choose that disposition or authorize rollback.
+
+Run pi-artifacts kind-first relocation before SWE semantic migration. An active pi-artifacts claim, journal, or rollback bundle blocks SWE apply; an applied SWE recovery receipt blocks pi-artifacts until rollback or an explicit later retention/finalization decision. Never delete either authority record manually. Batch operation means individually selecting topics and reporting each outcome; there is no migrate-all path.
+
 The verification array is **required-all**, not alternatives:
 
 1. Run each command with Pi's protected `bash` tool.
@@ -102,7 +121,9 @@ Interactive-shell `/attach` does not apply to native SWE runs because they are n
 
 ### Upgrade and migration
 
-Version-1 reads are non-mutating. For a native v1 workflow, the first mutation performs an atomic v2 upgrade while preserving prior task evidence and provenance; historical completion labels remain historical and cannot satisfy fresh review or final acceptance. Former manifest/contracts initiatives require explicit migration. A legacy kind-first layout is read-only, and a canonical/legacy layout conflict blocks instead of choosing or shadowing one. Production remains on the installed v1 entrypoint until a separately reviewed rollout authorizes v2 registration.
+Version-1 reads are non-mutating. Native v1 workflows and former manifest/contracts initiatives require explicit audited migration before mutation; no start, resume, or ordinary service call upgrades them implicitly. Migration preserves durable evidence and provenance while stale execution evidence is invalidated; historical completion labels remain historical and cannot satisfy fresh review or final acceptance. A legacy kind-first layout is read-only, and a canonical/legacy layout conflict blocks instead of choosing or shadowing one. Production remains on the installed v1 entrypoint until a separately reviewed rollout authorizes v2 registration.
+
+The rollout bootstrap has one narrow adoption path. It is pinned to plan commit `e882cd62deb541aa437c16c72781a1ccd243055e`, must run before any workflow stage starts, and may complete only the ordered prefix before `cutover-readiness`. The Git descendant delta must stay within those tasks' combined write scopes. A fresh plan reviewer, fresh general reviewer, and one fresh composed reviewer for all selected specialist concerns must approve the same snapshot; blocking findings need recorded decisions. Every adopted task command is rerun exactly through protected v2 authority on that unchanged snapshot. The adoption record preserves those reviews, check receipts, authorization, anchor, task order, and snapshot without fabricating normal child reports. It never supplies final initiative acceptance: native work starts at `cutover-readiness`, and full current closeout checks plus a fresh final reviewer remain mandatory.
 
 Dirty index and working-tree content are captured separately without staging or resetting. Untracked inputs require explicit selection; ambiguous or sensitive files require a user decision and are never selected implicitly. Binary content, file mode changes, and symlinks are fingerprinted and integrated exactly, with escaping links rejected. Bare, non-root, unborn, conflicted, sparse, submodule, filter, and LFS repositories are unsupported and fail before mutation.
 
@@ -141,4 +162,4 @@ When pi-todo is also enabled, pi-swe is the sole lifecycle authority while an as
 
 ## Existing initiatives
 
-When only the former schema-v2 `specs/manifest.json` and `contracts.json` exist, status reads a projection without writing. The first mutation or `/swe migrate <topic>` creates `workflow.json`, preserving executable contract IDs, titles, dependencies, dispositions, active selection, acceptance criteria, planned checks, blocker details, evidence links, and completion provenance. Contract authority must be the topic's `.model-artifacts/initiatives/<topic>/plans/revisions/rN` tree. `create` refuses to shadow any legacy manifest and directs callers to migrate. Old files remain untouched as history and are never dual-written. Once `workflow.json` exists it is the only authority.
+When only the former schema-v2 `specs/manifest.json` and `contracts.json` exist, status reads a projection without writing. Only the explicit audited migration flow creates `workflow.json`, preserving executable contract IDs, titles, dependencies, dispositions, active selection, acceptance criteria, planned checks, blocker details, evidence links, and completion provenance. Contract authority must be the topic's `.model-artifacts/initiatives/<topic>/plans/revisions/rN` tree. `create` refuses to shadow any legacy manifest and directs callers to migrate. Old files remain untouched as history and are never dual-written. Once `workflow.json` exists it is the only authority.

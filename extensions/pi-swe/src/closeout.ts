@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
 
 import { renderVerificationCommand, type ParentExecutionIdentity } from "./integrity.ts";
+import { GitWorkspaceManager } from "./workspace.ts";
 import type { RepositorySnapshot, VerificationCommand, VerificationEvidence, Workflow } from "./workflow.ts";
 
 export type InitiativeInspection = {
@@ -13,6 +15,42 @@ export interface InitiativeCloseoutInspector {
   inspect(workflow: Workflow): InitiativeInspection;
   /** Coordinate pi-swe repository mutations through completion persistence; this is not an OS sandbox. */
   acquireFence?(workflow: Workflow): () => void;
+}
+
+/** Bounded Git-backed closeout inspection. The fence coordinates this runtime only; it is not an OS sandbox. */
+export class GitInitiativeCloseoutInspector implements InitiativeCloseoutInspector {
+  readonly cwd: string;
+  readonly workspace: GitWorkspaceManager;
+  private fenced = false;
+
+  constructor(cwd: string, workspace = new GitWorkspaceManager(cwd)) {
+    this.cwd = cwd;
+    this.workspace = workspace;
+  }
+
+  inspect(workflow: Workflow): InitiativeInspection {
+    const preflight = this.workspace.preflight(workflow.tasks.flatMap((task) => task.workspaceReceipt?.includedUntracked ?? []));
+    const cumulativeDelta = execFileSync("git", ["diff", "--binary", "--full-index", preflight.head, "--"], { cwd: this.cwd, encoding: "utf8", maxBuffer: 256 * 1024 });
+    if (Buffer.byteLength(cumulativeDelta) > 128 * 1024) throw new Error("cumulative initiative delta exceeds closeout inspection bounds");
+    return {
+      snapshot: { hash: preflight.sourceSnapshotHash, head: preflight.head, branch: preflight.branch, changedPaths: changedPaths(this.cwd), capturedAt: new Date().toISOString() },
+      cumulativeDelta,
+      unresolvedRisks: workflow.tasks.flatMap((task) => task.findings.filter((finding) => finding.status === "open" && finding.severity === "blocking").map((finding) => `${task.id}:${finding.id}:${finding.summary}`)).slice(0, 128),
+    };
+  }
+
+  acquireFence(_workflow: Workflow): () => void {
+    if (this.fenced) throw new Error("initiative closeout mutation fence is already held");
+    this.fenced = true;
+    return () => { this.fenced = false; };
+  }
+}
+
+function changedPaths(cwd: string): string[] {
+  const output = execFileSync("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], { cwd, encoding: "utf8", maxBuffer: 256 * 1024 });
+  const paths = output.split("\0").filter(Boolean).map((entry) => entry.slice(3)).filter((path) => path && !path.startsWith(".model-artifacts/")).sort();
+  if (paths.length > 2_000) throw new Error("closeout changed-path inventory exceeds repository bounds");
+  return paths;
 }
 
 export type InitiativeVerificationAuthorization = {

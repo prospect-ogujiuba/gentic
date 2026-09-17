@@ -99,6 +99,27 @@ export function loadMigrationConfig(cwd: string): MigrationConfig {
   return { schemaVersion: 1, mappings };
 }
 
+export function assertNoSweSemanticMigrationActivity(cwd: string): void {
+  const root = resolve(realpathSync(resolve(cwd)), ".model-artifacts/system/logs/pi-swe-migration");
+  if (!existsSync(root)) return;
+  let visited = 0;
+  const visit = (directory: string, depth: number): void => {
+    if (depth > 4 || ++visited > 1_000) throw new Error("SWE semantic migration activity scan exceeded its bound");
+    for (const entry of readBoundedDirectory(directory, 1_000, "artifact")) {
+      const path = join(directory, entry.name);
+      const stat = lstatSync(path);
+      if (stat.isSymbolicLink()) throw new Error("SWE semantic migration activity path must not be a symlink");
+      if (stat.isDirectory()) visit(path, depth + 1);
+      else if (stat.isFile() && entry.name === "journal.json") throw new Error("SWE semantic migration journal blocks pi-artifacts migration");
+      else if (stat.isFile() && entry.name === "receipt.json") {
+        const receipt = JSON.parse(readFileSync(path, "utf8")) as { state?: string };
+        if (receipt.state === "applied") throw new Error("SWE semantic migration recovery receipt blocks pi-artifacts migration until rollback or explicit retention finalization");
+      }
+    }
+  };
+  visit(root, 0);
+}
+
 export function auditArtifacts(options: AuditArtifactsOptions): ArtifactInventory {
   const root = realpathSync(resolve(options.cwd));
   const artifactRoot = join(root, ".model-artifacts");

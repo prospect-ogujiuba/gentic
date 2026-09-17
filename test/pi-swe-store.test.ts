@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { WorkflowMutationService } from "../extensions/pi-swe/src/service.ts";
+import { BOOTSTRAP_ANCHOR_COMMIT, WorkflowMutationService, type BootstrapAdoptionRequest } from "../extensions/pi-swe/src/service.ts";
 import { loadWorkflow, saveWorkflow, workflowPath } from "../extensions/pi-swe/src/store.ts";
 import {
   createWorkflow,
@@ -168,7 +168,65 @@ test("an independently reviewed no-change task still requires final initiative a
   assert.equal(current.status, "paused");
 });
 
-test("v1 reads are non-mutating and the first service mutation upgrades atomically", async () => {
+test("authorized bootstrap adoption records ordered pre-start provenance without substituting final acceptance", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-bootstrap-"));
+  const initial = createWorkflow({
+    topic: "bootstrap-adoption", goal: "Adopt reviewed bootstrap", now: at,
+    tasks: [
+      { id: "foundation", title: "Foundation", writeScope: ["src/**"], nonGoals: ["No release"], approaches: ["security"], approachReasons: { security: "Authority boundary" }, verification: [{ command: "npm", args: ["test"] }] },
+      { id: "qualification", title: "Qualification", dependsOn: ["foundation"], writeScope: ["test/**"], nonGoals: ["No release"], approaches: ["operations"], approachReasons: { operations: "Protected checks" }, verification: [{ command: "npm", args: ["run", "typecheck"] }] },
+      { id: "cutover-readiness", title: "Native takeover", dependsOn: ["qualification"], writeScope: ["docs/**"], nonGoals: ["No activation"], approaches: [], verification: [{ command: "npm", args: ["run", "check"] }] },
+    ],
+  });
+  saveWorkflow(cwd, initial);
+  const snapshot = { hash: "sha256:bootstrap-snapshot", head: BOOTSTRAP_ANCHOR_COMMIT, branch: "master", changedPaths: ["src/a.ts", "test/a.test.ts"], capturedAt: "2026-02-01T00:00:01.000Z" };
+  const reviewed = (kind: StageReport["kind"], role: RunnerProvenance["role"], runId: string): StageReport => ({
+    kind, outcome: "approved", summary: `${kind} approved`, findings: [], changedPaths: snapshot.changedPaths,
+    provenance: { ...provenance(role, runId, initial.contract.hash, snapshot.hash), actorId: `${role}:${runId}`, startedAt: "2026-02-01T00:00:02.000Z", completedAt: "2026-02-01T00:00:03.000Z" },
+  });
+  const source = { kind: "bash-tool-result" as const, toolName: "bash" as const, workflowRevision: initial.revision, ownerId: "owner", sessionId: "session", runtimeId: "runtime" };
+  const evidence = (taskId: "foundation" | "qualification", command: string, args: string[]) => ({
+    taskId, evidence: { command, args, exitCode: 0, at: "2026-02-01T00:00:04.000Z", contractHash: initial.tasks.find((task) => task.id === taskId)!.contract.hash, snapshotHash: snapshot.hash, beforeSnapshotHash: snapshot.hash, afterSnapshotHash: snapshot.hash, head: snapshot.head, branch: snapshot.branch, source: { ...source, toolCallId: `check-${taskId}` } },
+  });
+  const request: BootstrapAdoptionRequest = {
+    planReview: reviewed("plan-review", "plan-reviewer", "plan"),
+    generalReview: reviewed("general-review", "general-reviewer", "general"),
+    concernReview: { concerns: ["operations", "security"], report: reviewed("concern-review", "concern-reviewer", "concern") },
+    checks: [evidence("foundation", "npm", ["test"]), evidence("qualification", "npm", ["run", "typecheck"])], decisions: [],
+    authorization: { id: "bootstrap-auth", authorizedBy: "operator", ownerId: "owner", sessionId: "session", runtimeId: "runtime", authorizedAt: "2026-02-01T00:00:05.000Z" },
+  };
+  const service = new WorkflowMutationService(cwd, { inspect: () => ({ anchorCommit: BOOTSTRAP_ANCHOR_COMMIT, descendantHead: snapshot.head, snapshot }) });
+  const decision = await service.adoptBootstrap(initial.topic, initial.revision, request, "2026-02-01T00:00:06.000Z");
+  assert.deepEqual(decision.workflow.tasks.map((task) => task.status), ["complete", "complete", "pending"]);
+  assert.deepEqual(decision.workflow.bootstrapAdoption?.taskIds, ["foundation", "qualification"]);
+  assert.equal(decision.workflow.tasks[0]!.reports.length, 0, "bootstrap must not fabricate ordinary child reports");
+  assert.equal(decision.workflow.orchestration.phase, "task-execution");
+  assert.equal(decision.workflow.initiativeAcceptance, undefined);
+  assert.equal(loadWorkflow(cwd, initial.topic, false)?.workflow.bootstrapAdoption?.authorization.id, "bootstrap-auth");
+  assert.match(decision.message, /native start/i);
+  assert.throws(() => reduceWorkflow(decision.workflow, { type: "adopt-bootstrap", adoption: { ...request, anchorCommit: BOOTSTRAP_ANCHOR_COMMIT, descendantHead: snapshot.head, snapshot, taskIds: ["foundation", "qualification"] } }, "2026-02-01T00:00:07.000Z"), /before.*started/i);
+
+  const fresh = createWorkflow({ topic: "bad-order", goal: "x", now: at, tasks: [
+    { id: "foundation", title: "Foundation", writeScope: ["src/**"], nonGoals: ["No release"], approaches: ["security"], approachReasons: { security: "Authority boundary" }, verification: [{ command: "npm", args: ["test"] }] },
+    { id: "qualification", title: "Qualification", dependsOn: ["foundation"], writeScope: ["test/**"], nonGoals: ["No release"], approaches: ["operations"], approachReasons: { operations: "Protected checks" }, verification: [{ command: "npm", args: ["run", "typecheck"] }] },
+    { id: "cutover-readiness", title: "Native takeover", dependsOn: ["qualification"], writeScope: ["docs/**"], nonGoals: ["No activation"], approaches: [], verification: [{ command: "npm", args: ["run", "check"] }] },
+  ] });
+  assert.throws(() => reduceWorkflow(fresh, { type: "adopt-bootstrap", adoption: { ...request, planReview: { ...request.planReview, provenance: { ...request.planReview.provenance, contractHash: fresh.contract.hash } }, generalReview: { ...request.generalReview, provenance: { ...request.generalReview.provenance, contractHash: fresh.contract.hash } }, concernReview: { concerns: ["operations", "security"], report: { ...request.concernReview!.report, provenance: { ...request.concernReview!.report.provenance, contractHash: fresh.contract.hash } } }, anchorCommit: BOOTSTRAP_ANCHOR_COMMIT, descendantHead: snapshot.head, snapshot, taskIds: ["qualification", "foundation"] } }, "2026-02-01T00:00:06.000Z"), /ordered workflow prefix/i);
+});
+
+test("bootstrap service refuses descendant paths outside the adopted task scope", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-bootstrap-drift-"));
+  const value = createWorkflow({ topic: "bootstrap-drift", goal: "x", now: at, tasks: [
+    { id: "foundation", title: "Foundation", writeScope: ["src/**"], nonGoals: ["No release"], approaches: [], verification: [{ command: "npm", args: ["test"] }] },
+    { id: "cutover-readiness", title: "Take over", dependsOn: ["foundation"], writeScope: ["docs/**"], nonGoals: ["No activation"], approaches: [], verification: [{ command: "npm", args: ["run", "check"] }] },
+  ] });
+  saveWorkflow(cwd, value);
+  const snapshot = { hash: "sha256:drift", head: BOOTSTRAP_ANCHOR_COMMIT, branch: "master", changedPaths: ["unrelated/file.ts"], capturedAt: "2026-02-01T00:00:01.000Z" };
+  const service = new WorkflowMutationService(cwd, { inspect: () => ({ anchorCommit: BOOTSTRAP_ANCHOR_COMMIT, descendantHead: snapshot.head, snapshot }) });
+  await assert.rejects(service.adoptBootstrap(value.topic, value.revision, {} as BootstrapAdoptionRequest, "2026-02-01T00:00:06.000Z"), /outside adopted task scope/i);
+});
+
+test("v1 reads are non-mutating and implicit service mutation fails closed pending explicit migration", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "pi-swe-v1-upgrade-"));
   const path = join(cwd, workflowPath("legacy-native"));
   mkdirSync(join(path, ".."), { recursive: true });
@@ -185,10 +243,11 @@ test("v1 reads are non-mutating and the first service mutation upgrades atomical
   assert.equal(loaded.workflow.tasks[1]!.phase, "historical");
 
   const service = new WorkflowMutationService(cwd);
-  await service.mutate("legacy-native", loaded.workflow.revision, (state) => reduceWorkflow(state, { type: "pause" }, "2026-02-01T00:00:02.000Z"));
-  const upgraded = JSON.parse(readFileSync(path, "utf8"));
-  assert.equal(upgraded.version, 2);
-  assert.equal(upgraded.migration.sourceVersion, 1);
+  await assert.rejects(
+    () => service.mutate("legacy-native", loaded.workflow.revision, (state) => reduceWorkflow(state, { type: "pause" }, "2026-02-01T00:00:02.000Z")),
+    /requires explicit migration/,
+  );
+  assert.equal(readFileSync(path, "utf8"), before);
   assert.equal(existsSync(join(cwd, ".model-artifacts/system/logs/pi-swe-mutation.lock")), false);
 });
 

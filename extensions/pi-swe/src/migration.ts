@@ -1,0 +1,681 @@
+import { createHash } from "node:crypto";
+import { closeSync, constants, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, opendirSync, readSync, realpathSync, renameSync, rmSync, writeFileSync, type Dirent } from "node:fs";
+import { dirname, relative, resolve, sep } from "node:path";
+
+import { loadWorkflow, saveWorkflow, withWorkflowMutationLock, workflowPath } from "./store.ts";
+import { isValidTopic, parseWorkflow, type Workflow } from "./workflow.ts";
+
+const DEFAULT_MAX_FILE_BYTES = 512 * 1024;
+const DEFAULT_MAX_FILES = 10_000;
+const DEFAULT_MAX_BYTES = 64 * 1024 * 1024;
+const DEFAULT_MAX_REPORT_BYTES = 256 * 1024;
+const DEFAULT_MAX_TOPICS = 100;
+const DEFAULT_MAX_DIRECTORIES = 1_000;
+const DEFAULT_MAX_DEPTH = 24;
+const DEFAULT_MAX_ENTRIES_PER_DIRECTORY = 1_000;
+const HARD_MAX_FILE_BYTES = 4 * 1024 * 1024;
+const HARD_MAX_FILES = 100_000;
+const HARD_MAX_BYTES = 512 * 1024 * 1024;
+const HARD_MAX_REPORT_BYTES = 1024 * 1024;
+const HARD_MAX_TOPICS = 1_000;
+const HARD_MAX_DIRECTORIES = 10_000;
+const HARD_MAX_DEPTH = 64;
+const HARD_MAX_ENTRIES_PER_DIRECTORY = 10_000;
+const SENSITIVE_METADATA = /(?:api[-_]?key|credential|password|secret|token)/i;
+
+export type WorkflowMigrationClassification =
+  | "native-v1"
+  | "native-v1-complete"
+  | "current-v2"
+  | "current-v2-complete"
+  | "historical-contracts"
+  | "historical-contracts-complete"
+  | "kind-first-artifacts"
+  | "layout-conflict"
+  | "malformed"
+  | "unsupported-workflow"
+  | "unsupported-topic";
+
+export type WorkflowMigrationAction =
+  | "migrate-native-v1"
+  | "decide-completed-workflow"
+  | "import-historical"
+  | "run-pi-artifacts-migration"
+  | "none"
+  | "block";
+
+export type WorkflowMigrationBlocker =
+  | "canonical-and-kind-first-layouts"
+  | "canonical-workflow-and-historical-manifest"
+  | "invalid-topic"
+  | "malformed-historical-contracts"
+  | "malformed-workflow"
+  | "topic-mismatch"
+  | "unsupported-manifest-version"
+  | "unsupported-workflow-version";
+
+export type WorkflowMigrationInventoryEntry = {
+  topic: string;
+  classification: WorkflowMigrationClassification;
+  action: WorkflowMigrationAction;
+  sourcePaths: string[];
+  contentHash?: string;
+  blocker?: WorkflowMigrationBlocker;
+  guidance?: string;
+};
+
+export type WorkflowMigrationInventory = {
+  schemaVersion: 1;
+  complete: boolean;
+  entries: WorkflowMigrationInventoryEntry[];
+  totals: Record<WorkflowMigrationClassification, number>;
+};
+
+export type WorkflowMigrationInventoryOptions = {
+  maxFileBytes?: number;
+  maxFiles?: number;
+  maxBytes?: number;
+  maxReportBytes?: number;
+  maxTopics?: number;
+  maxDirectories?: number;
+  maxDepth?: number;
+  maxEntriesPerDirectory?: number;
+};
+
+type Bounds = Required<WorkflowMigrationInventoryOptions>;
+type Candidate = {
+  topic: string;
+  workflows: string[];
+  manifests: string[];
+  kindFirstRoots: Set<string>;
+};
+type DiscoveredFile = { absolute: string; path: string; bytes: number };
+
+/**
+ * Inspect every workflow migration authority without changing repository bytes.
+ * The report deliberately contains only classifications, approved paths, and
+ * SHA-256 content identities; workflow payloads and parser details never leave
+ * this trust boundary.
+ */
+export function inventoryWorkflowMigrations(cwd: string, options: WorkflowMigrationInventoryOptions = {}): WorkflowMigrationInventory {
+  const bounds = normalizeBounds(options);
+  const requestedRoot = resolve(cwd);
+  const root = realpathSync(requestedRoot);
+  const artifactRoot = resolve(root, ".model-artifacts");
+  if (!existsSync(artifactRoot)) return emptyInventory();
+  const artifactStat = lstatSync(artifactRoot);
+  if (artifactStat.isSymbolicLink() || !artifactStat.isDirectory()) throw new Error("workflow inventory root must be a non-symlink directory");
+  if (realpathSync(artifactRoot) !== artifactRoot) throw new Error("workflow inventory root has symlinked ancestry");
+
+  const files = walkArtifacts(root, artifactRoot, bounds);
+  const candidates = discoverCandidates(files);
+  if (candidates.size > bounds.maxTopics) throw new Error(`workflow inventory topic limit exceeded: ${candidates.size} > ${bounds.maxTopics}`);
+
+  const entries = [...candidates.values()]
+    .map((candidate) => classifyCandidate(root, candidate, bounds))
+    .sort((a, b) => a.topic.localeCompare(b.topic));
+  const totals = emptyTotals();
+  for (const entry of entries) totals[entry.classification] += 1;
+  const report: WorkflowMigrationInventory = {
+    schemaVersion: 1,
+    complete: entries.every((entry) => entry.action === "none"),
+    entries,
+    totals,
+  };
+  if (Buffer.byteLength(JSON.stringify(report)) > bounds.maxReportBytes) throw new Error(`workflow inventory report byte limit exceeded: ${bounds.maxReportBytes}`);
+  return report;
+}
+
+function walkArtifacts(root: string, artifactRoot: string, bounds: Bounds): DiscoveredFile[] {
+  const files: DiscoveredFile[] = [];
+  let directories = 0;
+  let bytes = 0;
+  const visit = (directory: string, depth: number): void => {
+    assertSafeAbsolute(root, directory);
+    directories += 1;
+    if (directories > bounds.maxDirectories) throw new Error(`workflow inventory directory limit exceeded: ${directories} > ${bounds.maxDirectories}`);
+    if (depth > bounds.maxDepth) throw new Error(`workflow inventory depth limit exceeded: ${depth} > ${bounds.maxDepth}`);
+    for (const entry of readDirectory(directory, bounds.maxEntriesPerDirectory)) {
+      const absolute = resolve(directory, entry.name);
+      const path = toPosix(relative(root, absolute));
+      const stat = lstatSync(absolute);
+      if (stat.isSymbolicLink()) throw new Error(`workflow inventory rejects symlinked ancestry: ${path}`);
+      if (stat.isDirectory()) visit(absolute, depth + 1);
+      else if (stat.isFile()) {
+        if (isMigrationAuthorityPath(path) && stat.size > bounds.maxFileBytes) throw new Error(`workflow inventory file byte limit exceeded: ${path}`);
+        files.push({ absolute, path, bytes: stat.size });
+        bytes += stat.size;
+        if (files.length > bounds.maxFiles) throw new Error(`workflow inventory file limit exceeded: ${files.length} > ${bounds.maxFiles}`);
+        if (bytes > bounds.maxBytes) throw new Error(`workflow inventory byte limit exceeded: ${bytes} > ${bounds.maxBytes}`);
+      }
+    }
+  };
+  visit(artifactRoot, 0);
+  return files;
+}
+
+function readDirectory(directory: string, maximum: number): Dirent[] {
+  const handle = opendirSync(directory);
+  const entries: Dirent[] = [];
+  try {
+    for (;;) {
+      const entry = handle.readSync();
+      if (!entry) break;
+      if (entries.length >= maximum) throw new Error(`workflow inventory directory entry limit exceeded: more than ${maximum}`);
+      entries.push(entry);
+    }
+  } finally {
+    handle.closeSync();
+  }
+  return entries.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function discoverCandidates(files: DiscoveredFile[]): Map<string, Candidate> {
+  const candidates = new Map<string, Candidate>();
+  const candidate = (topic: string): Candidate => {
+    let found = candidates.get(topic);
+    if (!found) {
+      found = { topic, workflows: [], manifests: [], kindFirstRoots: new Set() };
+      candidates.set(topic, found);
+    }
+    return found;
+  };
+  for (const file of files) {
+    const workflow = file.path.match(/^\.model-artifacts\/initiatives\/(.+)\/workflow\.json$/);
+    if (workflow?.[1]) candidate(workflow[1]).workflows.push(file.absolute);
+    const manifest = file.path.match(/^\.model-artifacts\/initiatives\/(.+)\/specs\/manifest\.json$/);
+    if (manifest?.[1]) candidate(manifest[1]).manifests.push(file.absolute);
+    const kindFirst = file.path.match(/^\.model-artifacts\/(specs|plans|todo|findings|reports|logs)\/(.+)\/[^/]+$/);
+    if (kindFirst?.[1] && kindFirst[2]) {
+      const topic = kindFirst[2];
+      candidate(topic).kindFirstRoots.add(`.model-artifacts/${kindFirst[1]}/${topic}`);
+    }
+  }
+  return candidates;
+}
+
+function classifyCandidate(root: string, candidate: Candidate, bounds: Bounds): WorkflowMigrationInventoryEntry {
+  const sourcePaths = [
+    ...candidate.workflows.map((path) => projectPath(root, path)),
+    ...candidate.manifests.map((path) => projectPath(root, path)),
+    ...candidate.kindFirstRoots,
+  ].sort();
+  if (!isValidTopic(candidate.topic)) return blocked(redact(candidate.topic), "unsupported-topic", sourcePaths.map(redact), "invalid-topic");
+  const canonical = candidate.workflows.length > 0 || candidate.manifests.length > 0;
+  if (canonical && candidate.kindFirstRoots.size) {
+    return blocked(candidate.topic, "layout-conflict", sourcePaths, "canonical-and-kind-first-layouts", "Run pi-artifacts audit and migrate the kind-first layout before SWE semantic migration.");
+  }
+  if (!canonical) {
+    return {
+      topic: candidate.topic,
+      classification: "kind-first-artifacts",
+      action: "run-pi-artifacts-migration",
+      sourcePaths,
+      guidance: "Kind-first relocation is owned by pi-artifacts; run its audit and migration before SWE semantic migration.",
+    };
+  }
+  if (candidate.workflows.length > 1 || candidate.manifests.length > 1) {
+    return blocked(candidate.topic, "malformed", sourcePaths, "malformed-workflow");
+  }
+  if (candidate.workflows.length === 1) {
+    return classifyWorkflow(root, candidate, sourcePaths, bounds);
+  }
+  return classifyHistorical(root, candidate, sourcePaths, bounds);
+}
+
+function classifyWorkflow(root: string, candidate: Candidate, sourcePaths: string[], bounds: Bounds): WorkflowMigrationInventoryEntry {
+  const path = candidate.workflows[0]!;
+  const read = readBoundedJson(root, path, bounds.maxFileBytes);
+  if (!read.ok) return blocked(candidate.topic, "malformed", sourcePaths, "malformed-workflow");
+  const value = read.value;
+  if (!record(value)) return blocked(candidate.topic, "malformed", sourcePaths, "malformed-workflow");
+  if (value.version !== 1 && value.version !== 2) return blocked(candidate.topic, "unsupported-workflow", sourcePaths, "unsupported-workflow-version");
+  if (value.topic !== candidate.topic) return blocked(candidate.topic, "malformed", sourcePaths, "topic-mismatch");
+  try { parseWorkflow(value, "1970-01-01T00:00:00.000Z"); }
+  catch { return blocked(candidate.topic, "malformed", sourcePaths, "malformed-workflow"); }
+
+  if (candidate.manifests.length) {
+    const imported = record(value.importedFrom) && value.importedFrom.kind === "pi-swe-v2" && value.importedFrom.manifestPath === projectPath(root, candidate.manifests[0]!);
+    if (!imported) return blocked(candidate.topic, "layout-conflict", sourcePaths, "canonical-workflow-and-historical-manifest");
+  }
+  const complete = value.status === "complete";
+  if (value.version === 1) {
+    return {
+      topic: candidate.topic,
+      classification: complete ? "native-v1-complete" : "native-v1",
+      action: complete ? "decide-completed-workflow" : "migrate-native-v1",
+      sourcePaths,
+      contentHash: hashFile(root, path, bounds.maxFileBytes),
+    };
+  }
+  return {
+    topic: candidate.topic,
+    classification: complete ? "current-v2-complete" : "current-v2",
+    action: "none",
+    sourcePaths,
+    contentHash: hashFile(root, path, bounds.maxFileBytes),
+  };
+}
+
+function classifyHistorical(root: string, candidate: Candidate, sourcePaths: string[], bounds: Bounds): WorkflowMigrationInventoryEntry {
+  const manifestPath = candidate.manifests[0]!;
+  const read = readBoundedJson(root, manifestPath, bounds.maxFileBytes);
+  if (!read.ok || !record(read.value)) return blocked(candidate.topic, "malformed", sourcePaths, "malformed-historical-contracts");
+  const manifest = read.value;
+  if (manifest.schemaVersion !== 1 && manifest.schemaVersion !== 2) return blocked(candidate.topic, "unsupported-workflow", sourcePaths, "unsupported-manifest-version");
+  if ((typeof manifest.topic === "string" || typeof manifest.initiativeId === "string") && manifest.topic !== candidate.topic && manifest.initiativeId !== candidate.topic) return blocked(candidate.topic, "malformed", sourcePaths, "topic-mismatch");
+  const activePlan = record(manifest.activePlan) ? manifest.activePlan : undefined;
+  const contractRoot = typeof activePlan?.contractRoot === "string" ? activePlan.contractRoot : undefined;
+  const expected = `.model-artifacts/initiatives/${candidate.topic}/plans/revisions/`;
+  if (!contractRoot || !contractRoot.startsWith(expected) || !/^r[1-9][0-9]*$/.test(contractRoot.slice(expected.length))) return blocked(candidate.topic, "malformed", sourcePaths, "malformed-historical-contracts");
+  const contractPath = safeProjectPath(root, `${contractRoot}/contracts.json`);
+  if (!existsSync(contractPath)) return blocked(candidate.topic, "malformed", sourcePaths, "malformed-historical-contracts");
+  const contracts = readBoundedJson(root, contractPath, bounds.maxFileBytes);
+  if (!contracts.ok || !record(contracts.value) || !Array.isArray(contracts.value.contracts)) return blocked(candidate.topic, "malformed", sourcePaths, "malformed-historical-contracts");
+
+  let located;
+  try { located = loadWorkflow(root, candidate.topic, true); }
+  catch { return blocked(candidate.topic, "malformed", sourcePaths, "malformed-historical-contracts"); }
+  if (!located || located.kind !== "legacy") return blocked(candidate.topic, "malformed", sourcePaths, "malformed-historical-contracts");
+  const planPath = typeof activePlan?.path === "string" ? safeProjectPath(root, activePlan.path) : undefined;
+  const inputs = [
+    manifestPath,
+    contractPath,
+    ...(planPath && existsSync(planPath) ? [planPath] : []),
+    ...contracts.value.contracts.filter(record).flatMap((item) => typeof item.path === "string" ? [safeProjectPath(root, item.path)] : typeof item.canonicalPath === "string" ? [safeProjectPath(root, item.canonicalPath)] : []),
+  ];
+  const uniqueInputs = [...new Set(inputs)].sort();
+  try { for (const path of uniqueInputs) readBounded(root, path, bounds.maxFileBytes); }
+  catch { return blocked(candidate.topic, "malformed", sourcePaths, "malformed-historical-contracts"); }
+  const complete = located.workflow.status === "complete";
+  return {
+    topic: candidate.topic,
+    classification: complete ? "historical-contracts-complete" : "historical-contracts",
+    action: complete ? "decide-completed-workflow" : "import-historical",
+    sourcePaths: [...new Set([...sourcePaths, ...uniqueInputs.map((path) => projectPath(root, path))])].sort(),
+    contentHash: hashAuthority(root, uniqueInputs, bounds.maxFileBytes),
+  };
+}
+
+function readBoundedJson(root: string, path: string, maximum: number): { ok: true; value: unknown } | { ok: false } {
+  try {
+    const raw = readBounded(root, path, maximum);
+    return { ok: true, value: JSON.parse(raw.toString("utf8")) };
+  } catch {
+    return { ok: false };
+  }
+}
+
+function hashFile(root: string, path: string, maximum: number): string {
+  return `sha256:${createHash("sha256").update(readBounded(root, path, maximum)).digest("hex")}`;
+}
+
+function hashAuthority(root: string, paths: string[], maximum: number): string {
+  const hash = createHash("sha256");
+  for (const path of paths) hash.update(projectPath(root, path)).update("\0").update(hashFile(root, path, maximum)).update("\0");
+  return `sha256:${hash.digest("hex")}`;
+}
+
+function readBounded(root: string, path: string, maximum: number): Buffer {
+  assertSafeAbsolute(root, path);
+  const stat = lstatSync(path);
+  if (stat.isSymbolicLink() || !stat.isFile() || stat.size > maximum) throw new Error(`workflow inventory file byte limit exceeded: ${path}`);
+  const noFollow = "O_NOFOLLOW" in constants ? constants.O_NOFOLLOW : 0;
+  const nonBlock = "O_NONBLOCK" in constants ? constants.O_NONBLOCK : 0;
+  const descriptor = openSync(path, constants.O_RDONLY | noFollow | nonBlock);
+  try {
+    const opened = fstatSync(descriptor);
+    if (!opened.isFile() || opened.size > maximum) throw new Error(`workflow inventory file byte limit exceeded: ${path}`);
+    const buffer = Buffer.alloc(opened.size);
+    let offset = 0;
+    while (offset < buffer.length) {
+      const count = readSync(descriptor, buffer, offset, buffer.length - offset, null);
+      if (count === 0) break;
+      offset += count;
+    }
+    if (offset !== buffer.length) throw new Error(`workflow inventory file changed while reading: ${path}`);
+    return buffer;
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function isMigrationAuthorityPath(path: string): boolean {
+  return /\/workflow\.json$/.test(path) || /\/specs\/manifest\.json$/.test(path) || /\/contracts\.json$/.test(path);
+}
+
+function safeProjectPath(root: string, path: string): string {
+  if (path.includes("\\")) throw new Error("unsafe workflow inventory path");
+  const absolute = resolve(root, path);
+  const rel = relative(root, absolute);
+  if (!rel || rel === ".." || rel.startsWith(`..${sep}`)) throw new Error("workflow inventory path escapes repository");
+  let cursor = root;
+  for (const segment of rel.split(sep)) {
+    cursor = resolve(cursor, segment);
+    if (existsSync(cursor) && lstatSync(cursor).isSymbolicLink()) throw new Error("workflow inventory path traverses a symlink");
+  }
+  return absolute;
+}
+
+function blocked(topic: string, classification: WorkflowMigrationClassification, sourcePaths: string[], blocker: WorkflowMigrationBlocker, guidance?: string): WorkflowMigrationInventoryEntry {
+  return { topic, classification, action: "block", sourcePaths, blocker, ...(guidance ? { guidance } : {}) };
+}
+
+function normalizeBounds(options: WorkflowMigrationInventoryOptions): Bounds {
+  return {
+    maxFileBytes: bound(options.maxFileBytes, DEFAULT_MAX_FILE_BYTES, HARD_MAX_FILE_BYTES, "maxFileBytes"),
+    maxFiles: bound(options.maxFiles, DEFAULT_MAX_FILES, HARD_MAX_FILES, "maxFiles"),
+    maxBytes: bound(options.maxBytes, DEFAULT_MAX_BYTES, HARD_MAX_BYTES, "maxBytes"),
+    maxReportBytes: bound(options.maxReportBytes, DEFAULT_MAX_REPORT_BYTES, HARD_MAX_REPORT_BYTES, "maxReportBytes"),
+    maxTopics: bound(options.maxTopics, DEFAULT_MAX_TOPICS, HARD_MAX_TOPICS, "maxTopics"),
+    maxDirectories: bound(options.maxDirectories, DEFAULT_MAX_DIRECTORIES, HARD_MAX_DIRECTORIES, "maxDirectories"),
+    maxDepth: bound(options.maxDepth, DEFAULT_MAX_DEPTH, HARD_MAX_DEPTH, "maxDepth"),
+    maxEntriesPerDirectory: bound(options.maxEntriesPerDirectory, DEFAULT_MAX_ENTRIES_PER_DIRECTORY, HARD_MAX_ENTRIES_PER_DIRECTORY, "maxEntriesPerDirectory"),
+  };
+}
+
+function bound(value: number | undefined, fallback: number, hardMaximum: number, label: string): number {
+  const normalized = value ?? fallback;
+  if (!Number.isSafeInteger(normalized) || normalized < 1 || normalized > hardMaximum) throw new Error(`${label} must be an integer between 1 and ${hardMaximum}`);
+  return normalized;
+}
+
+function emptyInventory(): WorkflowMigrationInventory {
+  return { schemaVersion: 1, complete: true, entries: [], totals: emptyTotals() };
+}
+
+function emptyTotals(): Record<WorkflowMigrationClassification, number> {
+  return {
+    "native-v1": 0,
+    "native-v1-complete": 0,
+    "current-v2": 0,
+    "current-v2-complete": 0,
+    "historical-contracts": 0,
+    "historical-contracts-complete": 0,
+    "kind-first-artifacts": 0,
+    "layout-conflict": 0,
+    malformed: 0,
+    "unsupported-workflow": 0,
+    "unsupported-topic": 0,
+  };
+}
+
+function assertSafeAbsolute(root: string, absolute: string): void {
+  const rel = relative(root, absolute);
+  if (rel === ".." || rel.startsWith(`..${sep}`)) throw new Error("workflow inventory path escapes repository");
+  let cursor = root;
+  for (const segment of rel.split(sep).filter(Boolean)) {
+    cursor = resolve(cursor, segment);
+    if (existsSync(cursor) && lstatSync(cursor).isSymbolicLink()) throw new Error("workflow inventory path traverses a symlink");
+  }
+  if (existsSync(absolute) && lstatSync(absolute).isDirectory() && realpathSync(absolute) !== absolute) throw new Error("workflow inventory directory has symlinked ancestry");
+}
+export type WorkflowMigrationDisposition = "continue" | "reopen" | "grandfather-read-only" | "operator-review";
+export type WorkflowMigrationPlan = {
+  schemaVersion: 1;
+  topic: string;
+  classification: WorkflowMigrationClassification;
+  disposition: WorkflowMigrationDisposition;
+  decidedBy: string;
+  generatedAt: string;
+  sourcePaths: string[];
+  preimageHash: string;
+  postimageHash?: string;
+  postimage?: string;
+  eligible: boolean;
+  nextAction: string;
+  planHash: string;
+};
+export type WorkflowMigrationReceipt = {
+  schemaVersion: 1;
+  topic: string;
+  state: "applied" | "rolled-back";
+  classification: WorkflowMigrationClassification;
+  disposition: Exclude<WorkflowMigrationDisposition, "operator-review">;
+  decidedBy: string;
+  sourcePaths: string[];
+  preimageHash: string;
+  postimageHash: string;
+  planHash: string;
+  appliedAt: string;
+  rolledBackAt?: string;
+  preimagePayload?: string;
+};
+export type WorkflowMigrationFaultStage = "journal-prepared" | "workflow-written" | "receipt-written";
+
+/** Build an executable, preimage-bound decision without writing repository state. */
+export function planWorkflowMigration(cwd: string, topic: string, options: { disposition?: WorkflowMigrationDisposition; decidedBy?: string; now?: string } = {}): WorkflowMigrationPlan {
+  const entry = inventoryWorkflowMigrations(cwd).entries.find((candidate) => candidate.topic === topic);
+  if (!entry) throw new Error(`workflow ${topic} was not found in migration inventory`);
+  const complete = entry.classification === "native-v1-complete" || entry.classification === "historical-contracts-complete";
+  const disposition = options.disposition ?? (complete ? "operator-review" : "continue");
+  const decidedBy = (options.decidedBy ?? "unspecified-operator").trim();
+  if (!decidedBy || decidedBy.length > 128) throw new Error("migration decision owner is required and must be bounded");
+  if (complete && !["reopen", "grandfather-read-only", "operator-review"].includes(disposition)) throw new Error("completed workflows require reopen, grandfather-read-only, or operator-review disposition");
+  if (!complete && disposition !== "continue") throw new Error("incomplete workflows use the continue disposition");
+  const migratable = ["native-v1", "native-v1-complete", "historical-contracts", "historical-contracts-complete"].includes(entry.classification);
+  const eligible = migratable && disposition !== "operator-review";
+  const preimageHash = entry.contentHash ?? `sha256:${createHash("sha256").update(JSON.stringify(entry)).digest("hex")}`;
+  let postimage: string | undefined;
+  let postimageHash: string | undefined;
+  const generatedAt = options.now ?? new Date().toISOString();
+  if (eligible) {
+    const located = loadWorkflow(cwd, topic, true);
+    if (!located) throw new Error(`workflow ${topic} was not found`);
+    const now = generatedAt;
+    const historicalTaskIds = located.workflow.tasks.filter((task) => task.status === "complete" || task.status === "deferred").map((task) => task.id);
+    const history = [...located.workflow.orchestration.history, {
+      id: `migration-${createHash("sha256").update(`${topic}\0${preimageHash}`).digest("hex").slice(0, 16)}`,
+      type: "workflow-migrated",
+      at: now,
+      summary: `${entry.classification} migrated with ${disposition} disposition by ${decidedBy}`,
+      auditCritical: true,
+    }].slice(-128);
+    const tasks = located.workflow.tasks.map((task) => task.status === "complete" || task.status === "deferred"
+      ? { ...task, phase: "historical" as const }
+      : { ...task, status: task.status === "blocked" ? "blocked" as const : "pending" as const, phase: "pending" as const, evidence: [], reports: [], clarifications: [], findings: [], verificationCheckpoint: undefined, workspaceReceipt: undefined, integrationReceipt: undefined, verificationDriftPaths: [] });
+    const candidate: Workflow = {
+      ...located.workflow,
+      version: 2,
+      revision: located.workflow.revision + 1,
+      status: disposition === "grandfather-read-only" ? "paused" : "paused",
+      activeTask: undefined,
+      planReview: undefined,
+      closeout: undefined,
+      initiativeAcceptance: undefined,
+      orchestration: { ...located.workflow.orchestration, mode: "multi-agent", phase: disposition === "reopen" && historicalTaskIds.length === tasks.length ? "initiative-acceptance" : "plan-review", activeRun: undefined, parent: undefined, history },
+      tasks,
+      updatedAt: now,
+      migration: { sourceVersion: 1, readAt: now, historicalTaskIds, disposition, decidedBy, preimageHash },
+    };
+    postimage = `${JSON.stringify(parseWorkflow(candidate, now), null, 2)}\n`;
+    postimageHash = hashBytes(Buffer.from(postimage));
+  }
+  const logical = { schemaVersion: 1, topic, classification: entry.classification, disposition, decidedBy, generatedAt, sourcePaths: entry.sourcePaths, preimageHash, postimageHash: postimageHash ?? null, eligible };
+  const planHash = hashBytes(Buffer.from(stableJson(logical)));
+  return {
+    schemaVersion: 1, topic, classification: entry.classification, disposition, decidedBy, generatedAt, sourcePaths: entry.sourcePaths,
+    preimageHash, ...(postimageHash ? { postimageHash } : {}), ...(postimage ? { postimage } : {}), eligible,
+    nextAction: eligible ? `apply selected topic ${topic}` : entry.action === "block" ? entry.guidance ?? `resolve ${entry.blocker ?? "migration blocker"}` : "record an authorized historical-completion disposition",
+    planHash,
+  };
+}
+
+/** Apply exactly one validated dry-run plan under the shared workflow mutation lock. */
+export async function applyWorkflowMigration(cwd: string, plan: WorkflowMigrationPlan, options: { fault?: (stage: WorkflowMigrationFaultStage) => void } = {}): Promise<{ status: "applied" | "already-applied"; receiptPath: string; receipt: WorkflowMigrationReceipt }> {
+  validateMigrationPlan(plan);
+  if (!plan.eligible || !plan.postimage || !plan.postimageHash || plan.disposition === "operator-review") throw new Error(`migration plan is not eligible: ${plan.nextAction}`);
+  const postimage = plan.postimage;
+  const postimageHash = plan.postimageHash;
+  const disposition = plan.disposition as Exclude<WorkflowMigrationDisposition, "operator-review">;
+  return withWorkflowMutationLock(cwd, plan.topic, async () => {
+    assertNoArtifactMigrationActivity(cwd);
+    const receiptPath = workflowMigrationReceiptPath(plan.topic);
+    const receiptAbsolute = resolve(cwd, receiptPath);
+    if (existsSync(receiptAbsolute)) {
+      const receipt = readMigrationReceipt(resolve(cwd), receiptAbsolute);
+      if (receipt.planHash !== plan.planHash || receipt.postimageHash !== plan.postimageHash) throw new Error("existing migration receipt does not match the selected plan");
+      const current = currentWorkflowHash(cwd, plan.topic);
+      if (receipt.state === "applied" && current === receipt.postimageHash) return { status: "already-applied", receiptPath, receipt };
+      throw new Error("migration receipt requires rollback or operator recovery before reuse");
+    }
+    const expectedPlan = planWorkflowMigration(cwd, plan.topic, { disposition, decidedBy: plan.decidedBy, now: plan.generatedAt });
+    if (expectedPlan.planHash !== plan.planHash || expectedPlan.postimageHash !== postimageHash || expectedPlan.postimage !== postimage) throw new Error("stale migration plan: workflow no longer matches the deterministic dry-run decision");
+    const currentEntry = inventoryWorkflowMigrations(cwd).entries.find((entry) => entry.topic === plan.topic);
+    if (!currentEntry || currentEntry.classification !== plan.classification || currentEntry.contentHash !== plan.preimageHash) throw new Error("stale migration plan: preimage or classification changed");
+    const nativePath = resolve(cwd, workflowPath(plan.topic));
+    const preimagePayload = existsSync(nativePath) ? readBounded(resolve(cwd), nativePath, DEFAULT_MAX_FILE_BYTES).toString("base64") : undefined;
+    const journalPath = workflowMigrationJournalPath(plan.topic);
+    const journalAbsolute = resolve(cwd, journalPath);
+    if (existsSync(journalAbsolute)) throw new Error(`unfinished SWE migration requires recovery: ${journalPath}`);
+    const receipt: WorkflowMigrationReceipt = {
+      schemaVersion: 1, topic: plan.topic, state: "applied", classification: plan.classification,
+      disposition, decidedBy: plan.decidedBy, sourcePaths: plan.sourcePaths,
+      preimageHash: plan.preimageHash, postimageHash, planHash: plan.planHash,
+      appliedAt: new Date().toISOString(), ...(preimagePayload ? { preimagePayload } : {}),
+    };
+    writeJsonExclusive(journalAbsolute, { schemaVersion: 1, stage: "prepared", planHash: plan.planHash, topic: plan.topic, preimageHash: plan.preimageHash, postimageHash: plan.postimageHash, receipt });
+    options.fault?.("journal-prepared");
+    const parsed = parseWorkflow(JSON.parse(postimage));
+    saveWorkflow(cwd, parsed, existsSync(nativePath) ? loadWorkflow(cwd, plan.topic, false)?.workflow.revision : undefined);
+    if (currentWorkflowHash(cwd, plan.topic) !== postimageHash) throw new Error("workflow postimage hash mismatch after atomic write");
+    options.fault?.("workflow-written");
+    writeJsonExclusive(receiptAbsolute, receipt);
+    options.fault?.("receipt-written");
+    rmSync(journalAbsolute);
+    return { status: "applied", receiptPath, receipt };
+  });
+}
+
+export async function applyWorkflowMigrationBatch(cwd: string, plans: WorkflowMigrationPlan[]): Promise<Array<{ topic: string; status: "applied" | "already-applied" | "failed"; receiptPath?: string; error?: string }>> {
+  if (!plans.length) throw new Error("batch migration requires at least one explicitly selected topic");
+  const topics = plans.map((plan) => plan.topic);
+  if (new Set(topics).size !== topics.length) throw new Error("batch migration selections must name unique topics");
+  const results = [];
+  for (const plan of plans) {
+    try {
+      const applied = await applyWorkflowMigration(cwd, plan);
+      results.push({ topic: plan.topic, status: applied.status, receiptPath: applied.receiptPath });
+    } catch (error) {
+      results.push({ topic: plan.topic, status: "failed" as const, error: error instanceof Error ? error.message.slice(0, 1024) : String(error).slice(0, 1024) });
+    }
+  }
+  return results;
+}
+
+export async function recoverWorkflowMigration(cwd: string, topic: string): Promise<{ status: "recovered" | "already-recovered"; nextAction: string }> {
+  return withWorkflowMutationLock(cwd, topic, async () => {
+    const journalAbsolute = resolve(cwd, workflowMigrationJournalPath(topic));
+    const receiptAbsolute = resolve(cwd, workflowMigrationReceiptPath(topic));
+    if (!existsSync(journalAbsolute)) {
+      if (existsSync(receiptAbsolute)) return { status: "already-recovered", nextAction: "audit or rollback the applied migration" };
+      throw new Error(`no SWE migration recovery record exists for ${topic}`);
+    }
+    const journal = JSON.parse(readBounded(resolve(cwd), journalAbsolute, 1024 * 1024).toString("utf8")) as { receipt?: WorkflowMigrationReceipt; postimageHash?: string };
+    if (!journal.receipt || journal.receipt.topic !== topic || journal.postimageHash !== journal.receipt.postimageHash) throw new Error("malformed SWE migration recovery journal");
+    const current = currentWorkflowHash(cwd, topic);
+    if (current === journal.receipt.postimageHash) {
+      if (!existsSync(receiptAbsolute)) writeJsonExclusive(receiptAbsolute, journal.receipt);
+      rmSync(journalAbsolute);
+      return { status: "recovered", nextAction: "migration committed; re-audit the topic" };
+    }
+    if (current === journal.receipt.preimageHash || current === undefined && !journal.receipt.preimagePayload) {
+      rmSync(journalAbsolute);
+      return { status: "recovered", nextAction: "migration was not published; create a fresh dry-run plan" };
+    }
+    throw new Error("recovery refused: workflow differs from both exact preimage and postimage");
+  });
+}
+
+export async function rollbackWorkflowMigration(cwd: string, topic: string): Promise<{ status: "rolled-back" | "already-rolled-back"; receiptPath: string }> {
+  return withWorkflowMutationLock(cwd, topic, async () => {
+    assertNoArtifactMigrationActivity(cwd);
+    const receiptPath = workflowMigrationReceiptPath(topic);
+    const receiptAbsolute = resolve(cwd, receiptPath);
+    const receipt = readMigrationReceipt(resolve(cwd), receiptAbsolute);
+    if (receipt.topic !== topic) throw new Error("workflow migration receipt topic mismatch");
+    if (receipt.state === "rolled-back") return { status: "already-rolled-back", receiptPath };
+    if (currentWorkflowHash(cwd, topic) !== receipt.postimageHash) throw new Error("rollback refused: workflow has intervening edits after migration");
+    const target = resolve(cwd, workflowPath(topic));
+    const preimage = receipt.preimagePayload ? Buffer.from(receipt.preimagePayload, "base64") : undefined;
+    if (preimage && (preimage.length > DEFAULT_MAX_FILE_BYTES || hashBytes(preimage) !== receipt.preimageHash)) throw new Error("rollback recovery payload does not match the bounded preimage");
+    if (preimage) atomicWriteBytes(target, preimage);
+    else rmSync(target);
+    const observed = preimage ? hashFile(resolve(cwd), target, DEFAULT_MAX_FILE_BYTES) : undefined;
+    if (receipt.preimagePayload && observed !== receipt.preimageHash) throw new Error("rollback preimage hash mismatch");
+    writeJsonAtomic(receiptAbsolute, { ...receipt, state: "rolled-back", rolledBackAt: new Date().toISOString() });
+    return { status: "rolled-back", receiptPath };
+  });
+}
+
+export function assertWorkflowMigrationEligible(cwd: string, topic: string): void {
+  const located = loadWorkflow(cwd, topic, false);
+  if (located?.workflow.migration?.disposition === "grandfather-read-only") throw new Error(`workflow ${topic} is grandfathered read-only history; next action: retain or make a new authorized v2 workflow`);
+  if (located?.storedVersion === 2) return;
+  const entry = inventoryWorkflowMigrations(cwd).entries.find((candidate) => candidate.topic === topic);
+  if (!entry) throw new Error(`workflow ${topic} was not found`);
+  throw new Error(`workflow ${topic} requires explicit migration (${entry.classification}); next action: audit, choose a disposition, and apply with preimage validation`);
+}
+
+export function workflowMigrationReceiptPath(topic: string): string {
+  const identity = Buffer.from(topic).toString("base64url");
+  return `.model-artifacts/system/logs/pi-swe-migration/${identity}/receipt.json`;
+}
+function workflowMigrationJournalPath(topic: string): string {
+  const identity = Buffer.from(topic).toString("base64url");
+  return `.model-artifacts/system/logs/pi-swe-migration/${identity}/journal.json`;
+}
+function validateMigrationPlan(plan: WorkflowMigrationPlan): void {
+  if (plan.schemaVersion !== 1 || !isValidTopic(plan.topic) || !/^sha256:[a-f0-9]{64}$/.test(plan.preimageHash) || !/^sha256:[a-f0-9]{64}$/.test(plan.planHash)) throw new Error("invalid workflow migration plan");
+  if (typeof plan.generatedAt !== "string" || !Number.isFinite(Date.parse(plan.generatedAt)) || plan.sourcePaths.length > 256 || plan.sourcePaths.some((path) => !path.startsWith(".model-artifacts/") || path.includes("\\") || path.split("/").includes(".."))) throw new Error("invalid workflow migration plan metadata");
+  const logical = { schemaVersion: 1, topic: plan.topic, classification: plan.classification, disposition: plan.disposition, decidedBy: plan.decidedBy, generatedAt: plan.generatedAt, sourcePaths: plan.sourcePaths, preimageHash: plan.preimageHash, postimageHash: plan.postimageHash ?? null, eligible: plan.eligible };
+  if (hashBytes(Buffer.from(stableJson(logical))) !== plan.planHash) throw new Error("workflow migration plan hash mismatch");
+  if (plan.postimage && hashBytes(Buffer.from(plan.postimage)) !== plan.postimageHash) throw new Error("workflow migration plan postimage mismatch");
+}
+function assertNoArtifactMigrationActivity(cwd: string): void {
+  const root = resolve(cwd, ".model-artifacts/system/logs/model-artifact-migration");
+  if (!existsSync(root)) return;
+  const entries = readDirectory(root, HARD_MAX_ENTRIES_PER_DIRECTORY);
+  if (entries.some((entry) => entry.name === "active.claim.json" || /journal\.json$/.test(entry.name) || entry.name.endsWith("-transaction"))) throw new Error("pi-artifacts migration claim, transaction journal, or recovery bundle blocks SWE semantic migration");
+}
+function currentWorkflowHash(cwd: string, topic: string): string | undefined {
+  const path = resolve(cwd, workflowPath(topic));
+  return existsSync(path) ? hashFile(resolve(cwd), path, DEFAULT_MAX_FILE_BYTES) : undefined;
+}
+function readMigrationReceipt(root: string, path: string): WorkflowMigrationReceipt {
+  if (!existsSync(path)) throw new Error("workflow migration receipt was not found");
+  const value = JSON.parse(readBounded(root, path, 1024 * 1024).toString("utf8")) as WorkflowMigrationReceipt;
+  if (value.schemaVersion !== 1 || !isValidTopic(value.topic) || !["applied", "rolled-back"].includes(value.state) || !/^sha256:[a-f0-9]{64}$/.test(value.preimageHash) || !/^sha256:[a-f0-9]{64}$/.test(value.postimageHash)) throw new Error("malformed workflow migration receipt");
+  return value;
+}
+function writeJsonExclusive(path: string, value: unknown): void {
+  const content = Buffer.from(`${JSON.stringify(value, null, 2)}\n`);
+  if (content.length > 1024 * 1024) throw new Error("workflow migration recovery record exceeds 1048576 bytes");
+  mkdirSync(dirname(path), { recursive: true });
+  const descriptor = openSync(path, "wx", 0o600);
+  try { writeFileSync(descriptor, content); fsyncSync(descriptor); } finally { closeSync(descriptor); }
+}
+function writeJsonAtomic(path: string, value: unknown): void {
+  const content = Buffer.from(`${JSON.stringify(value, null, 2)}\n`);
+  if (content.length > 1024 * 1024) throw new Error("workflow migration recovery record exceeds 1048576 bytes");
+  atomicWriteBytes(path, content);
+}
+function atomicWriteBytes(path: string, value: Buffer): void {
+  mkdirSync(dirname(path), { recursive: true });
+  const temporary = `${path}.tmp-${process.pid}-${Date.now()}`;
+  let descriptor: number | undefined;
+  try {
+    descriptor = openSync(temporary, "wx", 0o600); writeFileSync(descriptor, value); fsyncSync(descriptor); closeSync(descriptor); descriptor = undefined;
+    renameSync(temporary, path); const directory = openSync(dirname(path), "r"); try { fsyncSync(directory); } finally { closeSync(directory); }
+  } catch (error) { if (descriptor !== undefined) try { closeSync(descriptor); } catch { /* noop */ } rmSync(temporary, { force: true }); throw error; }
+}
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (record(value)) return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
+  return JSON.stringify(value);
+}
+function hashBytes(value: Buffer): string { return `sha256:${createHash("sha256").update(value).digest("hex")}`; }
+function redact(value: string): string { return SENSITIVE_METADATA.test(value) || !isValidTopic(value) ? `sha256:${createHash("sha256").update(value).digest("hex")}` : value; }
+function projectPath(root: string, absolute: string): string { return toPosix(relative(root, absolute)); }
+function toPosix(path: string): string { return path.split(sep).join("/"); }
+function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }

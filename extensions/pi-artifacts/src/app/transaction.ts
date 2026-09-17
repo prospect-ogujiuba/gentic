@@ -18,7 +18,7 @@ import {
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, posix, resolve } from "node:path";
 
-import { loadMigrationConfig } from "../domain/inventory.ts";
+import { assertNoSweSemanticMigrationActivity, loadMigrationConfig } from "../domain/inventory.ts";
 import { fingerprint, type MigrationMove, type MigrationPlan, type MigrationPlanBlocker, type MigrationPlanBounds, type MigrationRewrite } from "../domain/plan.ts";
 import { projectRelative, resolveProjectPath, toPosix } from "../domain/normalize.ts";
 
@@ -110,6 +110,7 @@ export function loadMigrationPlan(cwd: string, planPath: string): MigrationPlan 
 
 export function applyMigration(options: ApplyMigrationOptions): ApplyMigrationResult {
   const root = realpathSync(resolve(options.cwd));
+  assertNoSweSemanticMigrationActivity(root);
   const plan = loadMigrationPlan(root, options.planPath);
   const ledgerPath = ledgerPathForPlan(options.planPath);
   const ledgerAbsolute = resolveProjectPath(root, ledgerPath);
@@ -188,6 +189,7 @@ export function applyMigration(options: ApplyMigrationOptions): ApplyMigrationRe
 
 export function recoverMigration(options: RecoverMigrationOptions): RecoverMigrationResult {
   const root = realpathSync(resolve(options.cwd));
+  assertNoSweSemanticMigrationActivity(root);
   const journalAbsolute = resolveProjectPath(root, options.journalPath);
   const recoveryPath = recoveryPathForJournal(options.journalPath);
   const recoveryAbsolute = resolveProjectPath(root, recoveryPath);
@@ -227,6 +229,7 @@ export function recoverMigration(options: RecoverMigrationOptions): RecoverMigra
 
 export function rollbackMigration(options: RollbackMigrationOptions): RollbackMigrationResult {
   const root = realpathSync(resolve(options.cwd));
+  assertNoSweSemanticMigrationActivity(root);
   const ledger = loadLedger(root, options.ledgerPath);
   const plan = loadMigrationPlan(root, ledger.planPath);
   validateLedgerAgainstPlan(ledger, plan);
@@ -267,6 +270,7 @@ export function rollbackMigration(options: RollbackMigrationOptions): RollbackMi
 
 export function finalizeMigration(options: FinalizeMigrationOptions): FinalizeMigrationResult {
   const root = realpathSync(resolve(options.cwd));
+  assertNoSweSemanticMigrationActivity(root);
   let ledger = loadLedger(root, options.ledgerPath);
   const reportPath = finalizeReportPath(options.ledgerPath);
   if (ledger.state === "finalized") return { status: "already-finalized", ledgerPath: options.ledgerPath, reportPath: ledger.finalizeReportPath ?? reportPath, removedPayloads: 0 };

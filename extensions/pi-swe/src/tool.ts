@@ -4,12 +4,13 @@ import { Type } from "typebox";
 
 import { coordinatedActiveTodo } from "../../../src/lifecycle-coordination.ts";
 import { buildTaskExecutionPrompt } from "./command.ts";
+import { applyWorkflowMigration, inventoryWorkflowMigrations, planWorkflowMigration, recoverWorkflowMigration, rollbackWorkflowMigration } from "./migration.ts";
 import { loadWorkflow, resolveTopic, workflowPath } from "./store.ts";
 import { WorkflowMutationService } from "./service.ts";
 import { identityFromContext, renderRunTails, sweRuntimeRegistry, WorkflowControlService } from "./ux.ts";
 import { bindVerificationCheckpoint, createWorkflow, reduceWorkflow, reviseWorkflow, summarizeWorkflow, WORKFLOW_APPROACHES, type ApproachReasons, type VerificationCommand, type Workflow, type WorkflowApproach, type WorkflowEvent } from "./workflow.ts";
 
-const Action = StringEnum(["status", "inspect", "runs", "dismiss-run", "create", "migrate", "revise", "start", "pause", "stop", "resume", "verify", "complete", "block"] as const);
+const Action = StringEnum(["status", "inspect", "runs", "dismiss-run", "create", "migrate", "migration-audit", "migration-recover", "migration-rollback", "revise", "start", "pause", "stop", "resume", "verify", "complete", "block"] as const);
 const Command = Type.Object({
   command: Type.String({ minLength: 1, maxLength: 256 }),
   args: Type.Optional(Type.Array(Type.String({ maxLength: 512 }), { maxItems: 64 })),
@@ -46,7 +47,7 @@ export const sweWorkflowParameters = Type.Object({
 });
 
 export type SweWorkflowInput = {
-  action: "status" | "inspect" | "runs" | "dismiss-run" | "create" | "migrate" | "revise" | "start" | "pause" | "stop" | "resume" | "verify" | "complete" | "block";
+  action: "status" | "inspect" | "runs" | "dismiss-run" | "create" | "migrate" | "migration-audit" | "migration-recover" | "migration-rollback" | "revise" | "start" | "pause" | "stop" | "resume" | "verify" | "complete" | "block";
   topic?: string;
   goal?: string;
   plan?: string;
@@ -71,6 +72,11 @@ export function registerSweWorkflowTool(pi: ExtensionAPI): void {
     ],
     parameters: sweWorkflowParameters,
     async execute(_toolCallId, params: SweWorkflowInput, _signal, onUpdate, ctx) {
+      if (params.action === "migration-audit") {
+        const report = inventoryWorkflowMigrations(ctx.cwd);
+        const text = report.entries.slice(0, 100).map((entry) => `${entry.topic}: ${entry.classification}; next=${entry.guidance ?? entry.action}`).join("\n") || "no workflow migration candidates";
+        return { content: [{ type: "text" as const, text: `migration audit (${report.entries.length} topics)\n${text}` }], details: { report } };
+      }
       if (["status", "inspect", "runs", "dismiss-run"].includes(params.action)) {
         const topic = resolveTopic(ctx.cwd, params.topic);
         const located = loadWorkflow(ctx.cwd, topic);
@@ -90,9 +96,22 @@ export function registerSweWorkflowTool(pi: ExtensionAPI): void {
         const path = await service.create(workflow);
         return result(`created ${topic}\n${summarizeWorkflow(workflow)}\nstate: ${path}`, workflow, "native");
       }
+      if (params.action === "migration-recover") {
+        const outcome = await recoverWorkflowMigration(ctx.cwd, topic);
+        const located = loadWorkflow(ctx.cwd, topic, false);
+        if (!located) throw new Error(`workflow ${topic} was not found after recovery`);
+        return result(`${outcome.status}: ${outcome.nextAction}`, located.workflow, "native");
+      }
+      if (params.action === "migration-rollback") throw new Error("migration rollback is destructive and requires the keyboard-accessible /swe migrate rollback confirmation surface");
       if (params.action === "migrate") {
-        const located = await service.migrate(topic);
-        return result(`migrated ${topic}\n${summarizeWorkflow(located.workflow)}\nstate: ${located.path}`, located.workflow, "native");
+        const entry = inventoryWorkflowMigrations(ctx.cwd).entries.find((candidate) => candidate.topic === topic);
+        if (!entry) throw new Error(`workflow ${topic} was not found`);
+        if (entry.action === "decide-completed-workflow") throw new Error("completed workflow migration requires an interactive historical-completion disposition through /swe migrate apply");
+        const plan = planWorkflowMigration(ctx.cwd, topic, { disposition: "continue", decidedBy: "model-requested-explicit-selection" });
+        const outcome = await applyWorkflowMigration(ctx.cwd, plan);
+        const located = loadWorkflow(ctx.cwd, topic, false);
+        if (!located) throw new Error(`workflow ${topic} was not found after migration`);
+        return result(`migration ${outcome.status}; receipt ${outcome.receiptPath}; next: re-audit before mutation\n${summarizeWorkflow(located.workflow)}`, located.workflow, "native");
       }
       const located = service.read(topic);
       if (!located) throw new Error(`workflow ${topic} was not found`);

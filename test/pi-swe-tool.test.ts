@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -353,6 +353,29 @@ test("tool status, inspect, and runs use bounded native inspection without attac
     }
     const runs = await execute({ action: "runs", topic: "tool-inspect" });
     assert.match(runs.content[0].text, /plan.*completed/s);
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
+});
+
+test("tool migration audit is read-only, selected incomplete apply is explicit, and completed disposition cannot be model-authored", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-tool-migration-"));
+  const writeLegacy = (topic: string, status: "paused" | "complete") => {
+    const path = join(cwd, ".model-artifacts", "initiatives", topic, "workflow.json");
+    mkdirSync(join(path, ".."), { recursive: true });
+    writeFileSync(path, `${JSON.stringify({ version: 1, topic, revision: 1, status, goal: "legacy", updatedAt: UX_NOW, tasks: [{ id: "T1", title: "work", status: status === "complete" ? "complete" : "pending", dependsOn: [], acceptance: [], approaches: [], verification: [], evidence: [] }] })}\n`);
+    return path;
+  };
+  try {
+    const incompletePath = writeLegacy("tool-legacy", "paused");
+    writeLegacy("tool-history", "complete");
+    const before = readFileSync(incompletePath, "utf8");
+    const execute = toolHarness(cwd);
+    const audit = await execute({ action: "migration-audit" });
+    assert.match(audit.content[0].text, /tool-legacy: native-v1/);
+    assert.equal(readFileSync(incompletePath, "utf8"), before);
+    await assert.rejects(() => execute({ action: "migrate", topic: "tool-history" }), /interactive historical-completion disposition/);
+    const applied = await execute({ action: "migrate", topic: "tool-legacy" });
+    assert.match(applied.content[0].text, /migration applied/);
+    assert.equal(JSON.parse(readFileSync(incompletePath, "utf8")).version, 2);
   } finally { rmSync(cwd, { recursive: true, force: true }); }
 });
 

@@ -3,6 +3,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { coordinatedActiveTodo } from "../../../src/lifecycle-coordination.ts";
 import { loadWorkflow, resolveTopic } from "./store.ts";
+import { applyWorkflowMigration, applyWorkflowMigrationBatch, inventoryWorkflowMigrations, planWorkflowMigration, recoverWorkflowMigration, rollbackWorkflowMigration, type WorkflowMigrationDisposition } from "./migration.ts";
 import { WorkflowMutationService } from "./service.ts";
 import { identityFromContext, renderRunTails, sweRuntimeRegistry, WorkflowControlService } from "./ux.ts";
 import { reduceWorkflow, type Workflow, type WorkflowApproach, type WorkflowTask } from "./workflow.ts";
@@ -21,7 +22,7 @@ const APPROACH_INSTRUCTIONS: Record<WorkflowApproach, string> = {
 const ROOT: AutocompleteItem[] = [
   { value: "status", label: "status", description: "/swe status [topic] — show workflow state" },
   { value: "work", label: "work", description: "/swe work <start|resume|pause|stop|status|inspect|runs> [topic] — control or inspect one workflow" },
-  { value: "migrate", label: "migrate", description: "/swe migrate <topic> — import an existing pi-swe v2 initiative" },
+  { value: "migrate", label: "migrate", description: "/swe migrate <audit|apply|recover|rollback> [topic] — explicit workflow migration" },
   { value: "config", label: "config", description: "/swe config — explain the zero-config replacement" },
 ];
 const WORK: AutocompleteItem[] = [
@@ -58,9 +59,49 @@ export function registerSweCommand(pi: ExtensionAPI): void {
           return;
         }
         if (root === "migrate") {
-          const topic = resolveTopic(ctx.cwd, args[1]);
-          const located = await new WorkflowMutationService(ctx.cwd).migrate(topic);
-          ctx.ui.notify(`pi-swe migrated ${topic} to ${located.path}`, "info");
+          const operation = args[1] ?? "audit";
+          if (operation === "audit") {
+            const report = inventoryWorkflowMigrations(ctx.cwd);
+            const lines = report.entries.slice(0, 100).map((entry) => `- ${entry.topic}: ${entry.classification}; next: ${entry.guidance ?? entry.action}`);
+            ctx.ui.notify(`pi-swe migration audit (${report.entries.length} topics)\n${lines.join("\n") || "- no workflow migration candidates"}`, report.complete ? "info" : "warning");
+            return;
+          }
+          const selectedTopics = (args[2] ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+          if (operation === "apply" && selectedTopics.length > 1) {
+            const plans = selectedTopics.map((topic) => planWorkflowMigration(ctx.cwd, topic, { disposition: "continue", decidedBy: `interactive-user:${identityFromContext(ctx).sessionId}` }));
+            const outcomes = await applyWorkflowMigrationBatch(ctx.cwd, plans);
+            ctx.ui.notify(`pi-swe migration batch\n${outcomes.map((outcome) => `- ${outcome.topic}: ${outcome.status}${outcome.error ? `; next: ${outcome.error}` : "; next: re-audit"}`).join("\n")}`, outcomes.some((outcome) => outcome.status === "failed") ? "warning" : "info");
+            return;
+          }
+          const topic = resolveTopic(ctx.cwd, selectedTopics[0]);
+          if (operation === "recover") {
+            const outcome = await recoverWorkflowMigration(ctx.cwd, topic);
+            ctx.ui.notify(`pi-swe migration ${outcome.status}: ${outcome.nextAction}`, "info");
+            return;
+          }
+          if (operation === "rollback") {
+            if (!ctx.hasUI || !await ctx.ui.confirm("Rollback workflow migration", `${topic}: compare exact postimage and restore retained preimage?`)) throw new Error("migration rollback was not confirmed");
+            const outcome = await rollbackWorkflowMigration(ctx.cwd, topic);
+            ctx.ui.notify(`pi-swe migration ${outcome.status}; recovery receipt retained at ${outcome.receiptPath}`, "warning");
+            return;
+          }
+          if (operation !== "apply") throw new Error("usage: /swe migrate <audit|apply|recover|rollback> [topic] [reopen|grandfather-read-only]");
+          const inventory = inventoryWorkflowMigrations(ctx.cwd);
+          const entry = inventory.entries.find((candidate) => candidate.topic === topic);
+          if (!entry) throw new Error(`workflow ${topic} was not found`);
+          let disposition: WorkflowMigrationDisposition = "continue";
+          if (entry.action === "decide-completed-workflow") {
+            if (!ctx.hasUI) throw new Error("historical-completion disposition requires an interactive keyboard-accessible user decision");
+            const requested = args[3];
+            const selected = requested ?? await ctx.ui.select("Historical completion disposition", ["reopen: require fresh v2 final acceptance", "grandfather-read-only: retain immutable history", "operator-review: do not migrate"]);
+            disposition = selected?.split(":", 1)[0] as WorkflowMigrationDisposition;
+            if (!["reopen", "grandfather-read-only", "operator-review"].includes(disposition)) throw new Error("historical-completion disposition was cancelled or invalid");
+            if (disposition === "operator-review") throw new Error("migration remains blocked for operator review");
+            if (!await ctx.ui.confirm("Apply workflow migration", `${topic}: ${disposition}; stale execution evidence will be removed and a recovery receipt retained`)) throw new Error("workflow migration was not confirmed");
+          }
+          const plan = planWorkflowMigration(ctx.cwd, topic, { disposition, decidedBy: `interactive-user:${identityFromContext(ctx).sessionId}` });
+          const outcome = await applyWorkflowMigration(ctx.cwd, plan);
+          ctx.ui.notify(`pi-swe migration ${outcome.status}: ${topic}; receipt ${outcome.receiptPath}; next: re-audit before start/resume`, "info");
           return;
         }
         const workAction = root === "work" ? args[1] ?? "status" : root;

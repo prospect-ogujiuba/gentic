@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 
 export const WORKFLOW_VERSION = 2 as const;
 export const LEGACY_WORKFLOW_VERSION = 1 as const;
+export const BOOTSTRAP_PLAN_ANCHOR = "e882cd62deb541aa437c16c72781a1ccd243055e" as const;
+export const BOOTSTRAP_NATIVE_TAKEOVER_TASK = "cutover-readiness" as const;
 
 export type WorkflowStatus = "draft" | "active" | "paused" | "blocked" | "complete";
 export type TaskStatus = "pending" | "active" | "blocked" | "deferred" | "complete";
@@ -120,6 +122,20 @@ export type HistoryEntry = { id: string; type: string; at: string; summary: stri
 export type VerificationCommand = { command: string; args: string[] };
 export type RepositorySnapshot = { hash: string; head: string; branch: string | null; changedPaths: string[]; capturedAt: string };
 export type ManualValidationOutcome = { status: "required" | "approved" | "rejected"; rationale: string; decidedBy?: string; at: string };
+export type BootstrapFindingDecision = { findingId: string; disposition: string; decidedBy: string; at: string };
+export type BootstrapAdoption = {
+  anchorCommit: string;
+  descendantHead: string;
+  snapshot: RepositorySnapshot;
+  taskIds: string[];
+  planReview: StageReport;
+  generalReview: StageReport;
+  concernReview?: { concerns: WorkflowApproach[]; report: StageReport };
+  checks: Array<{ taskId: string; evidence: VerificationEvidence }>;
+  decisions: BootstrapFindingDecision[];
+  authorization: { id: string; authorizedBy: string; ownerId: string; sessionId: string; runtimeId: string; authorizedAt: string };
+  adoptedAt: string;
+};
 export type InitiativeCloseout = {
   snapshot: RepositorySnapshot;
   cumulativeDeltaHash: string;
@@ -210,10 +226,18 @@ export type Workflow = {
   initiativeVerification: VerificationCommand[];
   closeout?: InitiativeCloseout;
   initiativeAcceptance?: StageReport;
+  bootstrapAdoption?: BootstrapAdoption;
   activeTask?: string;
   tasks: WorkflowTask[];
   updatedAt: string;
-  migration?: { sourceVersion: 1; readAt: string; historicalTaskIds: string[] };
+  migration?: {
+    sourceVersion: 1;
+    readAt: string;
+    historicalTaskIds: string[];
+    disposition?: "continue" | "reopen" | "grandfather-read-only";
+    decidedBy?: string;
+    preimageHash?: string;
+  };
   importedFrom?: { kind: "pi-swe-v2"; manifestPath: string; planRevision?: number };
 };
 
@@ -223,6 +247,7 @@ export type WorkflowEvent =
   | { type: "resume" }
   | { type: "block"; reason: string }
   | { type: "record-plan-review"; report: StageReport }
+  | { type: "adopt-bootstrap"; adoption: Omit<BootstrapAdoption, "adoptedAt"> }
   | { type: "record-implementation"; report: StageReport; receipt?: WorkspaceReceipt }
   | { type: "record-review"; report: StageReport }
   | { type: "record-run-failure"; stage: WorkflowPhase | TaskPhase; taskId?: string; reason: string }
@@ -416,6 +441,7 @@ function reduceWorkflowStep(workflow: Workflow, event: WorkflowEvent, now: strin
     return update(workflow, { status: "paused" }, now, "workflow paused");
   }
   if (event.type === "record-plan-review") return recordPlanReview(workflow, event.report, now);
+  if (event.type === "adopt-bootstrap") return adoptBootstrap(workflow, event.adoption, now);
   if (workflow.orchestration.mode === "legacy") return reduceLegacyWorkflow(workflow, event, now);
   return reduceOrchestratedWorkflow(workflow, event, now);
 }
@@ -730,6 +756,75 @@ function recordRunFailure(workflow: Workflow, event: Extract<WorkflowEvent, { ty
   }, now, `${task.id} blocked: ${reason}`);
 }
 
+function adoptBootstrap(workflow: Workflow, raw: Omit<BootstrapAdoption, "adoptedAt">, now: string): WorkflowDecision {
+  if (workflow.orchestration.mode !== "multi-agent") throw new Error("bootstrap adoption requires multi-agent orchestration");
+  if (workflow.status !== "draft" || workflow.orchestration.phase !== "plan-review" || workflow.activeTask || workflow.planReview || workflow.bootstrapAdoption || workflow.orchestration.activeRun) throw new Error("bootstrap adoption is permitted only before the workflow has started");
+  if (workflow.tasks.some((task) => task.status !== "pending" || task.phase !== "pending" || task.reports.length || task.evidence.length || task.workspaceReceipt || task.integrationReceipt || task.completedAt)) throw new Error("bootstrap adoption refuses a workflow that has already started");
+  const snapshot = normalizeRepositorySnapshot(raw.snapshot);
+  const taskIds = boundedStrings(raw.taskIds, "bootstrap task ids", MAX_TASKS, 64);
+  if (!taskIds.length || taskIds.length >= workflow.tasks.length || taskIds.some((id, index) => id !== workflow.tasks[index]?.id)) throw new Error("bootstrap tasks must be a non-empty ordered workflow prefix that leaves native takeover work");
+  const selected = workflow.tasks.slice(0, taskIds.length);
+  if (workflow.tasks[selected.length]?.id !== BOOTSTRAP_NATIVE_TAKEOVER_TASK) throw new Error(`bootstrap adoption must stop before ${BOOTSTRAP_NATIVE_TAKEOVER_TASK}`);
+  const selectedIds = new Set(taskIds);
+  if (selected.some((task) => task.dependsOn.some((id) => !selectedIds.has(id)))) throw new Error("bootstrap task order omits a dependency");
+  if (snapshot.changedPaths.some((path) => !selected.some((task) => scopeAllows(task.writeScope, path)))) throw new Error("bootstrap descendant delta contains a path outside adopted task scope");
+  const anchorCommit = normalizeCommit(raw.anchorCommit, "bootstrap anchor commit");
+  if (anchorCommit !== BOOTSTRAP_PLAN_ANCHOR) throw new Error("bootstrap adoption is not bound to the approved rollout-plan anchor");
+  const descendantHead = normalizeCommit(raw.descendantHead, "bootstrap descendant HEAD");
+  if (snapshot.head !== descendantHead) throw new Error("bootstrap snapshot HEAD does not match descendant provenance");
+
+  const planReview = normalizeReport(raw.planReview);
+  const generalReview = normalizeReport(raw.generalReview);
+  requireReport(planReview, "plan-review", "plan-reviewer", workflow.contract.hash);
+  requireReport(generalReview, "general-review", "general-reviewer", workflow.contract.hash);
+  if (planReview.outcome !== "approved" || generalReview.outcome !== "approved") throw new Error("bootstrap adoption requires approved plan and general review");
+  const requiredConcerns = [...new Set(selected.flatMap((task) => task.approaches.filter((approach) => CONCERN_APPROACHES.has(approach))))].sort();
+  let concernReview: BootstrapAdoption["concernReview"];
+  if (requiredConcerns.length) {
+    if (!raw.concernReview || !sameStringSet(raw.concernReview.concerns, requiredConcerns)) throw new Error("bootstrap adoption requires one composed review for every selected specialist concern");
+    const report = normalizeReport(raw.concernReview.report);
+    requireReport(report, "concern-review", "concern-reviewer", workflow.contract.hash);
+    if (report.outcome !== "approved") throw new Error("bootstrap concern review must approve the cumulative delta");
+    concernReview = { concerns: requiredConcerns as WorkflowApproach[], report };
+  } else if (raw.concernReview) throw new Error("bootstrap concern review cannot substitute for an unselected concern");
+  const reviews = [planReview, generalReview, ...(concernReview ? [concernReview.report] : [])];
+  const identities = new Set<string>();
+  for (const review of reviews) {
+    if (!review.changedPaths || !sameStringSet(review.changedPaths, snapshot.changedPaths)) throw new Error("bootstrap review does not cover the complete bounded descendant delta");
+    if (review.provenance.snapshotHash !== snapshot.hash || Date.parse(review.provenance.startedAt) <= Date.parse(snapshot.capturedAt) || Date.parse(review.provenance.completedAt) > Date.parse(now)) throw new Error("bootstrap review is not fresh for the unchanged bootstrap snapshot");
+    if (identities.has(review.provenance.runId) || identities.has(review.provenance.actorId)) throw new Error("bootstrap reviewers require distinct fresh run and actor provenance");
+    identities.add(review.provenance.runId); identities.add(review.provenance.actorId);
+  }
+  const decisions = raw.decisions.map(normalizeBootstrapDecision);
+  if (decisions.some((decision) => Date.parse(decision.at) <= Date.parse(snapshot.capturedAt) || Date.parse(decision.at) > Date.parse(now))) throw new Error("bootstrap finding decision is stale or future-dated");
+  const blocking = reviews.flatMap((review) => review.findings).filter((finding) => finding.severity === "blocking" && finding.status === "open");
+  if (blocking.some((finding) => !decisions.some((decision) => decision.findingId === finding.id))) throw new Error("bootstrap adoption has an unresolved or undecided blocking finding");
+
+  const authorization = normalizeBootstrapAuthorization(raw.authorization, snapshot.capturedAt, now);
+  const checks = raw.checks.map((item) => ({ taskId: boundedText(item.taskId, "bootstrap check task id", 64), evidence: normalizeEvidence(item.evidence) }));
+  const expectedCheckCount = selected.reduce((count, task) => count + task.verification.length, 0);
+  if (checks.length !== expectedCheckCount) throw new Error("bootstrap adoption requires one receipt for every exact task verification command");
+  const toolCallIds = checks.map((item) => item.evidence.source?.toolCallId);
+  if (toolCallIds.some((id) => !id) || new Set(toolCallIds).size !== toolCallIds.length) throw new Error("bootstrap check receipts require unique protected tool-call provenance");
+  for (const task of selected) {
+    const receipts = checks.filter((item) => item.taskId === task.id);
+    if (receipts.length !== task.verification.length) throw new Error(`bootstrap verification receipts do not match ${task.id}`);
+    const unused = [...receipts];
+    for (const planned of task.verification) {
+      const index = unused.findIndex((item) => commandKey(item.evidence) === commandKey(planned));
+      if (index < 0) throw new Error(`missing exact bootstrap verification for ${task.id}: ${commandDisplay(planned)}`);
+      const evidence = unused.splice(index, 1)[0]!.evidence;
+      const source = evidence.source;
+      if (evidence.exitCode !== 0 || evidence.contractHash !== task.contract.hash || evidence.snapshotHash !== snapshot.hash || evidence.beforeSnapshotHash !== snapshot.hash || evidence.afterSnapshotHash !== snapshot.hash || evidence.head !== snapshot.head || evidence.branch !== snapshot.branch || Date.parse(evidence.at) <= Date.parse(snapshot.capturedAt) || Date.parse(evidence.at) > Date.parse(now)) throw new Error("bootstrap verification is failing, stale, source-changing, or superseded");
+      if (!source || source.kind !== "bash-tool-result" || source.toolName !== "bash" || source.workflowRevision !== workflow.revision || source.ownerId !== authorization.ownerId || source.sessionId !== authorization.sessionId || source.runtimeId !== authorization.runtimeId) throw new Error("bootstrap verification lacks exact protected v2 authority provenance");
+    }
+  }
+  const tasks = workflow.tasks.map((task, index) => index < selected.length ? { ...task, status: "complete" as const, phase: "historical" as const, evidence: checks.filter((item) => item.taskId === task.id).map((item) => item.evidence), completedAt: now } : task);
+  const adoption: BootstrapAdoption = { anchorCommit, descendantHead, snapshot, taskIds, planReview, generalReview, ...(concernReview ? { concernReview } : {}), checks, decisions, authorization, adoptedAt: now };
+  const history = appendHistory(workflow.orchestration.history, { id: `bootstrap-adoption-${workflow.revision + 1}`, type: "bootstrap-adoption", at: now, summary: `authorized bootstrap adoption completed ${taskIds.length} ordered tasks from ${anchorCommit.slice(0, 12)} on snapshot ${snapshot.hash}`, auditCritical: true });
+  return update(workflow, { tasks, planReview, bootstrapAdoption: adoption, status: "draft", orchestration: { ...workflow.orchestration, phase: "task-execution", history } }, now, `adopted ${taskIds.length} bootstrap tasks; ${workflow.tasks[selected.length]!.id} requires native start`);
+}
+
 function recordPlanReview(workflow: Workflow, raw: StageReport, now: string): WorkflowDecision {
   if (workflow.orchestration.mode === "multi-agent" && workflow.orchestration.phase !== "plan-review") throw new Error("plan review report is not valid after task execution begins");
   const report = normalizeReport(raw);
@@ -870,6 +965,7 @@ function parseV2(value: Record<string, unknown>): Workflow {
     ...(planReview ? { planReview } : {}),
     ...(closeout ? { closeout } : {}),
     ...(initiativeAcceptance ? { initiativeAcceptance } : {}),
+    ...(value.bootstrapAdoption ? { bootstrapAdoption: normalizeBootstrapAdoption(value.bootstrapAdoption) } : {}),
     ...(typeof value.activeTask === "string" ? { activeTask: value.activeTask } : {}), tasks, updatedAt,
     ...(normalizeMigration(value.migration) ? { migration: normalizeMigration(value.migration)! } : {}),
     ...(normalizeWorkflowImport(value.importedFrom) ? { importedFrom: normalizeWorkflowImport(value.importedFrom)! } : {}),
@@ -940,6 +1036,10 @@ function normalizeCloseout(value: unknown): InitiativeCloseout {
   };
 }
 function sameRepositorySnapshot(left: RepositorySnapshot, right: RepositorySnapshot): boolean { return left.hash === right.hash && left.head === right.head && left.branch === right.branch && sameStringSet(left.changedPaths, right.changedPaths); }
+function normalizeCommit(value: unknown, label: string): string { if (typeof value !== "string" || !/^[a-f0-9]{40}$/.test(value)) throw new Error(`invalid ${label}`); return value; }
+function normalizeBootstrapDecision(value: unknown): BootstrapFindingDecision { if (!record(value)) throw new Error("invalid bootstrap finding decision"); return { findingId: boundedText(value.findingId, "bootstrap finding id", 128), disposition: boundedText(value.disposition, "bootstrap finding disposition"), decidedBy: boundedText(value.decidedBy, "bootstrap decision owner", 128), at: validTimestamp(value.at, "bootstrap finding decision timestamp") }; }
+function normalizeBootstrapAuthorization(value: unknown, capturedAt: string, now: string): BootstrapAdoption["authorization"] { if (!record(value)) throw new Error("invalid bootstrap authorization"); const authorization = { id: boundedText(value.id, "bootstrap authorization id", 128), authorizedBy: boundedText(value.authorizedBy, "bootstrap authorization actor", 128), ownerId: boundedText(value.ownerId, "bootstrap owner", 128), sessionId: boundedText(value.sessionId, "bootstrap session", 128), runtimeId: boundedText(value.runtimeId, "bootstrap runtime", 128), authorizedAt: validTimestamp(value.authorizedAt, "bootstrap authorization timestamp") }; if (Date.parse(authorization.authorizedAt) <= Date.parse(capturedAt) || Date.parse(authorization.authorizedAt) > Date.parse(now)) throw new Error("bootstrap authorization is stale or future-dated"); return authorization; }
+function normalizeBootstrapAdoption(value: unknown): BootstrapAdoption { if (!record(value) || !Array.isArray(value.taskIds) || !Array.isArray(value.checks) || !Array.isArray(value.decisions)) throw new Error("invalid bootstrap adoption provenance"); const snapshot = normalizeRepositorySnapshot(value.snapshot); const adoptedAt = validTimestamp(value.adoptedAt, "bootstrap adoption timestamp"); const concernRaw = value.concernReview; const concernReview = concernRaw === undefined ? undefined : record(concernRaw) && Array.isArray(concernRaw.concerns) ? { concerns: boundedStrings(concernRaw.concerns, "bootstrap concerns", WORKFLOW_APPROACHES.length, 64) as WorkflowApproach[], report: normalizeReport(concernRaw.report) } : (() => { throw new Error("invalid bootstrap concern review"); })(); return { anchorCommit: normalizeCommit(value.anchorCommit, "bootstrap anchor commit"), descendantHead: normalizeCommit(value.descendantHead, "bootstrap descendant HEAD"), snapshot, taskIds: boundedStrings(value.taskIds, "bootstrap task ids", MAX_TASKS, 64), planReview: normalizeReport(value.planReview), generalReview: normalizeReport(value.generalReview), ...(concernReview ? { concernReview } : {}), checks: value.checks.map((item) => { if (!record(item)) throw new Error("invalid bootstrap check"); return { taskId: boundedText(item.taskId, "bootstrap check task id", 64), evidence: normalizeEvidence(item.evidence) }; }), decisions: value.decisions.map(normalizeBootstrapDecision), authorization: normalizeBootstrapAuthorization(value.authorization, snapshot.capturedAt, adoptedAt), adoptedAt }; }
 function requireDigest(value: unknown, label: string): string { if (typeof value !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value)) throw new Error(`invalid ${label}`); return value; }
 function validBranchLength(value: unknown): number { if (!Number.isSafeInteger(value) || (value as number) < 0) throw new Error("invalid closeout branch length"); return value as number; }
 function deriveInitiativeVerification(tasks: Array<Partial<WorkflowTask>>): VerificationCommand[] {
@@ -1254,7 +1354,21 @@ function validateTaskGraph(tasks: WorkflowTask[]): void { const ids = new Set<st
 function isStatus(value: unknown): value is WorkflowStatus { return ["draft", "active", "paused", "blocked", "complete"].includes(value as string); }
 function isTaskStatus(value: unknown): value is TaskStatus { return ["pending", "active", "blocked", "deferred", "complete"].includes(value as string); }
 function isTaskPhase(value: unknown): value is TaskPhase { return ["pending","implementation","general-review","concern-review","remediation","workspace","integration","verification","ready-to-complete","historical"].includes(value as string); }
-function normalizeMigration(value: unknown): Workflow["migration"] | undefined { if (value === undefined) return undefined; if (!record(value) || value.sourceVersion !== 1) throw new Error("invalid workflow migration provenance"); return { sourceVersion: 1, readAt: validTimestamp(value.readAt, "migration readAt"), historicalTaskIds: boundedStrings(value.historicalTaskIds, "historical task ids", MAX_TASKS, 64) }; }
+function normalizeMigration(value: unknown): Workflow["migration"] | undefined {
+  if (value === undefined) return undefined;
+  if (!record(value) || value.sourceVersion !== 1) throw new Error("invalid workflow migration provenance");
+  const disposition = value.disposition;
+  if (disposition !== undefined && !["continue", "reopen", "grandfather-read-only"].includes(disposition as string)) throw new Error("invalid workflow migration disposition");
+  if (value.preimageHash !== undefined && (typeof value.preimageHash !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.preimageHash))) throw new Error("invalid workflow migration preimage hash");
+  return {
+    sourceVersion: 1,
+    readAt: validTimestamp(value.readAt, "migration readAt"),
+    historicalTaskIds: boundedStrings(value.historicalTaskIds, "historical task ids", MAX_TASKS, 64),
+    ...(typeof disposition === "string" ? { disposition: disposition as "continue" | "reopen" | "grandfather-read-only" } : {}),
+    ...(typeof value.decidedBy === "string" ? { decidedBy: boundedText(value.decidedBy, "migration decision owner", 128) } : {}),
+    ...(typeof value.preimageHash === "string" ? { preimageHash: value.preimageHash } : {}),
+  };
+}
 function normalizeWorkflowImport(value: unknown): Workflow["importedFrom"] | undefined {
   if (value === undefined) return undefined;
   if (!record(value) || value.kind !== "pi-swe-v2") throw new Error("invalid workflow import provenance");

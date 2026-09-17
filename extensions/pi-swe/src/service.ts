@@ -1,23 +1,55 @@
-import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, lstatSync, readFileSync, statSync } from "node:fs";
+import { resolve } from "node:path";
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-
-import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 
 import {
   hasLegacyInitiative,
   loadWorkflow,
-  migrateLegacyWorkflow,
   saveWorkflow,
-  workflowPath,
+  withWorkflowMutationLock,
   type LocatedWorkflow,
 } from "./store.ts";
-import { hashContract, reduceWorkflow, type RunLease, type Workflow, type WorkflowDecision } from "./workflow.ts";
+import { assertWorkflowMigrationEligible } from "./migration.ts";
+import { GitWorkspaceManager } from "./workspace.ts";
+import { BOOTSTRAP_NATIVE_TAKEOVER_TASK, BOOTSTRAP_PLAN_ANCHOR, hashContract, reduceWorkflow, type BootstrapAdoption, type RepositorySnapshot, type RunLease, type Workflow, type WorkflowDecision } from "./workflow.ts";
 
-const LOCK_WAIT_MS = 5_000;
-const LOCK_STALE_MS = 30_000;
-const LOCK_RETRY_MS = 20;
 const MAX_LINKED_PLAN_BYTES = 256 * 1024;
+export const BOOTSTRAP_ANCHOR_COMMIT = BOOTSTRAP_PLAN_ANCHOR;
+export const BOOTSTRAP_TAKEOVER_TASK_ID = BOOTSTRAP_NATIVE_TAKEOVER_TASK;
+
+export interface BootstrapRepositoryInspector {
+  inspect(anchorCommit: string): { anchorCommit: string; descendantHead: string; snapshot: RepositorySnapshot };
+}
+
+export class GitBootstrapRepositoryInspector implements BootstrapRepositoryInspector {
+  readonly cwd: string;
+  readonly workspace: GitWorkspaceManager;
+
+  constructor(cwd: string, workspace = new GitWorkspaceManager(cwd)) { this.cwd = cwd; this.workspace = workspace; }
+
+  inspect(anchorCommit: string): { anchorCommit: string; descendantHead: string; snapshot: RepositorySnapshot } {
+    const resolvedAnchor = this.git(["rev-parse", "--verify", `${anchorCommit}^{commit}`]).trim();
+    if (resolvedAnchor !== anchorCommit) throw new Error("bootstrap plan anchor did not resolve to the authorized commit");
+    const descendantHead = this.git(["rev-parse", "HEAD"]).trim();
+    try { execFileSync("git", ["merge-base", "--is-ancestor", anchorCommit, descendantHead], { cwd: this.cwd, stdio: "ignore" }); }
+    catch { throw new Error("bootstrap HEAD is not a descendant of the authorized rollout-plan anchor"); }
+    const descendantCount = Number(this.git(["rev-list", "--count", `${anchorCommit}..${descendantHead}`]).trim());
+    if (!Number.isSafeInteger(descendantCount) || descendantCount > 256) throw new Error("bootstrap descendant history exceeds the bounded adoption window");
+    this.git(["diff", "--binary", "--full-index", anchorCommit, "--"], 512 * 1024);
+    const tracked = this.git(["diff", "--name-only", "-z", anchorCommit, "--"], 256 * 1024).split("\0").filter(Boolean);
+    const status = this.git(["status", "--porcelain=v1", "-z", "--untracked-files=all"], 256 * 1024).split("\0").filter(Boolean);
+    const untracked = status.filter((entry) => entry.startsWith("?? ")).map((entry) => entry.slice(3));
+    const changedPaths = [...new Set([...tracked, ...untracked].filter((path) => !path.startsWith(".model-artifacts/")))].sort();
+    if (changedPaths.length > 2_000) throw new Error("bootstrap descendant path inventory exceeds repository bounds");
+    const preflight = this.workspace.preflight(untracked.filter((path) => !path.startsWith(".model-artifacts/")));
+    return { anchorCommit, descendantHead, snapshot: { hash: preflight.sourceSnapshotHash, head: descendantHead, branch: preflight.branch, changedPaths, capturedAt: new Date().toISOString() } };
+  }
+
+  private git(args: string[], maxBuffer = 128 * 1024): string { return execFileSync("git", args, { cwd: this.cwd, encoding: "utf8", maxBuffer }); }
+}
+
+export type BootstrapAdoptionRequest = Omit<BootstrapAdoption, "anchorCommit" | "descendantHead" | "snapshot" | "taskIds" | "adoptedAt">;
 
 export type RunClaim = {
   ownerId: string;
@@ -35,8 +67,9 @@ export type RunClaim = {
  */
 export class WorkflowMutationService {
   readonly cwd: string;
+  readonly bootstrapInspector: BootstrapRepositoryInspector;
 
-  constructor(cwd: string) { this.cwd = cwd; }
+  constructor(cwd: string, bootstrapInspector: BootstrapRepositoryInspector = new GitBootstrapRepositoryInspector(cwd)) { this.cwd = cwd; this.bootstrapInspector = bootstrapInspector; }
 
   read(topic: string, includeLegacy = true): LocatedWorkflow | undefined {
     return loadWorkflow(this.cwd, topic, includeLegacy);
@@ -60,20 +93,13 @@ export class WorkflowMutationService {
   }
 
   async migrate(topic: string): Promise<LocatedWorkflow> {
-    return this.withLock(topic, async () => {
-      const located = loadWorkflow(this.cwd, topic, true);
-      if (!located) throw new Error(`workflow ${topic} was not found`);
-      if (located.kind === "legacy") return migrateLegacyWorkflow(this.cwd, topic);
-      if (located.storedVersion === 2) return located;
-      const upgraded = { ...located.workflow, revision: located.workflow.revision + 1, updatedAt: new Date().toISOString() };
-      saveWorkflow(this.cwd, upgraded, located.workflow.revision);
-      return { kind: "native", path: workflowPath(topic), workflow: upgraded, storedVersion: 2 };
-    });
+    throw new Error(`workflow ${topic} requires the explicit migration audit, plan, and apply surface`);
   }
 
   async mutate(topic: string, expectedRevision: number, reducer: (workflow: Workflow) => WorkflowDecision, options: { allowPlanDrift?: boolean } = {}): Promise<WorkflowDecision> {
-    return this.withLock(topic, async () => {
-      const located = loadWorkflow(this.cwd, topic, true);
+    return withWorkflowMutationLock(this.cwd, topic, async () => {
+      assertWorkflowMigrationEligible(this.cwd, topic);
+      const located = loadWorkflow(this.cwd, topic, false);
       if (!located) throw new Error(`workflow ${topic} was not found`);
       if (located.workflow.revision !== expectedRevision) throw new Error(`workflow changed: expected revision ${expectedRevision}, found ${located.workflow.revision}`);
       if (!options.allowPlanDrift && located.workflow.plan && located.workflow.contract.linkedPlanHash) {
@@ -88,16 +114,17 @@ export class WorkflowMutationService {
         saveWorkflow(this.cwd, decision.workflow, located.workflow.revision);
         return decision;
       }
-      if (located.kind === "legacy") {
-        const migrated = migrateLegacyWorkflow(this.cwd, topic);
-        return { workflow: migrated.workflow, changed: true, message: `${decision.message}; imported legacy state` };
-      }
-      if (located.storedVersion === 1) {
-        const upgraded = { ...located.workflow, revision: located.workflow.revision + 1, updatedAt: new Date().toISOString() };
-        saveWorkflow(this.cwd, upgraded, located.workflow.revision);
-        return { workflow: upgraded, changed: true, message: `${decision.message}; upgraded workflow schema to v2` };
-      }
       return decision;
+    });
+  }
+
+  async adoptBootstrap(topic: string, expectedRevision: number, request: BootstrapAdoptionRequest, now = new Date().toISOString()): Promise<WorkflowDecision> {
+    return this.mutate(topic, expectedRevision, (workflow) => {
+      const takeoverIndex = workflow.tasks.findIndex((task) => task.id === BOOTSTRAP_TAKEOVER_TASK_ID);
+      if (takeoverIndex < 1) throw new Error(`bootstrap workflow is missing ordered takeover task ${BOOTSTRAP_TAKEOVER_TASK_ID}`);
+      const inspection = this.bootstrapInspector.inspect(BOOTSTRAP_ANCHOR_COMMIT);
+      if (inspection.anchorCommit !== BOOTSTRAP_ANCHOR_COMMIT) throw new Error("bootstrap inspector changed the authorized rollout-plan anchor");
+      return reduceWorkflow(workflow, { type: "adopt-bootstrap", adoption: { ...request, ...inspection, taskIds: workflow.tasks.slice(0, takeoverIndex).map((task) => task.id) } }, now);
     });
   }
 
@@ -158,45 +185,6 @@ export class WorkflowMutationService {
   }
 
   private async withLock<T>(topic: string, operation: () => Promise<T> | T): Promise<T> {
-    const target = resolve(this.cwd, workflowPath(topic));
-    return withFileMutationQueue(target, async () => {
-      const lockPath = resolve(this.cwd, ".model-artifacts/system/logs/pi-swe-mutation.lock");
-      mkdirSync(dirname(lockPath), { recursive: true });
-      const started = Date.now();
-      const lockToken = randomUUID();
-      let descriptor: number | undefined;
-      while (descriptor === undefined) {
-        try {
-          descriptor = openSync(lockPath, "wx", 0o600);
-          writeFileSync(descriptor, JSON.stringify({ token: lockToken, pid: process.pid, acquiredAt: new Date().toISOString() }), "utf8");
-        } catch (error) {
-          if (!isAlreadyExists(error)) throw error;
-          if (isStaleLock(lockPath)) {
-            try { rmSync(lockPath); } catch { /* another process recovered it */ }
-            continue;
-          }
-          if (Date.now() - started >= LOCK_WAIT_MS) throw new Error("workflow mutation lock timed out");
-          await delay(LOCK_RETRY_MS);
-        }
-      }
-      try {
-        return await operation();
-      } finally {
-        try { closeSync(descriptor); } finally {
-          try {
-            const owner = JSON.parse(readFileSync(lockPath, "utf8")) as { token?: string };
-            if (owner.token === lockToken) rmSync(lockPath);
-          } catch { /* lock may have been recovered */ }
-        }
-      }
-    });
+    return withWorkflowMutationLock(this.cwd, topic, operation);
   }
 }
-
-function isAlreadyExists(error: unknown): boolean {
-  return !!error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "EEXIST";
-}
-function isStaleLock(path: string): boolean {
-  try { return Date.now() - statSync(path).mtimeMs > LOCK_STALE_MS; } catch { return false; }
-}
-function delay(ms: number): Promise<void> { return new Promise((resolveDelay) => setTimeout(resolveDelay, ms)); }

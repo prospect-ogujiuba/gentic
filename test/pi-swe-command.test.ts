@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import { completeSweArgument, registerSweCommand } from "../extensions/pi-swe/src/command.ts";
 import { createWorkflow, type StageReport, type Workflow } from "../extensions/pi-swe/src/workflow.ts";
-import { assessRecovery, renderRunTails, renderWorkflowInspection, SweRuntimeRegistry, WorkflowControlService, type WorkflowControlIdentity } from "../extensions/pi-swe/src/ux.ts";
+import { assessRecovery, contextualWorkflowActions, renderRunTails, renderWorkflowInspection, SweRuntimeRegistry, WorkflowControlService, type WorkflowControlIdentity } from "../extensions/pi-swe/src/ux.ts";
 
 const NOW = "2026-09-20T00:00:00.000Z";
 const identity: WorkflowControlIdentity = { sessionId: "session-a", runtimeId: "runtime-a", provider: "fixture-provider", model: "fixture-model", thinking: "low", branchLength: 3 };
@@ -57,6 +57,17 @@ test("command autocomplete exposes keyboard-addressable status, inspect, runs, p
   for (const expected of ["work status", "work inspect", "work runs", "work start", "work resume", "work pause", "work stop"]) assert.ok(values.includes(expected));
 });
 
+test("contextual operator actions expose one primary legal action plus keyboard-addressable controls", () => {
+  const value = workflow();
+  let actions = contextualWorkflowActions(value);
+  assert.deepEqual(actions.filter((action) => action.primary).map((action) => action.id), ["start"]);
+  assert.ok(actions.every((action) => action.command.startsWith("/swe work ")));
+  value.status = "paused";
+  actions = contextualWorkflowActions(value);
+  assert.deepEqual(actions.filter((action) => action.primary).map((action) => action.id), ["resume"]);
+  assert.ok(actions.some((action) => action.id === "stop"));
+});
+
 test("/swe work start emits an orchestrator prompt and never a single-parent implementation fallback", async () => {
   const f = fixture();
   try {
@@ -69,6 +80,54 @@ test("/swe work start emits an orchestrator prompt and never a single-parent imp
     assert.match(harness.messages[0]!, /interactive-shell \/attach does not apply/);
     assert.doesNotMatch(harness.messages[0]!, /call swe_workflow action=complete/);
   } finally { f.cleanup(); }
+});
+
+test("migration command audits read-only and requires keyboard confirmation for historical completion", async () => {
+  const complete = workflow("historical-command");
+  complete.status = "complete";
+  complete.orchestration.phase = "complete";
+  complete.orchestration.mode = "legacy";
+  complete.tasks[0]!.status = "complete";
+  complete.tasks[0]!.phase = "historical";
+  const raw = { version: 1, topic: complete.topic, revision: complete.revision, status: "complete", goal: complete.goal, updatedAt: NOW, tasks: [{ id: "T1", title: "historical", status: "complete", dependsOn: [], acceptance: [], approaches: [], verification: [], evidence: [] }] };
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-command-migration-"));
+  const path = join(cwd, ".model-artifacts", "initiatives", complete.topic, "workflow.json");
+  mkdirSync(join(path, ".."), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(raw)}\n`);
+  try {
+    const before = readFileSync(path, "utf8");
+    const audit = commandHarness(cwd);
+    await audit.handler("migrate audit");
+    assert.match(audit.notifications[0]!, /native-v1-complete/);
+    assert.equal(readFileSync(path, "utf8"), before);
+
+    const denied = commandHarness(cwd, { select: "reopen: require fresh v2 final acceptance", confirm: false });
+    await denied.handler("migrate apply historical-command");
+    assert.match(denied.notifications.at(-1)!, /not confirmed/);
+    assert.equal(readFileSync(path, "utf8"), before);
+
+    const accepted = commandHarness(cwd, { select: "reopen: require fresh v2 final acceptance", confirm: true });
+    await accepted.handler("migrate apply historical-command");
+    assert.match(accepted.notifications.at(-1)!, /migration applied/);
+    const migrated = JSON.parse(readFileSync(path, "utf8"));
+    assert.equal(migrated.version, 2);
+    assert.equal(migrated.migration.disposition, "reopen");
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
+});
+
+test("legacy start returns migration-required guidance and performs no implicit upgrade", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-command-legacy-"));
+  const path = join(cwd, ".model-artifacts", "initiatives", "legacy-command", "workflow.json");
+  mkdirSync(join(path, ".."), { recursive: true });
+  const raw = { version: 1, topic: "legacy-command", revision: 1, status: "paused", goal: "legacy", updatedAt: NOW, tasks: [{ id: "T1", title: "work", status: "pending", dependsOn: [], acceptance: [], approaches: [], verification: [], evidence: [] }] };
+  writeFileSync(path, `${JSON.stringify(raw)}\n`);
+  try {
+    const harness = commandHarness(cwd);
+    await harness.handler("work start legacy-command");
+    assert.match(harness.notifications.at(-1)!, /requires explicit migration/);
+    assert.equal(JSON.parse(readFileSync(path, "utf8")).version, 1);
+    assert.equal(harness.messages.length, 0);
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
 });
 
 test("/swe work resume emits the same orchestrator contract", async () => {

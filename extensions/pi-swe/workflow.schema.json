@@ -17,6 +17,7 @@
     "initiativeVerification": { "type": "array", "maxItems": 16, "items": { "$ref": "#/$defs/command" } },
     "closeout": { "$ref": "#/$defs/closeout" },
     "initiativeAcceptance": { "$ref": "#/$defs/report" },
+    "bootstrapAdoption": { "$ref": "#/$defs/bootstrapAdoption" },
     "activeTask": { "$ref": "#/$defs/taskId" },
     "tasks": { "type": "array", "minItems": 1, "maxItems": 100, "items": { "$ref": "#/$defs/task" } },
     "updatedAt": { "$ref": "#/$defs/timestamp" },
@@ -232,6 +233,39 @@
       },
       "additionalProperties": false
     },
+    "bootstrapAdoption": {
+      "type": "object",
+      "required": ["anchorCommit", "descendantHead", "snapshot", "taskIds", "planReview", "generalReview", "checks", "decisions", "authorization", "adoptedAt"],
+      "properties": {
+        "anchorCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "descendantHead": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "snapshot": { "$ref": "#/$defs/repositorySnapshot" },
+        "taskIds": { "type": "array", "minItems": 1, "maxItems": 100, "items": { "$ref": "#/$defs/taskId" } },
+        "planReview": { "$ref": "#/$defs/report" },
+        "generalReview": { "$ref": "#/$defs/report" },
+        "concernReview": {
+          "type": "object",
+          "required": ["concerns", "report"],
+          "properties": { "concerns": { "type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": { "$ref": "#/$defs/approach" } }, "report": { "$ref": "#/$defs/report" } },
+          "additionalProperties": false
+        },
+        "checks": {
+          "type": "array", "maxItems": 3200,
+          "items": { "type": "object", "required": ["taskId", "evidence"], "properties": { "taskId": { "$ref": "#/$defs/taskId" }, "evidence": { "$ref": "#/$defs/evidence" } }, "additionalProperties": false }
+        },
+        "decisions": {
+          "type": "array", "maxItems": 64,
+          "items": { "type": "object", "required": ["findingId", "disposition", "decidedBy", "at"], "properties": { "findingId": { "type": "string", "minLength": 1, "maxLength": 128 }, "disposition": { "$ref": "#/$defs/text" }, "decidedBy": { "type": "string", "minLength": 1, "maxLength": 128 }, "at": { "$ref": "#/$defs/timestamp" } }, "additionalProperties": false }
+        },
+        "authorization": {
+          "type": "object", "required": ["id", "authorizedBy", "ownerId", "sessionId", "runtimeId", "authorizedAt"],
+          "properties": { "id": { "type": "string", "minLength": 1, "maxLength": 128 }, "authorizedBy": { "type": "string", "minLength": 1, "maxLength": 128 }, "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 }, "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 }, "runtimeId": { "type": "string", "minLength": 1, "maxLength": 128 }, "authorizedAt": { "$ref": "#/$defs/timestamp" } },
+          "additionalProperties": false
+        },
+        "adoptedAt": { "$ref": "#/$defs/timestamp" }
+      },
+      "additionalProperties": false
+    },
     "closeout": {
       "type": "object",
       "required": ["snapshot", "cumulativeDeltaHash", "checkpoint", "evidence", "unresolvedRisks", "blockingRisks", "followUpTaskIds"],
@@ -377,7 +411,10 @@
       "properties": {
         "sourceVersion": { "const": 1 },
         "readAt": { "$ref": "#/$defs/timestamp" },
-        "historicalTaskIds": { "type": "array", "maxItems": 100, "uniqueItems": true, "items": { "$ref": "#/$defs/taskId" } }
+        "historicalTaskIds": { "type": "array", "maxItems": 100, "uniqueItems": true, "items": { "$ref": "#/$defs/taskId" } },
+        "disposition": { "enum": ["continue", "reopen", "grandfather-read-only"] },
+        "decidedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "preimageHash": { "$ref": "#/$defs/hash" }
       },
       "additionalProperties": false
     },

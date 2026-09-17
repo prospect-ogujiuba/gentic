@@ -1,9 +1,15 @@
 import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, opendirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, type Dirent } from "node:fs";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { randomUUID } from "node:crypto";
+
+import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 
 import { createWorkflow, isValidTopic, parseWorkflow, type TaskStatus, type Workflow, type WorkflowTask } from "./workflow.ts";
 
 const MAX_FILE_BYTES = 512 * 1024;
+const LOCK_WAIT_MS = 5_000;
+const LOCK_STALE_MS = 30_000;
+const LOCK_RETRY_MS = 20;
 const MAX_TOPICS = 100;
 const MAX_DIRECTORIES = 1_000;
 const MAX_DIRECTORY_ENTRIES = 1_000;
@@ -113,6 +119,41 @@ export function loadWorkflow(cwd: string, topic: string, includeLegacy = true): 
   if (kindFirst.length) throw new Error(`legacy kind-first layout for ${topic} requires explicit migration before use`);
   if (!includeLegacy || !existsSync(manifest)) return undefined;
   return { kind: "legacy", path: legacyManifestPath(topic), workflow: importLegacyWorkflow(root, topic, manifest), storedVersion: 2 };
+}
+
+export async function withWorkflowMutationLock<T>(cwd: string, topic: string, operation: () => Promise<T> | T): Promise<T> {
+  const target = resolve(cwd, workflowPath(topic));
+  return withFileMutationQueue(target, async () => {
+    const lockPath = resolve(cwd, ".model-artifacts/system/logs/pi-swe-mutation.lock");
+    mkdirSync(dirname(lockPath), { recursive: true });
+    const started = Date.now();
+    const lockToken = randomUUID();
+    let descriptor: number | undefined;
+    while (descriptor === undefined) {
+      try {
+        descriptor = openSync(lockPath, "wx", 0o600);
+        writeFileSync(descriptor, JSON.stringify({ token: lockToken, pid: process.pid, acquiredAt: new Date().toISOString() }), "utf8");
+      } catch (error) {
+        if (!isAlreadyExists(error)) throw error;
+        if (isStaleLock(lockPath)) {
+          try { rmSync(lockPath); } catch { /* another process recovered it */ }
+          continue;
+        }
+        if (Date.now() - started >= LOCK_WAIT_MS) throw new Error("workflow mutation lock timed out");
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, LOCK_RETRY_MS));
+      }
+    }
+    try {
+      return await operation();
+    } finally {
+      try { closeSync(descriptor); } finally {
+        try {
+          const owner = JSON.parse(readFileSync(lockPath, "utf8")) as { token?: string };
+          if (owner.token === lockToken) rmSync(lockPath);
+        } catch { /* lock may have been recovered */ }
+      }
+    }
+  });
 }
 
 export function saveWorkflow(cwd: string, workflow: Workflow, expectedRevision?: number): string {
@@ -372,4 +413,10 @@ function safePath(root: string, path: string): string {
   return absolute;
 }
 
+function isAlreadyExists(error: unknown): boolean {
+  return !!error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "EEXIST";
+}
+function isStaleLock(path: string): boolean {
+  try { return Date.now() - statSync(path).mtimeMs > LOCK_STALE_MS; } catch { return false; }
+}
 function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }

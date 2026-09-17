@@ -30,7 +30,7 @@ test("operator documentation covers the complete managed lifecycle and trust bou
     /source-changing verification[^]*remediation/i,
     /non-PTY[^]*\/swe work inspect[^]*\/swe work runs/i,
     /interactive-shell `?\/attach`? does not apply/i,
-    /v1[^]*first mutation[^]*atomic/i,
+    /v1[^]*explicit audited migration[^]*no start, resume, or ordinary service call upgrades/i,
     /legacy[^]*layout conflict/i,
     /commit, push, deploy, release[^]*separate authorization/i,
   ]) assert.match(docs, required);
@@ -73,7 +73,7 @@ test("deterministic behavioral fixtures cover every final-phase adversarial fami
     "test/pi-swe-closeout.test.ts",
   ].map(read).join("\n");
   for (const behavior of [
-    /v1 reads are non-mutating.*upgrades atomically/i,
+    /v1 reads are non-mutating.*implicit service mutation fails closed pending explicit migration/i,
     /canonical and legacy artifact layouts cannot silently shadow/i,
     /dirty bytes.*index untouched/i,
     /untracked inputs are explicit/i,
