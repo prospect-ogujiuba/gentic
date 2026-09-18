@@ -15,6 +15,11 @@ import {
 } from "../extensions/pi-swe/src/cutover.ts";
 import { createWorkflow } from "../extensions/pi-swe/src/workflow.ts";
 
+const CANONICAL_WORKFLOW_CONTRACT = { revision: 6, hash: "sha256:3894b64f481fc360ba799bba914eeb08f88e1f85b18fad6d33b5e2e25c47f78f" } as const;
+const CANONICAL_MIGRATION_CONTRACT = { revision: 6, hash: "sha256:8b28d01b0ca3feb60e0a139cad5256e8301f0c69c5c6f8f9791ed6c659abe134" } as const;
+const CANONICAL_ACTIVATION_CONTRACT = { revision: 6, hash: "sha256:e6efba1a17d67dc23e60ffc9bac8095fa148fc84315b586bdc7540243cfb9efb" } as const;
+const canonicalWorkflow = JSON.parse(readFileSync(new URL("../.model-artifacts/initiatives/swe-production-rollout/workflow.json", import.meta.url), "utf8")) as ReturnType<typeof createWorkflow>;
+
 const releaseChecks = () => CUTOVER_RELEASE_CHECK_MANIFEST.map(({ name }) => ({ name, passed: true }));
 
 const passingObservation = (): CutoverReadinessObservation => ({
@@ -47,32 +52,33 @@ function git(cwd: string, ...args: string[]): string {
   return result.stdout.trim();
 }
 
-function qualifiedWorkflow() {
-  const now = "2026-01-01T00:00:00.000Z";
-  const workflow = createWorkflow({
-    topic: "swe-production-rollout",
-    goal: "qualify cutover",
-    now,
-    tasks: [
-      { id: "migration-qualification", title: "migration", writeScope: ["src/**"], nonGoals: [], verificationDecision: { kind: "manual", rationale: "fixture", decidedBy: "fixture", at: now } },
-      { id: "activation-qualification", title: "activation", dependsOn: ["migration-qualification"], writeScope: ["src/**"], nonGoals: [], verificationDecision: { kind: "manual", rationale: "fixture", decidedBy: "fixture", at: now } },
-      { id: "cutover-readiness", title: "cutover", dependsOn: ["activation-qualification"], writeScope: ["src/**"], nonGoals: [], verificationDecision: { kind: "manual", rationale: "fixture", decidedBy: "fixture", at: now } },
-    ],
-  });
-  workflow.tasks[0]!.status = "complete";
-  workflow.tasks[0]!.phase = "historical";
-  workflow.tasks[1]!.status = "complete";
-  workflow.tasks[1]!.phase = "historical";
+function qualifiedWorkflow(): ReturnType<typeof createWorkflow> {
+  const workflow = structuredClone(canonicalWorkflow);
+  assert.deepEqual(workflow.contract, CANONICAL_WORKFLOW_CONTRACT);
+  for (const [id, contract] of [
+    ["migration-qualification", CANONICAL_MIGRATION_CONTRACT],
+    ["activation-qualification", CANONICAL_ACTIVATION_CONTRACT],
+  ] as const) {
+    const task = workflow.tasks.find((candidate) => candidate.id === id);
+    assert.ok(task);
+    assert.deepEqual(task.contract, contract);
+    task.status = "complete";
+    task.phase = "historical";
+  }
   return workflow;
 }
 
-function createQualifiedRepository(prefix = "pi-swe-cutover-"): string {
+function createQualifiedRepository(prefix = "pi-swe-cutover-", mutate?: (workflow: ReturnType<typeof createWorkflow>) => void): string {
   const cwd = mkdtempSync(join(tmpdir(), prefix));
-  writeJson(cwd, ".model-artifacts/initiatives/swe-production-rollout/workflow.json", qualifiedWorkflow());
+  const workflow = qualifiedWorkflow();
+  mutate?.(workflow);
+  writeJson(cwd, ".model-artifacts/initiatives/swe-production-rollout/workflow.json", workflow);
   writeFileSync(join(cwd, "tracked.txt"), "clean\n");
   git(cwd, "init", "-q");
   git(cwd, "config", "user.name", "Cutover Test");
   git(cwd, "config", "user.email", "cutover@example.invalid");
+  git(cwd, "config", "maintenance.auto", "false");
+  git(cwd, "config", "gc.auto", "0");
   git(cwd, "add", ".");
   git(cwd, "commit", "-qm", "fixture");
   return cwd;
@@ -182,6 +188,56 @@ test("repository inspection is deterministic and read-only", () => {
     assert.deepEqual(tree(cwd), before);
   } finally {
     rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test("repository inspection requires exact canonical workflow and prerequisite contract identities", () => {
+  const wrongHash = `sha256:${"a".repeat(64)}`;
+  const cases: Array<[string, (workflow: ReturnType<typeof createWorkflow>) => void]> = [
+    ["substituted workflow contract", (workflow) => {
+      workflow.contract = { revision: 7, hash: wrongHash };
+      for (const task of workflow.tasks) delete (task as Partial<typeof task>).contract;
+    }],
+    ["missing workflow contract", (workflow) => { delete (workflow as Partial<typeof workflow>).contract; }],
+    ["wrong workflow revision", (workflow) => { workflow.contract.revision = 5; }],
+    ["wrong workflow hash", (workflow) => {
+      workflow.contract.hash = wrongHash;
+      for (const task of workflow.tasks) delete (task as Partial<typeof task>).contract;
+    }],
+    ["missing migration task contract", (workflow) => {
+      const task = workflow.tasks.find(({ id }) => id === "migration-qualification")!;
+      delete (task as Partial<typeof task>).contract;
+    }],
+    ["wrong migration task revision", (workflow) => {
+      workflow.tasks.find(({ id }) => id === "migration-qualification")!.contract.revision = 5;
+    }],
+    ["wrong migration task hash", (workflow) => {
+      const task = workflow.tasks.find(({ id }) => id === "migration-qualification")!;
+      task.title = "substituted migration qualification";
+      delete (task as Partial<typeof task>).contract;
+    }],
+    ["valid migration and substituted activation task", (workflow) => {
+      const task = workflow.tasks.find(({ id }) => id === "activation-qualification")!;
+      task.title = "substituted activation qualification";
+      delete (task as Partial<typeof task>).contract;
+    }],
+  ];
+
+  for (const [name, mutate] of cases) {
+    const cwd = createQualifiedRepository(`pi-swe-cutover-contract-${name.replaceAll(" ", "-")}-`, mutate);
+    try {
+      const before = tree(cwd);
+      const report = inspectCutoverReadiness(cwd, inspectionInput());
+      const output = formatCutoverReadiness(report);
+      assert.equal(report.ready, false, name);
+      assert.equal(report.activatesRuntime, false, name);
+      assert.equal((output.match(/^Next action:/gm) ?? []).length, 1, name);
+      assert.equal(Buffer.byteLength(output) <= 4096, true, name);
+      assert.doesNotMatch(output, /sha256:|substituted migration|substituted activation|stack/i, name);
+      assert.deepEqual(tree(cwd), before, name);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
   }
 });
 

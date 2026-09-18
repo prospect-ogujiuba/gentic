@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, opendirSync, realpathSync, type Dirent } from "node:fs";
+import { existsSync, lstatSync, opendirSync, readFileSync, realpathSync, type Dirent } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -14,6 +14,11 @@ const MAX_SCAN_DEPTH = 8;
 const MAX_GIT_OUTPUT_BYTES = 64 * 1024;
 const MAX_GIT_PATH_BYTES = 4 * 1024;
 const GIT_TIMEOUT_MS = 5_000;
+const CANONICAL_WORKFLOW_CONTRACT = { revision: 6, hash: "sha256:3894b64f481fc360ba799bba914eeb08f88e1f85b18fad6d33b5e2e25c47f78f" } as const;
+const CANONICAL_PREREQUISITE_CONTRACTS = {
+  "migration-qualification": { revision: 6, hash: "sha256:8b28d01b0ca3feb60e0a139cad5256e8301f0c69c5c6f8f9791ed6c659abe134" },
+  "activation-qualification": { revision: 6, hash: "sha256:e6efba1a17d67dc23e60ffc9bac8095fa148fc84315b586bdc7540243cfb9efb" },
+} as const;
 
 export const CUTOVER_RELEASE_CHECK_MANIFEST = [
   { name: "npm run typecheck", command: "npm", args: ["run", "typecheck"] },
@@ -116,13 +121,18 @@ export function inspectCutoverReadiness(cwd: string, input: CutoverInspectionInp
     const git = inspectGit(root);
     const located = loadWorkflow(root, CONTROLLING_TOPIC, false);
     if (!located || located.kind !== "native" || located.storedVersion !== 2) return invalidReport();
+    const rawAuthority = JSON.parse(readFileSync(resolve(root, located.path), "utf8")) as unknown;
+    if (!hasCanonicalPrerequisiteAuthority(rawAuthority, located.workflow)) return invalidReport();
     const topics = listWorkflowTopics(root);
     const workflows = topics.map((topic) => ({ topic, workflow: loadWorkflow(root, topic, false)?.workflow }));
     if (workflows.some((item) => !item.workflow)) return invalidReport();
     const activeWorkflowTopics = workflows
       .filter((item) => item.workflow?.status === "active" && item.workflow.activeTask)
       .map((item) => item.topic);
-    const taskComplete = (id: string): boolean => located.workflow.tasks.some((task) => task.id === id && task.status === "complete");
+    const taskComplete = (id: keyof typeof CANONICAL_PREREQUISITE_CONTRACTS): boolean => {
+      const expected = CANONICAL_PREREQUISITE_CONTRACTS[id];
+      return located.workflow.tasks.some((task) => task.id === id && task.status === "complete" && exactContract(task.contract, expected));
+    };
     const migrationAuditClean = inventoryWorkflowMigrations(root).complete;
     const recoveryClean = workflows.every((item) => !item.workflow?.orchestration.activeRun) && !hasRecoveryMarkers(root, git.commonDirectory);
     return evaluateCutoverReadiness({
@@ -176,6 +186,30 @@ function invalidReport(): CutoverReadinessReport {
     ],
     nextAction: failed.nextAction,
   };
+}
+
+function hasCanonicalPrerequisiteAuthority(raw: unknown, workflow: { contract: { revision: number; hash: string }; tasks: Array<{ id: string; status: string; contract: { revision: number; hash: string } }> }): boolean {
+  if (!record(raw) || !exactContract(raw.contract, CANONICAL_WORKFLOW_CONTRACT) || !exactContract(workflow.contract, CANONICAL_WORKFLOW_CONTRACT)) return false;
+  const rawTasks = raw.tasks;
+  if (!Array.isArray(rawTasks)) return false;
+  return Object.entries(CANONICAL_PREREQUISITE_CONTRACTS).every(([id, expected]) => {
+    const rawMatches = rawTasks.filter((task) => record(task) && task.id === id);
+    const parsedMatches = workflow.tasks.filter((task) => task.id === id);
+    return rawMatches.length === 1
+      && parsedMatches.length === 1
+      && rawMatches[0]!.status === "complete"
+      && exactContract(rawMatches[0]!.contract, expected)
+      && parsedMatches[0]!.status === "complete"
+      && exactContract(parsedMatches[0]!.contract, expected);
+  });
+}
+
+function exactContract(value: unknown, expected: { revision: number; hash: string }): boolean {
+  return record(value) && value.revision === expected.revision && value.hash === expected.hash;
+}
+
+function record(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function validObservation(value: CutoverReadinessObservation): boolean {
