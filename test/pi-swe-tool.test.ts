@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
 
-import { inventoryWorkflowMigrations } from "../extensions/pi-swe/src/migration.ts";
+import { inventoryWorkflowMigrations, renderWorkflowMigrationAudit } from "../extensions/pi-swe/src/migration.ts";
 import { listWorkflowTopics } from "../extensions/pi-swe/src/store.ts";
 import { createWorkflow, reduceWorkflow, type StageReport } from "../extensions/pi-swe/src/workflow.ts";
 import { registerSweWorkflowTool } from "../extensions/pi-swe/src/tool.ts";
@@ -371,7 +371,9 @@ test("tool migration audit is read-only and apply requires a complete exact oper
     const before = readFileSync(incompletePath, "utf8");
     const execute = toolHarness(cwd);
     const audit = await execute({ action: "migration-audit" });
-    assert.match(audit.content[0].text, /tool-legacy: native-v1/);
+    const expectedAudit = inventoryWorkflowMigrations(cwd);
+    assert.equal(audit.content[0].text, renderWorkflowMigrationAudit(expectedAudit));
+    assert.ok(audit.content[0].text.includes(`audit schema: ${expectedAudit.audit.schemaVersion}\naudit hash: ${expectedAudit.audit.hash}\naudit payload: ${expectedAudit.audit.payload}`));
     assert.equal(readFileSync(incompletePath, "utf8"), before);
     await assert.rejects(() => execute({ action: "migrate", topic: "tool-history" }), /complete explicit migrationAuthorization/);
     await assert.rejects(() => execute({ action: "migrate", topic: "tool-legacy" }), /complete explicit migrationAuthorization/);

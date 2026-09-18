@@ -4,7 +4,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { coordinatedActiveTodo } from "../../../src/lifecycle-coordination.ts";
 import { parseGate1Authorization, type Gate1Authorization } from "../../../src/swe-migration-record.ts";
 import { loadWorkflow, resolveTopic } from "./store.ts";
-import { applyWorkflowMigration, applyWorkflowMigrationBatch, inventoryWorkflowMigrations, planWorkflowMigration, recoverWorkflowMigration, rollbackWorkflowMigration, type WorkflowMigrationDisposition } from "./migration.ts";
+import { applyWorkflowMigration, applyWorkflowMigrationBatch, inventoryWorkflowMigrations, planWorkflowMigration, recoverWorkflowMigration, renderWorkflowMigrationAudit, rollbackWorkflowMigration, type WorkflowMigrationDisposition } from "./migration.ts";
 import { WorkflowMutationService } from "./service.ts";
 import { identityFromContext, renderRunTails, sweRuntimeRegistry, WorkflowControlService } from "./ux.ts";
 import { reduceWorkflow, type Workflow, type WorkflowApproach, type WorkflowTask } from "./workflow.ts";
@@ -63,8 +63,7 @@ export function registerSweCommand(pi: ExtensionAPI): void {
           const operation = args[1] ?? "audit";
           if (operation === "audit") {
             const report = inventoryWorkflowMigrations(ctx.cwd);
-            const lines = report.entries.slice(0, 100).map((entry) => `- ${entry.topic}: ${entry.classification}; next: ${entry.guidance ?? entry.action}`);
-            ctx.ui.notify(`pi-swe migration audit (${report.entries.length} topics)\naudit schema: ${report.audit.schemaVersion}\naudit hash: ${report.audit.hash}\naudit payload: ${report.audit.payload}\n${lines.join("\n") || "- no workflow migration candidates"}`, report.complete ? "info" : "warning");
+            ctx.ui.notify(renderWorkflowMigrationAudit(report), report.complete ? "info" : "warning");
             return;
           }
           const selectedTopics = (args[2] ?? "").split(",").map((value) => value.trim()).filter(Boolean);

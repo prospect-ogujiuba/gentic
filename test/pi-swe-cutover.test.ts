@@ -705,6 +705,16 @@ test("disposable candidate checkout rehearses exhaustive migration, production e
     }
 
     const initial = inventoryWorkflowMigrations(cwd);
+    for (const topic of ["active", "historical-import"]) {
+      const row = initial.audit.rows.find((candidate) => candidate.topic === topic)!;
+      assert.equal(row.ownership, "live", topic);
+      assert.equal(row.action, "block", topic);
+      assert.equal(row.proposedDisposition, "block", topic);
+    }
+    writeJson(cwd, ".model-artifacts/initiatives/active/workflow.json", legacyWorkflowFixture("active", "paused"));
+    const historicalManifestPath = ".model-artifacts/initiatives/historical-import/specs/manifest.json";
+    const historicalManifest = JSON.parse(readFileSync(join(cwd, historicalManifestPath), "utf8"));
+    writeJson(cwd, historicalManifestPath, { ...historicalManifest, status: "paused" });
     for (const fixture of rehearsalCorpus.cases.filter((item) => item.remediation)) {
       const entry = initial.entries.find((candidate) => candidate.topic === fixture.id)!;
       assert.ok(entry, fixture.id);

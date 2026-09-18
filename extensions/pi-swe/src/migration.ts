@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
-import { closeSync, constants, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, opendirSync, readSync, realpathSync, renameSync, rmSync, writeFileSync, type Dirent } from "node:fs";
+import { createHash, randomBytes } from "node:crypto";
+import { closeSync, constants, existsSync, fstatSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, opendirSync, readSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync, type Dirent } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 
 import { loadWorkflow, saveWorkflow, withWorkflowMutationLock, workflowPath } from "./store.ts";
@@ -66,7 +66,10 @@ export type WorkflowMigrationBlocker =
   | "malformed-workflow"
   | "topic-mismatch"
   | "unsupported-manifest-version"
-  | "unsupported-workflow-version";
+  | "unsupported-workflow-version"
+  | "live-workflow-authority"
+  | "unknown-workflow-ownership"
+  | "controlling-workflow-excluded";
 
 export type WorkflowMigrationInventoryEntry = {
   topic: string;
@@ -89,9 +92,10 @@ export type WorkflowMigrationAuditRow = {
   blocker: WorkflowMigrationBlocker | null;
   proposedDisposition: "continue" | "operator-review" | "none" | "block" | "excluded";
   controllingExcluded: boolean;
+  rollbackEvidencePath: string | null;
   sourcePaths: string[];
 };
-export type WorkflowMigrationAudit = { schemaVersion: 1; payload: string; hash: string; rows: WorkflowMigrationAuditRow[] };
+export type WorkflowMigrationAudit = { schemaVersion: 2; payload: string; hash: string; rows: WorkflowMigrationAuditRow[] };
 export type WorkflowMigrationInventory = {
   schemaVersion: 1;
   complete: boolean;
@@ -145,12 +149,13 @@ export function inventoryWorkflowMigrations(cwd: string, options: WorkflowMigrat
     .sort((a, b) => a.topic.localeCompare(b.topic));
   const totals = emptyTotals();
   for (const entry of entries) totals[entry.classification] += 1;
+  const audit = buildWorkflowMigrationAudit(root, entries, bounds.maxFileBytes);
   const report: WorkflowMigrationInventory = {
     schemaVersion: 1,
-    complete: entries.every((entry) => entry.action === "none"),
+    complete: audit.rows.every((row) => row.action === "none" || row.controllingExcluded),
     entries,
     totals,
-    audit: buildWorkflowMigrationAudit(root, entries, bounds.maxFileBytes),
+    audit,
   };
   if (Buffer.byteLength(JSON.stringify(report)) > bounds.maxReportBytes) throw new Error(`workflow inventory report byte limit exceeded: ${bounds.maxReportBytes}`);
   return report;
@@ -422,26 +427,60 @@ function buildWorkflowMigrationAudit(root: string, entries: WorkflowMigrationInv
         const version = read.value.version ?? read.value.schemaVersion;
         storedVersion = Number.isSafeInteger(version) ? version as number : null;
         state = typeof read.value.status === "string" && ["draft", "paused", "active", "blocked", "complete"].includes(read.value.status) ? read.value.status : "unknown";
-        ownership = state === "active" || record(read.value.orchestration) && record(read.value.orchestration.activeRun) ? "live" : "inactive";
+        try {
+          const located = loadWorkflow(root, entry.topic, true);
+          ownership = located && hasLiveWorkflowAuthority(read.value, located.workflow) ? "live" : located ? "inactive" : "unknown";
+        } catch { ownership = "unknown"; }
       }
     }
     const controllingExcluded = entry.topic === "swe-production-rollout";
     if (controllingExcluded) ownership = "controlling-excluded";
     const completed = entry.classification === "native-v1-complete" || entry.classification === "historical-contracts-complete";
-    const migratable = ["native-v1", "historical-contracts"].includes(entry.classification);
+    const migratable = ["native-v1", "native-v1-complete", "historical-contracts", "historical-contracts-complete"].includes(entry.classification);
     const current = entry.classification === "current-v2" || entry.classification === "current-v2-complete";
-    const proposedDisposition: WorkflowMigrationAuditRow["proposedDisposition"] = controllingExcluded ? "excluded" : completed ? "operator-review" : migratable ? "continue" : current ? "none" : "block";
-    return { topic: entry.topic, classification: entry.classification, action: entry.action, storedVersion, state, ownership, contentHash: entry.contentHash ?? null, blocker: entry.blocker ?? null, proposedDisposition, controllingExcluded, sourcePaths: [...entry.sourcePaths] };
+    const authorityBlocked = ownership === "live" || ownership === "unknown";
+    const action: WorkflowMigrationAction = controllingExcluded || authorityBlocked ? "block" : entry.action;
+    const blocker: WorkflowMigrationBlocker | null = controllingExcluded ? "controlling-workflow-excluded" : ownership === "live" ? "live-workflow-authority" : ownership === "unknown" ? entry.blocker ?? "unknown-workflow-ownership" : entry.blocker ?? null;
+    const proposedDisposition: WorkflowMigrationAuditRow["proposedDisposition"] = controllingExcluded ? "excluded" : authorityBlocked ? "block" : completed ? "operator-review" : migratable ? "continue" : current ? "none" : "block";
+    const rollbackEvidencePath = migratable && !controllingExcluded ? workflowMigrationReceiptPath(entry.topic) : null;
+    return { topic: entry.topic, classification: entry.classification, action, storedVersion, state, ownership, contentHash: entry.contentHash ?? null, blocker, proposedDisposition, controllingExcluded, rollbackEvidencePath, sourcePaths: [...entry.sourcePaths] };
   }).sort((a, b) => a.topic.localeCompare(b.topic));
-  const payload = stableJson({ schemaVersion: 1, rows });
+  const payload = stableJson({ schemaVersion: 2, rows });
   if (Buffer.byteLength(payload) > 128 * 1024) throw new Error("workflow migration audit payload byte limit exceeded: 131072");
-  return { schemaVersion: 1, payload, hash: hashBytes(Buffer.from(payload)), rows };
+  return { schemaVersion: 2, payload, hash: hashBytes(Buffer.from(payload)), rows };
+}
+
+function hasLiveWorkflowAuthority(raw: Record<string, unknown>, workflow: Workflow): boolean {
+  const rawTasks = Array.isArray(raw.tasks) ? raw.tasks : [];
+  const rawOrchestration = record(raw.orchestration) ? raw.orchestration : undefined;
+  return raw.status === "active"
+    || typeof raw.activeTask === "string"
+    || rawTasks.some((task) => record(task) && task.status === "active")
+    || record(raw.activeRun)
+    || record(raw.lease)
+    || !!rawOrchestration && (record(rawOrchestration.activeRun) || record(rawOrchestration.lease) || record(rawOrchestration.parent) && rawOrchestration.parent.valid === true)
+    || workflow.status === "active"
+    || typeof workflow.activeTask === "string"
+    || workflow.tasks.some((task) => task.status === "active")
+    || !!workflow.orchestration.activeRun
+    || workflow.orchestration.parent?.valid === true;
+}
+
+function assertMigrationAuditAuthority(topic: string, row: WorkflowMigrationAuditRow | undefined): void {
+  if (row?.controllingExcluded) throw new Error(`migration refused: controlling workflow ${topic} is excluded`);
+  if (row?.ownership === "live") throw new Error(`migration refused: ${topic} has live workflow authority`);
+  if (!row || row.ownership === "unknown") throw new Error(`migration refused: ${topic} workflow ownership is unknown`);
+}
+
+export function renderWorkflowMigrationAudit(report: WorkflowMigrationInventory): string {
+  const lines = report.audit.rows.slice(0, 100).map((row) => `${row.topic}: ${row.classification}; ownership=${row.ownership}; action=${row.action}; next=${row.proposedDisposition}`);
+  return `migration audit (${report.audit.rows.length} topics)\naudit schema: ${report.audit.schemaVersion}\naudit hash: ${report.audit.hash}\naudit payload: ${report.audit.payload}\n${lines.join("\n") || "no workflow migration candidates"}`;
 }
 
 function emptyInventory(): WorkflowMigrationInventory {
   const rows: WorkflowMigrationAuditRow[] = [];
-  const payload = stableJson({ schemaVersion: 1, rows });
-  return { schemaVersion: 1, complete: true, entries: [], totals: emptyTotals(), audit: { schemaVersion: 1, payload, hash: hashBytes(Buffer.from(payload)), rows } };
+  const payload = stableJson({ schemaVersion: 2, rows });
+  return { schemaVersion: 1, complete: true, entries: [], totals: emptyTotals(), audit: { schemaVersion: 2, payload, hash: hashBytes(Buffer.from(payload)), rows } };
 }
 
 function emptyTotals(): Record<WorkflowMigrationClassification, number> {
@@ -488,12 +527,14 @@ export type WorkflowMigrationPlan = {
 };
 export type WorkflowMigrationReceipt = SweMigrationReceipt;
 export type WorkflowMigrationAuthorization = Gate1Authorization;
-export type WorkflowMigrationFaultStage = "before-archive" | "archive-written" | "journal-prepared" | "canonical-removed" | "workflow-written" | "receipt-written" | "before-file-fsync" | "before-directory-fsync" | "before-unlink";
+export type WorkflowMigrationFaultStage = "before-archive" | "archive-written" | "journal-prepared" | "canonical-removed" | "workflow-written" | "receipt-written" | "before-file-fsync" | "before-exclusive-publish" | "exclusive-published" | "before-directory-fsync" | "before-unlink";
 type WorkflowMigrationFault = (stage: WorkflowMigrationFaultStage, path?: string) => void;
 
 /** Build an executable, preimage-bound decision without writing repository state. */
 export function planWorkflowMigration(cwd: string, topic: string, options: { disposition?: WorkflowMigrationDisposition; authorization: Gate1Authorization; now?: string }): WorkflowMigrationPlan {
   const inventory = inventoryWorkflowMigrations(cwd);
+  const auditRow = inventory.audit.rows.find((candidate) => candidate.topic === topic);
+  assertMigrationAuditAuthority(topic, auditRow);
   if (options.authorization.auditHash !== inventory.audit.hash) throw new Error(`migration authorization audit hash mismatch: expected ${inventory.audit.hash}`);
   const entry = inventory.entries.find((candidate) => candidate.topic === topic);
   if (!entry) throw new Error(`workflow ${topic} was not found in migration inventory`);
@@ -563,6 +604,7 @@ export async function applyWorkflowMigration(cwd: string, plan: WorkflowMigratio
   const disposition = plan.disposition as Exclude<WorkflowMigrationDisposition, "operator-review">;
   return withWorkflowMutationLock(cwd, plan.topic, async () => {
     assertNoArtifactMigrationActivity(cwd);
+    assertMigrationAuditAuthority(plan.topic, inventoryWorkflowMigrations(cwd).audit.rows.find((candidate) => candidate.topic === plan.topic));
     const receiptPath = workflowMigrationReceiptPath(plan.topic);
     const receiptAbsolute = resolve(cwd, receiptPath);
     if (Date.parse(plan.authorization.rollbackRetentionUntil) < Date.now()) throw new Error("migration authorization rollback retention has expired");
@@ -640,6 +682,7 @@ export async function recoverWorkflowMigration(cwd: string, topic: string): Prom
   return withWorkflowMutationLock(cwd, topic, async () => {
     const journalAbsolute = resolve(cwd, workflowMigrationJournalPath(topic));
     const receiptAbsolute = resolve(cwd, workflowMigrationReceiptPath(topic));
+    cleanupRecoveryTemporaryFiles(dirname(journalAbsolute));
     if (!existsSync(journalAbsolute)) {
       if (!existsSync(receiptAbsolute)) throw new Error(`no SWE migration recovery record exists for ${topic}`);
       const receipt = readMigrationReceipt(resolve(cwd), receiptAbsolute);
@@ -748,11 +791,31 @@ function readMigrationReceipt(root: string, path: string): WorkflowMigrationRece
 function writeJsonExclusive(path: string, value: unknown, fault?: WorkflowMigrationFault): void {
   const content = Buffer.from(`${JSON.stringify(value, null, 2)}\n`);
   if (content.length > 1024 * 1024) throw new Error("workflow migration recovery record exceeds 1048576 bytes");
-  ensureDurableDirectory(dirname(path));
-  const descriptor = openSync(path, "wx", 0o600);
-  let written = false;
-  try { writeFileSync(descriptor, content); fault?.("before-file-fsync", path); fsyncSync(descriptor); written = true; } finally { closeSync(descriptor); }
-  if (written) { fault?.("before-directory-fsync", dirname(path)); fsyncDirectory(dirname(path)); }
+  const directory = dirname(path);
+  ensureDurableDirectory(directory);
+  cleanupRecoveryTemporaryFiles(directory);
+  const temporary = resolve(directory, `.pi-swe-recovery-tmp-${randomBytes(16).toString("hex")}`);
+  const noFollow = "O_NOFOLLOW" in constants ? constants.O_NOFOLLOW : 0;
+  let descriptor: number | undefined;
+  try {
+    descriptor = openSync(temporary, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | noFollow, 0o600);
+    writeFileSync(descriptor, content);
+    fault?.("before-file-fsync", path);
+    fsyncSync(descriptor);
+    closeSync(descriptor);
+    descriptor = undefined;
+    fault?.("before-exclusive-publish", path);
+    linkSync(temporary, path);
+    fault?.("exclusive-published", path);
+    fault?.("before-directory-fsync", directory);
+    fsyncDirectory(directory);
+  } finally {
+    if (descriptor !== undefined) try { closeSync(descriptor); } catch { /* noop */ }
+    if (existsSync(temporary)) {
+      rmSync(temporary);
+      fsyncDirectory(directory);
+    }
+  }
 }
 function writeJsonAtomic(path: string, value: unknown): void {
   const content = Buffer.from(`${JSON.stringify(value, null, 2)}\n`);
@@ -774,6 +837,17 @@ function assertJournalPriorArchive(root: string, journal: SweMigrationJournal): 
   if (!existsSync(archiveAbsolute)) throw new Error("recovery refused: authenticated prior migration attempt is missing");
   const archived = readMigrationReceipt(root, archiveAbsolute);
   if (!receiptEquals(archived, journal.priorReceipt)) throw new Error("recovery refused: archived prior receipt does not match the reapply journal");
+}
+function cleanupRecoveryTemporaryFiles(directory: string): void {
+  if (!existsSync(directory)) return;
+  for (const name of readdirSync(directory)) {
+    if (!/^\.pi-swe-recovery-tmp-[a-f0-9]{32}$/.test(name)) continue;
+    const path = resolve(directory, name);
+    const stat = lstatSync(path);
+    if (stat.isSymbolicLink() || !stat.isFile()) throw new Error(`unsafe SWE migration recovery temporary: ${path}`);
+    rmSync(path);
+    fsyncDirectory(directory);
+  }
 }
 function ensureDurableDirectory(directory: string): void {
   if (existsSync(directory)) {

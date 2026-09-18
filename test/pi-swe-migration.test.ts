@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -50,7 +50,7 @@ function workflow(topic: string, version: number, status = "paused"): Record<str
   });
 }
 
-function legacyManifest(topic: string, status = "active"): Record<string, unknown> {
+function legacyManifest(topic: string, status = "paused"): Record<string, unknown> {
   const contractRoot = `.model-artifacts/initiatives/${topic}/plans/revisions/r1`;
   return {
     schemaVersion: 2, topic, status, updatedAt: at,
@@ -115,19 +115,51 @@ test("production audit snapshot is canonical, bounded, complete, and sensitive-c
   assert.equal(first.payload.includes(cwd), false);
   assert.equal(first.payload.includes("never-audit-me"), false);
   const canonical = JSON.parse(first.payload) as { schemaVersion: number; rows: Array<Record<string, unknown>> };
-  assert.equal(canonical.schemaVersion, 1);
+  assert.equal(canonical.schemaVersion, 2);
   assert.deepEqual(canonical.rows.map((row) => row.topic), ["active", "done", "swe-production-rollout", "unsupported"]);
   const active = canonical.rows[0]!;
-  assert.deepEqual({ classification: active.classification, storedVersion: active.storedVersion, state: active.state, ownership: active.ownership, proposedDisposition: active.proposedDisposition }, { classification: "native-v1", storedVersion: 1, state: "active", ownership: "live", proposedDisposition: "continue" });
+  assert.deepEqual({ classification: active.classification, storedVersion: active.storedVersion, state: active.state, ownership: active.ownership, action: active.action, blocker: active.blocker, proposedDisposition: active.proposedDisposition, rollbackEvidencePath: active.rollbackEvidencePath }, { classification: "native-v1", storedVersion: 1, state: "active", ownership: "live", action: "block", blocker: "live-workflow-authority", proposedDisposition: "block", rollbackEvidencePath: workflowMigrationReceiptPath("active") });
   const done = canonical.rows[1]!;
   assert.equal(done.proposedDisposition, "operator-review");
+  assert.equal(done.rollbackEvidencePath, workflowMigrationReceiptPath("done"));
   const controlling = canonical.rows[2]!;
   assert.equal(controlling.controllingExcluded, true);
   assert.equal(controlling.ownership, "controlling-excluded");
   assert.equal(controlling.proposedDisposition, "excluded");
+  assert.equal(controlling.action, "block");
+  assert.equal(controlling.blocker, "controlling-workflow-excluded");
+  assert.equal(controlling.rollbackEvidencePath, null);
   const unsupported = canonical.rows[3]!;
   assert.equal(unsupported.action, "block");
   assert.equal(unsupported.blocker, "unsupported-workflow-version");
+  assert.equal(unsupported.rollbackEvidencePath, null);
+});
+
+test("audit authority detects and blocks active, task-owned, leased, parent-owned, unknown, and controlling workflows", () => {
+  const cwd = repository();
+  writeJson(cwd, ".model-artifacts/initiatives/status-live/workflow.json", workflow("status-live", 1, "active"));
+  const taskLive = workflow("task-live", 1);
+  (taskLive.tasks as Array<Record<string, unknown>>)[0]!.status = "active";
+  (taskLive as Record<string, unknown>).activeTask = "T1";
+  writeJson(cwd, ".model-artifacts/initiatives/task-live/workflow.json", taskLive);
+  const lease = workflow("lease-live", 2);
+  (lease.orchestration as Record<string, unknown>).activeRun = { id: "lease", runId: "run", ownerId: "owner", stage: "plan-review", fence: 1, acquiredAt: at, expiresAt: "2027-02-01T00:00:00.000Z" };
+  writeJson(cwd, ".model-artifacts/initiatives/lease-live/workflow.json", lease);
+  const parent = workflow("parent-live", 2);
+  (parent.orchestration as Record<string, unknown>).parent = { ownerId: "owner", sessionId: "session", runtimeId: "runtime", cwd, claimedAt: at, valid: true };
+  writeJson(cwd, ".model-artifacts/initiatives/parent-live/workflow.json", parent);
+  writeJson(cwd, ".model-artifacts/initiatives/swe-production-rollout/workflow.json", workflow("swe-production-rollout", 1));
+  writeJson(cwd, ".model-artifacts/initiatives/unknown/workflow.json", { version: 99, topic: "unknown" });
+  const rows = new Map(inventoryWorkflowMigrations(cwd).audit.rows.map((row) => [row.topic, row]));
+  for (const topic of ["status-live", "task-live", "lease-live", "parent-live"]) {
+    assert.equal(rows.get(topic)?.ownership, "live");
+    assert.equal(rows.get(topic)?.action, "block");
+    assert.equal(rows.get(topic)?.blocker, "live-workflow-authority");
+    assert.equal(rows.get(topic)?.proposedDisposition, "block");
+  }
+  assert.deepEqual({ ownership: rows.get("swe-production-rollout")?.ownership, action: rows.get("swe-production-rollout")?.action, blocker: rows.get("swe-production-rollout")?.blocker, disposition: rows.get("swe-production-rollout")?.proposedDisposition }, { ownership: "controlling-excluded", action: "block", blocker: "controlling-workflow-excluded", disposition: "excluded" });
+  assert.deepEqual({ ownership: rows.get("unknown")?.ownership, action: rows.get("unknown")?.action, blocker: rows.get("unknown")?.blocker }, { ownership: "unknown", action: "block", blocker: "unsupported-workflow-version" });
+  for (const topic of ["status-live", "task-live", "swe-production-rollout"]) assert.throws(() => planWorkflowMigration(cwd, topic, { authorization: authorization(cwd, topic), now: at }), /live workflow authority|controlling workflow/);
 });
 
 test("inventory reports canonical, kind-first, and mixed-layout ownership without taking pi-artifacts authority", () => {
@@ -335,6 +367,21 @@ test("apply recomputes the complete production audit under lock and rejects drif
   assert.deepEqual(readFileSync(join(cwd, path)), before);
   assert.equal(existsSync(join(cwd, workflowMigrationReceiptPath("audit-bound"))), false);
   assert.equal(existsSync(join(cwd, workflowMigrationReceiptPath("audit-bound").replace("receipt.json", "journal.json"))), false);
+
+  const ownershipRepo = repository();
+  const ownershipPath = ".model-artifacts/initiatives/ownership-drift/workflow.json";
+  const initial = workflow("ownership-drift", 1);
+  writeJson(ownershipRepo, ownershipPath, initial);
+  const ownershipPlan = planWorkflowMigration(ownershipRepo, "ownership-drift", { authorization: authorization(ownershipRepo, "ownership-drift"), now: at });
+  const drifted = structuredClone(initial);
+  drifted.status = "active";
+  (drifted.tasks as Array<Record<string, unknown>>)[0]!.status = "active";
+  drifted.activeTask = "T1";
+  writeJson(ownershipRepo, ownershipPath, drifted);
+  const driftBytes = readFileSync(join(ownershipRepo, ownershipPath));
+  await assert.rejects(() => applyWorkflowMigration(ownershipRepo, ownershipPlan), /live workflow authority/);
+  assert.deepEqual(readFileSync(join(ownershipRepo, ownershipPath)), driftBytes);
+  assert.equal(existsSync(join(ownershipRepo, workflowMigrationReceiptPath("ownership-drift"))), false);
 });
 
 test("receipts and journals fail closed and recovery requires exact embedded identity", async () => {
@@ -465,7 +512,13 @@ test("fsync and unlink interruption seams preserve recoverable ordering", async 
   writeJson(journalRepo, ".model-artifacts/initiatives/fsync-journal/workflow.json", workflow("fsync-journal", 1));
   const journalPlan = planWorkflowMigration(journalRepo, "fsync-journal", { authorization: authorization(journalRepo, "fsync-journal"), now: at });
   await assert.rejects(() => applyWorkflowMigration(journalRepo, journalPlan, { fault: (stage, path) => { if (stage === "before-file-fsync" && path?.endsWith("journal.json")) throw new Error("journal fsync interrupted"); } }), /journal fsync interrupted/);
-  assert.equal((await recoverWorkflowMigration(journalRepo, "fsync-journal")).status, "recovered");
+  await assert.rejects(() => recoverWorkflowMigration(journalRepo, "fsync-journal"), /no SWE migration recovery record/);
+  const recoveryDirectory = dirname(join(journalRepo, workflowMigrationReceiptPath("fsync-journal")));
+  const residual = join(recoveryDirectory, `.pi-swe-recovery-tmp-${"a".repeat(32)}`);
+  writeFileSync(residual, "partial");
+  await assert.rejects(() => recoverWorkflowMigration(journalRepo, "fsync-journal"), /no SWE migration recovery record/);
+  assert.equal(existsSync(residual), false);
+  assert.equal(readdirSync(recoveryDirectory).some((name) => name.startsWith(".pi-swe-recovery-tmp-")), false);
 
   const receiptRepo = repository();
   writeJson(receiptRepo, ".model-artifacts/initiatives/fsync-receipt/workflow.json", workflow("fsync-receipt", 1));
@@ -473,6 +526,7 @@ test("fsync and unlink interruption seams preserve recoverable ordering", async 
   let directorySyncs = 0;
   await assert.rejects(() => applyWorkflowMigration(receiptRepo, receiptPlan, { fault: (stage) => { if (stage === "before-directory-fsync" && ++directorySyncs === 2) throw new Error("receipt directory fsync interrupted"); } }), /receipt directory fsync interrupted/);
   assert.equal((await recoverWorkflowMigration(receiptRepo, "fsync-receipt")).status, "recovered");
+  assert.equal(readdirSync(dirname(join(receiptRepo, workflowMigrationReceiptPath("fsync-receipt")))).some((name) => name.startsWith(".pi-swe-recovery-tmp-")), false);
 
   const unlinkRepo = repository();
   writeJson(unlinkRepo, ".model-artifacts/initiatives/unlink/workflow.json", workflow("unlink", 1));
@@ -483,6 +537,25 @@ test("fsync and unlink interruption seams preserve recoverable ordering", async 
   assert.equal((await recoverWorkflowMigration(unlinkRepo, "unlink")).status, "recovered");
   const retained = JSON.parse(readFileSync(join(unlinkRepo, workflowMigrationReceiptPath("unlink")), "utf8"));
   assert.equal(retained.state, "rolled-back");
+
+  const conflictRepo = repository();
+  writeJson(conflictRepo, ".model-artifacts/initiatives/exclusive-conflict/workflow.json", workflow("exclusive-conflict", 1));
+  const conflictPlan = planWorkflowMigration(conflictRepo, "exclusive-conflict", { authorization: authorization(conflictRepo, "exclusive-conflict"), now: at });
+  const journalPath = workflowMigrationReceiptPath("exclusive-conflict").replace("receipt.json", "journal.json");
+  writeJson(conflictRepo, journalPath, { foreign: true });
+  const conflict = readFileSync(join(conflictRepo, journalPath));
+  await assert.rejects(() => applyWorkflowMigration(conflictRepo, conflictPlan), /unfinished SWE migration/);
+  assert.deepEqual(readFileSync(join(conflictRepo, journalPath)), conflict);
+
+  const racedRepo = repository();
+  writeJson(racedRepo, ".model-artifacts/initiatives/exclusive-race/workflow.json", workflow("exclusive-race", 1));
+  const racedPlan = planWorkflowMigration(racedRepo, "exclusive-race", { authorization: authorization(racedRepo, "exclusive-race"), now: at });
+  const racedJournal = join(racedRepo, workflowMigrationReceiptPath("exclusive-race").replace("receipt.json", "journal.json"));
+  const racedConflict = Buffer.from("foreign-winner\n");
+  await assert.rejects(() => applyWorkflowMigration(racedRepo, racedPlan, { fault: (stage, path) => { if (stage === "before-exclusive-publish" && path === racedJournal) writeFileSync(racedJournal, racedConflict, { flag: "wx" }); } }), /EEXIST|file already exists/);
+  assert.deepEqual(readFileSync(racedJournal), racedConflict);
+  assert.equal(readdirSync(dirname(racedJournal)).some((name) => name.startsWith(".pi-swe-recovery-tmp-")), false);
+  assert.equal(JSON.parse(readFileSync(join(racedRepo, ".model-artifacts/initiatives/exclusive-race/workflow.json"), "utf8")).version, 1);
 });
 
 test("reapply recovery binds exact prior canonical and archived evidence", async () => {

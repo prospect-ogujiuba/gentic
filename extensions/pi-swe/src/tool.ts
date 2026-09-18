@@ -5,7 +5,7 @@ import { Type } from "typebox";
 import { coordinatedActiveTodo } from "../../../src/lifecycle-coordination.ts";
 import type { Gate1Authorization } from "../../../src/swe-migration-record.ts";
 import { buildTaskExecutionPrompt } from "./command.ts";
-import { applyWorkflowMigration, inventoryWorkflowMigrations, planWorkflowMigration, recoverWorkflowMigration, rollbackWorkflowMigration } from "./migration.ts";
+import { applyWorkflowMigration, inventoryWorkflowMigrations, planWorkflowMigration, recoverWorkflowMigration, renderWorkflowMigrationAudit, rollbackWorkflowMigration } from "./migration.ts";
 import { loadWorkflow, resolveTopic, workflowPath } from "./store.ts";
 import { WorkflowMutationService } from "./service.ts";
 import { identityFromContext, renderRunTails, sweRuntimeRegistry, WorkflowControlService } from "./ux.ts";
@@ -87,8 +87,7 @@ export function registerSweWorkflowTool(pi: ExtensionAPI): void {
     async execute(_toolCallId, params: SweWorkflowInput, _signal, onUpdate, ctx) {
       if (params.action === "migration-audit") {
         const report = inventoryWorkflowMigrations(ctx.cwd);
-        const text = report.entries.slice(0, 100).map((entry) => `${entry.topic}: ${entry.classification}; next=${entry.guidance ?? entry.action}`).join("\n") || "no workflow migration candidates";
-        return { content: [{ type: "text" as const, text: `migration audit (${report.entries.length} topics)\n${text}` }], details: { report } };
+        return { content: [{ type: "text" as const, text: renderWorkflowMigrationAudit(report) }], details: { report } };
       }
       if (["status", "inspect", "runs", "dismiss-run"].includes(params.action)) {
         const topic = resolveTopic(ctx.cwd, params.topic);
