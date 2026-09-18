@@ -101,12 +101,18 @@ test("migration command audits read-only and requires keyboard confirmation for 
     assert.match(audit.notifications[0]!, /native-v1-complete/);
     assert.equal(readFileSync(path, "utf8"), before);
 
-    const denied = commandHarness(cwd, { select: "reopen: require fresh v2 final acceptance", confirm: false });
+    const authorization = JSON.stringify({ authorizedBy: "Priz", authorizedAt: "2026-09-18T20:11:12.000Z", auditHash: `sha256:${"a".repeat(64)}`, topicDispositions: { "historical-command": "reopen" }, rollbackRetentionUntil: "2286-11-20T07:17:52.000Z", rationale: "Explicit non-production command fixture authorization." });
+    const missing = commandHarness(cwd, { confirm: true });
+    await missing.handler("migrate apply historical-command");
+    assert.match(missing.notifications.at(-1)!, /cancelled, empty/);
+    assert.equal(readFileSync(path, "utf8"), before);
+
+    const denied = commandHarness(cwd, { input: authorization, confirm: false });
     await denied.handler("migrate apply historical-command");
     assert.match(denied.notifications.at(-1)!, /not confirmed/);
     assert.equal(readFileSync(path, "utf8"), before);
 
-    const accepted = commandHarness(cwd, { select: "reopen: require fresh v2 final acceptance", confirm: true });
+    const accepted = commandHarness(cwd, { input: authorization, confirm: true });
     await accepted.handler("migrate apply historical-command");
     assert.match(accepted.notifications.at(-1)!, /migration applied/);
     const migrated = JSON.parse(readFileSync(path, "utf8"));

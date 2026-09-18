@@ -356,7 +356,7 @@ test("tool status, inspect, and runs use bounded native inspection without attac
   } finally { rmSync(cwd, { recursive: true, force: true }); }
 });
 
-test("tool migration audit is read-only, selected incomplete apply is explicit, and completed disposition cannot be model-authored", async () => {
+test("tool migration audit is read-only and apply requires a complete exact operator authorization", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "pi-swe-tool-migration-"));
   const writeLegacy = (topic: string, status: "paused" | "complete") => {
     const path = join(cwd, ".model-artifacts", "initiatives", topic, "workflow.json");
@@ -372,8 +372,11 @@ test("tool migration audit is read-only, selected incomplete apply is explicit, 
     const audit = await execute({ action: "migration-audit" });
     assert.match(audit.content[0].text, /tool-legacy: native-v1/);
     assert.equal(readFileSync(incompletePath, "utf8"), before);
-    await assert.rejects(() => execute({ action: "migrate", topic: "tool-history" }), /interactive historical-completion disposition/);
-    const applied = await execute({ action: "migrate", topic: "tool-legacy" });
+    await assert.rejects(() => execute({ action: "migrate", topic: "tool-history" }), /complete explicit migrationAuthorization/);
+    await assert.rejects(() => execute({ action: "migrate", topic: "tool-legacy" }), /complete explicit migrationAuthorization/);
+    const migrationAuthorization = { authorizedBy: "Priz", authorizedAt: "2026-09-18T20:11:12.000Z", auditHash: `sha256:${"a".repeat(64)}`, topicDispositions: { "tool-legacy": "continue" as const }, rollbackRetentionUntil: "2286-11-20T07:17:52.000Z", rationale: "Explicit non-production tool fixture authorization." };
+    await assert.rejects(() => execute({ action: "migrate", topic: "tool-legacy", migrationAuthorization: { ...migrationAuthorization, topicDispositions: { other: "continue" } } }), /exactly cover/);
+    const applied = await execute({ action: "migrate", topic: "tool-legacy", migrationAuthorization });
     assert.match(applied.content[0].text, /migration applied/);
     assert.equal(JSON.parse(readFileSync(incompletePath, "utf8")).version, 2);
   } finally { rmSync(cwd, { recursive: true, force: true }); }

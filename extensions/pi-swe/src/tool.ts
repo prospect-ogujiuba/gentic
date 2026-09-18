@@ -3,6 +3,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 import { coordinatedActiveTodo } from "../../../src/lifecycle-coordination.ts";
+import type { Gate1Authorization } from "../../../src/swe-migration-record.ts";
 import { buildTaskExecutionPrompt } from "./command.ts";
 import { applyWorkflowMigration, inventoryWorkflowMigrations, planWorkflowMigration, recoverWorkflowMigration, rollbackWorkflowMigration } from "./migration.ts";
 import { loadWorkflow, resolveTopic, workflowPath } from "./store.ts";
@@ -17,6 +18,15 @@ const Command = Type.Object({
 });
 const Approach = StringEnum(WORKFLOW_APPROACHES);
 const ApproachReasonsSchema = Type.Object(Object.fromEntries(WORKFLOW_APPROACHES.map((approach) => [approach, Type.Optional(Type.String({ minLength: 1, maxLength: 1024 }))])));
+const MigrationDisposition = StringEnum(["continue", "reopen", "grandfather-read-only", "block"] as const);
+const MigrationAuthorization = Type.Object({
+  authorizedBy: Type.String({ minLength: 1, maxLength: 128 }),
+  authorizedAt: Type.String({ minLength: 20, maxLength: 32 }),
+  auditHash: Type.String({ pattern: "^sha256:[a-f0-9]{64}$" }),
+  topicDispositions: Type.Record(Type.String({ pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*)*$" }), MigrationDisposition, { minProperties: 1, maxProperties: 100 }),
+  rollbackRetentionUntil: Type.String({ minLength: 20, maxLength: 32 }),
+  rationale: Type.String({ minLength: 1, maxLength: 2048 }),
+}, { additionalProperties: false });
 const Task = Type.Object({
   id: Type.String({ minLength: 1, maxLength: 64 }),
   title: Type.String({ minLength: 1, maxLength: 256 }),
@@ -44,6 +54,7 @@ export const sweWorkflowParameters = Type.Object({
   tasks: Type.Optional(Type.Array(Task, { minItems: 1, maxItems: 100 })),
   reason: Type.Optional(Type.String({ minLength: 1, maxLength: 2048 })),
   runId: Type.Optional(Type.String({ minLength: 1, maxLength: 128, description: "Exited runtime entry to dismiss; accepted workflow reports are never deleted" })),
+  migrationAuthorization: Type.Optional(MigrationAuthorization),
 });
 
 export type SweWorkflowInput = {
@@ -54,6 +65,7 @@ export type SweWorkflowInput = {
   tasks?: Array<{ id: string; title: string; kind?: "implementation" | "coordination"; dependsOn?: string[]; acceptance?: string[]; approaches: WorkflowApproach[]; approachReasons?: ApproachReasons; writeScope: string[]; nonGoals: string[]; verification?: VerificationCommand[]; verificationDecision?: { kind: "manual"; rationale: string; decidedBy: string; at: string } }>;
   reason?: string;
   runId?: string;
+  migrationAuthorization?: Gate1Authorization;
 };
 
 export function registerSweWorkflowTool(pi: ExtensionAPI): void {
@@ -69,6 +81,7 @@ export function registerSweWorkflowTool(pi: ExtensionAPI): void {
       "For applicable approaches, add corresponding acceptance criteria and planned verification commands wherever an objective check is possible. When automation is not meaningful, block for an explicit manual verification decision instead of inventing a passing command. Users may inspect or override the assessment with swe_workflow status or revise.",
       "Run every planned verification command with the protected bash tool and bind each result with swe_workflow verify in the following tool turn; all planned checks are required before completion.",
       "If implementation discovers a material scope or design change, call swe_workflow revise and reassess every incomplete task before continuing.",
+      "For migrate, pass the user's complete explicit migrationAuthorization record. Never infer or synthesize its actor, times, audit hash, topic dispositions, retention, or rationale.",
     ],
     parameters: sweWorkflowParameters,
     async execute(_toolCallId, params: SweWorkflowInput, _signal, onUpdate, ctx) {
@@ -106,8 +119,13 @@ export function registerSweWorkflowTool(pi: ExtensionAPI): void {
       if (params.action === "migrate") {
         const entry = inventoryWorkflowMigrations(ctx.cwd).entries.find((candidate) => candidate.topic === topic);
         if (!entry) throw new Error(`workflow ${topic} was not found`);
-        if (entry.action === "decide-completed-workflow") throw new Error("completed workflow migration requires an interactive historical-completion disposition through /swe migrate apply");
-        const plan = planWorkflowMigration(ctx.cwd, topic, { disposition: "continue", decidedBy: "model-requested-explicit-selection" });
+        if (!params.migrationAuthorization) throw new Error("migration requires the user's complete explicit migrationAuthorization record");
+        const dispositions = Object.keys(params.migrationAuthorization.topicDispositions);
+        if (dispositions.length !== 1 || dispositions[0] !== topic) throw new Error("migrationAuthorization topic dispositions must exactly cover the selected topic");
+        const disposition = params.migrationAuthorization.topicDispositions[topic];
+        if (disposition === "block" || !disposition) throw new Error("migrationAuthorization does not authorize apply for the selected topic");
+        if (entry.action === "decide-completed-workflow" && !["reopen", "grandfather-read-only"].includes(disposition)) throw new Error("completed workflow migration requires an explicit reopen or grandfather-read-only authorization");
+        const plan = planWorkflowMigration(ctx.cwd, topic, { disposition, authorization: params.migrationAuthorization });
         const outcome = await applyWorkflowMigration(ctx.cwd, plan);
         const located = loadWorkflow(ctx.cwd, topic, false);
         if (!located) throw new Error(`workflow ${topic} was not found after migration`);

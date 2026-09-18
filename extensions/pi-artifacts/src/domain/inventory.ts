@@ -15,6 +15,7 @@ import {
   validateTimestamp,
   validateTopic,
 } from "./normalize.ts";
+import { parseSweMigrationReceipt } from "../../../../src/swe-migration-record.ts";
 import type {
   ArtifactClassification,
   ArtifactInventory,
@@ -36,7 +37,6 @@ const DEFAULT_MAX_REFERENCE_DEPTH = 64;
 const DEFAULT_MAX_REFERENCE_ENTRIES_PER_DIRECTORY = 20_000;
 const MAX_CONFIG_BYTES = 1024 * 1024;
 const MAX_SWE_MIGRATION_RECEIPT_BYTES = 1024 * 1024;
-const MAX_SWE_MIGRATION_PREIMAGE_BYTES = 512 * 1024;
 const TEXT_EXTENSIONS = new Set([".md", ".json", ".ts", ".tsx", ".js", ".mjs", ".cjs", ".yaml", ".yml", ".txt"]);
 const SKIP_DIRECTORIES = new Set([".git", "node_modules", "dist", "build", "coverage", ".next", ".venv"]);
 const CONFIG_FILENAME = "model-artifacts-migration.json";
@@ -472,17 +472,7 @@ function classifyEntry(root: string, file: Discovered, config: MigrationConfig, 
 }
 
 function readSweMigrationReceipt(path: string, source: string): { topic: string; state: "applied" | "rolled-back" } | undefined {
-  const match = source.match(/^\.model-artifacts\/system\/logs\/pi-swe-migration\/([A-Za-z0-9_-]+)\/receipt\.json$/);
-  if (!match) return undefined;
-  const identity = match[1]!;
-  let identityBytes: Buffer;
-  try { identityBytes = Buffer.from(identity, "base64url"); }
-  catch { return undefined; }
-  const topic = identityBytes.toString("utf8");
-  if (!identityBytes.length || !Buffer.from(topic, "utf8").equals(identityBytes) || Buffer.from(topic).toString("base64url") !== identity) return undefined;
-  try { if (validateTopic(topic) !== topic) return undefined; }
-  catch { return undefined; }
-  let raw: unknown;
+  if (!/^\.model-artifacts\/system\/logs\/pi-swe-migration\/[A-Za-z0-9_-]+\/(?:receipt\.json|attempts\/[a-f0-9]{64}-receipt\.json)$/.test(source)) return undefined;
   let descriptor: number | undefined;
   try {
     const initial = lstatSync(path);
@@ -492,40 +482,18 @@ function readSweMigrationReceipt(path: string, source: string): { topic: string;
     descriptor = openSync(path, constants.O_RDONLY | noFollow | nonBlock);
     const opened = fstatSync(descriptor);
     if (!opened.isFile() || opened.size > MAX_SWE_MIGRATION_RECEIPT_BYTES) return undefined;
-    const buffer = Buffer.alloc(MAX_SWE_MIGRATION_RECEIPT_BYTES + 1);
+    const buffer = Buffer.alloc(opened.size);
     let bytes = 0;
-    while (bytes <= MAX_SWE_MIGRATION_RECEIPT_BYTES) {
+    while (bytes < buffer.length) {
       const count = readSync(descriptor, buffer, bytes, buffer.length - bytes, null);
       if (count === 0) break;
       bytes += count;
     }
-    if (bytes > MAX_SWE_MIGRATION_RECEIPT_BYTES) return undefined;
-    raw = JSON.parse(buffer.toString("utf8", 0, bytes));
+    if (bytes !== buffer.length) return undefined;
+    const receipt = parseSweMigrationReceipt(JSON.parse(buffer.toString("utf8")), { path: source, allowLegacy: true });
+    return { topic: receipt.topic, state: receipt.state };
   } catch { return undefined; }
   finally { if (descriptor !== undefined) closeSync(descriptor); }
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
-  const receipt = raw as Record<string, unknown>;
-  const allowed = new Set(["schemaVersion", "topic", "state", "classification", "disposition", "decidedBy", "sourcePaths", "preimageHash", "postimageHash", "planHash", "appliedAt", "rolledBackAt", "preimagePayload"]);
-  if (Object.keys(receipt).some((key) => !allowed.has(key))) return undefined;
-  const required = ["schemaVersion", "topic", "state", "classification", "disposition", "decidedBy", "sourcePaths", "preimageHash", "postimageHash", "planHash", "appliedAt"];
-  if (required.some((key) => !Object.hasOwn(receipt, key))) return undefined;
-  if (receipt.schemaVersion !== 1 || receipt.topic !== topic || !["applied", "rolled-back"].includes(receipt.state as string)) return undefined;
-  const incomplete = ["native-v1", "historical-contracts"], complete = ["native-v1-complete", "historical-contracts-complete"];
-  if (![...incomplete, ...complete].includes(receipt.classification as string)) return undefined;
-  if (incomplete.includes(receipt.classification as string) ? receipt.disposition !== "continue" : !["reopen", "grandfather-read-only"].includes(receipt.disposition as string)) return undefined;
-  if (typeof receipt.decidedBy !== "string" || receipt.decidedBy.length < 1 || receipt.decidedBy.length > 128 || receipt.decidedBy.trim() !== receipt.decidedBy) return undefined;
-  if (!Array.isArray(receipt.sourcePaths) || receipt.sourcePaths.length < 1 || receipt.sourcePaths.length > 256 || receipt.sourcePaths.some((value) => typeof value !== "string" || !value.startsWith(".model-artifacts/") || value.includes("\\") || value.split("/").some((part) => part === "" || part === "." || part === ".."))) return undefined;
-  const hash = /^sha256:[a-f0-9]{64}$/;
-  if (![receipt.preimageHash, receipt.postimageHash, receipt.planHash].every((value) => typeof value === "string" && hash.test(value))) return undefined;
-  const canonicalTimestamp = (value: unknown): value is string => typeof value === "string" && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
-  if (!canonicalTimestamp(receipt.appliedAt)) return undefined;
-  if (receipt.state === "rolled-back" ? !canonicalTimestamp(receipt.rolledBackAt) : Object.hasOwn(receipt, "rolledBackAt")) return undefined;
-  if (Object.hasOwn(receipt, "preimagePayload")) {
-    if (typeof receipt.preimagePayload !== "string" || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(receipt.preimagePayload)) return undefined;
-    const preimage = Buffer.from(receipt.preimagePayload, "base64");
-    if (preimage.length > MAX_SWE_MIGRATION_PREIMAGE_BYTES || preimage.toString("base64") !== receipt.preimagePayload || `sha256:${createHash("sha256").update(preimage).digest("hex")}` !== receipt.preimageHash) return undefined;
-  }
-  return { topic, state: receipt.state as "applied" | "rolled-back" };
 }
 
 function parseV2Canonical(source: string): { topic?: string; unit: "initiative" | "system"; stableRuntime?: boolean } | undefined {

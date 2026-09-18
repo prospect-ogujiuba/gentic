@@ -403,6 +403,16 @@ type RehearsalHarness = {
 const rehearsalCorpus = JSON.parse(readFileSync(new URL("./fixtures/pi-swe-cutover/corpus.json", import.meta.url), "utf8")) as { schemaVersion: number; cases: RehearsalCase[] };
 const migrationCorpus = JSON.parse(readFileSync(new URL("./fixtures/pi-swe-migration/corpus.json", import.meta.url), "utf8")) as { schemaVersion: number; cases: MigrationCorpusCase[] };
 const rehearsalAt = "2026-09-17T08:00:00.000Z";
+function rehearsalAuthorization(topic: string, disposition: "continue" | "reopen" | "grandfather-read-only") {
+  return {
+    authorizedBy: "non-production-cutover-rehearsal",
+    authorizedAt: rehearsalAt,
+    auditHash: `sha256:${"b".repeat(64)}`,
+    topicDispositions: { [topic]: disposition },
+    rollbackRetentionUntil: "2099-09-17T08:00:00.000Z",
+    rationale: "Disposable-checkout cutover rehearsal fixture only.",
+  };
+}
 const digest = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 
 function legacyWorkflowFixture(topic: string, status: string): Record<string, unknown> {
@@ -708,30 +718,30 @@ test("disposable candidate checkout rehearses exhaustive migration, production e
 
     const ordinary = rehearsalCorpus.cases.filter((item) => item.disposition && !["crash-after-postimage", "concurrent-writer", "rollback-edited-postimage", "rollback-exact-postimage", "rollback-before-selection"].includes(item.id));
     for (const fixture of ordinary) {
-      const plan = planWorkflowMigration(cwd, fixture.id, { disposition: fixture.disposition, decidedBy: "cutover-rehearsal", now: rehearsalAt });
+      const plan = planWorkflowMigration(cwd, fixture.id, { disposition: fixture.disposition, authorization: rehearsalAuthorization(fixture.id, fixture.disposition), now: rehearsalAt });
       assert.equal(plan.eligible, true, fixture.id);
       assert.equal((await applyWorkflowMigration(cwd, plan)).status, "applied", fixture.id);
     }
 
-    const crashPlan = planWorkflowMigration(cwd, "crash-after-postimage", { disposition: "continue", decidedBy: "cutover-rehearsal", now: rehearsalAt });
+    const crashPlan = planWorkflowMigration(cwd, "crash-after-postimage", { disposition: "continue", authorization: rehearsalAuthorization("crash-after-postimage", "continue"), now: rehearsalAt });
     await assert.rejects(() => applyWorkflowMigration(cwd, crashPlan, { fault: (stage) => { if (stage === "workflow-written") throw new Error("rehearsed power loss"); } }), /rehearsed power loss/);
     assert.equal((await recoverWorkflowMigration(cwd, "crash-after-postimage")).status, "recovered");
 
     const concurrentPath = ".model-artifacts/initiatives/concurrent-writer/workflow.json";
     const concurrentBefore = readFileSync(join(cwd, concurrentPath));
-    const concurrentPlan = planWorkflowMigration(cwd, "concurrent-writer", { disposition: "continue", decidedBy: "cutover-rehearsal", now: rehearsalAt });
+    const concurrentPlan = planWorkflowMigration(cwd, "concurrent-writer", { disposition: "continue", authorization: rehearsalAuthorization("concurrent-writer", "continue"), now: rehearsalAt });
     writeJson(cwd, concurrentPath, { ...legacyWorkflowFixture("concurrent-writer", "paused"), revision: 4 });
     await assert.rejects(() => applyWorkflowMigration(cwd, concurrentPlan), /stale migration plan/);
     writeFileSync(join(cwd, concurrentPath), concurrentBefore);
 
-    const editedPlan = planWorkflowMigration(cwd, "rollback-edited-postimage", { disposition: "continue", decidedBy: "cutover-rehearsal", now: rehearsalAt });
+    const editedPlan = planWorkflowMigration(cwd, "rollback-edited-postimage", { disposition: "continue", authorization: rehearsalAuthorization("rollback-edited-postimage", "continue"), now: rehearsalAt });
     await applyWorkflowMigration(cwd, editedPlan);
     writeFileSync(join(cwd, ".model-artifacts/initiatives/rollback-edited-postimage/workflow.json"), `${editedPlan.postimage} `);
     await assert.rejects(() => rollbackWorkflowMigration(cwd, "rollback-edited-postimage"), /intervening edits/);
     writeFileSync(join(cwd, ".model-artifacts/initiatives/rollback-edited-postimage/workflow.json"), editedPlan.postimage!);
     await rollbackWorkflowMigration(cwd, "rollback-edited-postimage");
 
-    const beforeSelectionPlan = planWorkflowMigration(cwd, "rollback-before-selection", { disposition: "continue", decidedBy: "cutover-rehearsal", now: rehearsalAt });
+    const beforeSelectionPlan = planWorkflowMigration(cwd, "rollback-before-selection", { disposition: "continue", authorization: rehearsalAuthorization("rollback-before-selection", "continue"), now: rehearsalAt });
     await applyWorkflowMigration(cwd, beforeSelectionPlan);
     await rollbackWorkflowMigration(cwd, "rollback-before-selection");
     const selectorPath = join(cwd, ".git/pi-swe-runtime-selector");
@@ -746,7 +756,7 @@ test("disposable candidate checkout rehearses exhaustive migration, production e
     assert.deepEqual(readFileSync(selectorPath), Buffer.from([9, 8, 7, 0, 255]));
     rmSync(selectorPath);
 
-    const afterSelectionPlan = planWorkflowMigration(cwd, "rollback-exact-postimage", { disposition: "continue", decidedBy: "cutover-rehearsal", now: rehearsalAt });
+    const afterSelectionPlan = planWorkflowMigration(cwd, "rollback-exact-postimage", { disposition: "continue", authorization: rehearsalAuthorization("rollback-exact-postimage", "continue"), now: rehearsalAt });
     const afterSelectionReceipt = await applyWorkflowMigration(cwd, afterSelectionPlan);
     assert.equal(afterSelectionReceipt.status, "applied");
 

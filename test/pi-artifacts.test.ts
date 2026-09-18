@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 
 import { ArtifactTraversalLimitError, assertNoSweSemanticMigrationActivity, auditArtifacts, loadMigrationConfig } from "../extensions/pi-artifacts/src/domain/inventory.ts";
+import { migrationPlanHash } from "../src/swe-migration-record.ts";
 import { createMigrationPlan, fingerprint } from "../extensions/pi-artifacts/src/domain/plan.ts";
 import { resolveProjectPath } from "../extensions/pi-artifacts/src/domain/normalize.ts";
 import type { ArtifactInventory } from "../extensions/pi-artifacts/src/domain/types.ts";
@@ -49,6 +50,34 @@ function sweMigrationReceipt(topic = "demo", overrides: Record<string, unknown> 
       preimagePayload: preimage.toString("base64"),
       ...overrides,
     },
+  };
+}
+
+function sweMigrationReceiptV2(topic = "demo-v2"): { path: string; value: Record<string, unknown> } {
+  const preimage = Buffer.from(`legacy workflow for ${topic}`);
+  const authorization = {
+    authorizedBy: "operator",
+    authorizedAt: "2026-09-18T20:11:12.000Z",
+    auditHash: `sha256:${"a".repeat(64)}`,
+    topicDispositions: { [topic]: "grandfather-read-only" as const },
+    rollbackRetentionUntil: "2286-11-20T07:17:52.000Z",
+    rationale: "Protect the reviewed historical migration decision.",
+  };
+  const logical = {
+    schemaVersion: 2 as const,
+    topic,
+    classification: "native-v1-complete" as const,
+    disposition: "grandfather-read-only" as const,
+    generatedAt: authorization.authorizedAt,
+    sourcePaths: [`.model-artifacts/initiatives/${topic}/workflow.json`],
+    preimageHash: sha(preimage),
+    postimageHash: sha(`postimage ${topic}`),
+    eligible: true,
+    authorization,
+  };
+  return {
+    path: `.model-artifacts/system/logs/pi-swe-migration/${Buffer.from(topic).toString("base64url")}/receipt.json`,
+    value: { ...logical, state: "applied", planHash: migrationPlanHash(logical), appliedAt: "2026-09-18T20:17:25.989Z", preimagePayload: preimage.toString("base64") },
   };
 }
 
@@ -159,6 +188,20 @@ test("artifact audit protects only closed-schema SWE migration receipts and pres
   unlinkSync(join(root, applied.path));
   assert.equal(auditArtifacts({ cwd: root }).entries.find((candidate) => candidate.source === rolledBack.path)?.classification, "protected");
   assert.doesNotThrow(() => assertNoSweSemanticMigrationActivity(root));
+});
+
+test("artifact audit and SWE authority share exact schema-v2 receipt validation", () => {
+  const root = fixture();
+  const receipt = sweMigrationReceiptV2();
+  write(root, receipt.path, `${JSON.stringify(receipt.value)}\n`);
+  const protectedEntry = auditArtifacts({ cwd: root }).entries.find((entry) => entry.source === receipt.path);
+  assert.equal(protectedEntry?.classification, "protected");
+  assert.throws(() => assertNoSweSemanticMigrationActivity(root), /receipt blocks/);
+
+  (receipt.value.authorization as Record<string, unknown>).rationale = "tampered";
+  write(root, receipt.path, `${JSON.stringify(receipt.value)}\n`);
+  assert.equal(auditArtifacts({ cwd: root }).entries.find((entry) => entry.source === receipt.path)?.classification, "invalid");
+  assert.throws(() => assertNoSweSemanticMigrationActivity(root), /malformed/);
 });
 
 test("artifact audit rejects malformed SWE receipts, noncanonical identities, journals, and unsafe recovery payloads", () => {

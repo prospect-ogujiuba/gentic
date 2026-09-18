@@ -2,6 +2,7 @@ import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { coordinatedActiveTodo } from "../../../src/lifecycle-coordination.ts";
+import { parseGate1Authorization, type Gate1Authorization } from "../../../src/swe-migration-record.ts";
 import { loadWorkflow, resolveTopic } from "./store.ts";
 import { applyWorkflowMigration, applyWorkflowMigrationBatch, inventoryWorkflowMigrations, planWorkflowMigration, recoverWorkflowMigration, rollbackWorkflowMigration, type WorkflowMigrationDisposition } from "./migration.ts";
 import { WorkflowMutationService } from "./service.ts";
@@ -68,7 +69,9 @@ export function registerSweCommand(pi: ExtensionAPI): void {
           }
           const selectedTopics = (args[2] ?? "").split(",").map((value) => value.trim()).filter(Boolean);
           if (operation === "apply" && selectedTopics.length > 1) {
-            const plans = selectedTopics.map((topic) => planWorkflowMigration(ctx.cwd, topic, { disposition: "continue", decidedBy: `interactive-user:${identityFromContext(ctx).sessionId}` }));
+            const authorization = await requestMigrationAuthorization(ctx, selectedTopics);
+            const plans = selectedTopics.map((topic) => planWorkflowMigration(ctx.cwd, topic, { disposition: authorization.topicDispositions[topic] as WorkflowMigrationDisposition, authorization }));
+            if (!await ctx.ui.confirm("Apply authorized workflow migrations", `${selectedTopics.length} topics; actor ${authorization.authorizedBy}; audit ${authorization.auditHash}; retention ${authorization.rollbackRetentionUntil}?`)) throw new Error("workflow migration was not confirmed");
             const outcomes = await applyWorkflowMigrationBatch(ctx.cwd, plans);
             ctx.ui.notify(`pi-swe migration batch\n${outcomes.map((outcome) => `- ${outcome.topic}: ${outcome.status}${outcome.error ? `; next: ${outcome.error}` : "; next: re-audit"}`).join("\n")}`, outcomes.some((outcome) => outcome.status === "failed") ? "warning" : "info");
             return;
@@ -89,17 +92,12 @@ export function registerSweCommand(pi: ExtensionAPI): void {
           const inventory = inventoryWorkflowMigrations(ctx.cwd);
           const entry = inventory.entries.find((candidate) => candidate.topic === topic);
           if (!entry) throw new Error(`workflow ${topic} was not found`);
-          let disposition: WorkflowMigrationDisposition = "continue";
-          if (entry.action === "decide-completed-workflow") {
-            if (!ctx.hasUI) throw new Error("historical-completion disposition requires an interactive keyboard-accessible user decision");
-            const requested = args[3];
-            const selected = requested ?? await ctx.ui.select("Historical completion disposition", ["reopen: require fresh v2 final acceptance", "grandfather-read-only: retain immutable history", "operator-review: do not migrate"]);
-            disposition = selected?.split(":", 1)[0] as WorkflowMigrationDisposition;
-            if (!["reopen", "grandfather-read-only", "operator-review"].includes(disposition)) throw new Error("historical-completion disposition was cancelled or invalid");
-            if (disposition === "operator-review") throw new Error("migration remains blocked for operator review");
-            if (!await ctx.ui.confirm("Apply workflow migration", `${topic}: ${disposition}; stale execution evidence will be removed and a recovery receipt retained`)) throw new Error("workflow migration was not confirmed");
-          }
-          const plan = planWorkflowMigration(ctx.cwd, topic, { disposition, decidedBy: `interactive-user:${identityFromContext(ctx).sessionId}` });
+          if (!ctx.hasUI) throw new Error("migration apply requires an interactive keyboard-accessible explicit authorization record");
+          const authorization = await requestMigrationAuthorization(ctx, [topic]);
+          const disposition = authorization.topicDispositions[topic] as WorkflowMigrationDisposition;
+          if (entry.action === "decide-completed-workflow" && !["reopen", "grandfather-read-only"].includes(disposition)) throw new Error("completed workflow authorization must explicitly choose reopen or grandfather-read-only");
+          if (!await ctx.ui.confirm("Apply authorized workflow migration", `${topic}: ${disposition}; actor ${authorization.authorizedBy}; audit ${authorization.auditHash}; retention ${authorization.rollbackRetentionUntil}?`)) throw new Error("workflow migration was not confirmed");
+          const plan = planWorkflowMigration(ctx.cwd, topic, { disposition, authorization });
           const outcome = await applyWorkflowMigration(ctx.cwd, plan);
           ctx.ui.notify(`pi-swe migration ${outcome.status}: ${topic}; receipt ${outcome.receiptPath}; next: re-audit before start/resume`, "info");
           return;
@@ -179,6 +177,18 @@ export function registerSweCommand(pi: ExtensionAPI): void {
       }
     },
   });
+}
+
+async function requestMigrationAuthorization(ctx: Parameters<Parameters<ExtensionAPI["registerCommand"]>[1]["handler"]>[1], selectedTopics: string[]): Promise<Gate1Authorization> {
+  if (!ctx.hasUI) throw new Error("migration apply requires an interactive keyboard-accessible explicit authorization record");
+  const raw = await ctx.ui.input("Gate 1 migration authorization JSON", "Paste the complete reviewed authorization record");
+  if (!raw || Buffer.byteLength(raw) > 16 * 1024) throw new Error("migration authorization was cancelled, empty, or exceeds 16384 bytes");
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { throw new Error("migration authorization must be valid JSON"); }
+  const authorization = parseGate1Authorization(parsed);
+  const covered = Object.keys(authorization.topicDispositions);
+  if (JSON.stringify(covered) !== JSON.stringify([...selectedTopics].sort())) throw new Error("migration authorization topic dispositions must exactly cover the selected topics");
+  return authorization;
 }
 
 export function buildTaskExecutionPrompt(workflow: Workflow, task: WorkflowTask, path: string): string {

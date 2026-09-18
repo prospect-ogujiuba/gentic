@@ -4,6 +4,18 @@ import { dirname, relative, resolve, sep } from "node:path";
 
 import { loadWorkflow, saveWorkflow, withWorkflowMutationLock, workflowPath } from "./store.ts";
 import { isValidTopic, parseWorkflow, type Workflow } from "./workflow.ts";
+import {
+  archivedReceiptPath,
+  canonicalReceiptPath,
+  migrationPlanHash,
+  parseGate1Authorization,
+  parseSweMigrationJournal,
+  parseSweMigrationReceipt,
+  receiptEquals,
+  type Gate1Authorization,
+  type SweMigrationReceipt,
+  type SweMigrationReceiptV2,
+} from "../../../src/swe-migration-record.ts";
 
 const DEFAULT_MAX_FILE_BYTES = 512 * 1024;
 const DEFAULT_MAX_FILES = 10_000;
@@ -412,45 +424,32 @@ function assertSafeAbsolute(root: string, absolute: string): void {
 }
 export type WorkflowMigrationDisposition = "continue" | "reopen" | "grandfather-read-only" | "operator-review";
 export type WorkflowMigrationPlan = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   topic: string;
   classification: WorkflowMigrationClassification;
   disposition: WorkflowMigrationDisposition;
-  decidedBy: string;
   generatedAt: string;
   sourcePaths: string[];
   preimageHash: string;
   postimageHash?: string;
   postimage?: string;
   eligible: boolean;
+  authorization: Gate1Authorization;
   nextAction: string;
   planHash: string;
 };
-export type WorkflowMigrationReceipt = {
-  schemaVersion: 1;
-  topic: string;
-  state: "applied" | "rolled-back";
-  classification: WorkflowMigrationClassification;
-  disposition: Exclude<WorkflowMigrationDisposition, "operator-review">;
-  decidedBy: string;
-  sourcePaths: string[];
-  preimageHash: string;
-  postimageHash: string;
-  planHash: string;
-  appliedAt: string;
-  rolledBackAt?: string;
-  preimagePayload?: string;
-};
+export type WorkflowMigrationReceipt = SweMigrationReceipt;
+export type WorkflowMigrationAuthorization = Gate1Authorization;
 export type WorkflowMigrationFaultStage = "journal-prepared" | "workflow-written" | "receipt-written";
 
 /** Build an executable, preimage-bound decision without writing repository state. */
-export function planWorkflowMigration(cwd: string, topic: string, options: { disposition?: WorkflowMigrationDisposition; decidedBy?: string; now?: string } = {}): WorkflowMigrationPlan {
+export function planWorkflowMigration(cwd: string, topic: string, options: { disposition?: WorkflowMigrationDisposition; authorization: Gate1Authorization; now?: string }): WorkflowMigrationPlan {
   const entry = inventoryWorkflowMigrations(cwd).entries.find((candidate) => candidate.topic === topic);
   if (!entry) throw new Error(`workflow ${topic} was not found in migration inventory`);
   const complete = entry.classification === "native-v1-complete" || entry.classification === "historical-contracts-complete";
   const disposition = options.disposition ?? (complete ? "operator-review" : "continue");
-  const decidedBy = (options.decidedBy ?? "unspecified-operator").trim();
-  if (!decidedBy || decidedBy.length > 128) throw new Error("migration decision owner is required and must be bounded");
+  const authorization = parseGate1Authorization(options.authorization);
+  const decidedBy = authorization.authorizedBy;
   if (complete && !["reopen", "grandfather-read-only", "operator-review"].includes(disposition)) throw new Error("completed workflows require reopen, grandfather-read-only, or operator-review disposition");
   if (!complete && disposition !== "continue") throw new Error("incomplete workflows use the continue disposition");
   const migratable = ["native-v1", "native-v1-complete", "historical-contracts", "historical-contracts-complete"].includes(entry.classification);
@@ -458,7 +457,9 @@ export function planWorkflowMigration(cwd: string, topic: string, options: { dis
   const preimageHash = entry.contentHash ?? `sha256:${createHash("sha256").update(JSON.stringify(entry)).digest("hex")}`;
   let postimage: string | undefined;
   let postimageHash: string | undefined;
-  const generatedAt = options.now ?? new Date().toISOString();
+  const generatedAt = options.now ?? authorization.authorizedAt;
+  if (generatedAt !== authorization.authorizedAt) throw new Error("migration plan time must equal the explicit authorization timestamp");
+  if (authorization.topicDispositions[topic] !== disposition) throw new Error("migration authorization does not exactly cover the selected topic and disposition");
   if (eligible) {
     const located = loadWorkflow(cwd, topic, true);
     if (!located) throw new Error(`workflow ${topic} was not found`);
@@ -491,11 +492,12 @@ export function planWorkflowMigration(cwd: string, topic: string, options: { dis
     postimage = `${JSON.stringify(parseWorkflow(candidate, now), null, 2)}\n`;
     postimageHash = hashBytes(Buffer.from(postimage));
   }
-  const logical = { schemaVersion: 1, topic, classification: entry.classification, disposition, decidedBy, generatedAt, sourcePaths: entry.sourcePaths, preimageHash, postimageHash: postimageHash ?? null, eligible };
-  const planHash = hashBytes(Buffer.from(stableJson(logical)));
+  const logical = { schemaVersion: 2 as const, topic, classification: entry.classification as import("../../../src/swe-migration-record.ts").MigratableClassification, disposition: disposition as Exclude<WorkflowMigrationDisposition, "operator-review">, generatedAt, sourcePaths: entry.sourcePaths, preimageHash, postimageHash: postimageHash ?? null, eligible, authorization };
+  const planHash = migrationPlanHash(logical);
   return {
-    schemaVersion: 1, topic, classification: entry.classification, disposition, decidedBy, generatedAt, sourcePaths: entry.sourcePaths,
+    schemaVersion: 2, topic, classification: entry.classification, disposition, generatedAt, sourcePaths: entry.sourcePaths,
     preimageHash, ...(postimageHash ? { postimageHash } : {}), ...(postimage ? { postimage } : {}), eligible,
+    authorization,
     nextAction: eligible ? `apply selected topic ${topic}` : entry.action === "block" ? entry.guidance ?? `resolve ${entry.blocker ?? "migration blocker"}` : "record an authorized historical-completion disposition",
     planHash,
   };
@@ -512,14 +514,22 @@ export async function applyWorkflowMigration(cwd: string, plan: WorkflowMigratio
     assertNoArtifactMigrationActivity(cwd);
     const receiptPath = workflowMigrationReceiptPath(plan.topic);
     const receiptAbsolute = resolve(cwd, receiptPath);
+    if (Date.parse(plan.authorization.rollbackRetentionUntil) < Date.now()) throw new Error("migration authorization rollback retention has expired");
     if (existsSync(receiptAbsolute)) {
       const receipt = readMigrationReceipt(resolve(cwd), receiptAbsolute);
-      if (receipt.planHash !== plan.planHash || receipt.postimageHash !== plan.postimageHash) throw new Error("existing migration receipt does not match the selected plan");
       const current = currentWorkflowHash(cwd, plan.topic);
-      if (receipt.state === "applied" && current === receipt.postimageHash) return { status: "already-applied", receiptPath, receipt };
-      throw new Error("migration receipt requires rollback or operator recovery before reuse");
+      if (receipt.schemaVersion === 2 && receipt.planHash === plan.planHash && receipt.postimageHash === plan.postimageHash && receipt.state === "applied" && current === receipt.postimageHash) return { status: "already-applied", receiptPath, receipt };
+      if (receipt.state !== "rolled-back") throw new Error("migration receipt requires rollback or operator recovery before reuse");
+      if (receipt.schemaVersion === 1) validateLegacyPlanIdentity(receipt, plan.generatedAt, plan.postimageHash);
+      const archivePath = archivedReceiptPath(receipt);
+      const archiveAbsolute = resolve(cwd, archivePath);
+      if (existsSync(archiveAbsolute)) {
+        const archived = readMigrationReceipt(resolve(cwd), archiveAbsolute);
+        if (!receiptEquals(archived, receipt)) throw new Error("retained migration attempt does not exactly match the rolled-back receipt");
+      } else writeJsonExclusive(archiveAbsolute, receipt);
+      rmSync(receiptAbsolute);
     }
-    const expectedPlan = planWorkflowMigration(cwd, plan.topic, { disposition, decidedBy: plan.decidedBy, now: plan.generatedAt });
+    const expectedPlan = planWorkflowMigration(cwd, plan.topic, { disposition, authorization: plan.authorization, now: plan.generatedAt });
     if (expectedPlan.planHash !== plan.planHash || expectedPlan.postimageHash !== postimageHash || expectedPlan.postimage !== postimage) throw new Error("stale migration plan: workflow no longer matches the deterministic dry-run decision");
     const currentEntry = inventoryWorkflowMigrations(cwd).entries.find((entry) => entry.topic === plan.topic);
     if (!currentEntry || currentEntry.classification !== plan.classification || currentEntry.contentHash !== plan.preimageHash) throw new Error("stale migration plan: preimage or classification changed");
@@ -528,13 +538,14 @@ export async function applyWorkflowMigration(cwd: string, plan: WorkflowMigratio
     const journalPath = workflowMigrationJournalPath(plan.topic);
     const journalAbsolute = resolve(cwd, journalPath);
     if (existsSync(journalAbsolute)) throw new Error(`unfinished SWE migration requires recovery: ${journalPath}`);
-    const receipt: WorkflowMigrationReceipt = {
-      schemaVersion: 1, topic: plan.topic, state: "applied", classification: plan.classification,
-      disposition, decidedBy: plan.decidedBy, sourcePaths: plan.sourcePaths,
-      preimageHash: plan.preimageHash, postimageHash, planHash: plan.planHash,
-      appliedAt: new Date().toISOString(), ...(preimagePayload ? { preimagePayload } : {}),
+    const receipt: SweMigrationReceiptV2 = {
+      schemaVersion: 2, topic: plan.topic, state: "applied", classification: plan.classification as SweMigrationReceiptV2["classification"],
+      disposition, generatedAt: plan.generatedAt, sourcePaths: plan.sourcePaths,
+      preimageHash: plan.preimageHash, postimageHash, eligible: true, authorization: plan.authorization, planHash: plan.planHash,
+      appliedAt: new Date().toISOString(), preimagePayload: preimagePayload ?? null,
     };
-    writeJsonExclusive(journalAbsolute, { schemaVersion: 1, stage: "prepared", planHash: plan.planHash, topic: plan.topic, preimageHash: plan.preimageHash, postimageHash: plan.postimageHash, receipt });
+    parseSweMigrationReceipt(receipt, { path: receiptPath });
+    writeJsonExclusive(journalAbsolute, { schemaVersion: 2, operation: "apply", stage: "prepared", planHash: plan.planHash, topic: plan.topic, preimageHash: plan.preimageHash, postimageHash: plan.postimageHash, receipt });
     options.fault?.("journal-prepared");
     const parsed = parseWorkflow(JSON.parse(postimage));
     saveWorkflow(cwd, parsed, existsSync(nativePath) ? loadWorkflow(cwd, plan.topic, false)?.workflow.revision : undefined);
@@ -571,15 +582,20 @@ export async function recoverWorkflowMigration(cwd: string, topic: string): Prom
       if (existsSync(receiptAbsolute)) return { status: "already-recovered", nextAction: "audit or rollback the applied migration" };
       throw new Error(`no SWE migration recovery record exists for ${topic}`);
     }
-    const journal = JSON.parse(readBounded(resolve(cwd), journalAbsolute, 1024 * 1024).toString("utf8")) as { receipt?: WorkflowMigrationReceipt; postimageHash?: string };
-    if (!journal.receipt || journal.receipt.topic !== topic || journal.postimageHash !== journal.receipt.postimageHash) throw new Error("malformed SWE migration recovery journal");
+    const journal = parseSweMigrationJournal(JSON.parse(readBounded(resolve(cwd), journalAbsolute, 1024 * 1024).toString("utf8")), { path: workflowMigrationJournalPath(topic) });
     const current = currentWorkflowHash(cwd, topic);
     if (current === journal.receipt.postimageHash) {
-      if (!existsSync(receiptAbsolute)) writeJsonExclusive(receiptAbsolute, journal.receipt);
+      if (journal.receipt.schemaVersion === 1) validateLegacyPlanIdentity(journal.receipt, legacyGeneratedAt(cwd, topic), journal.receipt.postimageHash);
+      if (existsSync(receiptAbsolute)) {
+        const published = readMigrationReceipt(resolve(cwd), receiptAbsolute);
+        if (!receiptEquals(published, journal.receipt)) throw new Error("published migration receipt does not exactly match the recovery journal");
+      } else writeJsonExclusive(receiptAbsolute, journal.receipt);
       rmSync(journalAbsolute);
       return { status: "recovered", nextAction: "migration committed; re-audit the topic" };
     }
-    if (current === journal.receipt.preimageHash || current === undefined && !journal.receipt.preimagePayload) {
+    const payload = journal.receipt.preimagePayload ? Buffer.from(journal.receipt.preimagePayload, "base64") : undefined;
+    if (journal.receipt.schemaVersion === 1 && (payload ? current === journal.receipt.preimageHash : current === undefined)) throw new Error("legacy recovery journal cannot authenticate its missing plan timestamp; exact postimage or operator rollback is required");
+    if (payload ? current === journal.receipt.preimageHash : current === undefined) {
       rmSync(journalAbsolute);
       return { status: "recovered", nextAction: "migration was not published; create a fresh dry-run plan" };
     }
@@ -596,6 +612,7 @@ export async function rollbackWorkflowMigration(cwd: string, topic: string): Pro
     if (receipt.topic !== topic) throw new Error("workflow migration receipt topic mismatch");
     if (receipt.state === "rolled-back") return { status: "already-rolled-back", receiptPath };
     if (currentWorkflowHash(cwd, topic) !== receipt.postimageHash) throw new Error("rollback refused: workflow has intervening edits after migration");
+    if (receipt.schemaVersion === 1) validateLegacyPlanIdentity(receipt, legacyGeneratedAt(cwd, topic), receipt.postimageHash);
     const target = resolve(cwd, workflowPath(topic));
     const preimage = receipt.preimagePayload ? Buffer.from(receipt.preimagePayload, "base64") : undefined;
     if (preimage && (preimage.length > DEFAULT_MAX_FILE_BYTES || hashBytes(preimage) !== receipt.preimageHash)) throw new Error("rollback recovery payload does not match the bounded preimage");
@@ -603,7 +620,9 @@ export async function rollbackWorkflowMigration(cwd: string, topic: string): Pro
     else rmSync(target);
     const observed = preimage ? hashFile(resolve(cwd), target, DEFAULT_MAX_FILE_BYTES) : undefined;
     if (receipt.preimagePayload && observed !== receipt.preimageHash) throw new Error("rollback preimage hash mismatch");
-    writeJsonAtomic(receiptAbsolute, { ...receipt, state: "rolled-back", rolledBackAt: new Date().toISOString() });
+    const rolledBack = { ...receipt, state: "rolled-back" as const, rolledBackAt: new Date().toISOString() };
+    parseSweMigrationReceipt(rolledBack, { path: receiptPath, allowLegacy: true });
+    writeJsonAtomic(receiptAbsolute, rolledBack);
     return { status: "rolled-back", receiptPath };
   });
 }
@@ -618,18 +637,19 @@ export function assertWorkflowMigrationEligible(cwd: string, topic: string): voi
 }
 
 export function workflowMigrationReceiptPath(topic: string): string {
-  const identity = Buffer.from(topic).toString("base64url");
-  return `.model-artifacts/system/logs/pi-swe-migration/${identity}/receipt.json`;
+  return canonicalReceiptPath(topic);
 }
 function workflowMigrationJournalPath(topic: string): string {
   const identity = Buffer.from(topic).toString("base64url");
   return `.model-artifacts/system/logs/pi-swe-migration/${identity}/journal.json`;
 }
 function validateMigrationPlan(plan: WorkflowMigrationPlan): void {
-  if (plan.schemaVersion !== 1 || !isValidTopic(plan.topic) || !/^sha256:[a-f0-9]{64}$/.test(plan.preimageHash) || !/^sha256:[a-f0-9]{64}$/.test(plan.planHash)) throw new Error("invalid workflow migration plan");
-  if (typeof plan.generatedAt !== "string" || !Number.isFinite(Date.parse(plan.generatedAt)) || plan.sourcePaths.length > 256 || plan.sourcePaths.some((path) => !path.startsWith(".model-artifacts/") || path.includes("\\") || path.split("/").includes(".."))) throw new Error("invalid workflow migration plan metadata");
-  const logical = { schemaVersion: 1, topic: plan.topic, classification: plan.classification, disposition: plan.disposition, decidedBy: plan.decidedBy, generatedAt: plan.generatedAt, sourcePaths: plan.sourcePaths, preimageHash: plan.preimageHash, postimageHash: plan.postimageHash ?? null, eligible: plan.eligible };
-  if (hashBytes(Buffer.from(stableJson(logical))) !== plan.planHash) throw new Error("workflow migration plan hash mismatch");
+  if (plan.schemaVersion !== 2 || !isValidTopic(plan.topic) || !/^sha256:[a-f0-9]{64}$/.test(plan.preimageHash) || !/^sha256:[a-f0-9]{64}$/.test(plan.planHash)) throw new Error("invalid workflow migration plan");
+  if (typeof plan.generatedAt !== "string" || !Number.isFinite(Date.parse(plan.generatedAt)) || new Date(plan.generatedAt).toISOString() !== plan.generatedAt || plan.sourcePaths.length > 256 || plan.sourcePaths.some((path) => !path.startsWith(".model-artifacts/") || path.includes("\\") || path.split("/").includes(".."))) throw new Error("invalid workflow migration plan metadata");
+  const authorization = parseGate1Authorization(plan.authorization);
+  if (authorization.authorizedAt !== plan.generatedAt || authorization.topicDispositions[plan.topic] !== plan.disposition) throw new Error("workflow migration plan authorization mismatch");
+  const logical = { schemaVersion: 2 as const, topic: plan.topic, classification: plan.classification as import("../../../src/swe-migration-record.ts").MigratableClassification, disposition: plan.disposition as Exclude<WorkflowMigrationDisposition, "operator-review">, generatedAt: plan.generatedAt, sourcePaths: plan.sourcePaths, preimageHash: plan.preimageHash, postimageHash: plan.postimageHash ?? null, eligible: plan.eligible, authorization };
+  if (migrationPlanHash(logical) !== plan.planHash) throw new Error("workflow migration plan hash mismatch");
   if (plan.postimage && hashBytes(Buffer.from(plan.postimage)) !== plan.postimageHash) throw new Error("workflow migration plan postimage mismatch");
 }
 function assertNoArtifactMigrationActivity(cwd: string): void {
@@ -644,9 +664,8 @@ function currentWorkflowHash(cwd: string, topic: string): string | undefined {
 }
 function readMigrationReceipt(root: string, path: string): WorkflowMigrationReceipt {
   if (!existsSync(path)) throw new Error("workflow migration receipt was not found");
-  const value = JSON.parse(readBounded(root, path, 1024 * 1024).toString("utf8")) as WorkflowMigrationReceipt;
-  if (value.schemaVersion !== 1 || !isValidTopic(value.topic) || !["applied", "rolled-back"].includes(value.state) || !/^sha256:[a-f0-9]{64}$/.test(value.preimageHash) || !/^sha256:[a-f0-9]{64}$/.test(value.postimageHash)) throw new Error("malformed workflow migration receipt");
-  return value;
+  const relativePath = toPosix(relative(root, path));
+  return parseSweMigrationReceipt(JSON.parse(readBounded(root, path, 1024 * 1024).toString("utf8")), { path: relativePath, allowLegacy: true });
 }
 function writeJsonExclusive(path: string, value: unknown): void {
   const content = Buffer.from(`${JSON.stringify(value, null, 2)}\n`);
@@ -669,9 +688,19 @@ function atomicWriteBytes(path: string, value: Buffer): void {
     renameSync(temporary, path); const directory = openSync(dirname(path), "r"); try { fsyncSync(directory); } finally { closeSync(directory); }
   } catch (error) { if (descriptor !== undefined) try { closeSync(descriptor); } catch { /* noop */ } rmSync(temporary, { force: true }); throw error; }
 }
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
-  if (record(value)) return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
+function validateLegacyPlanIdentity(receipt: Extract<WorkflowMigrationReceipt, { schemaVersion: 1 }>, generatedAt: string, expectedPostimageHash: string | undefined): void {
+  const logical = { schemaVersion: 1, topic: receipt.topic, classification: receipt.classification, disposition: receipt.disposition, decidedBy: receipt.decidedBy, generatedAt, sourcePaths: receipt.sourcePaths, preimageHash: receipt.preimageHash, postimageHash: expectedPostimageHash ?? null, eligible: true };
+  if (hashBytes(Buffer.from(stableLegacyJson(logical))) !== receipt.planHash) throw new Error("legacy workflow migration receipt plan hash mismatch");
+}
+function legacyGeneratedAt(cwd: string, topic: string): string {
+  const located = loadWorkflow(cwd, topic, false);
+  const generatedAt = located?.workflow.migration?.readAt;
+  if (!generatedAt || new Date(generatedAt).toISOString() !== generatedAt) throw new Error("legacy workflow migration receipt cannot authenticate its plan timestamp");
+  return generatedAt;
+}
+function stableLegacyJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableLegacyJson).join(",")}]`;
+  if (record(value)) return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableLegacyJson(value[key])}`).join(",")}}`;
   return JSON.stringify(value);
 }
 function hashBytes(value: Buffer): string { return `sha256:${createHash("sha256").update(value).digest("hex")}`; }
