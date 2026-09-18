@@ -473,7 +473,7 @@ function assertMigrationAuditAuthority(topic: string, row: WorkflowMigrationAudi
 }
 
 export function renderWorkflowMigrationAudit(report: WorkflowMigrationInventory): string {
-  const lines = report.audit.rows.slice(0, 100).map((row) => `${row.topic}: ${row.classification}; ownership=${row.ownership}; action=${row.action}; next=${row.proposedDisposition}`);
+  const lines = report.audit.rows.slice(0, 100).map((row) => `topic=${row.topic}; classification=${row.classification}; version=${row.storedVersion ?? "null"}; state=${row.state}; ownership=${row.ownership}; action=${row.action}; blocker=${row.blocker ?? "null"}; proposedDisposition=${row.proposedDisposition}; contentHash=${row.contentHash ?? "null"}; rollbackEvidencePath=${row.rollbackEvidencePath ?? "null"}; sourcePaths=${JSON.stringify(row.sourcePaths)}; controllingExcluded=${row.controllingExcluded}`);
   return `migration audit (${report.audit.rows.length} topics)\naudit schema: ${report.audit.schemaVersion}\naudit hash: ${report.audit.hash}\naudit payload: ${report.audit.payload}\n${lines.join("\n") || "no workflow migration candidates"}`;
 }
 
@@ -522,6 +522,7 @@ export type WorkflowMigrationPlan = {
   postimage?: string;
   eligible: boolean;
   authorization: Gate1Authorization;
+  audit: WorkflowMigrationAudit;
   nextAction: string;
   planHash: string;
 };
@@ -533,9 +534,12 @@ type WorkflowMigrationFault = (stage: WorkflowMigrationFaultStage, path?: string
 /** Build an executable, preimage-bound decision without writing repository state. */
 export function planWorkflowMigration(cwd: string, topic: string, options: { disposition?: WorkflowMigrationDisposition; authorization: Gate1Authorization; now?: string }): WorkflowMigrationPlan {
   const inventory = inventoryWorkflowMigrations(cwd);
-  const auditRow = inventory.audit.rows.find((candidate) => candidate.topic === topic);
-  assertMigrationAuditAuthority(topic, auditRow);
+  assertMigrationAuditAuthority(topic, inventory.audit.rows.find((candidate) => candidate.topic === topic));
   if (options.authorization.auditHash !== inventory.audit.hash) throw new Error(`migration authorization audit hash mismatch: expected ${inventory.audit.hash}`);
+  return buildWorkflowMigrationPlan(cwd, topic, options, inventory);
+}
+
+function buildWorkflowMigrationPlan(cwd: string, topic: string, options: { disposition?: WorkflowMigrationDisposition; authorization: Gate1Authorization; now?: string }, inventory: WorkflowMigrationInventory): WorkflowMigrationPlan {
   const entry = inventory.entries.find((candidate) => candidate.topic === topic);
   if (!entry) throw new Error(`workflow ${topic} was not found in migration inventory`);
   const complete = entry.classification === "native-v1-complete" || entry.classification === "historical-contracts-complete";
@@ -589,14 +593,21 @@ export function planWorkflowMigration(cwd: string, topic: string, options: { dis
   return {
     schemaVersion: 2, topic, classification: entry.classification, disposition, generatedAt, sourcePaths: entry.sourcePaths,
     preimageHash, ...(postimageHash ? { postimageHash } : {}), ...(postimage ? { postimage } : {}), eligible,
-    authorization,
+    authorization, audit: inventory.audit,
     nextAction: eligible ? `apply selected topic ${topic}` : entry.action === "block" ? entry.guidance ?? `resolve ${entry.blocker ?? "migration blocker"}` : "record an authorized historical-completion disposition",
     planHash,
   };
 }
 
+type BatchAuditProjection = { baseline: WorkflowMigrationAudit; transitioned: Map<string, WorkflowMigrationPlan> };
+
 /** Apply exactly one validated dry-run plan under the shared workflow mutation lock. */
 export async function applyWorkflowMigration(cwd: string, plan: WorkflowMigrationPlan, options: { fault?: WorkflowMigrationFault } = {}): Promise<{ status: "applied" | "already-applied"; receiptPath: string; receipt: WorkflowMigrationReceipt }> {
+  if (Object.keys(plan.authorization.topicDispositions).length !== 1) throw new Error("standalone migration authorization must exactly cover its selected topic; use batch apply for a multi-topic authorization");
+  return applyWorkflowMigrationInternal(cwd, plan, options);
+}
+
+async function applyWorkflowMigrationInternal(cwd: string, plan: WorkflowMigrationPlan, options: { fault?: WorkflowMigrationFault; projection?: BatchAuditProjection } = {}): Promise<{ status: "applied" | "already-applied"; receiptPath: string; receipt: WorkflowMigrationReceipt }> {
   validateMigrationPlan(plan);
   if (!plan.eligible || !plan.postimage || !plan.postimageHash || plan.disposition === "operator-review") throw new Error(`migration plan is not eligible: ${plan.nextAction}`);
   const postimage = plan.postimage;
@@ -604,7 +615,9 @@ export async function applyWorkflowMigration(cwd: string, plan: WorkflowMigratio
   const disposition = plan.disposition as Exclude<WorkflowMigrationDisposition, "operator-review">;
   return withWorkflowMutationLock(cwd, plan.topic, async () => {
     assertNoArtifactMigrationActivity(cwd);
-    assertMigrationAuditAuthority(plan.topic, inventoryWorkflowMigrations(cwd).audit.rows.find((candidate) => candidate.topic === plan.topic));
+    const liveInventory = inventoryWorkflowMigrations(cwd);
+    assertMigrationAuditAuthority(plan.topic, liveInventory.audit.rows.find((candidate) => candidate.topic === plan.topic));
+    if (options.projection) assertProjectedBatchAudit(liveInventory.audit, options.projection);
     const receiptPath = workflowMigrationReceiptPath(plan.topic);
     const receiptAbsolute = resolve(cwd, receiptPath);
     if (Date.parse(plan.authorization.rollbackRetentionUntil) < Date.now()) throw new Error("migration authorization rollback retention has expired");
@@ -612,12 +625,18 @@ export async function applyWorkflowMigration(cwd: string, plan: WorkflowMigratio
     if (existsSync(receiptAbsolute)) {
       const receipt = readMigrationReceipt(resolve(cwd), receiptAbsolute);
       const current = currentWorkflowHash(cwd, plan.topic);
-      if (receipt.schemaVersion === 2 && receipt.planHash === plan.planHash && receipt.postimageHash === plan.postimageHash && receipt.state === "applied" && current === receipt.postimageHash) return { status: "already-applied", receiptPath, receipt };
+      if (receipt.schemaVersion === 2 && receipt.planHash === plan.planHash && receipt.postimageHash === plan.postimageHash && receipt.state === "applied" && current === receipt.postimageHash) {
+        if (!options.projection) assertProjectedBatchAudit(liveInventory.audit, { baseline: plan.audit, transitioned: new Map([[plan.topic, plan]]) });
+        return { status: "already-applied", receiptPath, receipt };
+      }
       if (receipt.state !== "rolled-back") throw new Error("migration receipt requires rollback or operator recovery before reuse");
+      if (!options.projection && (liveInventory.audit.hash !== plan.authorization.auditHash || liveInventory.audit.hash !== plan.audit.hash)) throw new Error(`migration authorization audit hash mismatch: expected ${liveInventory.audit.hash}`);
       if (receipt.schemaVersion === 1) validateLegacyPlanIdentity(receipt, plan.generatedAt, plan.postimageHash);
       rolledBackReceipt = receipt;
-    }
-    const expectedPlan = planWorkflowMigration(cwd, plan.topic, { disposition, authorization: plan.authorization, now: plan.generatedAt });
+    } else if (!options.projection && (liveInventory.audit.hash !== plan.authorization.auditHash || liveInventory.audit.hash !== plan.audit.hash)) throw new Error(`migration authorization audit hash mismatch: expected ${liveInventory.audit.hash}`);
+    const expectedPlan = options.projection
+      ? buildWorkflowMigrationPlan(cwd, plan.topic, { disposition, authorization: plan.authorization, now: plan.generatedAt }, liveInventory)
+      : planWorkflowMigration(cwd, plan.topic, { disposition, authorization: plan.authorization, now: plan.generatedAt });
     if (expectedPlan.planHash !== plan.planHash || expectedPlan.postimageHash !== postimageHash || expectedPlan.postimage !== postimage) throw new Error("stale migration plan: workflow no longer matches the deterministic dry-run decision");
     const currentEntry = inventoryWorkflowMigrations(cwd).entries.find((entry) => entry.topic === plan.topic);
     if (!currentEntry || currentEntry.classification !== plan.classification || currentEntry.contentHash !== plan.preimageHash) throw new Error("stale migration plan: preimage or classification changed");
@@ -662,20 +681,59 @@ export async function applyWorkflowMigration(cwd: string, plan: WorkflowMigratio
   });
 }
 
-export async function applyWorkflowMigrationBatch(cwd: string, plans: WorkflowMigrationPlan[]): Promise<Array<{ topic: string; status: "applied" | "already-applied" | "failed"; receiptPath?: string; error?: string }>> {
+export async function applyWorkflowMigrationBatch(cwd: string, plans: WorkflowMigrationPlan[], options: { betweenTopics?: (completedTopic: string, nextTopic: string) => void } = {}): Promise<Array<{ topic: string; status: "applied" | "already-applied" | "failed"; receiptPath?: string; error?: string }>> {
   if (!plans.length) throw new Error("batch migration requires at least one explicitly selected topic");
+  for (const plan of plans) validateMigrationPlan(plan);
   const topics = plans.map((plan) => plan.topic);
   if (new Set(topics).size !== topics.length) throw new Error("batch migration selections must name unique topics");
+  if (stableJson(topics) !== stableJson([...topics].sort())) throw new Error("batch migration selections must use canonical topic order");
+  const baseline = plans[0]!.audit;
+  const authorization = plans[0]!.authorization;
+  if (plans.some((plan) => stableJson(plan.audit) !== stableJson(baseline) || stableJson(plan.authorization) !== stableJson(authorization))) throw new Error("batch migration plans must share one exact audit and authorization baseline");
+  const authorizedTopics = Object.keys(authorization.topicDispositions).sort();
+  if (stableJson(authorizedTopics) !== stableJson(topics) || plans.some((plan) => authorization.topicDispositions[plan.topic] !== plan.disposition)) throw new Error("batch migration authorization must exactly cover the selected topic and disposition map");
+  const projection: BatchAuditProjection = { baseline, transitioned: existingAppliedBatchPlans(cwd, plans) };
   const results = [];
-  for (const plan of plans) {
+  for (let index = 0; index < plans.length; index += 1) {
+    const plan = plans[index]!;
     try {
-      const applied = await applyWorkflowMigration(cwd, plan);
+      const applied = await applyWorkflowMigrationInternal(cwd, plan, { projection });
+      projection.transitioned.set(plan.topic, plan);
       results.push({ topic: plan.topic, status: applied.status, receiptPath: applied.receiptPath });
     } catch (error) {
       results.push({ topic: plan.topic, status: "failed" as const, error: error instanceof Error ? error.message.slice(0, 1024) : String(error).slice(0, 1024) });
     }
+    const next = plans[index + 1];
+    if (next) options.betweenTopics?.(plan.topic, next.topic);
   }
   return results;
+}
+
+function existingAppliedBatchPlans(cwd: string, plans: WorkflowMigrationPlan[]): Map<string, WorkflowMigrationPlan> {
+  const transitioned = new Map<string, WorkflowMigrationPlan>();
+  for (const plan of plans) {
+    const receiptAbsolute = resolve(cwd, workflowMigrationReceiptPath(plan.topic));
+    if (!existsSync(receiptAbsolute)) continue;
+    const receipt = readMigrationReceipt(resolve(cwd), receiptAbsolute);
+    if (receipt.schemaVersion === 2 && receipt.state === "applied" && receipt.planHash === plan.planHash && receipt.postimageHash === plan.postimageHash && currentWorkflowHash(cwd, plan.topic) === plan.postimageHash) transitioned.set(plan.topic, plan);
+  }
+  return transitioned;
+}
+
+function assertProjectedBatchAudit(live: WorkflowMigrationAudit, projection: BatchAuditProjection): void {
+  const expectedRows = projection.baseline.rows.map((row) => {
+    const plan = projection.transitioned.get(row.topic);
+    return plan ? transitionedAuditRow(plan) : row;
+  });
+  const expectedPayload = stableJson({ schemaVersion: 2, rows: expectedRows });
+  if (live.schemaVersion !== 2 || live.payload !== expectedPayload || live.hash !== hashBytes(Buffer.from(expectedPayload))) throw new Error("batch migration audit projection mismatch: unrelated repository or authority drift detected");
+}
+
+function transitionedAuditRow(plan: WorkflowMigrationPlan): WorkflowMigrationAuditRow {
+  if (!plan.postimageHash || !plan.postimage) throw new Error("batch migration plan has no exact postimage");
+  const state = parseWorkflow(JSON.parse(plan.postimage), plan.generatedAt).status;
+  const sourcePaths = [...new Set([workflowPath(plan.topic), ...plan.sourcePaths.filter((path) => path.endsWith("/specs/manifest.json"))])].sort();
+  return { topic: plan.topic, classification: state === "complete" ? "current-v2-complete" : "current-v2", action: "none", storedVersion: 2, state, ownership: "inactive", contentHash: plan.postimageHash, blocker: null, proposedDisposition: "none", controllingExcluded: false, rollbackEvidencePath: null, sourcePaths };
 }
 
 export async function recoverWorkflowMigration(cwd: string, topic: string): Promise<{ status: "recovered" | "already-recovered"; nextAction: string }> {
@@ -768,6 +826,8 @@ function validateMigrationPlan(plan: WorkflowMigrationPlan): void {
   if (plan.schemaVersion !== 2 || !isValidTopic(plan.topic) || !/^sha256:[a-f0-9]{64}$/.test(plan.preimageHash) || !/^sha256:[a-f0-9]{64}$/.test(plan.planHash)) throw new Error("invalid workflow migration plan");
   if (typeof plan.generatedAt !== "string" || !Number.isFinite(Date.parse(plan.generatedAt)) || new Date(plan.generatedAt).toISOString() !== plan.generatedAt || plan.sourcePaths.length > 256 || plan.sourcePaths.some((path) => !path.startsWith(".model-artifacts/") || path.includes("\\") || path.split("/").includes(".."))) throw new Error("invalid workflow migration plan metadata");
   const authorization = parseGate1Authorization(plan.authorization);
+  const auditPayload = stableJson({ schemaVersion: 2, rows: plan.audit?.rows });
+  if (plan.audit?.schemaVersion !== 2 || plan.audit.payload !== auditPayload || plan.audit.hash !== hashBytes(Buffer.from(auditPayload)) || plan.audit.hash !== authorization.auditHash || Buffer.byteLength(auditPayload) > 128 * 1024) throw new Error("workflow migration plan audit baseline mismatch");
   if (authorization.authorizedAt !== plan.generatedAt || authorization.topicDispositions[plan.topic] !== plan.disposition) throw new Error("workflow migration plan authorization mismatch");
   const logical = { schemaVersion: 2 as const, topic: plan.topic, classification: plan.classification as import("../../../src/swe-migration-record.ts").MigratableClassification, disposition: plan.disposition as Exclude<WorkflowMigrationDisposition, "operator-review">, generatedAt: plan.generatedAt, sourcePaths: plan.sourcePaths, preimageHash: plan.preimageHash, postimageHash: plan.postimageHash ?? null, eligible: plan.eligible, authorization };
   if (migrationPlanHash(logical) !== plan.planHash) throw new Error("workflow migration plan hash mismatch");

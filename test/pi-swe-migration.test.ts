@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 
 import { auditArtifacts } from "../extensions/pi-artifacts/src/domain/inventory.ts";
-import { applyWorkflowMigration, applyWorkflowMigrationBatch, inventoryWorkflowMigrations, planWorkflowMigration, recoverWorkflowMigration, rollbackWorkflowMigration, workflowMigrationReceiptPath } from "../extensions/pi-swe/src/migration.ts";
+import { applyWorkflowMigration, applyWorkflowMigrationBatch, inventoryWorkflowMigrations, planWorkflowMigration, recoverWorkflowMigration, renderWorkflowMigrationAudit, rollbackWorkflowMigration, workflowMigrationReceiptPath } from "../extensions/pi-swe/src/migration.ts";
 import { WorkflowMutationService } from "../extensions/pi-swe/src/service.ts";
 import { createWorkflow, reduceWorkflow } from "../extensions/pi-swe/src/workflow.ts";
 
@@ -107,7 +107,8 @@ test("production audit snapshot is canonical, bounded, complete, and sensitive-c
   writeJson(cwd, ".model-artifacts/initiatives/done/workflow.json", workflow("done", 1, "complete"));
   writeJson(cwd, ".model-artifacts/initiatives/swe-production-rollout/workflow.json", workflow("swe-production-rollout", 2));
   writeJson(cwd, ".model-artifacts/initiatives/unsupported/workflow.json", { version: 99, topic: "unsupported", status: "paused", secret: "never-audit-me" });
-  const first = inventoryWorkflowMigrations(cwd).audit;
+  const report = inventoryWorkflowMigrations(cwd);
+  const first = report.audit;
   const second = inventoryWorkflowMigrations(cwd).audit;
   assert.deepEqual(second, first);
   assert.equal(first.hash, `sha256:${createHash("sha256").update(first.payload).digest("hex")}`);
@@ -133,6 +134,9 @@ test("production audit snapshot is canonical, bounded, complete, and sensitive-c
   assert.equal(unsupported.action, "block");
   assert.equal(unsupported.blocker, "unsupported-workflow-version");
   assert.equal(unsupported.rollbackEvidencePath, null);
+  const rendered = renderWorkflowMigrationAudit(report);
+  assert.ok(rendered.startsWith(`migration audit (${first.rows.length} topics)\naudit schema: ${first.schemaVersion}\naudit hash: ${first.hash}\naudit payload: ${first.payload}\n`));
+  for (const field of ["topic=active", "classification=native-v1", "version=1", "state=active", "ownership=live", "action=block", "blocker=live-workflow-authority", "proposedDisposition=block", `contentHash=${active.contentHash}`, `rollbackEvidencePath=${workflowMigrationReceiptPath("active")}`, `sourcePaths=${JSON.stringify(active.sourcePaths)}`, "controllingExcluded=false"]) assert.ok(rendered.includes(field), field);
 });
 
 test("audit authority detects and blocks active, task-owned, leased, parent-owned, unknown, and controlling workflows", () => {
@@ -292,17 +296,57 @@ test("production workflow migration receipts are protected model-artifact recove
   assert.equal(entry?.topic, "done");
 });
 
-test("batch apply requires explicit unique selections and reports each topic without hiding partial failure", async () => {
-  const cwd = repository();
-  writeJson(cwd, ".model-artifacts/initiatives/good/workflow.json", workflow("good", 1));
-  writeJson(cwd, ".model-artifacts/initiatives/stale-batch/workflow.json", workflow("stale-batch", 1));
-  const good = planWorkflowMigration(cwd, "good", { authorization: authorization(cwd, "good"), now: at });
-  const stale = planWorkflowMigration(cwd, "stale-batch", { authorization: authorization(cwd, "stale-batch"), now: at });
-  writeJson(cwd, ".model-artifacts/initiatives/stale-batch/workflow.json", { ...workflow("stale-batch", 1), revision: 9 });
-  const results = await applyWorkflowMigrationBatch(cwd, [good, stale]);
-  assert.deepEqual(results.map(({ topic, status }) => [topic, status]), [["good", "failed"], ["stale-batch", "failed"]]);
-  assert.ok(results.every((result) => /audit hash mismatch/.test(result.error ?? "")));
-  await assert.rejects(() => applyWorkflowMigrationBatch(cwd, [good, good]), /unique topics/);
+test("batch apply preserves one complete audit authority across success, drift, failure, and retry", async () => {
+  const setup = (prefix: string) => {
+    const cwd = repository(prefix);
+    for (const topic of ["alpha", "beta"]) writeJson(cwd, `.model-artifacts/initiatives/${topic}/workflow.json`, workflow(topic, 1));
+    const shared = authorization(cwd, "alpha", "continue", { topicDispositions: { alpha: "continue", beta: "continue" } });
+    const plans = [
+      planWorkflowMigration(cwd, "alpha", { authorization: shared, now: at }),
+      planWorkflowMigration(cwd, "beta", { authorization: shared, now: at }),
+    ];
+    return { cwd, plans };
+  };
+
+  const success = setup("pi-swe-batch-success-");
+  const applied = await applyWorkflowMigrationBatch(success.cwd, success.plans);
+  assert.deepEqual(applied.map(({ topic, status }) => [topic, status]), [["alpha", "applied"], ["beta", "applied"]]);
+  const retry = await applyWorkflowMigrationBatch(success.cwd, success.plans);
+  assert.deepEqual(retry.map(({ topic, status }) => [topic, status]), [["alpha", "already-applied"], ["beta", "already-applied"]]);
+  await assert.rejects(() => applyWorkflowMigration(success.cwd, success.plans[0]!), /standalone migration authorization/);
+
+  const driftBefore = setup("pi-swe-batch-drift-before-");
+  writeJson(driftBefore.cwd, ".model-artifacts/initiatives/unrelated/workflow.json", workflow("unrelated", 1));
+  const before = await applyWorkflowMigrationBatch(driftBefore.cwd, driftBefore.plans);
+  assert.ok(before.every((result) => result.status === "failed" && /projection mismatch/.test(result.error ?? "")));
+  assert.ok(driftBefore.plans.every((plan) => JSON.parse(readFileSync(join(driftBefore.cwd, `.model-artifacts/initiatives/${plan.topic}/workflow.json`), "utf8")).version === 1));
+
+  const driftBetween = setup("pi-swe-batch-drift-between-");
+  const between = await applyWorkflowMigrationBatch(driftBetween.cwd, driftBetween.plans, { betweenTopics: () => writeJson(driftBetween.cwd, ".model-artifacts/initiatives/unrelated/workflow.json", workflow("unrelated", 1)) });
+  assert.deepEqual(between.map(({ topic, status }) => [topic, status]), [["alpha", "applied"], ["beta", "failed"]]);
+  assert.match(between[1]!.error!, /projection mismatch/);
+  rmSync(join(driftBetween.cwd, ".model-artifacts/initiatives/unrelated"), { recursive: true });
+  const partialRetry = await applyWorkflowMigrationBatch(driftBetween.cwd, driftBetween.plans);
+  assert.deepEqual(partialRetry.map(({ topic, status }) => [topic, status]), [["alpha", "already-applied"], ["beta", "applied"]]);
+
+  const firstFailure = setup("pi-swe-batch-first-failure-");
+  const journal = workflowMigrationReceiptPath("alpha").replace("receipt.json", "journal.json");
+  writeJson(firstFailure.cwd, journal, { foreign: true });
+  const partial = await applyWorkflowMigrationBatch(firstFailure.cwd, firstFailure.plans);
+  assert.deepEqual(partial.map(({ topic, status }) => [topic, status]), [["alpha", "failed"], ["beta", "applied"]]);
+  rmSync(join(firstFailure.cwd, journal));
+  const recoveredRetry = await applyWorkflowMigrationBatch(firstFailure.cwd, firstFailure.plans);
+  assert.deepEqual(recoveredRetry.map(({ topic, status }) => [topic, status]), [["alpha", "applied"], ["beta", "already-applied"]]);
+
+  await assert.rejects(() => applyWorkflowMigrationBatch(success.cwd, [success.plans[0]!, success.plans[0]!]), /unique topics/);
+  const reordered = setup("pi-swe-batch-order-");
+  await assert.rejects(() => applyWorkflowMigrationBatch(reordered.cwd, [...reordered.plans].reverse()), /canonical topic order/);
+  const mismatched = setup("pi-swe-batch-mismatch-");
+  const wrongAuthorization = authorization(mismatched.cwd, "alpha", "continue", { topicDispositions: { alpha: "continue" } });
+  const wrongPlan = planWorkflowMigration(mismatched.cwd, "alpha", { authorization: wrongAuthorization, now: at });
+  await assert.rejects(() => applyWorkflowMigrationBatch(mismatched.cwd, [wrongPlan, mismatched.plans[1]!]), /share one exact audit and authorization baseline|exactly cover/);
+  const forgedAudit = { ...mismatched.plans[0]!, audit: { ...mismatched.plans[0]!.audit, hash: `sha256:${"f".repeat(64)}` } };
+  await assert.rejects(() => applyWorkflowMigrationBatch(mismatched.cwd, [forgedAudit, mismatched.plans[1]!]), /audit baseline mismatch/);
 });
 
 test("SWE apply refuses active pi-artifacts claims and retained transaction recovery bundles", async () => {
