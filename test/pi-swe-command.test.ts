@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { completeSweArgument, registerSweCommand } from "../extensions/pi-swe/src/command.ts";
+import { inventoryWorkflowMigrations } from "../extensions/pi-swe/src/migration.ts";
 import { createWorkflow, type StageReport, type Workflow } from "../extensions/pi-swe/src/workflow.ts";
 import { assessRecovery, contextualWorkflowActions, renderRunTails, renderWorkflowInspection, SweRuntimeRegistry, WorkflowControlService, type WorkflowControlIdentity } from "../extensions/pi-swe/src/ux.ts";
 
@@ -99,9 +100,11 @@ test("migration command audits read-only and requires keyboard confirmation for 
     const audit = commandHarness(cwd);
     await audit.handler("migrate audit");
     assert.match(audit.notifications[0]!, /native-v1-complete/);
+    assert.match(audit.notifications[0]!, new RegExp(`audit hash: ${inventoryWorkflowMigrations(cwd).audit.hash}`));
+    assert.match(audit.notifications[0]!, /audit payload: \{"rows":/);
     assert.equal(readFileSync(path, "utf8"), before);
 
-    const authorization = JSON.stringify({ authorizedBy: "Priz", authorizedAt: "2026-09-18T20:11:12.000Z", auditHash: `sha256:${"a".repeat(64)}`, topicDispositions: { "historical-command": "reopen" }, rollbackRetentionUntil: "2286-11-20T07:17:52.000Z", rationale: "Explicit non-production command fixture authorization." });
+    const authorization = JSON.stringify({ authorizedBy: "Priz", authorizedAt: "2026-09-18T20:11:12.000Z", auditHash: inventoryWorkflowMigrations(cwd).audit.hash, topicDispositions: { "historical-command": "reopen" }, rollbackRetentionUntil: "2286-11-20T07:17:52.000Z", rationale: "Explicit non-production command fixture authorization." });
     const missing = commandHarness(cwd, { confirm: true });
     await missing.handler("migrate apply historical-command");
     assert.match(missing.notifications.at(-1)!, /cancelled, empty/);

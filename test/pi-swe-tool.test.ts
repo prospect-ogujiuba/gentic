@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
 
+import { inventoryWorkflowMigrations } from "../extensions/pi-swe/src/migration.ts";
 import { listWorkflowTopics } from "../extensions/pi-swe/src/store.ts";
 import { createWorkflow, reduceWorkflow, type StageReport } from "../extensions/pi-swe/src/workflow.ts";
 import { registerSweWorkflowTool } from "../extensions/pi-swe/src/tool.ts";
@@ -374,7 +375,7 @@ test("tool migration audit is read-only and apply requires a complete exact oper
     assert.equal(readFileSync(incompletePath, "utf8"), before);
     await assert.rejects(() => execute({ action: "migrate", topic: "tool-history" }), /complete explicit migrationAuthorization/);
     await assert.rejects(() => execute({ action: "migrate", topic: "tool-legacy" }), /complete explicit migrationAuthorization/);
-    const migrationAuthorization = { authorizedBy: "Priz", authorizedAt: "2026-09-18T20:11:12.000Z", auditHash: `sha256:${"a".repeat(64)}`, topicDispositions: { "tool-legacy": "continue" as const }, rollbackRetentionUntil: "2286-11-20T07:17:52.000Z", rationale: "Explicit non-production tool fixture authorization." };
+    const migrationAuthorization = { authorizedBy: "Priz", authorizedAt: "2026-09-18T20:11:12.000Z", auditHash: inventoryWorkflowMigrations(cwd).audit.hash, topicDispositions: { "tool-legacy": "continue" as const }, rollbackRetentionUntil: "2286-11-20T07:17:52.000Z", rationale: "Explicit non-production tool fixture authorization." };
     await assert.rejects(() => execute({ action: "migrate", topic: "tool-legacy", migrationAuthorization: { ...migrationAuthorization, topicDispositions: { other: "continue" } } }), /exactly cover/);
     const applied = await execute({ action: "migrate", topic: "tool-legacy", migrationAuthorization });
     assert.match(applied.content[0].text, /migration applied/);

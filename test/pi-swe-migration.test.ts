@@ -12,11 +12,11 @@ import { createWorkflow, reduceWorkflow } from "../extensions/pi-swe/src/workflo
 
 const at = "2026-02-01T00:00:00.000Z";
 const retention = "2099-02-01T00:00:00.000Z";
-function authorization(topic: string, disposition: "continue" | "reopen" | "grandfather-read-only" = "continue", overrides: Record<string, unknown> = {}) {
+function authorization(cwd: string, topic: string, disposition: "continue" | "reopen" | "grandfather-read-only" = "continue", overrides: Record<string, unknown> = {}) {
   return {
     authorizedBy: "operator-a",
     authorizedAt: at,
-    auditHash: `sha256:${"a".repeat(64)}`,
+    auditHash: inventoryWorkflowMigrations(cwd).audit.hash,
     topicDispositions: { [topic]: disposition },
     rollbackRetentionUntil: retention,
     rationale: "Deterministic non-production migration fixture authorization.",
@@ -101,6 +101,35 @@ test("inventory deterministically classifies native, historical, complete, and u
   assert.ok(Object.values(first.totals).every((count) => Number.isSafeInteger(count)));
 });
 
+test("production audit snapshot is canonical, bounded, complete, and sensitive-content free", () => {
+  const cwd = repository();
+  writeJson(cwd, ".model-artifacts/initiatives/active/workflow.json", { ...workflow("active", 1, "active"), secret: "never-audit-me" });
+  writeJson(cwd, ".model-artifacts/initiatives/done/workflow.json", workflow("done", 1, "complete"));
+  writeJson(cwd, ".model-artifacts/initiatives/swe-production-rollout/workflow.json", workflow("swe-production-rollout", 2));
+  writeJson(cwd, ".model-artifacts/initiatives/unsupported/workflow.json", { version: 99, topic: "unsupported", status: "paused", secret: "never-audit-me" });
+  const first = inventoryWorkflowMigrations(cwd).audit;
+  const second = inventoryWorkflowMigrations(cwd).audit;
+  assert.deepEqual(second, first);
+  assert.equal(first.hash, `sha256:${createHash("sha256").update(first.payload).digest("hex")}`);
+  assert.ok(Buffer.byteLength(first.payload) < 128 * 1024);
+  assert.equal(first.payload.includes(cwd), false);
+  assert.equal(first.payload.includes("never-audit-me"), false);
+  const canonical = JSON.parse(first.payload) as { schemaVersion: number; rows: Array<Record<string, unknown>> };
+  assert.equal(canonical.schemaVersion, 1);
+  assert.deepEqual(canonical.rows.map((row) => row.topic), ["active", "done", "swe-production-rollout", "unsupported"]);
+  const active = canonical.rows[0]!;
+  assert.deepEqual({ classification: active.classification, storedVersion: active.storedVersion, state: active.state, ownership: active.ownership, proposedDisposition: active.proposedDisposition }, { classification: "native-v1", storedVersion: 1, state: "active", ownership: "live", proposedDisposition: "continue" });
+  const done = canonical.rows[1]!;
+  assert.equal(done.proposedDisposition, "operator-review");
+  const controlling = canonical.rows[2]!;
+  assert.equal(controlling.controllingExcluded, true);
+  assert.equal(controlling.ownership, "controlling-excluded");
+  assert.equal(controlling.proposedDisposition, "excluded");
+  const unsupported = canonical.rows[3]!;
+  assert.equal(unsupported.action, "block");
+  assert.equal(unsupported.blocker, "unsupported-workflow-version");
+});
+
 test("inventory reports canonical, kind-first, and mixed-layout ownership without taking pi-artifacts authority", () => {
   const cwd = repository();
   writeJson(cwd, ".model-artifacts/initiatives/mixed/workflow.json", workflow("mixed", 1));
@@ -176,8 +205,8 @@ test("qualification corpus enumerates every supported state and adversarial reco
 test("policy requires explicit completed-workflow disposition and preserves historical tasks without accepting them as fresh v2 evidence", () => {
   const cwd = repository();
   writeJson(cwd, ".model-artifacts/initiatives/done/workflow.json", workflow("done", 1, "complete"));
-  assert.throws(() => planWorkflowMigration(cwd, "done", { authorization: authorization("done", "grandfather-read-only"), now: at }), /exactly cover/);
-  const reopen = planWorkflowMigration(cwd, "done", { disposition: "reopen", authorization: authorization("done", "reopen"), now: at });
+  assert.throws(() => planWorkflowMigration(cwd, "done", { authorization: authorization(cwd, "done", "grandfather-read-only"), now: at }), /exactly cover/);
+  const reopen = planWorkflowMigration(cwd, "done", { disposition: "reopen", authorization: authorization(cwd, "done", "reopen"), now: at });
   assert.equal(reopen.eligible, true);
   const postimage = JSON.parse(reopen.postimage!);
   assert.equal(postimage.status, "paused");
@@ -198,7 +227,7 @@ test("apply is preimage-bound, atomic, idempotent, guarded from ordinary mutatio
   const compatibility = service.read("legacy")!.workflow;
   await assert.rejects(() => service.mutate("legacy", compatibility.revision, (current) => reduceWorkflow(current, { type: "start" }, at)), /requires explicit migration/);
 
-  const plan = planWorkflowMigration(cwd, "legacy", { disposition: "continue", authorization: authorization("legacy"), now: at });
+  const plan = planWorkflowMigration(cwd, "legacy", { disposition: "continue", authorization: authorization(cwd, "legacy"), now: at });
   const applied = await applyWorkflowMigration(cwd, plan);
   assert.equal(applied.status, "applied");
   assert.ok(existsSync(join(cwd, workflowMigrationReceiptPath("legacy"))));
@@ -222,7 +251,7 @@ test("apply is preimage-bound, atomic, idempotent, guarded from ordinary mutatio
 test("production workflow migration receipts are protected model-artifact recovery evidence", async () => {
   const cwd = repository();
   writeJson(cwd, ".model-artifacts/initiatives/done/workflow.json", workflow("done", 1, "complete"));
-  const plan = planWorkflowMigration(cwd, "done", { disposition: "grandfather-read-only", authorization: authorization("done", "grandfather-read-only"), now: at });
+  const plan = planWorkflowMigration(cwd, "done", { disposition: "grandfather-read-only", authorization: authorization(cwd, "done", "grandfather-read-only"), now: at });
   const applied = await applyWorkflowMigration(cwd, plan);
   const entry = auditArtifacts({ cwd }).entries.find((candidate) => candidate.source === applied.receiptPath);
   assert.equal(entry?.classification, "protected");
@@ -235,12 +264,12 @@ test("batch apply requires explicit unique selections and reports each topic wit
   const cwd = repository();
   writeJson(cwd, ".model-artifacts/initiatives/good/workflow.json", workflow("good", 1));
   writeJson(cwd, ".model-artifacts/initiatives/stale-batch/workflow.json", workflow("stale-batch", 1));
-  const good = planWorkflowMigration(cwd, "good", { authorization: authorization("good"), now: at });
-  const stale = planWorkflowMigration(cwd, "stale-batch", { authorization: authorization("stale-batch"), now: at });
+  const good = planWorkflowMigration(cwd, "good", { authorization: authorization(cwd, "good"), now: at });
+  const stale = planWorkflowMigration(cwd, "stale-batch", { authorization: authorization(cwd, "stale-batch"), now: at });
   writeJson(cwd, ".model-artifacts/initiatives/stale-batch/workflow.json", { ...workflow("stale-batch", 1), revision: 9 });
   const results = await applyWorkflowMigrationBatch(cwd, [good, stale]);
-  assert.deepEqual(results.map(({ topic, status }) => [topic, status]), [["good", "applied"], ["stale-batch", "failed"]]);
-  assert.match(results[1]!.error!, /stale migration plan/);
+  assert.deepEqual(results.map(({ topic, status }) => [topic, status]), [["good", "failed"], ["stale-batch", "failed"]]);
+  assert.ok(results.every((result) => /audit hash mismatch/.test(result.error ?? "")));
   await assert.rejects(() => applyWorkflowMigrationBatch(cwd, [good, good]), /unique topics/);
 });
 
@@ -248,7 +277,7 @@ test("SWE apply refuses active pi-artifacts claims and retained transaction reco
   for (const blocker of ["active.claim.json", "fixture-transaction"] as const) {
     const cwd = repository();
     writeJson(cwd, ".model-artifacts/initiatives/exclusive/workflow.json", workflow("exclusive", 1));
-    const plan = planWorkflowMigration(cwd, "exclusive", { authorization: authorization("exclusive"), now: at });
+    const plan = planWorkflowMigration(cwd, "exclusive", { authorization: authorization(cwd, "exclusive"), now: at });
     const path = join(cwd, ".model-artifacts/system/logs/model-artifact-migration", blocker);
     if (blocker.endsWith("-transaction")) mkdirSync(path, { recursive: true });
     else writeJson(cwd, `.model-artifacts/system/logs/model-artifact-migration/${blocker}`, { ownerToken: "other" });
@@ -261,13 +290,13 @@ test("apply rejects stale plans and interrupted publication is recovered from th
   const stale = repository();
   const stalePath = ".model-artifacts/initiatives/stale/workflow.json";
   writeJson(stale, stalePath, workflow("stale", 1));
-  const stalePlan = planWorkflowMigration(stale, "stale", { authorization: authorization("stale"), now: at });
+  const stalePlan = planWorkflowMigration(stale, "stale", { authorization: authorization(stale, "stale"), now: at });
   writeJson(stale, stalePath, { ...workflow("stale", 1), revision: 4 });
-  await assert.rejects(() => applyWorkflowMigration(stale, stalePlan), /stale migration plan/);
+  await assert.rejects(() => applyWorkflowMigration(stale, stalePlan), /audit hash mismatch/);
 
   const interrupted = repository();
   writeJson(interrupted, ".model-artifacts/initiatives/crash/workflow.json", workflow("crash", 1));
-  const plan = planWorkflowMigration(interrupted, "crash", { authorization: authorization("crash"), now: at });
+  const plan = planWorkflowMigration(interrupted, "crash", { authorization: authorization(interrupted, "crash"), now: at });
   await assert.rejects(() => applyWorkflowMigration(interrupted, plan, { fault: (stage) => { if (stage === "workflow-written") throw new Error("power loss"); } }), /power loss/);
   const recovered = await recoverWorkflowMigration(interrupted, "crash");
   assert.equal(recovered.status, "recovered");
@@ -278,25 +307,40 @@ test("apply rejects stale plans and interrupted publication is recovered from th
 test("authorization is complete, canonical, and every Gate 1 field is plan-hash bound", () => {
   const cwd = repository();
   writeJson(cwd, ".model-artifacts/initiatives/bound/workflow.json", workflow("bound", 1));
-  const base = authorization("bound");
+  const base = authorization(cwd, "bound");
   const plan = planWorkflowMigration(cwd, "bound", { authorization: base, now: at });
   const variants = [
     { ...base, authorizedBy: "operator-b" },
-    { ...base, auditHash: `sha256:${"b".repeat(64)}` },
     { ...base, rationale: "A distinct explicit fixture rationale." },
     { ...base, rollbackRetentionUntil: "2098-02-01T00:00:00.000Z" },
   ];
   for (const candidate of variants) assert.notEqual(planWorkflowMigration(cwd, "bound", { authorization: candidate, now: at }).planHash, plan.planHash);
+  assert.throws(() => planWorkflowMigration(cwd, "bound", { authorization: { ...base, auditHash: `sha256:${"b".repeat(64)}` }, now: at }), /audit hash mismatch/);
   assert.throws(() => planWorkflowMigration(cwd, "bound", { authorization: { ...base, extra: true } as never, now: at }), /unknown or missing/);
   assert.throws(() => planWorkflowMigration(cwd, "bound", { authorization: { ...base, authorizedAt: "2026-02-01" }, now: at }), /canonical ISO/);
   assert.throws(() => planWorkflowMigration(cwd, "bound", { authorization: { ...base, topicDispositions: { other: "continue" } } as never, now: at }), /exactly cover/);
   assert.throws(() => planWorkflowMigration(cwd, "bound", { authorization: { ...base, rollbackRetentionUntil: "2025-01-01T00:00:00.000Z" }, now: at }), /predates/);
 });
 
+test("apply recomputes the complete production audit under lock and rejects drift without writes", async () => {
+  const cwd = repository();
+  const path = ".model-artifacts/initiatives/audit-bound/workflow.json";
+  writeJson(cwd, path, workflow("audit-bound", 1));
+  const before = readFileSync(join(cwd, path));
+  const plan = planWorkflowMigration(cwd, "audit-bound", { authorization: authorization(cwd, "audit-bound"), now: at });
+  const authorizedHash = plan.authorization.auditHash;
+  writeJson(cwd, ".model-artifacts/initiatives/new-topic/workflow.json", workflow("new-topic", 1));
+  assert.notEqual(inventoryWorkflowMigrations(cwd).audit.hash, authorizedHash);
+  await assert.rejects(() => applyWorkflowMigration(cwd, plan), /audit hash mismatch/);
+  assert.deepEqual(readFileSync(join(cwd, path)), before);
+  assert.equal(existsSync(join(cwd, workflowMigrationReceiptPath("audit-bound"))), false);
+  assert.equal(existsSync(join(cwd, workflowMigrationReceiptPath("audit-bound").replace("receipt.json", "journal.json"))), false);
+});
+
 test("receipts and journals fail closed and recovery requires exact embedded identity", async () => {
   const receiptRepo = repository();
   writeJson(receiptRepo, ".model-artifacts/initiatives/exact/workflow.json", workflow("exact", 1));
-  const plan = planWorkflowMigration(receiptRepo, "exact", { authorization: authorization("exact"), now: at });
+  const plan = planWorkflowMigration(receiptRepo, "exact", { authorization: authorization(receiptRepo, "exact"), now: at });
   await applyWorkflowMigration(receiptRepo, plan);
   const receiptPath = join(receiptRepo, workflowMigrationReceiptPath("exact"));
   const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
@@ -305,7 +349,7 @@ test("receipts and journals fail closed and recovery requires exact embedded ide
 
   const recoveryRepo = repository();
   writeJson(recoveryRepo, ".model-artifacts/initiatives/recovery-exact/workflow.json", workflow("recovery-exact", 1));
-  const recoveryPlan = planWorkflowMigration(recoveryRepo, "recovery-exact", { authorization: authorization("recovery-exact"), now: at });
+  const recoveryPlan = planWorkflowMigration(recoveryRepo, "recovery-exact", { authorization: authorization(recoveryRepo, "recovery-exact"), now: at });
   await assert.rejects(() => applyWorkflowMigration(recoveryRepo, recoveryPlan, { fault: (stage) => { if (stage === "workflow-written") throw new Error("interrupt"); } }), /interrupt/);
   const journalPath = workflowMigrationReceiptPath("recovery-exact").replace("receipt.json", "journal.json");
   const journal = JSON.parse(readFileSync(join(recoveryRepo, journalPath), "utf8"));
@@ -318,7 +362,7 @@ test("strict legacy receipt remains rollbackable but cannot satisfy a new v2 app
   const path = ".model-artifacts/initiatives/legacy-receipt/workflow.json";
   writeJson(cwd, path, workflow("legacy-receipt", 1));
   const preimage = readFileSync(join(cwd, path));
-  const next = planWorkflowMigration(cwd, "legacy-receipt", { authorization: authorization("legacy-receipt"), now: at });
+  const next = planWorkflowMigration(cwd, "legacy-receipt", { authorization: authorization(cwd, "legacy-receipt"), now: at });
   const logical = { schemaVersion: 1, topic: next.topic, classification: next.classification, disposition: next.disposition, decidedBy: "operator-a", generatedAt: at, sourcePaths: next.sourcePaths, preimageHash: next.preimageHash, postimageHash: next.postimageHash, eligible: true };
   const canonical = (value: unknown): string => Array.isArray(value) ? `[${value.map(canonical).join(",")}]` : value && typeof value === "object" ? `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`).join(",")}}` : JSON.stringify(value);
   const legacyPlanHash = `sha256:${createHash("sha256").update(canonical(logical)).digest("hex")}`;
@@ -334,7 +378,7 @@ test("authenticated rollback archives its exact attempt and reapply reproduces i
   const cwd = repository();
   const workflowPath = ".model-artifacts/initiatives/reapply/workflow.json";
   writeJson(cwd, workflowPath, workflow("reapply", 1));
-  const plan = planWorkflowMigration(cwd, "reapply", { authorization: authorization("reapply"), now: at });
+  const plan = planWorkflowMigration(cwd, "reapply", { authorization: authorization(cwd, "reapply"), now: at });
   await applyWorkflowMigration(cwd, plan);
   const firstPostimage = readFileSync(join(cwd, workflowPath));
   const firstReceipt = JSON.parse(readFileSync(join(cwd, workflowMigrationReceiptPath("reapply")), "utf8"));
@@ -352,7 +396,7 @@ test("expired rollback retention refuses apply without writing", async () => {
   const cwd = repository();
   writeJson(cwd, ".model-artifacts/initiatives/expired/workflow.json", workflow("expired", 1));
   const expiredAt = "2020-01-01T00:00:00.000Z";
-  const plan = planWorkflowMigration(cwd, "expired", { authorization: { ...authorization("expired"), authorizedAt: expiredAt, rollbackRetentionUntil: "2021-01-01T00:00:00.000Z" }, now: expiredAt });
+  const plan = planWorkflowMigration(cwd, "expired", { authorization: { ...authorization(cwd, "expired"), authorizedAt: expiredAt, rollbackRetentionUntil: "2021-01-01T00:00:00.000Z" }, now: expiredAt });
   await assert.rejects(() => applyWorkflowMigration(cwd, plan), /expired/);
   assert.equal(JSON.parse(readFileSync(join(cwd, ".model-artifacts/initiatives/expired/workflow.json"), "utf8")).version, 1);
 });
@@ -362,19 +406,19 @@ test("stale reapply and prepublication journal rejection preserve canonical roll
   const path = ".model-artifacts/initiatives/stale-reapply/workflow.json";
   writeJson(stale, path, workflow("stale-reapply", 1));
   const original = readFileSync(join(stale, path));
-  const first = planWorkflowMigration(stale, "stale-reapply", { authorization: authorization("stale-reapply"), now: at });
+  const first = planWorkflowMigration(stale, "stale-reapply", { authorization: authorization(stale, "stale-reapply"), now: at });
   await applyWorkflowMigration(stale, first);
   await rollbackWorkflowMigration(stale, "stale-reapply");
   const canonical = join(stale, workflowMigrationReceiptPath("stale-reapply"));
   const beforeReceipt = readFileSync(canonical);
-  const stalePlan = planWorkflowMigration(stale, "stale-reapply", { authorization: authorization("stale-reapply"), now: at });
+  const stalePlan = planWorkflowMigration(stale, "stale-reapply", { authorization: authorization(stale, "stale-reapply"), now: at });
   writeJson(stale, path, { ...workflow("stale-reapply", 1), revision: 99 });
-  await assert.rejects(() => applyWorkflowMigration(stale, stalePlan), /stale migration plan/);
+  await assert.rejects(() => applyWorkflowMigration(stale, stalePlan), /audit hash mismatch/);
   assert.deepEqual(readFileSync(canonical), beforeReceipt);
   assert.equal(existsSync(join(canonical, "../attempts")), false);
 
   writeFileSync(join(stale, path), original);
-  const fresh = planWorkflowMigration(stale, "stale-reapply", { authorization: authorization("stale-reapply"), now: at });
+  const fresh = planWorkflowMigration(stale, "stale-reapply", { authorization: authorization(stale, "stale-reapply"), now: at });
   const journal = workflowMigrationReceiptPath("stale-reapply").replace("receipt.json", "journal.json");
   writeJson(stale, journal, { invalid: true });
   await assert.rejects(() => applyWorkflowMigration(stale, fresh), /unfinished SWE migration/);
@@ -388,7 +432,7 @@ test("reapply archive and publication interruption points are recoverable withou
     const topic = `reapply-${stage}`;
     const path = `.model-artifacts/initiatives/${topic}/workflow.json`;
     writeJson(cwd, path, workflow(topic, 1));
-    const plan = planWorkflowMigration(cwd, topic, { authorization: authorization(topic), now: at });
+    const plan = planWorkflowMigration(cwd, topic, { authorization: authorization(cwd, topic), now: at });
     await applyWorkflowMigration(cwd, plan);
     await rollbackWorkflowMigration(cwd, topic);
     const canonical = join(cwd, workflowMigrationReceiptPath(topic));
@@ -416,13 +460,81 @@ test("reapply archive and publication interruption points are recoverable withou
   }
 });
 
+test("fsync and unlink interruption seams preserve recoverable ordering", async () => {
+  const journalRepo = repository();
+  writeJson(journalRepo, ".model-artifacts/initiatives/fsync-journal/workflow.json", workflow("fsync-journal", 1));
+  const journalPlan = planWorkflowMigration(journalRepo, "fsync-journal", { authorization: authorization(journalRepo, "fsync-journal"), now: at });
+  await assert.rejects(() => applyWorkflowMigration(journalRepo, journalPlan, { fault: (stage, path) => { if (stage === "before-file-fsync" && path?.endsWith("journal.json")) throw new Error("journal fsync interrupted"); } }), /journal fsync interrupted/);
+  assert.equal((await recoverWorkflowMigration(journalRepo, "fsync-journal")).status, "recovered");
+
+  const receiptRepo = repository();
+  writeJson(receiptRepo, ".model-artifacts/initiatives/fsync-receipt/workflow.json", workflow("fsync-receipt", 1));
+  const receiptPlan = planWorkflowMigration(receiptRepo, "fsync-receipt", { authorization: authorization(receiptRepo, "fsync-receipt"), now: at });
+  let directorySyncs = 0;
+  await assert.rejects(() => applyWorkflowMigration(receiptRepo, receiptPlan, { fault: (stage) => { if (stage === "before-directory-fsync" && ++directorySyncs === 2) throw new Error("receipt directory fsync interrupted"); } }), /receipt directory fsync interrupted/);
+  assert.equal((await recoverWorkflowMigration(receiptRepo, "fsync-receipt")).status, "recovered");
+
+  const unlinkRepo = repository();
+  writeJson(unlinkRepo, ".model-artifacts/initiatives/unlink/workflow.json", workflow("unlink", 1));
+  const unlinkPlan = planWorkflowMigration(unlinkRepo, "unlink", { authorization: authorization(unlinkRepo, "unlink"), now: at });
+  await applyWorkflowMigration(unlinkRepo, unlinkPlan);
+  await rollbackWorkflowMigration(unlinkRepo, "unlink");
+  await assert.rejects(() => applyWorkflowMigration(unlinkRepo, unlinkPlan, { fault: (stage, path) => { if (stage === "before-unlink" && path?.endsWith("receipt.json")) throw new Error("unlink interrupted"); } }), /unlink interrupted/);
+  assert.equal((await recoverWorkflowMigration(unlinkRepo, "unlink")).status, "recovered");
+  const retained = JSON.parse(readFileSync(join(unlinkRepo, workflowMigrationReceiptPath("unlink")), "utf8"));
+  assert.equal(retained.state, "rolled-back");
+});
+
+test("reapply recovery binds exact prior canonical and archived evidence", async () => {
+  const setup = async (suffix: string) => {
+    const cwd = repository(`pi-swe-prior-${suffix}-`);
+    const topic = `prior-${suffix}`;
+    const workflowFile = `.model-artifacts/initiatives/${topic}/workflow.json`;
+    writeJson(cwd, workflowFile, workflow(topic, 1));
+    const plan = planWorkflowMigration(cwd, topic, { authorization: authorization(cwd, topic), now: at });
+    await applyWorkflowMigration(cwd, plan);
+    await rollbackWorkflowMigration(cwd, topic);
+    await assert.rejects(() => applyWorkflowMigration(cwd, plan, { fault: (stage) => { if (stage === "journal-prepared") throw new Error("stop-after-journal"); } }), /stop-after-journal/);
+    return { cwd, topic, plan, canonical: workflowMigrationReceiptPath(topic), journal: workflowMigrationReceiptPath(topic).replace("receipt.json", "journal.json"), archive: workflowMigrationReceiptPath(topic).replace("receipt.json", `attempts/${plan.planHash.slice(7)}-receipt.json`) };
+  };
+
+  const missing = await setup("missing-archive");
+  rmSync(join(missing.cwd, missing.archive));
+  await assert.rejects(() => recoverWorkflowMigration(missing.cwd, missing.topic), /prior migration attempt is missing/);
+  assert.equal(existsSync(join(missing.cwd, missing.journal)), true);
+
+  const mismatchedArchive = await setup("mismatched-archive");
+  const archived = JSON.parse(readFileSync(join(mismatchedArchive.cwd, mismatchedArchive.archive), "utf8"));
+  writeJson(mismatchedArchive.cwd, mismatchedArchive.archive, { ...archived, rolledBackAt: "2027-02-02T00:00:00.000Z" });
+  await assert.rejects(() => recoverWorkflowMigration(mismatchedArchive.cwd, mismatchedArchive.topic), /archived prior receipt does not match/);
+  assert.equal(existsSync(join(mismatchedArchive.cwd, mismatchedArchive.journal)), true);
+
+  const mismatchedCanonical = await setup("mismatched-canonical");
+  const canonical = JSON.parse(readFileSync(join(mismatchedCanonical.cwd, mismatchedCanonical.canonical), "utf8"));
+  writeJson(mismatchedCanonical.cwd, mismatchedCanonical.canonical, { ...canonical, rolledBackAt: "2027-02-02T00:00:00.000Z" });
+  await assert.rejects(() => recoverWorkflowMigration(mismatchedCanonical.cwd, mismatchedCanonical.topic), /canonical prior receipt does not match/);
+  assert.equal(existsSync(join(mismatchedCanonical.cwd, mismatchedCanonical.journal)), true);
+
+  const initial = repository();
+  const initialTopic = "initial-unrelated";
+  writeJson(initial, `.model-artifacts/initiatives/${initialTopic}/workflow.json`, workflow(initialTopic, 1));
+  const initialPlan = planWorkflowMigration(initial, initialTopic, { authorization: authorization(initial, initialTopic), now: at });
+  await assert.rejects(() => applyWorkflowMigration(initial, initialPlan, { fault: (stage) => { if (stage === "journal-prepared") throw new Error("initial-journal"); } }), /initial-journal/);
+  const initialJournalPath = workflowMigrationReceiptPath(initialTopic).replace("receipt.json", "journal.json");
+  const initialJournal = JSON.parse(readFileSync(join(initial, initialJournalPath), "utf8"));
+  const unrelated = { ...initialJournal.receipt, state: "rolled-back", rolledBackAt: "2027-02-02T00:00:00.000Z" };
+  writeJson(initial, workflowMigrationReceiptPath(initialTopic), unrelated);
+  await assert.rejects(() => recoverWorkflowMigration(initial, initialTopic), /initial apply journal requires canonical receipt absence/);
+  assert.equal(existsSync(join(initial, initialJournalPath)), true);
+});
+
 test("no-journal recovery proves exact receipt state and workflow bytes", async () => {
   const applied = repository();
   const topic = "recover-applied";
   const path = `.model-artifacts/initiatives/${topic}/workflow.json`;
   writeJson(applied, path, workflow(topic, 1));
   const preimage = readFileSync(join(applied, path));
-  const plan = planWorkflowMigration(applied, topic, { authorization: authorization(topic), now: at });
+  const plan = planWorkflowMigration(applied, topic, { authorization: authorization(applied, topic), now: at });
   await applyWorkflowMigration(applied, plan);
   assert.equal((await recoverWorkflowMigration(applied, topic)).status, "already-recovered");
   const receiptPath = workflowMigrationReceiptPath(topic);
@@ -456,7 +568,7 @@ test("no-journal recovery authenticates an absent historical-import target", asy
   writeJson(cwd, `${root}/plans/revisions/r1/plan.md`, { title: "Plan" });
   writeFileSync(join(cwd, `${root}/plans/revisions/r1/task.md`), "# T1: task\n\n## Acceptance criteria\n\n- remains bounded\n");
   writeJson(cwd, `${root}/plans/revisions/r1/contracts.json`, { contracts: [{ id: "T1", kind: "subphase", status: "pending", path: `${root}/plans/revisions/r1/task.md` }] });
-  const plan = planWorkflowMigration(cwd, topic, { authorization: authorization(topic), now: at });
+  const plan = planWorkflowMigration(cwd, topic, { authorization: authorization(cwd, topic), now: at });
   await applyWorkflowMigration(cwd, plan);
   await rollbackWorkflowMigration(cwd, topic);
   assert.equal(existsSync(join(cwd, `${root}/workflow.json`)), false);
@@ -468,7 +580,7 @@ test("no-journal recovery authenticates an absent historical-import target", asy
 test("grandfathered completion remains immutable through all normal mutation entry points", async () => {
   const cwd = repository();
   writeJson(cwd, ".model-artifacts/initiatives/archive/workflow.json", workflow("archive", 1, "complete"));
-  const plan = planWorkflowMigration(cwd, "archive", { disposition: "grandfather-read-only", authorization: authorization("archive", "grandfather-read-only"), now: at });
+  const plan = planWorkflowMigration(cwd, "archive", { disposition: "grandfather-read-only", authorization: authorization(cwd, "archive", "grandfather-read-only"), now: at });
   await applyWorkflowMigration(cwd, plan);
   const service = new WorkflowMutationService(cwd);
   const current = service.read("archive", false)!.workflow;

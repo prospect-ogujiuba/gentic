@@ -64,7 +64,7 @@ export function registerSweCommand(pi: ExtensionAPI): void {
           if (operation === "audit") {
             const report = inventoryWorkflowMigrations(ctx.cwd);
             const lines = report.entries.slice(0, 100).map((entry) => `- ${entry.topic}: ${entry.classification}; next: ${entry.guidance ?? entry.action}`);
-            ctx.ui.notify(`pi-swe migration audit (${report.entries.length} topics)\n${lines.join("\n") || "- no workflow migration candidates"}`, report.complete ? "info" : "warning");
+            ctx.ui.notify(`pi-swe migration audit (${report.entries.length} topics)\naudit schema: ${report.audit.schemaVersion}\naudit hash: ${report.audit.hash}\naudit payload: ${report.audit.payload}\n${lines.join("\n") || "- no workflow migration candidates"}`, report.complete ? "info" : "warning");
             return;
           }
           const selectedTopics = (args[2] ?? "").split(",").map((value) => value.trim()).filter(Boolean);

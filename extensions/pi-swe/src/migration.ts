@@ -12,7 +12,9 @@ import {
   parseSweMigrationJournal,
   parseSweMigrationReceipt,
   receiptEquals,
+  stableJson,
   type Gate1Authorization,
+  type SweMigrationJournal,
   type SweMigrationReceipt,
   type SweMigrationReceiptV2,
 } from "../../../src/swe-migration-record.ts";
@@ -76,11 +78,26 @@ export type WorkflowMigrationInventoryEntry = {
   guidance?: string;
 };
 
+export type WorkflowMigrationAuditRow = {
+  topic: string;
+  classification: WorkflowMigrationClassification;
+  action: WorkflowMigrationAction;
+  storedVersion: number | null;
+  state: string;
+  ownership: "inactive" | "live" | "unknown" | "controlling-excluded";
+  contentHash: string | null;
+  blocker: WorkflowMigrationBlocker | null;
+  proposedDisposition: "continue" | "operator-review" | "none" | "block" | "excluded";
+  controllingExcluded: boolean;
+  sourcePaths: string[];
+};
+export type WorkflowMigrationAudit = { schemaVersion: 1; payload: string; hash: string; rows: WorkflowMigrationAuditRow[] };
 export type WorkflowMigrationInventory = {
   schemaVersion: 1;
   complete: boolean;
   entries: WorkflowMigrationInventoryEntry[];
   totals: Record<WorkflowMigrationClassification, number>;
+  audit: WorkflowMigrationAudit;
 };
 
 export type WorkflowMigrationInventoryOptions = {
@@ -133,6 +150,7 @@ export function inventoryWorkflowMigrations(cwd: string, options: WorkflowMigrat
     complete: entries.every((entry) => entry.action === "none"),
     entries,
     totals,
+    audit: buildWorkflowMigrationAudit(root, entries, bounds.maxFileBytes),
   };
   if (Buffer.byteLength(JSON.stringify(report)) > bounds.maxReportBytes) throw new Error(`workflow inventory report byte limit exceeded: ${bounds.maxReportBytes}`);
   return report;
@@ -392,8 +410,38 @@ function bound(value: number | undefined, fallback: number, hardMaximum: number,
   return normalized;
 }
 
+function buildWorkflowMigrationAudit(root: string, entries: WorkflowMigrationInventoryEntry[], maximum: number): WorkflowMigrationAudit {
+  const rows = entries.map((entry): WorkflowMigrationAuditRow => {
+    let storedVersion: number | null = null;
+    let state = "unknown";
+    let ownership: WorkflowMigrationAuditRow["ownership"] = "unknown";
+    const authorityPath = entry.sourcePaths.find((path) => /\/(?:workflow|manifest)\.json$/.test(path));
+    if (authorityPath) {
+      const read = readBoundedJson(root, safeProjectPath(root, authorityPath), maximum);
+      if (read.ok && record(read.value)) {
+        const version = read.value.version ?? read.value.schemaVersion;
+        storedVersion = Number.isSafeInteger(version) ? version as number : null;
+        state = typeof read.value.status === "string" && ["draft", "paused", "active", "blocked", "complete"].includes(read.value.status) ? read.value.status : "unknown";
+        ownership = state === "active" || record(read.value.orchestration) && record(read.value.orchestration.activeRun) ? "live" : "inactive";
+      }
+    }
+    const controllingExcluded = entry.topic === "swe-production-rollout";
+    if (controllingExcluded) ownership = "controlling-excluded";
+    const completed = entry.classification === "native-v1-complete" || entry.classification === "historical-contracts-complete";
+    const migratable = ["native-v1", "historical-contracts"].includes(entry.classification);
+    const current = entry.classification === "current-v2" || entry.classification === "current-v2-complete";
+    const proposedDisposition: WorkflowMigrationAuditRow["proposedDisposition"] = controllingExcluded ? "excluded" : completed ? "operator-review" : migratable ? "continue" : current ? "none" : "block";
+    return { topic: entry.topic, classification: entry.classification, action: entry.action, storedVersion, state, ownership, contentHash: entry.contentHash ?? null, blocker: entry.blocker ?? null, proposedDisposition, controllingExcluded, sourcePaths: [...entry.sourcePaths] };
+  }).sort((a, b) => a.topic.localeCompare(b.topic));
+  const payload = stableJson({ schemaVersion: 1, rows });
+  if (Buffer.byteLength(payload) > 128 * 1024) throw new Error("workflow migration audit payload byte limit exceeded: 131072");
+  return { schemaVersion: 1, payload, hash: hashBytes(Buffer.from(payload)), rows };
+}
+
 function emptyInventory(): WorkflowMigrationInventory {
-  return { schemaVersion: 1, complete: true, entries: [], totals: emptyTotals() };
+  const rows: WorkflowMigrationAuditRow[] = [];
+  const payload = stableJson({ schemaVersion: 1, rows });
+  return { schemaVersion: 1, complete: true, entries: [], totals: emptyTotals(), audit: { schemaVersion: 1, payload, hash: hashBytes(Buffer.from(payload)), rows } };
 }
 
 function emptyTotals(): Record<WorkflowMigrationClassification, number> {
@@ -440,11 +488,14 @@ export type WorkflowMigrationPlan = {
 };
 export type WorkflowMigrationReceipt = SweMigrationReceipt;
 export type WorkflowMigrationAuthorization = Gate1Authorization;
-export type WorkflowMigrationFaultStage = "before-archive" | "archive-written" | "journal-prepared" | "canonical-removed" | "workflow-written" | "receipt-written";
+export type WorkflowMigrationFaultStage = "before-archive" | "archive-written" | "journal-prepared" | "canonical-removed" | "workflow-written" | "receipt-written" | "before-file-fsync" | "before-directory-fsync" | "before-unlink";
+type WorkflowMigrationFault = (stage: WorkflowMigrationFaultStage, path?: string) => void;
 
 /** Build an executable, preimage-bound decision without writing repository state. */
 export function planWorkflowMigration(cwd: string, topic: string, options: { disposition?: WorkflowMigrationDisposition; authorization: Gate1Authorization; now?: string }): WorkflowMigrationPlan {
-  const entry = inventoryWorkflowMigrations(cwd).entries.find((candidate) => candidate.topic === topic);
+  const inventory = inventoryWorkflowMigrations(cwd);
+  if (options.authorization.auditHash !== inventory.audit.hash) throw new Error(`migration authorization audit hash mismatch: expected ${inventory.audit.hash}`);
+  const entry = inventory.entries.find((candidate) => candidate.topic === topic);
   if (!entry) throw new Error(`workflow ${topic} was not found in migration inventory`);
   const complete = entry.classification === "native-v1-complete" || entry.classification === "historical-contracts-complete";
   const disposition = options.disposition ?? (complete ? "operator-review" : "continue");
@@ -504,7 +555,7 @@ export function planWorkflowMigration(cwd: string, topic: string, options: { dis
 }
 
 /** Apply exactly one validated dry-run plan under the shared workflow mutation lock. */
-export async function applyWorkflowMigration(cwd: string, plan: WorkflowMigrationPlan, options: { fault?: (stage: WorkflowMigrationFaultStage) => void } = {}): Promise<{ status: "applied" | "already-applied"; receiptPath: string; receipt: WorkflowMigrationReceipt }> {
+export async function applyWorkflowMigration(cwd: string, plan: WorkflowMigrationPlan, options: { fault?: WorkflowMigrationFault } = {}): Promise<{ status: "applied" | "already-applied"; receiptPath: string; receipt: WorkflowMigrationReceipt }> {
   validateMigrationPlan(plan);
   if (!plan.eligible || !plan.postimage || !plan.postimageHash || plan.disposition === "operator-review") throw new Error(`migration plan is not eligible: ${plan.nextAction}`);
   const postimage = plan.postimage;
@@ -547,24 +598,24 @@ export async function applyWorkflowMigration(cwd: string, plan: WorkflowMigratio
       if (existsSync(archiveAbsolute)) {
         const archived = readMigrationReceipt(resolve(cwd), archiveAbsolute);
         if (!receiptEquals(archived, rolledBackReceipt)) throw new Error("retained migration attempt does not exactly match the rolled-back receipt");
-      } else writeJsonExclusive(archiveAbsolute, rolledBackReceipt);
+      } else writeJsonExclusive(archiveAbsolute, rolledBackReceipt, options.fault);
       options.fault?.("archive-written");
     }
-    writeJsonExclusive(journalAbsolute, { schemaVersion: 2, operation: "apply", stage: "prepared", planHash: plan.planHash, topic: plan.topic, preimageHash: plan.preimageHash, postimageHash: plan.postimageHash, receipt });
+    writeJsonExclusive(journalAbsolute, { schemaVersion: 2, operation: "apply", stage: "prepared", planHash: plan.planHash, topic: plan.topic, preimageHash: plan.preimageHash, postimageHash: plan.postimageHash, receipt, ...(rolledBackReceipt ? { priorReceipt: rolledBackReceipt } : {}) }, options.fault);
     options.fault?.("journal-prepared");
     if (rolledBackReceipt) {
       const observed = readMigrationReceipt(resolve(cwd), receiptAbsolute);
       if (!receiptEquals(observed, rolledBackReceipt)) throw new Error("canonical rolled-back receipt changed before reapply publication");
-      rmSync(receiptAbsolute);
+      removeFileDurable(receiptAbsolute, options.fault);
       options.fault?.("canonical-removed");
     }
     const parsed = parseWorkflow(JSON.parse(postimage));
     saveWorkflow(cwd, parsed, existsSync(nativePath) ? loadWorkflow(cwd, plan.topic, false)?.workflow.revision : undefined);
     if (currentWorkflowHash(cwd, plan.topic) !== postimageHash) throw new Error("workflow postimage hash mismatch after atomic write");
     options.fault?.("workflow-written");
-    writeJsonExclusive(receiptAbsolute, receipt);
+    writeJsonExclusive(receiptAbsolute, receipt, options.fault);
     options.fault?.("receipt-written");
-    rmSync(journalAbsolute);
+    removeFileDurable(journalAbsolute, options.fault);
     return { status: "applied", receiptPath, receipt };
   });
 }
@@ -604,24 +655,26 @@ export async function recoverWorkflowMigration(cwd: string, topic: string): Prom
     }
     const journal = parseSweMigrationJournal(JSON.parse(readBounded(resolve(cwd), journalAbsolute, 1024 * 1024).toString("utf8")), { path: workflowMigrationJournalPath(topic) });
     const current = currentWorkflowHash(cwd, topic);
+    assertJournalPriorArchive(resolve(cwd), journal);
     if (current === journal.receipt.postimageHash) {
       if (journal.receipt.schemaVersion === 1) validateLegacyPlanIdentity(journal.receipt, legacyGeneratedAt(cwd, topic), journal.receipt.postimageHash);
       if (existsSync(receiptAbsolute)) {
         const published = readMigrationReceipt(resolve(cwd), receiptAbsolute);
         if (!receiptEquals(published, journal.receipt)) throw new Error("published migration receipt does not exactly match the recovery journal");
       } else writeJsonExclusive(receiptAbsolute, journal.receipt);
-      rmSync(journalAbsolute);
+      removeFileDurable(journalAbsolute);
       return { status: "recovered", nextAction: "migration committed; re-audit the topic" };
     }
     const payload = journal.receipt.preimagePayload ? Buffer.from(journal.receipt.preimagePayload, "base64") : undefined;
     if (journal.receipt.schemaVersion === 1 && (payload ? current === journal.receipt.preimageHash : current === undefined)) throw new Error("legacy recovery journal cannot authenticate its missing plan timestamp; exact postimage or operator rollback is required");
     if (payload ? current === journal.receipt.preimageHash : current === undefined) {
-      if (existsSync(receiptAbsolute)) {
-        const retained = readMigrationReceipt(resolve(cwd), receiptAbsolute);
-        const retainedPayload = retained.preimagePayload ? Buffer.from(retained.preimagePayload, "base64") : undefined;
-        if (retained.state !== "rolled-back" || (retainedPayload ? current !== retained.preimageHash : current !== undefined)) throw new Error("recovery refused: canonical receipt is inconsistent with the authenticated preimage state");
-      }
-      rmSync(journalAbsolute);
+      if (journal.schemaVersion === 2 && journal.priorReceipt) {
+        if (existsSync(receiptAbsolute)) {
+          const retained = readMigrationReceipt(resolve(cwd), receiptAbsolute);
+          if (!receiptEquals(retained, journal.priorReceipt)) throw new Error("recovery refused: canonical prior receipt does not match the reapply journal");
+        }
+      } else if (existsSync(receiptAbsolute)) throw new Error("recovery refused: initial apply journal requires canonical receipt absence");
+      removeFileDurable(journalAbsolute);
       return { status: "recovered", nextAction: "migration was not published; create a fresh dry-run plan" };
     }
     throw new Error("recovery refused: workflow differs from both exact preimage and postimage");
@@ -642,7 +695,7 @@ export async function rollbackWorkflowMigration(cwd: string, topic: string): Pro
     const preimage = receipt.preimagePayload ? Buffer.from(receipt.preimagePayload, "base64") : undefined;
     if (preimage && (preimage.length > DEFAULT_MAX_FILE_BYTES || hashBytes(preimage) !== receipt.preimageHash)) throw new Error("rollback recovery payload does not match the bounded preimage");
     if (preimage) atomicWriteBytes(target, preimage);
-    else rmSync(target);
+    else removeFileDurable(target);
     const observed = preimage ? hashFile(resolve(cwd), target, DEFAULT_MAX_FILE_BYTES) : undefined;
     if (receipt.preimagePayload && observed !== receipt.preimageHash) throw new Error("rollback preimage hash mismatch");
     const rolledBack = { ...receipt, state: "rolled-back" as const, rolledBackAt: new Date().toISOString() };
@@ -692,12 +745,14 @@ function readMigrationReceipt(root: string, path: string): WorkflowMigrationRece
   const relativePath = toPosix(relative(root, path));
   return parseSweMigrationReceipt(JSON.parse(readBounded(root, path, 1024 * 1024).toString("utf8")), { path: relativePath, allowLegacy: true });
 }
-function writeJsonExclusive(path: string, value: unknown): void {
+function writeJsonExclusive(path: string, value: unknown, fault?: WorkflowMigrationFault): void {
   const content = Buffer.from(`${JSON.stringify(value, null, 2)}\n`);
   if (content.length > 1024 * 1024) throw new Error("workflow migration recovery record exceeds 1048576 bytes");
-  mkdirSync(dirname(path), { recursive: true });
+  ensureDurableDirectory(dirname(path));
   const descriptor = openSync(path, "wx", 0o600);
-  try { writeFileSync(descriptor, content); fsyncSync(descriptor); } finally { closeSync(descriptor); }
+  let written = false;
+  try { writeFileSync(descriptor, content); fault?.("before-file-fsync", path); fsyncSync(descriptor); written = true; } finally { closeSync(descriptor); }
+  if (written) { fault?.("before-directory-fsync", dirname(path)); fsyncDirectory(dirname(path)); }
 }
 function writeJsonAtomic(path: string, value: unknown): void {
   const content = Buffer.from(`${JSON.stringify(value, null, 2)}\n`);
@@ -705,13 +760,44 @@ function writeJsonAtomic(path: string, value: unknown): void {
   atomicWriteBytes(path, content);
 }
 function atomicWriteBytes(path: string, value: Buffer): void {
-  mkdirSync(dirname(path), { recursive: true });
+  ensureDurableDirectory(dirname(path));
   const temporary = `${path}.tmp-${process.pid}-${Date.now()}`;
   let descriptor: number | undefined;
   try {
     descriptor = openSync(temporary, "wx", 0o600); writeFileSync(descriptor, value); fsyncSync(descriptor); closeSync(descriptor); descriptor = undefined;
-    renameSync(temporary, path); const directory = openSync(dirname(path), "r"); try { fsyncSync(directory); } finally { closeSync(directory); }
+    renameSync(temporary, path); fsyncDirectory(dirname(path));
   } catch (error) { if (descriptor !== undefined) try { closeSync(descriptor); } catch { /* noop */ } rmSync(temporary, { force: true }); throw error; }
+}
+function assertJournalPriorArchive(root: string, journal: SweMigrationJournal): void {
+  if (journal.schemaVersion !== 2 || !journal.priorReceipt) return;
+  const archiveAbsolute = resolve(root, archivedReceiptPath(journal.priorReceipt));
+  if (!existsSync(archiveAbsolute)) throw new Error("recovery refused: authenticated prior migration attempt is missing");
+  const archived = readMigrationReceipt(root, archiveAbsolute);
+  if (!receiptEquals(archived, journal.priorReceipt)) throw new Error("recovery refused: archived prior receipt does not match the reapply journal");
+}
+function ensureDurableDirectory(directory: string): void {
+  if (existsSync(directory)) {
+    const stat = lstatSync(directory);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error(`migration recovery directory is unsafe: ${directory}`);
+    return;
+  }
+  const parent = dirname(directory);
+  if (parent === directory) throw new Error(`migration recovery directory cannot be created: ${directory}`);
+  ensureDurableDirectory(parent);
+  mkdirSync(directory, { mode: 0o700 });
+  fsyncDirectory(directory);
+  fsyncDirectory(parent);
+}
+function fsyncDirectory(directory: string): void {
+  const descriptor = openSync(directory, constants.O_RDONLY);
+  try { fsyncSync(descriptor); } finally { closeSync(descriptor); }
+}
+function removeFileDurable(path: string, fault?: WorkflowMigrationFault): void {
+  if (!existsSync(path)) return;
+  fault?.("before-unlink", path);
+  rmSync(path);
+  fault?.("before-directory-fsync", dirname(path));
+  fsyncDirectory(dirname(path));
 }
 function validateLegacyPlanIdentity(receipt: Extract<WorkflowMigrationReceipt, { schemaVersion: 1 }>, generatedAt: string, expectedPostimageHash: string | undefined): void {
   const logical = { schemaVersion: 1, topic: receipt.topic, classification: receipt.classification, disposition: receipt.disposition, decidedBy: receipt.decidedBy, generatedAt, sourcePaths: receipt.sourcePaths, preimageHash: receipt.preimageHash, postimageHash: expectedPostimageHash ?? null, eligible: true };

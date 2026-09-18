@@ -62,6 +62,7 @@ export type SweMigrationJournalV2 = {
   postimageHash: string;
   planHash: string;
   receipt: SweMigrationReceiptV2;
+  priorReceipt?: SweMigrationReceipt;
 };
 export type SweMigrationJournalV1 = {
   schemaVersion: 1;
@@ -178,14 +179,20 @@ export function parseSweMigrationJournal(value: unknown, options: { path: string
     return { schemaVersion: 1, stage: "prepared", ...parsed, receipt };
   }
   if (journal.schemaVersion !== 2) throw new Error("unsupported workflow migration journal schemaVersion");
-  exactKeys(journal, ["schemaVersion", "operation", "stage", "topic", "preimageHash", "postimageHash", "planHash", "receipt"], "workflow migration journal");
+  exactKeys(journal, ["schemaVersion", "operation", "stage", "topic", "preimageHash", "postimageHash", "planHash", "receipt", ...(Object.hasOwn(journal, "priorReceipt") ? ["priorReceipt"] : [])], "workflow migration journal");
   if (journal.operation !== "apply" || journal.stage !== "prepared") throw new Error("workflow migration journal operation or stage is invalid");
   const topic = topicValue(journal.topic);
   const receipt = parseSweMigrationReceipt(journal.receipt, { path: canonicalReceiptPath(topic) });
   if (receipt.schemaVersion !== 2 || receipt.state !== "applied") throw new Error("workflow migration journal receipt is invalid");
   const parsed = journalIdentity(journal, receipt);
   assertJournalPath(options.path, parsed.topic);
-  return { schemaVersion: 2, operation: "apply", stage: "prepared", ...parsed, receipt };
+  let priorReceipt: SweMigrationReceipt | undefined;
+  if (Object.hasOwn(journal, "priorReceipt")) {
+    priorReceipt = parseSweMigrationReceipt(journal.priorReceipt, { path: canonicalReceiptPath(topic), allowLegacy: true });
+    if (priorReceipt.state !== "rolled-back" || priorReceipt.topic !== receipt.topic || priorReceipt.classification !== receipt.classification || priorReceipt.disposition !== receipt.disposition
+      || priorReceipt.preimageHash !== receipt.preimageHash || priorReceipt.postimageHash !== receipt.postimageHash || stableJson(priorReceipt.sourcePaths) !== stableJson(receipt.sourcePaths)) throw new Error("workflow migration journal prior receipt identity mismatch");
+  }
+  return { schemaVersion: 2, operation: "apply", stage: "prepared", ...parsed, receipt, ...(priorReceipt ? { priorReceipt } : {}) };
 }
 
 export function receiptEquals(left: SweMigrationReceipt, right: SweMigrationReceipt): boolean {
