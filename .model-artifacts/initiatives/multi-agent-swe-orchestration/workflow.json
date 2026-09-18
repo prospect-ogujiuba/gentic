@@ -105,7 +105,7 @@
       {
         "id": "migration-efb54000aa395b78",
         "type": "workflow-migrated",
-        "at": "2026-09-18T20:11:12.000Z",
+        "at": "2026-09-18T22:40:03.000Z",
         "summary": "native-v1-complete migrated with grandfather-read-only disposition by Priz",
         "auditCritical": true
       }
@@ -850,10 +850,10 @@
       "completedAt": "2026-09-16T20:37:36.609Z"
     }
   ],
-  "updatedAt": "2026-09-18T20:11:12.000Z",
+  "updatedAt": "2026-09-18T22:40:03.000Z",
   "migration": {
     "sourceVersion": 1,
-    "readAt": "2026-09-18T20:11:12.000Z",
+    "readAt": "2026-09-18T22:40:03.000Z",
     "historicalTaskIds": [
       "schema-v2",
       "git-workspace",
