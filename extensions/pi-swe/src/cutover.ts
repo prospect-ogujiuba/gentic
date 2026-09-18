@@ -2,7 +2,7 @@ import { existsSync, lstatSync, opendirSync, readFileSync, realpathSync, type Di
 import { isAbsolute, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
-import { inventoryWorkflowMigrations } from "./migration.ts";
+import { inventoryWorkflowMigrations, type WorkflowMigrationInventoryEntry } from "./migration.ts";
 import { listWorkflowTopics, loadWorkflow } from "./store.ts";
 
 const CONTROLLING_TOPIC = "swe-production-rollout";
@@ -112,6 +112,23 @@ export function evaluateCutoverReadiness(observation: CutoverReadinessObservatio
     categories,
     nextAction: failed?.nextAction ?? "Record a separate operator cutover decision using this readiness report as evidence; this check does not activate the runtime.",
   };
+}
+
+/** Return one deterministic operator action for a migration blocker. */
+export function cutoverMigrationRemediation(entry: WorkflowMigrationInventoryEntry): string {
+  if (entry.action === "run-pi-artifacts-migration" || entry.blocker === "canonical-and-kind-first-layouts") {
+    return "Run pi-artifacts audit and migrate the kind-first layout, then rerun the SWE migration inventory.";
+  }
+  if (entry.blocker === "canonical-workflow-and-historical-manifest") {
+    return "Resolve the canonical workflow and historical manifest conflict, then rerun the SWE migration inventory.";
+  }
+  if (entry.blocker === "unsupported-workflow-version" || entry.blocker === "unsupported-manifest-version") {
+    return "Replace or archive the unsupported workflow authority, then rerun the SWE migration inventory.";
+  }
+  if (entry.blocker === "invalid-topic") {
+    return "Rename the topic to a supported canonical topic, then rerun the SWE migration inventory.";
+  }
+  return "Repair the malformed workflow authority, then rerun the SWE migration inventory.";
 }
 
 /** Inspect repository authorities and recovery markers without writing any bytes. */
