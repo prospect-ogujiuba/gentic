@@ -1,15 +1,123 @@
 {
-  "version": 1,
+  "version": 2,
   "topic": "multi-agent-swe-orchestration",
-  "revision": 21,
-  "status": "complete",
+  "revision": 22,
+  "status": "paused",
   "goal": "Make /swe a deterministic multi-agent software-engineering orchestrator: fresh-context agents perform plan review, scoped implementation, independent review, bounded remediation, and final initiative acceptance; approved changes are safely integrated and followed by protected verification. Enforce workflow participation and evidence freshness without claiming that worktrees or prompts are an OS security sandbox.",
   "plan": "Eight-task implementation, sequential execution by default. Keep workflow.json as authority. Separate contract identities from mutable state revisions; use fenced ownership, isolated fresh Pi children, typed reports/questions, Git workspace receipts, exact-snapshot review and protected verification. General review covers TDD/diagnosis/DSA; one additional composed reviewer covers applicable security/migration/performance/UX/operations concerns. Two remediation attempts then block. Final acceptance reviews the cumulative initiative. No automatic commit, push, deployment, recursive delegation, silent single-agent fallback, or mandatory external orchestration extension. Existing interactive-shell attachment is not the new runner UI. Bootstrap this extension under the installed v1 workflow; validate v2 in isolated fixtures before switching runtimes.",
+  "contract": {
+    "revision": 1,
+    "hash": "sha256:83cf6388f3761c8d49cc1af2da65c3da809c6aac8b34a7996e6c6e8b40ec7643"
+  },
+  "initiativeVerification": [
+    {
+      "command": "node",
+      "args": [
+        "--experimental-strip-types",
+        "--test",
+        "test/pi-swe.test.ts",
+        "test/pi-swe-store.test.ts"
+      ]
+    },
+    {
+      "command": "npm",
+      "args": [
+        "run",
+        "typecheck"
+      ]
+    },
+    {
+      "command": "node",
+      "args": [
+        "--experimental-strip-types",
+        "--test",
+        "test/pi-swe-workspace.test.ts"
+      ]
+    },
+    {
+      "command": "node",
+      "args": [
+        "--experimental-strip-types",
+        "--test",
+        "test/pi-swe-agent-runner.test.ts"
+      ]
+    },
+    {
+      "command": "node",
+      "args": [
+        "--experimental-strip-types",
+        "--test",
+        "test/pi-swe-orchestration.test.ts"
+      ]
+    },
+    {
+      "command": "node",
+      "args": [
+        "--experimental-strip-types",
+        "--test",
+        "test/pi-swe-tool.test.ts",
+        "test/pi-swe-orchestration.test.ts"
+      ]
+    },
+    {
+      "command": "node",
+      "args": [
+        "--experimental-strip-types",
+        "--test",
+        "test/pi-swe-closeout.test.ts"
+      ]
+    },
+    {
+      "command": "node",
+      "args": [
+        "--experimental-strip-types",
+        "--test",
+        "test/pi-swe-tool.test.ts",
+        "test/pi-swe-command.test.ts"
+      ]
+    },
+    {
+      "command": "npm",
+      "args": [
+        "run",
+        "test:swe"
+      ]
+    },
+    {
+      "command": "npm",
+      "args": [
+        "test"
+      ]
+    },
+    {
+      "command": "npm",
+      "args": [
+        "run",
+        "check"
+      ]
+    }
+  ],
+  "orchestration": {
+    "mode": "multi-agent",
+    "phase": "plan-review",
+    "nextFence": 1,
+    "history": [
+      {
+        "id": "migration-efb54000aa395b78",
+        "type": "workflow-migrated",
+        "at": "2026-09-18T20:11:12.000Z",
+        "summary": "native-v1-complete migrated with grandfather-read-only disposition by Priz",
+        "auditCritical": true
+      }
+    ]
+  },
   "tasks": [
     {
       "id": "schema-v2",
       "title": "Define v2 contracts, orchestration state, ownership, and migration",
+      "kind": "implementation",
       "status": "complete",
+      "phase": "historical",
       "dependsOn": [],
       "acceptance": [
         "Keep the existing mutation revision distinct from plan/task contract hashes or revisions. Contract identities cover requirements, dependencies, acceptance, verification, approach policy, scope, and linked plan content; recording a run or check must not stale an otherwise valid approval.",
@@ -33,6 +141,12 @@
         "operations": "Concurrent sessions, crash-safe writes, leases, and paused-run recovery require explicit lifecycle invariants."
       },
       "assessmentStatus": "assessed",
+      "writeScope": [],
+      "nonGoals": [],
+      "contract": {
+        "revision": 1,
+        "hash": "sha256:6ccabc25e4ee68ff5dd0cecb58960a1c0d5c1d36e40fea1c12e12ac710ccd3f9"
+      },
       "verification": [
         {
           "command": "node",
@@ -84,12 +198,22 @@
         }
       ],
       "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": [],
       "completedAt": "2026-09-15T20:56:29.298Z"
     },
     {
       "id": "git-workspace",
       "title": "Build recoverable scoped workspaces and safe patch integration",
+      "kind": "implementation",
       "status": "complete",
+      "phase": "historical",
       "dependsOn": [
         "schema-v2"
       ],
@@ -117,6 +241,12 @@
         "performance": "Snapshotting and diff hashing must have explicit bounds and avoid traversing ignored dependency or build trees."
       },
       "assessmentStatus": "assessed",
+      "writeScope": [],
+      "nonGoals": [],
+      "contract": {
+        "revision": 1,
+        "hash": "sha256:d5f75a6da9dd2da3319eeddb8ac92ac947b26b08887606bec0dfbbfa35a30aea"
+      },
       "verification": [
         {
           "command": "node",
@@ -162,12 +292,22 @@
         }
       ],
       "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": [],
       "completedAt": "2026-09-16T15:33:17.281Z"
     },
     {
       "id": "agent-runner",
       "title": "Implement fresh role processes and structured two-way handoffs",
+      "kind": "implementation",
       "status": "complete",
+      "phase": "historical",
       "dependsOn": [
         "schema-v2"
       ],
@@ -194,6 +334,12 @@
         "operations": "Authentication failures, dependency setup, deadlines, cancellation, budgets, and child process cleanup need controlled recovery."
       },
       "assessmentStatus": "assessed",
+      "writeScope": [],
+      "nonGoals": [],
+      "contract": {
+        "revision": 1,
+        "hash": "sha256:36de0261bb9dde73680f3a5699c3b9af2e6833c700f291a3542c4f17f7ac63dc"
+      },
       "verification": [
         {
           "command": "node",
@@ -233,12 +379,22 @@
         }
       ],
       "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": [],
       "completedAt": "2026-09-16T16:22:33.082Z"
     },
     {
       "id": "orchestration-engine",
       "title": "Compose required stages, concern routing, and bounded repair",
+      "kind": "implementation",
       "status": "complete",
+      "phase": "historical",
       "dependsOn": [
         "git-workspace",
         "agent-runner"
@@ -266,6 +422,12 @@
         "operations": "Resumable handoffs, clarification, failed verification, and infrastructure errors need distinct recovery paths."
       },
       "assessmentStatus": "assessed",
+      "writeScope": [],
+      "nonGoals": [],
+      "contract": {
+        "revision": 1,
+        "hash": "sha256:a660fa1ea408e6e35d01927a78e8c483909c0490705b67f90686670b995b999b"
+      },
       "verification": [
         {
           "command": "node",
@@ -305,12 +467,22 @@
         }
       ],
       "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": [],
       "completedAt": "2026-09-16T17:52:18.669Z"
     },
     {
       "id": "parent-integrity",
       "title": "Enforce managed tool capabilities and snapshot-bound verification",
+      "kind": "implementation",
       "status": "complete",
+      "phase": "historical",
       "dependsOn": [
         "orchestration-engine"
       ],
@@ -335,6 +507,12 @@
         "operations": "Session reload, ownership changes, and self-hosted rollout must not strand active work or silently weaken enforcement."
       },
       "assessmentStatus": "assessed",
+      "writeScope": [],
+      "nonGoals": [],
+      "contract": {
+        "revision": 1,
+        "hash": "sha256:f00d502fe32beea5256b9411b10812603e9f0810305e956afba4633886146de1"
+      },
       "verification": [
         {
           "command": "node",
@@ -376,12 +554,22 @@
         }
       ],
       "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": [],
       "completedAt": "2026-09-16T18:35:12.339Z"
     },
     {
       "id": "initiative-closeout",
       "title": "Require fresh initiative-wide acceptance before workflow completion",
+      "kind": "implementation",
       "status": "complete",
+      "phase": "historical",
       "dependsOn": [
         "parent-integrity"
       ],
@@ -404,6 +592,12 @@
         "operations": "Initiative acceptance must distinguish integrated readiness, manual validation, and separately authorized release actions."
       },
       "assessmentStatus": "assessed",
+      "writeScope": [],
+      "nonGoals": [],
+      "contract": {
+        "revision": 1,
+        "hash": "sha256:a7c7a23563ec873a957402920e2d65fd2e497fe37cc412e9a81cbea8b391dd41"
+      },
       "verification": [
         {
           "command": "node",
@@ -443,13 +637,22 @@
         }
       ],
       "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": [],
       "completedAt": "2026-09-16T19:26:14.191Z"
     },
     {
       "id": "command-ux-recovery",
       "title": "Expose agent activity, decisions, pause/resume, and recovery",
+      "kind": "implementation",
       "status": "complete",
-      "startedAt": "2026-09-16T19:35:48.621Z",
+      "phase": "historical",
       "dependsOn": [
         "initiative-closeout"
       ],
@@ -473,6 +676,12 @@
         "operations": "Pause, restart, cleanup, state retention, and failure diagnosis are the user-facing operational lifecycle."
       },
       "assessmentStatus": "assessed",
+      "writeScope": [],
+      "nonGoals": [],
+      "contract": {
+        "revision": 1,
+        "hash": "sha256:b0a3ddac0f2c4171ee0e9a110b743cf737df6e3b1cc9bffe3f82554a757df859"
+      },
       "verification": [
         {
           "command": "node",
@@ -514,12 +723,22 @@
         }
       ],
       "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": [],
       "completedAt": "2026-09-16T20:07:49.679Z"
     },
     {
       "id": "docs-e2e",
       "title": "Document trust boundaries and verify the full initiative lifecycle",
+      "kind": "implementation",
       "status": "complete",
+      "phase": "historical",
       "dependsOn": [
         "command-ux-recovery"
       ],
@@ -547,6 +766,12 @@
         "operations": "Offline CI, optional live smoke tests, cleanup, lifecycle coexistence, and rollout are release-readiness concerns."
       },
       "assessmentStatus": "assessed",
+      "writeScope": [],
+      "nonGoals": [],
+      "contract": {
+        "revision": 1,
+        "hash": "sha256:00fb363ca6c8c9fcff86ffb853a44cf9ad4c545e2d37a2494dc50e4e9c9555b8"
+      },
       "verification": [
         {
           "command": "npm",
@@ -614,8 +839,33 @@
         }
       ],
       "evidenceLinks": [],
+      "reports": [],
+      "clarifications": [],
+      "findings": [],
+      "remediation": {
+        "used": 0,
+        "max": 2
+      },
+      "verificationDriftPaths": [],
       "completedAt": "2026-09-16T20:37:36.609Z"
     }
   ],
-  "updatedAt": "2026-09-16T20:37:36.609Z"
+  "updatedAt": "2026-09-18T20:11:12.000Z",
+  "migration": {
+    "sourceVersion": 1,
+    "readAt": "2026-09-18T20:11:12.000Z",
+    "historicalTaskIds": [
+      "schema-v2",
+      "git-workspace",
+      "agent-runner",
+      "orchestration-engine",
+      "parent-integrity",
+      "initiative-closeout",
+      "command-ux-recovery",
+      "docs-e2e"
+    ],
+    "disposition": "grandfather-read-only",
+    "decidedBy": "Priz",
+    "preimageHash": "sha256:0a2f35a09f115c389adb8e0acebca9b8748117ceecbe8f6577cbc3a890bd9d54"
+  }
 }
