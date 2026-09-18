@@ -63,10 +63,12 @@ Budgets are intentionally broad wall-clock guardrails, not microbenchmark claims
 
 `release:verify` performs a deterministic, read-only cutover check after every release command. `--active-todos 0` is an explicit operator observation: use it only when the release shell has no independent active todo. An omitted, malformed, or nonzero value fails closed. The report separates:
 
-- **code:** supported Node (`>=22.19.0`), all three Pi pins matching `src/pi-contract.ts`, and every release command passing;
+- **code:** a clean Git index/worktree/untracked set, stable supported Node (`>=22.19.0`, never a prerelease), all three Pi pins matching `src/pi-contract.ts`, and the exact ordered release-check manifest passing: `npm run typecheck`, `npm run check`, `npm run check:commands`, `npm run check:performance`, and `npm test`;
 - **repository migration:** completed `migration-qualification`, a clean read-only migration inventory, and no active workflow except `swe-production-rollout`;
-- **runtime activation:** completed `activation-qualification`, no independent active todo, and no active child run, retained workspace intent, SWE migration journal, or pi-artifacts claim/transaction recovery marker;
+- **runtime activation:** completed `activation-qualification`, no independent active todo, and no active child run, retained workspace intent in the repository's resolved Git common directory (including linked worktrees), SWE migration journal, or pi-artifacts claim/transaction recovery marker;
 - **external release authorization:** always pending in the checker. A separate operator cutover decision is required.
+
+Omitted, duplicate, substituted, reordered, or extra release checks fail closed even when supplied results pass. Dirty or uninspectable Git state also fails closed. The sole controlling authority is `swe-production-rollout`; callers cannot substitute another workflow exemption.
 
 Failure output is capped at 4096 bytes and contains exactly one next action. Inspection errors are redacted and block readiness. The check does not migrate a workflow, mutate `workflow.json`, clear recovery state, select a runtime, publish, or deploy. `READY` is evidence only and never authorizes activation.
 

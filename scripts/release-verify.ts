@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
-import { formatCutoverReadiness, inspectCutoverReadiness } from "../extensions/pi-swe/src/cutover.ts";
+import { CUTOVER_RELEASE_CHECK_MANIFEST, formatCutoverReadiness, inspectCutoverReadiness } from "../extensions/pi-swe/src/cutover.ts";
 import { PI_CONTRACT_SOURCE } from "../src/pi-contract.ts";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -20,16 +20,9 @@ const packageJson = JSON.parse(readFileSync(`${root}/package.json`, "utf8")) as 
   dependencies: Record<string, string>;
   engines: { node: string };
 };
-const commands = [
-  ["npm", ["run", "typecheck"]],
-  ["npm", ["run", "check"]],
-  ["npm", ["run", "check:commands"]],
-  ["npm", ["run", "check:performance"]],
-  ["npm", ["test"]],
-] as const;
-const results = commands.map(([command, args]) => {
+const results = CUTOVER_RELEASE_CHECK_MANIFEST.map(({ name, command, args }) => {
   const result = spawnSync(command, args, { cwd: root, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", maxBuffer: 1024 * 1024 });
-  return { command: [command, ...args].join(" "), exitCode: result.status ?? 1 };
+  return { command: name, exitCode: result.status ?? 1 };
 });
 const piVersions = ["@earendil-works/pi-ai", "@earendil-works/pi-coding-agent", "@earendil-works/pi-tui"]
   .map((name) => packageJson.dependencies[name] ?? "missing");
