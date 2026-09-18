@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 
-import { ArtifactTraversalLimitError, auditArtifacts, loadMigrationConfig } from "../extensions/pi-artifacts/src/domain/inventory.ts";
+import { ArtifactTraversalLimitError, assertNoSweSemanticMigrationActivity, auditArtifacts, loadMigrationConfig } from "../extensions/pi-artifacts/src/domain/inventory.ts";
 import { createMigrationPlan, fingerprint } from "../extensions/pi-artifacts/src/domain/plan.ts";
 import { resolveProjectPath } from "../extensions/pi-artifacts/src/domain/normalize.ts";
 import type { ArtifactInventory } from "../extensions/pi-artifacts/src/domain/types.ts";
@@ -27,6 +27,29 @@ function write(root: string, relative: string, content: string): void {
 
 function sha(content: string | Buffer): string {
   return `sha256:${createHash("sha256").update(content).digest("hex")}`;
+}
+
+function sweMigrationReceipt(topic = "demo", overrides: Record<string, unknown> = {}): { path: string; value: Record<string, unknown> } {
+  const preimage = Buffer.from(`legacy workflow for ${topic}`);
+  const identity = Buffer.from(topic).toString("base64url");
+  return {
+    path: `.model-artifacts/system/logs/pi-swe-migration/${identity}/receipt.json`,
+    value: {
+      schemaVersion: 1,
+      topic,
+      state: "applied",
+      classification: "native-v1-complete",
+      disposition: "grandfather-read-only",
+      decidedBy: "operator",
+      sourcePaths: [`.model-artifacts/initiatives/${topic}/workflow.json`],
+      preimageHash: sha(preimage),
+      postimageHash: sha(`postimage ${topic}`),
+      planHash: sha(`plan ${topic}`),
+      appliedAt: "2026-09-18T20:11:12.000Z",
+      preimagePayload: preimage.toString("base64"),
+      ...overrides,
+    },
+  };
 }
 
 function fixtureFileHashes(root: string): Record<string, string> {
@@ -116,6 +139,80 @@ test("artifact audit recognizes layout-v2 initiative/system namespaces and reloc
   assert.equal(entries.get(systemPath)?.classification, "canonical-valid");
   assert.equal(entries.get(legacySystemPath)?.classification, "legacy-movable");
   assert.equal(entries.get(legacySystemPath)?.destination, ".model-artifacts/system/logs/model-artifact-migration/2026-05-01_1208-plan.json");
+});
+
+test("artifact audit protects only closed-schema SWE migration receipts and preserves migration exclusion", () => {
+  const root = fixture();
+  const applied = sweMigrationReceipt();
+  write(root, applied.path, `${JSON.stringify(applied.value)}\n`);
+
+  const entry = auditArtifacts({ cwd: root }).entries.find((candidate) => candidate.source === applied.path);
+  assert.equal(entry?.classification, "protected");
+  assert.deepEqual(entry?.reasons, ["swe-migration-receipt"]);
+  assert.equal(entry?.authorityUnit, "system");
+  assert.equal(entry?.topic, "demo");
+  assert.match(entry?.contentHash ?? "", /^sha256:[a-f0-9]{64}$/);
+  assert.throws(() => assertNoSweSemanticMigrationActivity(root), /receipt blocks pi-artifacts migration/);
+
+  const rolledBack = sweMigrationReceipt("done", { state: "rolled-back", rolledBackAt: "2026-09-19T00:00:00.000Z" });
+  write(root, rolledBack.path, `${JSON.stringify(rolledBack.value)}\n`);
+  unlinkSync(join(root, applied.path));
+  assert.equal(auditArtifacts({ cwd: root }).entries.find((candidate) => candidate.source === rolledBack.path)?.classification, "protected");
+  assert.doesNotThrow(() => assertNoSweSemanticMigrationActivity(root));
+});
+
+test("artifact audit rejects malformed SWE receipts, noncanonical identities, journals, and unsafe recovery payloads", () => {
+  const root = fixture();
+  const cases: Array<{ name: string; topic?: string; mutate?: (value: Record<string, unknown>) => void; path?: (path: string) => string; raw?: string }> = [
+    { name: "unknown-key", mutate: (value) => { value.extra = true; } },
+    { name: "unsupported-schema", mutate: (value) => { value.schemaVersion = 2; } },
+    { name: "bad-state", mutate: (value) => { value.state = "prepared"; } },
+    { name: "bad-classification", mutate: (value) => { value.classification = "current-v2"; } },
+    { name: "inconsistent-disposition", mutate: (value) => { value.disposition = "continue"; } },
+    { name: "empty-actor", mutate: (value) => { value.decidedBy = ""; } },
+    { name: "oversized-actor", mutate: (value) => { value.decidedBy = "x".repeat(129); } },
+    { name: "unsafe-source", mutate: (value) => { value.sourcePaths = [".model-artifacts/../secret"]; } },
+    { name: "too-many-sources", mutate: (value) => { value.sourcePaths = Array.from({ length: 257 }, (_, index) => `.model-artifacts/initiatives/t${index}/workflow.json`); } },
+    { name: "bad-hash", mutate: (value) => { value.planHash = "sha256:no"; } },
+    { name: "bad-time", mutate: (value) => { value.appliedAt = "yesterday"; } },
+    { name: "rolled-back-without-time", mutate: (value) => { value.state = "rolled-back"; } },
+    { name: "applied-with-rollback-time", mutate: (value) => { value.rolledBackAt = "2026-09-19T00:00:00.000Z"; } },
+    { name: "noncanonical-payload", mutate: (value) => { value.preimagePayload = "bGVnYWN5==="; } },
+    { name: "payload-hash-mismatch", mutate: (value) => { value.preimagePayload = Buffer.from("other").toString("base64"); } },
+    { name: "topic-mismatch", mutate: (value) => { value.topic = "other"; } },
+    { name: "padded-identity", path: (path) => path.replace(Buffer.from("padded-identity").toString("base64url"), `${Buffer.from("padded-identity").toString("base64url")}=`) },
+    { name: "extra-nesting", path: (path) => path.replace("/receipt.json", "/nested/receipt.json") },
+    { name: "journal", path: (path) => path.replace("/receipt.json", "/journal.json") },
+    { name: "malformed-json", raw: "{\"schemaVersion\":" },
+  ];
+
+  for (const item of cases) {
+    const topic = item.topic ?? item.name;
+    const receipt = sweMigrationReceipt(topic);
+    item.mutate?.(receipt.value);
+    const source = item.path?.(receipt.path) ?? receipt.path;
+    write(root, source, item.raw ?? `${JSON.stringify(receipt.value)}\n`);
+  }
+  const oversized = sweMigrationReceipt("oversized-payload");
+  oversized.value.preimagePayload = Buffer.alloc(1024 * 1024 + 1).toString("base64");
+  write(root, oversized.path, `${JSON.stringify(oversized.value)}\n`);
+
+  const entries = auditArtifacts({ cwd: root }).entries.filter((entry) => entry.source.includes("/pi-swe-migration/"));
+  assert.ok(entries.length >= cases.length + 1);
+  assert.ok(entries.every((entry) => entry.classification === "invalid"), entries.filter((entry) => entry.classification !== "invalid"));
+  assert.throws(() => assertNoSweSemanticMigrationActivity(root));
+});
+
+test("artifact audit rejects symlinked SWE receipts without following them", () => {
+  const root = fixture();
+  const receipt = sweMigrationReceipt("linked");
+  const outside = join(root, "outside-receipt.json");
+  writeFileSync(outside, `${JSON.stringify(receipt.value)}\n`);
+  mkdirSync(dirname(join(root, receipt.path)), { recursive: true });
+  symlinkSync(outside, join(root, receipt.path));
+  const entry = auditArtifacts({ cwd: root }).entries.find((candidate) => candidate.source === receipt.path);
+  assert.equal(entry?.classification, "invalid");
+  assert.deepEqual(entry?.reasons, ["symlink-not-followed"]);
 });
 
 test("artifact audit accepts canonical pi-swe stable filenames in layout v2", () => {

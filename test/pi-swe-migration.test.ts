@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 
+import { auditArtifacts } from "../extensions/pi-artifacts/src/domain/inventory.ts";
 import { applyWorkflowMigration, applyWorkflowMigrationBatch, inventoryWorkflowMigrations, planWorkflowMigration, recoverWorkflowMigration, rollbackWorkflowMigration, workflowMigrationReceiptPath } from "../extensions/pi-swe/src/migration.ts";
 import { WorkflowMutationService } from "../extensions/pi-swe/src/service.ts";
 import { createWorkflow, reduceWorkflow } from "../extensions/pi-swe/src/workflow.ts";
@@ -205,6 +206,18 @@ test("apply is preimage-bound, atomic, idempotent, guarded from ordinary mutatio
   assert.equal((await rollbackWorkflowMigration(cwd, "legacy")).status, "rolled-back");
   assert.equal(readFileSync(join(cwd, path), "utf8"), before);
   assert.equal((await rollbackWorkflowMigration(cwd, "legacy")).status, "already-rolled-back");
+});
+
+test("production workflow migration receipts are protected model-artifact recovery evidence", async () => {
+  const cwd = repository();
+  writeJson(cwd, ".model-artifacts/initiatives/done/workflow.json", workflow("done", 1, "complete"));
+  const plan = planWorkflowMigration(cwd, "done", { disposition: "grandfather-read-only", decidedBy: "operator-a", now: at });
+  const applied = await applyWorkflowMigration(cwd, plan);
+  const entry = auditArtifacts({ cwd }).entries.find((candidate) => candidate.source === applied.receiptPath);
+  assert.equal(entry?.classification, "protected");
+  assert.deepEqual(entry?.reasons, ["swe-migration-receipt"]);
+  assert.equal(entry?.authorityUnit, "system");
+  assert.equal(entry?.topic, "done");
 });
 
 test("batch apply requires explicit unique selections and reports each topic without hiding partial failure", async () => {
