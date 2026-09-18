@@ -420,7 +420,7 @@ function buildWorkflowMigrationAudit(root: string, entries: WorkflowMigrationInv
     let storedVersion: number | null = null;
     let state = "unknown";
     let ownership: WorkflowMigrationAuditRow["ownership"] = "unknown";
-    const authorityPath = entry.sourcePaths.find((path) => /\/(?:workflow|manifest)\.json$/.test(path));
+    const authorityPath = entry.sourcePaths.find((path) => path.endsWith("/workflow.json")) ?? entry.sourcePaths.find((path) => path.endsWith("/specs/manifest.json"));
     if (authorityPath) {
       const read = readBoundedJson(root, safeProjectPath(root, authorityPath), maximum);
       if (read.ok && record(read.value)) {

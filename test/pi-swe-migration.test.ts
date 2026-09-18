@@ -349,6 +349,49 @@ test("batch apply preserves one complete audit authority across success, drift, 
   await assert.rejects(() => applyWorkflowMigrationBatch(mismatched.cwd, [forgedAudit, mismatched.plans[1]!]), /audit baseline mismatch/);
 });
 
+test("mixed historical and native batch prefers canonical imported workflow authority through full and partial retries", async () => {
+  const setup = (prefix: string) => {
+    const cwd = repository(prefix);
+    const historical = (topic: string, complete: boolean) => {
+      const root = `.model-artifacts/initiatives/${topic}`;
+      const contractRoot = `${root}/plans/revisions/r1`;
+      writeJson(cwd, `${root}/specs/manifest.json`, { ...legacyManifest(topic, complete ? "complete" : "paused"), activePlan: { revision: 1, path: `${contractRoot}/plan.md`, contractRoot } });
+      mkdirSync(join(cwd, contractRoot), { recursive: true });
+      writeFileSync(join(cwd, contractRoot, "plan.md"), "# plan\n");
+      writeFileSync(join(cwd, contractRoot, "task.md"), "# T1: task\n\n## Acceptance criteria\n\n- retained\n");
+      writeJson(cwd, `${contractRoot}/contracts.json`, { contracts: [{ id: "T1", kind: "subphase", status: complete ? "complete" : "pending", path: `${contractRoot}/task.md` }] });
+    };
+    historical("a-historical-paused", false);
+    writeJson(cwd, ".model-artifacts/initiatives/b-native-paused/workflow.json", workflow("b-native-paused", 1));
+    historical("c-historical-complete", true);
+    writeJson(cwd, ".model-artifacts/initiatives/d-native-complete/workflow.json", workflow("d-native-complete", 1, "complete"));
+    const dispositions = { "a-historical-paused": "continue", "b-native-paused": "continue", "c-historical-complete": "grandfather-read-only", "d-native-complete": "reopen" } as const;
+    const shared = authorization(cwd, "a-historical-paused", "continue", { topicDispositions: dispositions });
+    const plans = Object.keys(dispositions).sort().map((topic) => planWorkflowMigration(cwd, topic, { disposition: dispositions[topic as keyof typeof dispositions], authorization: shared, now: at }));
+    return { cwd, plans, baselineHash: plans[0]!.audit.hash };
+  };
+
+  const full = setup("pi-swe-mixed-batch-full-");
+  const applied = await applyWorkflowMigrationBatch(full.cwd, full.plans);
+  assert.deepEqual(applied.map(({ status }) => status), ["applied", "applied", "applied", "applied"]);
+  const migratedAudit = inventoryWorkflowMigrations(full.cwd).audit;
+  const historicalRow = migratedAudit.rows.find((row) => row.topic === "c-historical-complete")!;
+  assert.equal(migratedAudit.schemaVersion, 2);
+  assert.notEqual(migratedAudit.hash, full.baselineHash);
+  assert.deepEqual({ classification: historicalRow.classification, storedVersion: historicalRow.storedVersion, state: historicalRow.state }, { classification: "current-v2", storedVersion: 2, state: "paused" });
+  assert.deepEqual((JSON.parse(migratedAudit.payload) as { rows: Array<Record<string, unknown>> }).rows.find((row) => row.topic === "c-historical-complete"), historicalRow);
+  assert.deepEqual((await applyWorkflowMigrationBatch(full.cwd, full.plans)).map(({ status }) => status), ["already-applied", "already-applied", "already-applied", "already-applied"]);
+
+  const partial = setup("pi-swe-mixed-batch-partial-");
+  const first = await applyWorkflowMigrationBatch(partial.cwd, partial.plans, { betweenTopics: (completed) => {
+    if (completed === "b-native-paused") writeJson(partial.cwd, ".model-artifacts/initiatives/unrelated/workflow.json", workflow("unrelated", 1));
+  } });
+  assert.deepEqual(first.map(({ status }) => status), ["applied", "applied", "failed", "failed"]);
+  assert.ok(first.slice(2).every((result) => /projection mismatch/.test(result.error ?? "")));
+  rmSync(join(partial.cwd, ".model-artifacts/initiatives/unrelated"), { recursive: true });
+  assert.deepEqual((await applyWorkflowMigrationBatch(partial.cwd, partial.plans)).map(({ status }) => status), ["already-applied", "already-applied", "applied", "applied"]);
+});
+
 test("SWE apply refuses active pi-artifacts claims and retained transaction recovery bundles", async () => {
   for (const blocker of ["active.claim.json", "fixture-transaction"] as const) {
     const cwd = repository();
