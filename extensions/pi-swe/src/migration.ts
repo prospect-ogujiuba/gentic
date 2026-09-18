@@ -440,7 +440,7 @@ export type WorkflowMigrationPlan = {
 };
 export type WorkflowMigrationReceipt = SweMigrationReceipt;
 export type WorkflowMigrationAuthorization = Gate1Authorization;
-export type WorkflowMigrationFaultStage = "journal-prepared" | "workflow-written" | "receipt-written";
+export type WorkflowMigrationFaultStage = "before-archive" | "archive-written" | "journal-prepared" | "canonical-removed" | "workflow-written" | "receipt-written";
 
 /** Build an executable, preimage-bound decision without writing repository state. */
 export function planWorkflowMigration(cwd: string, topic: string, options: { disposition?: WorkflowMigrationDisposition; authorization: Gate1Authorization; now?: string }): WorkflowMigrationPlan {
@@ -515,19 +515,14 @@ export async function applyWorkflowMigration(cwd: string, plan: WorkflowMigratio
     const receiptPath = workflowMigrationReceiptPath(plan.topic);
     const receiptAbsolute = resolve(cwd, receiptPath);
     if (Date.parse(plan.authorization.rollbackRetentionUntil) < Date.now()) throw new Error("migration authorization rollback retention has expired");
+    let rolledBackReceipt: WorkflowMigrationReceipt | undefined;
     if (existsSync(receiptAbsolute)) {
       const receipt = readMigrationReceipt(resolve(cwd), receiptAbsolute);
       const current = currentWorkflowHash(cwd, plan.topic);
       if (receipt.schemaVersion === 2 && receipt.planHash === plan.planHash && receipt.postimageHash === plan.postimageHash && receipt.state === "applied" && current === receipt.postimageHash) return { status: "already-applied", receiptPath, receipt };
       if (receipt.state !== "rolled-back") throw new Error("migration receipt requires rollback or operator recovery before reuse");
       if (receipt.schemaVersion === 1) validateLegacyPlanIdentity(receipt, plan.generatedAt, plan.postimageHash);
-      const archivePath = archivedReceiptPath(receipt);
-      const archiveAbsolute = resolve(cwd, archivePath);
-      if (existsSync(archiveAbsolute)) {
-        const archived = readMigrationReceipt(resolve(cwd), archiveAbsolute);
-        if (!receiptEquals(archived, receipt)) throw new Error("retained migration attempt does not exactly match the rolled-back receipt");
-      } else writeJsonExclusive(archiveAbsolute, receipt);
-      rmSync(receiptAbsolute);
+      rolledBackReceipt = receipt;
     }
     const expectedPlan = planWorkflowMigration(cwd, plan.topic, { disposition, authorization: plan.authorization, now: plan.generatedAt });
     if (expectedPlan.planHash !== plan.planHash || expectedPlan.postimageHash !== postimageHash || expectedPlan.postimage !== postimage) throw new Error("stale migration plan: workflow no longer matches the deterministic dry-run decision");
@@ -545,8 +540,24 @@ export async function applyWorkflowMigration(cwd: string, plan: WorkflowMigratio
       appliedAt: new Date().toISOString(), preimagePayload: preimagePayload ?? null,
     };
     parseSweMigrationReceipt(receipt, { path: receiptPath });
+    if (rolledBackReceipt) {
+      options.fault?.("before-archive");
+      const archivePath = archivedReceiptPath(rolledBackReceipt);
+      const archiveAbsolute = resolve(cwd, archivePath);
+      if (existsSync(archiveAbsolute)) {
+        const archived = readMigrationReceipt(resolve(cwd), archiveAbsolute);
+        if (!receiptEquals(archived, rolledBackReceipt)) throw new Error("retained migration attempt does not exactly match the rolled-back receipt");
+      } else writeJsonExclusive(archiveAbsolute, rolledBackReceipt);
+      options.fault?.("archive-written");
+    }
     writeJsonExclusive(journalAbsolute, { schemaVersion: 2, operation: "apply", stage: "prepared", planHash: plan.planHash, topic: plan.topic, preimageHash: plan.preimageHash, postimageHash: plan.postimageHash, receipt });
     options.fault?.("journal-prepared");
+    if (rolledBackReceipt) {
+      const observed = readMigrationReceipt(resolve(cwd), receiptAbsolute);
+      if (!receiptEquals(observed, rolledBackReceipt)) throw new Error("canonical rolled-back receipt changed before reapply publication");
+      rmSync(receiptAbsolute);
+      options.fault?.("canonical-removed");
+    }
     const parsed = parseWorkflow(JSON.parse(postimage));
     saveWorkflow(cwd, parsed, existsSync(nativePath) ? loadWorkflow(cwd, plan.topic, false)?.workflow.revision : undefined);
     if (currentWorkflowHash(cwd, plan.topic) !== postimageHash) throw new Error("workflow postimage hash mismatch after atomic write");
@@ -579,8 +590,17 @@ export async function recoverWorkflowMigration(cwd: string, topic: string): Prom
     const journalAbsolute = resolve(cwd, workflowMigrationJournalPath(topic));
     const receiptAbsolute = resolve(cwd, workflowMigrationReceiptPath(topic));
     if (!existsSync(journalAbsolute)) {
-      if (existsSync(receiptAbsolute)) return { status: "already-recovered", nextAction: "audit or rollback the applied migration" };
-      throw new Error(`no SWE migration recovery record exists for ${topic}`);
+      if (!existsSync(receiptAbsolute)) throw new Error(`no SWE migration recovery record exists for ${topic}`);
+      const receipt = readMigrationReceipt(resolve(cwd), receiptAbsolute);
+      const current = currentWorkflowHash(cwd, topic);
+      if (receipt.state === "applied") {
+        if (current !== receipt.postimageHash) throw new Error("recovery refused: applied receipt does not match the exact workflow postimage");
+        if (receipt.schemaVersion === 1) validateLegacyPlanIdentity(receipt, legacyGeneratedAt(cwd, topic), receipt.postimageHash);
+        return { status: "already-recovered", nextAction: "migration is applied; re-audit or perform an authenticated rollback" };
+      }
+      const preimage = receipt.preimagePayload ? Buffer.from(receipt.preimagePayload, "base64") : undefined;
+      if (preimage ? current !== receipt.preimageHash : current !== undefined) throw new Error("recovery refused: rolled-back receipt does not match the exact workflow preimage");
+      return { status: "already-recovered", nextAction: "migration is rolled back; create a fresh authorized plan before reapply" };
     }
     const journal = parseSweMigrationJournal(JSON.parse(readBounded(resolve(cwd), journalAbsolute, 1024 * 1024).toString("utf8")), { path: workflowMigrationJournalPath(topic) });
     const current = currentWorkflowHash(cwd, topic);
@@ -596,6 +616,11 @@ export async function recoverWorkflowMigration(cwd: string, topic: string): Prom
     const payload = journal.receipt.preimagePayload ? Buffer.from(journal.receipt.preimagePayload, "base64") : undefined;
     if (journal.receipt.schemaVersion === 1 && (payload ? current === journal.receipt.preimageHash : current === undefined)) throw new Error("legacy recovery journal cannot authenticate its missing plan timestamp; exact postimage or operator rollback is required");
     if (payload ? current === journal.receipt.preimageHash : current === undefined) {
+      if (existsSync(receiptAbsolute)) {
+        const retained = readMigrationReceipt(resolve(cwd), receiptAbsolute);
+        const retainedPayload = retained.preimagePayload ? Buffer.from(retained.preimagePayload, "base64") : undefined;
+        if (retained.state !== "rolled-back" || (retainedPayload ? current !== retained.preimageHash : current !== undefined)) throw new Error("recovery refused: canonical receipt is inconsistent with the authenticated preimage state");
+      }
       rmSync(journalAbsolute);
       return { status: "recovered", nextAction: "migration was not published; create a fresh dry-run plan" };
     }

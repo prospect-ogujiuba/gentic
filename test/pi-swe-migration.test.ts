@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -355,6 +355,114 @@ test("expired rollback retention refuses apply without writing", async () => {
   const plan = planWorkflowMigration(cwd, "expired", { authorization: { ...authorization("expired"), authorizedAt: expiredAt, rollbackRetentionUntil: "2021-01-01T00:00:00.000Z" }, now: expiredAt });
   await assert.rejects(() => applyWorkflowMigration(cwd, plan), /expired/);
   assert.equal(JSON.parse(readFileSync(join(cwd, ".model-artifacts/initiatives/expired/workflow.json"), "utf8")).version, 1);
+});
+
+test("stale reapply and prepublication journal rejection preserve canonical rollback evidence without writes", async () => {
+  const stale = repository();
+  const path = ".model-artifacts/initiatives/stale-reapply/workflow.json";
+  writeJson(stale, path, workflow("stale-reapply", 1));
+  const original = readFileSync(join(stale, path));
+  const first = planWorkflowMigration(stale, "stale-reapply", { authorization: authorization("stale-reapply"), now: at });
+  await applyWorkflowMigration(stale, first);
+  await rollbackWorkflowMigration(stale, "stale-reapply");
+  const canonical = join(stale, workflowMigrationReceiptPath("stale-reapply"));
+  const beforeReceipt = readFileSync(canonical);
+  const stalePlan = planWorkflowMigration(stale, "stale-reapply", { authorization: authorization("stale-reapply"), now: at });
+  writeJson(stale, path, { ...workflow("stale-reapply", 1), revision: 99 });
+  await assert.rejects(() => applyWorkflowMigration(stale, stalePlan), /stale migration plan/);
+  assert.deepEqual(readFileSync(canonical), beforeReceipt);
+  assert.equal(existsSync(join(canonical, "../attempts")), false);
+
+  writeFileSync(join(stale, path), original);
+  const fresh = planWorkflowMigration(stale, "stale-reapply", { authorization: authorization("stale-reapply"), now: at });
+  const journal = workflowMigrationReceiptPath("stale-reapply").replace("receipt.json", "journal.json");
+  writeJson(stale, journal, { invalid: true });
+  await assert.rejects(() => applyWorkflowMigration(stale, fresh), /unfinished SWE migration/);
+  assert.deepEqual(readFileSync(canonical), beforeReceipt);
+  assert.equal(existsSync(join(canonical, "../attempts")), false);
+});
+
+test("reapply archive and publication interruption points are recoverable without evidence loss", async () => {
+  for (const stage of ["before-archive", "archive-written", "journal-prepared", "canonical-removed", "workflow-written", "receipt-written"] as const) {
+    const cwd = repository(`pi-swe-reapply-${stage}-`);
+    const topic = `reapply-${stage}`;
+    const path = `.model-artifacts/initiatives/${topic}/workflow.json`;
+    writeJson(cwd, path, workflow(topic, 1));
+    const plan = planWorkflowMigration(cwd, topic, { authorization: authorization(topic), now: at });
+    await applyWorkflowMigration(cwd, plan);
+    await rollbackWorkflowMigration(cwd, topic);
+    const canonical = join(cwd, workflowMigrationReceiptPath(topic));
+    const rolledBackBytes = readFileSync(canonical);
+    await assert.rejects(() => applyWorkflowMigration(cwd, plan, { fault: (observed) => { if (observed === stage) throw new Error(`fault-${stage}`); } }), new RegExp(`fault-${stage}`));
+    const archive = join(cwd, workflowMigrationReceiptPath(topic).replace("receipt.json", `attempts/${plan.planHash.slice(7)}-receipt.json`));
+    if (stage === "before-archive") {
+      assert.deepEqual(readFileSync(canonical), rolledBackBytes);
+      assert.equal(existsSync(archive), false);
+      assert.equal((await applyWorkflowMigration(cwd, plan)).status, "applied");
+      continue;
+    }
+    assert.deepEqual(readFileSync(archive), rolledBackBytes);
+    if (stage === "archive-written") {
+      assert.deepEqual(readFileSync(canonical), rolledBackBytes);
+      assert.equal((await applyWorkflowMigration(cwd, plan)).status, "applied");
+      continue;
+    }
+    const recovered = await recoverWorkflowMigration(cwd, topic);
+    assert.equal(recovered.status, "recovered");
+    if (stage === "journal-prepared" || stage === "canonical-removed") assert.equal((await applyWorkflowMigration(cwd, plan)).status, "applied");
+    else assert.equal((await applyWorkflowMigration(cwd, plan)).status, "already-applied");
+    assert.deepEqual(readFileSync(archive), rolledBackBytes);
+    assert.equal(readFileSync(join(cwd, path), "utf8"), plan.postimage);
+  }
+});
+
+test("no-journal recovery proves exact receipt state and workflow bytes", async () => {
+  const applied = repository();
+  const topic = "recover-applied";
+  const path = `.model-artifacts/initiatives/${topic}/workflow.json`;
+  writeJson(applied, path, workflow(topic, 1));
+  const preimage = readFileSync(join(applied, path));
+  const plan = planWorkflowMigration(applied, topic, { authorization: authorization(topic), now: at });
+  await applyWorkflowMigration(applied, plan);
+  assert.equal((await recoverWorkflowMigration(applied, topic)).status, "already-recovered");
+  const receiptPath = workflowMigrationReceiptPath(topic);
+  const receipt = JSON.parse(readFileSync(join(applied, receiptPath), "utf8"));
+  writeJson(applied, receiptPath, { ...receipt, unknown: true });
+  await assert.rejects(() => recoverWorkflowMigration(applied, topic), /unknown or missing/);
+  writeJson(applied, receiptPath, receipt);
+  rmSync(join(applied, path));
+  await assert.rejects(() => recoverWorkflowMigration(applied, topic), /does not match the exact workflow postimage/);
+  writeFileSync(join(applied, path), preimage);
+  await assert.rejects(() => recoverWorkflowMigration(applied, topic), /does not match the exact workflow postimage/);
+  writeFileSync(join(applied, path), Buffer.from("intervening"));
+  await assert.rejects(() => recoverWorkflowMigration(applied, topic), /does not match the exact workflow postimage/);
+
+  writeFileSync(join(applied, path), plan.postimage!);
+  await rollbackWorkflowMigration(applied, topic);
+  assert.equal((await recoverWorkflowMigration(applied, topic)).status, "already-recovered");
+  rmSync(join(applied, path));
+  await assert.rejects(() => recoverWorkflowMigration(applied, topic), /does not match the exact workflow preimage/);
+  writeFileSync(join(applied, path), plan.postimage!);
+  await assert.rejects(() => recoverWorkflowMigration(applied, topic), /does not match the exact workflow preimage/);
+  writeFileSync(join(applied, path), Buffer.from("intervening"));
+  await assert.rejects(() => recoverWorkflowMigration(applied, topic), /does not match the exact workflow preimage/);
+});
+
+test("no-journal recovery authenticates an absent historical-import target", async () => {
+  const cwd = repository();
+  const topic = "recover-historical";
+  const root = `.model-artifacts/initiatives/${topic}`;
+  writeJson(cwd, `${root}/specs/manifest.json`, legacyManifest(topic));
+  writeJson(cwd, `${root}/plans/revisions/r1/plan.md`, { title: "Plan" });
+  writeFileSync(join(cwd, `${root}/plans/revisions/r1/task.md`), "# T1: task\n\n## Acceptance criteria\n\n- remains bounded\n");
+  writeJson(cwd, `${root}/plans/revisions/r1/contracts.json`, { contracts: [{ id: "T1", kind: "subphase", status: "pending", path: `${root}/plans/revisions/r1/task.md` }] });
+  const plan = planWorkflowMigration(cwd, topic, { authorization: authorization(topic), now: at });
+  await applyWorkflowMigration(cwd, plan);
+  await rollbackWorkflowMigration(cwd, topic);
+  assert.equal(existsSync(join(cwd, `${root}/workflow.json`)), false);
+  assert.equal((await recoverWorkflowMigration(cwd, topic)).status, "already-recovered");
+  writeFileSync(join(cwd, `${root}/workflow.json`), plan.postimage!);
+  await assert.rejects(() => recoverWorkflowMigration(cwd, topic), /does not match the exact workflow preimage/);
 });
 
 test("grandfathered completion remains immutable through all normal mutation entry points", async () => {
