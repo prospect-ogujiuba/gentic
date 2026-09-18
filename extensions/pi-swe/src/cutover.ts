@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, opendirSync, readFileSync, realpathSync, type Dirent } from "node:fs";
+import { existsSync, lstatSync, opendirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync, type Dirent } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -69,6 +69,11 @@ export type CutoverInspectionInput = {
   releaseChecks: CutoverReleaseCheck[];
 };
 
+export type CutoverRuntimeSelectorPreimage = {
+  existed: boolean;
+  bytes?: Buffer;
+};
+
 type TechnicalGate = CutoverReadinessGate & { nextAction: string };
 
 /** Evaluate a bounded observation. This function never changes workflow or runtime state. */
@@ -129,6 +134,40 @@ export function cutoverMigrationRemediation(entry: WorkflowMigrationInventoryEnt
     return "Rename the topic to a supported canonical topic, then rerun the SWE migration inventory.";
   }
   return "Repair the malformed workflow authority, then rerun the SWE migration inventory.";
+}
+
+/** Capture the exact checkout-local selector preimage used by a disposable rehearsal. */
+export function captureCutoverRuntimeSelector(cwd: string): CutoverRuntimeSelectorPreimage {
+  const path = cutoverRuntimeSelectorPath(cwd);
+  if (!existsSync(path)) return { existed: false };
+  if (lstatSync(path).isSymbolicLink() || !lstatSync(path).isFile()) throw new Error("runtime selector must be a regular file");
+  return { existed: true, bytes: readFileSync(path) };
+}
+
+/** Select v2 only inside the supplied checkout and return the exact prior bytes. */
+export function selectCutoverRuntime(cwd: string, bytes = Buffer.from("v2-temporary\n")): CutoverRuntimeSelectorPreimage {
+  if (!bytes.length || bytes.length > 4_096) throw new Error("runtime selector is outside rehearsal bounds");
+  const preimage = captureCutoverRuntimeSelector(cwd);
+  const path = cutoverRuntimeSelectorPath(cwd);
+  const temporary = `${path}.tmp-${process.pid}`;
+  writeFileSync(temporary, bytes, { flag: "wx", mode: 0o600 });
+  try { renameSync(temporary, path); }
+  finally { rmSync(temporary, { force: true }); }
+  return preimage;
+}
+
+/** Restore exact prior selector bytes, including exact prior absence. */
+export function rollbackCutoverRuntime(cwd: string, preimage: CutoverRuntimeSelectorPreimage): void {
+  const path = cutoverRuntimeSelectorPath(cwd);
+  if (!preimage.existed) {
+    rmSync(path, { force: true });
+    return;
+  }
+  if (!preimage.bytes) throw new Error("runtime selector preimage bytes are missing");
+  const temporary = `${path}.tmp-${process.pid}`;
+  writeFileSync(temporary, preimage.bytes, { flag: "wx", mode: 0o600 });
+  try { renameSync(temporary, path); }
+  finally { rmSync(temporary, { force: true }); }
 }
 
 /** Inspect repository authorities and recovery markers without writing any bytes. */
@@ -255,6 +294,15 @@ function supportedNode(version: string, support: string): boolean {
 
 function supportedPi(versions: string[], expected: string): boolean {
   return /^\d+\.\d+\.\d+$/.test(expected) && versions.length === 3 && versions.every((version) => version === expected);
+}
+
+function cutoverRuntimeSelectorPath(cwd: string): string {
+  const root = realpathSync(resolve(cwd));
+  const output = runGit(root, ["rev-parse", "--path-format=absolute", "--absolute-git-dir"], MAX_GIT_PATH_BYTES);
+  if (!output.endsWith("\n") || /[\r\n]/.test(output.slice(0, -1))) throw new Error("invalid Git directory output");
+  const gitDirectory = output.slice(0, -1);
+  if (!isAbsolute(gitDirectory) || !lstatSync(gitDirectory).isDirectory()) throw new Error("Git directory is invalid");
+  return resolve(realpathSync(gitDirectory), "pi-swe-runtime-selector");
 }
 
 function inspectGit(root: string): { clean: boolean; commonDirectory: string } {

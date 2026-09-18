@@ -1,16 +1,21 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "cases": [
-    { "id": "native-draft", "kind": "native-v1", "disposition": "continue" },
-    { "id": "native-active", "kind": "native-v1", "disposition": "continue" },
-    { "id": "native-blocked", "kind": "native-v1", "disposition": "continue" },
-    { "id": "native-lifecycle", "kind": "native-v1", "disposition": "continue" },
-    { "id": "complete-reopen", "kind": "native-v1-complete", "disposition": "reopen" },
-    { "id": "complete-grandfather", "kind": "native-v1-complete", "disposition": "grandfather-read-only" },
-    { "id": "historical-import", "kind": "historical-contracts", "disposition": "continue" },
-    { "id": "rollback-before-selection", "kind": "native-v1", "disposition": "continue", "rollback": "before-selection" },
-    { "id": "rollback-after-selection", "kind": "native-v1", "disposition": "continue", "rollback": "after-selection" },
-    { "id": "layout-conflict", "kind": "layout-conflict", "remediation": "Run pi-artifacts audit and migrate the kind-first layout, then rerun the SWE migration inventory." },
-    { "id": "unsupported-version", "kind": "unsupported-workflow", "remediation": "Replace or archive the unsupported workflow authority, then rerun the SWE migration inventory." }
+    { "id": "draft", "migrationCaseId": "draft", "kind": "native-v1", "disposition": "continue" },
+    { "id": "active", "migrationCaseId": "active", "kind": "native-v1", "disposition": "continue" },
+    { "id": "blocked", "migrationCaseId": "blocked", "kind": "native-v1", "disposition": "continue" },
+    { "id": "complete-reopen", "migrationCaseId": "complete-reopen", "kind": "native-v1-complete", "disposition": "reopen" },
+    { "id": "complete-grandfather", "migrationCaseId": "complete-grandfather", "kind": "native-v1-complete", "disposition": "grandfather-read-only" },
+    { "id": "historical-import", "migrationCaseId": "historical-import", "kind": "historical-contracts", "disposition": "continue" },
+    { "id": "layout-conflict", "migrationCaseId": "layout-conflict", "kind": "layout-conflict", "remediation": "Run pi-artifacts audit and migrate the kind-first layout, then rerun the SWE migration inventory." },
+    { "id": "corrupt-json", "migrationCaseId": "corrupt-json", "kind": "malformed", "remediation": "Repair the malformed workflow authority, then rerun the SWE migration inventory." },
+    { "id": "unknown-version", "migrationCaseId": "unknown-version", "kind": "unsupported-workflow", "remediation": "Replace or archive the unsupported workflow authority, then rerun the SWE migration inventory." },
+    { "id": "crash-after-postimage", "migrationCaseId": "crash-after-postimage", "kind": "fault", "disposition": "continue" },
+    { "id": "concurrent-writer", "migrationCaseId": "concurrent-writer", "kind": "cas", "disposition": "continue" },
+    { "id": "rollback-edited-postimage", "migrationCaseId": "rollback-edited-postimage", "kind": "rollback", "disposition": "continue" },
+    { "id": "rollback-exact-postimage", "migrationCaseId": "rollback-exact-postimage", "kind": "rollback", "disposition": "continue" },
+    { "id": "native-lifecycle", "kind": "cutover-lifecycle" },
+    { "id": "rollback-before-selection", "kind": "cutover-selector" },
+    { "id": "rollback-after-selection", "kind": "cutover-selector" }
   ]
 }

@@ -1,23 +1,30 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 import {
   CUTOVER_RELEASE_CHECK_MANIFEST,
+  captureCutoverRuntimeSelector,
   cutoverMigrationRemediation,
   evaluateCutoverReadiness,
   formatCutoverReadiness,
   inspectCutoverReadiness,
+  rollbackCutoverRuntime,
+  selectCutoverRuntime,
   type CutoverInspectionInput,
   type CutoverReadinessObservation,
 } from "../extensions/pi-swe/src/cutover.ts";
-import { applyWorkflowMigration, inventoryWorkflowMigrations, planWorkflowMigration, rollbackWorkflowMigration, workflowMigrationReceiptPath, type WorkflowMigrationDisposition } from "../extensions/pi-swe/src/migration.ts";
-import { qualifyV2Activation, registerQualifiedV2Runtime } from "../extensions/pi-swe/src/runtime.ts";
-import { createWorkflow, hashContract, reduceWorkflow, type RepositorySnapshot, type RunnerProvenance, type StageReport, type VerificationEvidence, type Workflow, type WorkspaceReceipt } from "../extensions/pi-swe/src/workflow.ts";
+import { applyWorkflowMigration, inventoryWorkflowMigrations, planWorkflowMigration, recoverWorkflowMigration, rollbackWorkflowMigration, workflowMigrationReceiptPath, type WorkflowMigrationDisposition } from "../extensions/pi-swe/src/migration.ts";
+import { renderVerificationCommand, type ParentExecutionIdentity, type RelevantSourceSnapshot } from "../extensions/pi-swe/src/integrity.ts";
+import type { AgentRunRequest, RunnerResult } from "../extensions/pi-swe/src/runner.ts";
+import type { OrchestrationRunner, OrchestrationWorkspace } from "../extensions/pi-swe/src/orchestration.ts";
+import { createWorkflow, reduceWorkflow, type StageReport, type Workflow } from "../extensions/pi-swe/src/workflow.ts";
+import type { GitIntegrationReceipt, GitWorkspaceReceipt, PreparedIntegration } from "../extensions/pi-swe/src/workspace.ts";
 
 const CANONICAL_WORKFLOW_CONTRACT = { revision: 6, hash: "sha256:3894b64f481fc360ba799bba914eeb08f88e1f85b18fad6d33b5e2e25c47f78f" } as const;
 const CANONICAL_MIGRATION_CONTRACT = { revision: 6, hash: "sha256:8b28d01b0ca3feb60e0a139cad5256e8301f0c69c5c6f8f9791ed6c659abe134" } as const;
@@ -380,17 +387,25 @@ test("missing or malformed repository authority fails closed without exposing pa
 
 type RehearsalCase = {
   id: string;
+  migrationCaseId?: string;
   kind: string;
   disposition?: WorkflowMigrationDisposition;
-  rollback?: "before-selection" | "after-selection";
   remediation?: string;
 };
 
+type MigrationCorpusCase = { id: string; kind: string; expected: string };
+type RehearsalHarness = {
+  options: Record<string, unknown>;
+  runtime?: any;
+  activation?: { active: boolean; invalidate?: () => void };
+};
+
 const rehearsalCorpus = JSON.parse(readFileSync(new URL("./fixtures/pi-swe-cutover/corpus.json", import.meta.url), "utf8")) as { schemaVersion: number; cases: RehearsalCase[] };
+const migrationCorpus = JSON.parse(readFileSync(new URL("./fixtures/pi-swe-migration/corpus.json", import.meta.url), "utf8")) as { schemaVersion: number; cases: MigrationCorpusCase[] };
 const rehearsalAt = "2026-09-17T08:00:00.000Z";
 const digest = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 
-function legacyWorkflowFixture(topic: string, status: string, taskCount = 1): Record<string, unknown> {
+function legacyWorkflowFixture(topic: string, status: string): Record<string, unknown> {
   return {
     version: 1,
     topic,
@@ -398,11 +413,11 @@ function legacyWorkflowFixture(topic: string, status: string, taskCount = 1): Re
     status,
     goal: `rehearse ${topic}`,
     updatedAt: rehearsalAt,
-    tasks: Array.from({ length: taskCount }, (_, index) => ({
-      id: `T${index + 1}`,
-      title: `task ${index + 1}`,
-      status: status === "complete" ? "complete" : index === 0 && status === "active" ? "active" : index === 0 && status === "blocked" ? "blocked" : "pending",
-      dependsOn: index === 0 ? [] : [`T${index}`],
+    tasks: [{
+      id: "T1",
+      title: "task 1",
+      status: status === "complete" ? "complete" : status === "active" ? "active" : status === "blocked" ? "blocked" : "pending",
+      dependsOn: [],
       acceptance: ["rehearsal stage is retained"],
       approaches: ["tdd"],
       approachReasons: { tdd: "the rehearsal is deterministic" },
@@ -411,75 +426,236 @@ function legacyWorkflowFixture(topic: string, status: string, taskCount = 1): Re
       nonGoals: ["no release"],
       verification: [{ command: "node", args: ["--version"] }],
       evidence: [],
-    })),
+    }],
   };
 }
 
-function stageReport(kind: StageReport["kind"], role: RunnerProvenance["role"], runId: string, contractHash: string, snapshotHash = "sha256:rehearsal-snapshot", outcome: StageReport["outcome"] = "approved"): StageReport {
+function rawGit(cwd: string, ...args: string[]): Buffer {
+  const result = spawnSync("git", args, { cwd, encoding: "buffer", env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", LC_ALL: "C" } });
+  assert.equal(result.status, 0, `git ${args.join(" ")} failed: ${String(result.stderr)}`);
+  return result.stdout;
+}
+
+function snapshotRetainedState(cwd: string): Map<string, string> {
+  const roots = [
+    ".model-artifacts/initiatives/swe-production-rollout/workflow.json",
+    ".model-artifacts/system/logs/pi-swe-migration",
+    ".model-artifacts/system/logs/workspaces",
+    ".git/pi-swe-intents",
+    ".git/pi-swe-runtime-selector",
+  ];
+  const snapshot = new Map<string, string>();
+  let entries = 0;
+  const visit = (relative: string): void => {
+    const absolute = join(cwd, relative);
+    if (!existsSync(absolute)) {
+      snapshot.set(relative, "absent");
+      return;
+    }
+    const stat = lstatSync(absolute);
+    entries += 1;
+    assert.ok(entries <= 2_000, "retained-state snapshot exceeded its entry bound");
+    if (stat.isSymbolicLink()) {
+      snapshot.set(relative, "symlink");
+      return;
+    }
+    if (stat.isFile()) {
+      snapshot.set(relative, `${stat.mode & 0o777}:${digest(readFileSync(absolute))}`);
+      return;
+    }
+    snapshot.set(relative, "directory");
+    for (const child of readdirSync(absolute).sort()) visit(`${relative}/${child}`);
+  };
+  for (const root of roots) visit(root);
+  return snapshot;
+}
+
+function fakePi(registrations: string[]) {
+  return {
+    registerCommand: (name: string) => { registrations.push(`command:${name}`); },
+    registerTool: (tool: { name: string }) => { registrations.push(`tool:${tool.name}`); },
+    on: (name: string) => { registrations.push(`hook:${name}`); },
+    getAllTools: () => ["read", "grep", "find", "ls", "bash"].map((name) => ({ name, sourceInfo: { source: "builtin", path: `<builtin:${name}>` } })),
+  };
+}
+
+function runnerReport(request: AgentRunRequest): StageReport {
+  const kind = request.role === "plan-reviewer" ? "plan-review" : request.role === "implementer" ? "implementation" : request.role === "general-reviewer" ? "general-review" : request.role === "concern-reviewer" ? "concern-review" : "final-acceptance";
+  const now = new Date().toISOString();
   return {
     kind,
-    outcome,
-    summary: `${kind} accepted in cutover rehearsal`,
+    outcome: request.role === "implementer" ? "completed" : "approved",
+    summary: `${request.role} accepted deterministic cutover rehearsal`,
+    ...(request.role === "implementer" ? { changedPaths: ["src/rehearsal.ts"] } : {}),
     findings: [],
-    provenance: { runId, role, actorId: `${role}:${runId}`, leaseId: `lease-${runId}`, leaseFence: 1, contractHash, snapshotHash, startedAt: rehearsalAt, completedAt: "2026-09-17T08:00:01.000Z" },
+    provenance: {
+      runId: request.runId,
+      role: request.role,
+      actorId: request.actorId,
+      leaseId: request.lease.id,
+      leaseFence: request.lease.fence,
+      contractHash: request.contractPacket.hash,
+      ...(request.snapshotPacket ? { snapshotHash: request.snapshotPacket.hash } : {}),
+      startedAt: now,
+      completedAt: now,
+    },
   };
 }
 
-function workspaceReceipt(cwd: string, workflow: Workflow, taskId: string): WorkspaceReceipt {
-  const task = workflow.tasks.find((candidate) => candidate.id === taskId)!;
-  return {
-    version: 1, workspaceId: `ws-${taskId}`, root: cwd, path: join(cwd, ".model-artifacts/system/logs/workspaces", taskId), taskId, topic: workflow.topic,
-    baselineHash: "sha256:baseline", snapshotHash: "sha256:rehearsal-snapshot", changedPaths: [], createdAt: rehearsalAt,
-    baselineCommit: "base", baselineRef: `refs/pi-swe/baselines/${taskId}`, worktreeGitDir: join(cwd, ".git/worktrees", taskId), ownershipToken: `owner-${taskId}`,
-    intentPath: join(cwd, ".git/pi-swe-intents", `${taskId}.json`), workspaceHeadCommit: "base", preparedResultCommit: `result-${taskId}`, preparedResultRef: `refs/pi-swe/results/${taskId}`,
-    preparedPatchHash: "sha256:patch", realHead: "head", realIndexHash: "index", realIndexTree: "tree", stagedPatchHash: "staged", unstagedPatchHash: "unstaged",
-    realSourceSnapshotHash: "sha256:baseline", includedUntracked: [], managedPaths: [], writeScope: task.writeScope,
-  };
+class RehearsalRunner implements OrchestrationRunner {
+  readonly requests: AgentRunRequest[] = [];
+  async run(request: AgentRunRequest): Promise<RunnerResult> {
+    this.requests.push(structuredClone(request));
+    return { ok: true, report: runnerReport(request), effectiveConfig: {} as never, attempts: 1 };
+  }
 }
 
-function completeRehearsalTask(cwd: string, workflow: Workflow, taskId: string, sequence: number): Workflow {
-  const task = workflow.tasks.find((candidate) => candidate.id === taskId)!;
-  const receipt = workspaceReceipt(cwd, workflow, taskId);
-  const implementation = stageReport("implementation", "implementer", `impl-${sequence}`, task.contract.hash);
-  implementation.outcome = "no-change";
-  implementation.rationale = "The deterministic rehearsal fixture requires no source mutation.";
-  implementation.changedPaths = [];
-  let current = reduceWorkflow(workflow, { type: "record-implementation", report: implementation, receipt }, `2026-09-17T08:0${sequence}:02.000Z`).workflow;
-  current = reduceWorkflow(current, { type: "record-review", report: stageReport("general-review", "general-reviewer", `review-${sequence}`, task.contract.hash) }, `2026-09-17T08:0${sequence}:03.000Z`).workflow;
-  const evidence: VerificationEvidence = {
-    command: "node", args: ["--version"], exitCode: 0, at: `2026-09-17T08:0${sequence}:04.000Z`, contractHash: task.contract.hash,
-    snapshotHash: receipt.snapshotHash, source: { kind: "bash-tool-result", toolCallId: `task-check-${sequence}`, workflowRevision: current.revision },
-  };
-  current = reduceWorkflow(current, { type: "record-verification", evidence }, evidence.at).workflow;
-  return reduceWorkflow(current, { type: "complete-task" }, `2026-09-17T08:0${sequence}:05.000Z`).workflow;
+class RehearsalWorkspace implements OrchestrationWorkspace {
+  readonly cwd: string;
+  private sequence = 0;
+  constructor(cwd: string) { this.cwd = cwd; }
+  createWorkspace(input: { topic: string; taskId: string; writeScope: string[] }): GitWorkspaceReceipt {
+    this.sequence += 1;
+    return this.receipt(`workspace-${this.sequence}`, input, `sha256:baseline-${this.sequence}`);
+  }
+  createRemediationWorkspace(receipt: GitWorkspaceReceipt, integrated: GitIntegrationReceipt): GitWorkspaceReceipt {
+    return this.receipt(`remediation-${++this.sequence}`, receipt, integrated.postSnapshotHash);
+  }
+  createDriftRemediationWorkspace(receipt: GitWorkspaceReceipt, integrated: GitIntegrationReceipt): GitWorkspaceReceipt {
+    return this.receipt(`drift-${++this.sequence}`, receipt, integrated.postSnapshotHash);
+  }
+  prepareIntegration(receipt: GitWorkspaceReceipt): PreparedIntegration {
+    const snapshotHash = `sha256:snapshot-${this.sequence}`;
+    const prepared = { ...receipt, snapshotHash, changedPaths: ["src/rehearsal.ts"], preparedResultCommit: `result-${this.sequence}`, preparedResultRef: `refs/pi-swe/results/${receipt.workspaceId}`, preparedPatchHash: `sha256:patch-${this.sequence}` };
+    return { receipt: prepared, patch: Buffer.from(`delta-${this.sequence}`), patchHash: prepared.preparedPatchHash, resultCommit: prepared.preparedResultCommit, resultRef: prepared.preparedResultRef, changedPaths: prepared.changedPaths, patchPaths: prepared.changedPaths, preflight: {} as never };
+  }
+  resumePreparedIntegration(receipt: GitWorkspaceReceipt): PreparedIntegration {
+    return { receipt, patch: Buffer.from("retained-delta"), patchHash: receipt.preparedPatchHash!, resultCommit: receipt.preparedResultCommit!, resultRef: receipt.preparedResultRef!, changedPaths: receipt.changedPaths, patchPaths: receipt.changedPaths, preflight: {} as never };
+  }
+  integrate(prepared: PreparedIntegration): GitIntegrationReceipt {
+    return { version: 1, integrationId: `integration-${this.sequence}`, workspaceId: prepared.receipt.workspaceId, preSnapshotHash: prepared.receipt.baselineHash, postSnapshotHash: prepared.receipt.snapshotHash, patchHash: prepared.patchHash, resultCommit: prepared.resultCommit, resultRef: prepared.resultRef, observedHead: prepared.receipt.realHead, observedIndexHash: prepared.receipt.realIndexHash, changedPaths: prepared.changedPaths, integratedAt: new Date().toISOString() };
+  }
+  cumulativeDiff(receipt: GitWorkspaceReceipt): Buffer { return Buffer.from(`cumulative-${receipt.workspaceId}`); }
+  private receipt(id: string, input: { topic?: string; taskId?: string; writeScope?: string[]; realHead?: string; realIndexHash?: string }, baselineHash: string): GitWorkspaceReceipt {
+    return {
+      version: 1,
+      workspaceId: id,
+      root: this.cwd,
+      path: join(this.cwd, ".model-artifacts/system/logs/workspaces", id),
+      taskId: input.taskId ?? "T1",
+      topic: input.topic ?? "rehearsal-lifecycle",
+      baselineHash,
+      snapshotHash: baselineHash,
+      changedPaths: [],
+      createdAt: new Date().toISOString(),
+      baselineCommit: "candidate",
+      baselineRef: `refs/pi-swe/baselines/${id}`,
+      worktreeGitDir: join(this.cwd, ".git/worktrees", id),
+      ownershipToken: `owner-${id}`,
+      intentPath: join(this.cwd, ".git/pi-swe-intents", `${id}.json`),
+      workspaceHeadCommit: "candidate",
+      realHead: input.realHead ?? "candidate",
+      realIndexHash: input.realIndexHash ?? "index",
+      realIndexTree: "tree",
+      stagedPatchHash: "staged",
+      unstagedPatchHash: "unstaged",
+      realSourceSnapshotHash: baselineHash,
+      includedUntracked: [],
+      managedPaths: [],
+      writeScope: input.writeScope ?? ["src/**"],
+    };
+  }
 }
 
-function finishRehearsalLifecycle(cwd: string, workflow: Workflow, parent: { ownerId: string; sessionId: string; runtimeId: string; cwd: string; branchLength: number }): Workflow {
-  const snapshot: RepositorySnapshot = { hash: "sha256:rehearsal-snapshot", head: "fixture-head", branch: "main", changedPaths: [], capturedAt: "2026-09-17T08:10:00.000Z" };
-  let current = reduceWorkflow(workflow, { type: "begin-initiative-closeout", snapshot, cumulativeDeltaHash: hashContract("rehearsal-delta"), unresolvedRisks: [], branchLength: parent.branchLength }, "2026-09-17T08:10:01.000Z").workflow;
-  const check = current.initiativeVerification[0]!;
-  const evidence: VerificationEvidence = {
-    ...check, exitCode: 0, at: "2026-09-17T08:10:02.000Z", contractHash: current.contract.hash, snapshotHash: snapshot.hash,
-    beforeSnapshotHash: snapshot.hash, afterSnapshotHash: snapshot.hash, cwd, head: snapshot.head, branch: snapshot.branch,
-    source: { kind: "bash-tool-result", toolName: "bash", toolCallId: "initiative-check", workflowRevision: current.closeout!.checkpoint.revision, ownerId: parent.ownerId, sessionId: parent.sessionId, runtimeId: parent.runtimeId, branchLength: parent.branchLength },
-  };
-  current = reduceWorkflow(current, { type: "record-initiative-verification", evidence, observedSnapshot: snapshot }, "2026-09-17T08:10:03.000Z").workflow;
-  const acceptance = stageReport("final-acceptance", "final-reviewer", "final-1", current.contract.hash, snapshot.hash);
-  acceptance.provenance.startedAt = "2026-09-17T08:10:03.500Z";
-  acceptance.provenance.completedAt = "2026-09-17T08:10:04.000Z";
-  current = reduceWorkflow(current, { type: "record-initiative-acceptance", report: acceptance }, "2026-09-17T08:10:04.000Z").workflow;
-  return reduceWorkflow(current, { type: "complete-initiative", observedSnapshot: snapshot, branchLength: parent.branchLength }, "2026-09-17T08:10:05.000Z").workflow;
+class RehearsalSourceInspector {
+  inspect(workflow: Workflow): RelevantSourceSnapshot {
+    const active = workflow.activeTask ? workflow.tasks.find((task) => task.id === workflow.activeTask) : undefined;
+    const receipt = active?.integrationReceipt ?? [...workflow.tasks].reverse().find((task) => task.integrationReceipt)?.integrationReceipt;
+    return { hash: receipt?.postSnapshotHash ?? "sha256:unintegrated", head: receipt?.observedHead ?? "candidate", branch: "master", changedPaths: receipt?.changedPaths ?? [] };
+  }
 }
 
-test("disposable checkout rehearses every migration, temporary v2 activation, restart, acceptance, and reversible rollback", async () => {
-  assert.equal(rehearsalCorpus.schemaVersion, 1);
+class RehearsalCloseoutInspector {
+  private fenced = false;
+  readonly snapshot = { hash: "sha256:closeout", head: "candidate", branch: "master", changedPaths: [] as string[], capturedAt: new Date().toISOString() };
+  inspect() { return { snapshot: structuredClone(this.snapshot), cumulativeDelta: "deterministic cumulative delta", unresolvedRisks: [] as string[] }; }
+  acquireFence(): () => void {
+    assert.equal(this.fenced, false);
+    this.fenced = true;
+    return () => { this.fenced = false; };
+  }
+}
+
+function temporaryEntrypoint(): string {
+  return `import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createProductionRuntime, qualifyV2Activation, recoverRuntimeWorkflows, registerQualifiedV2Runtime } from "./src/runtime.ts";
+export { recoverRuntimeWorkflows };
+export const PI_SWE_EXTENSION_ID = "pi-swe";
+export const PI_SWE_ACTIVATION = "temporary-v2" as const;
+export default function piSwe(pi: ExtensionAPI): void {
+  const harness = (globalThis as typeof globalThis & { __PI_SWE_CUTOVER_REHEARSAL__?: any }).__PI_SWE_CUTOVER_REHEARSAL__;
+  if (!harness) throw new Error("cutover rehearsal harness is unavailable");
+  const runtime = createProductionRuntime({ ...harness.options, pi });
+  const qualification = qualifyV2Activation({ requested: true, migrationReady: true, piVersion: "0.84.2", expectedPiVersion: "0.84.2", extensionId: "pi-swe", expectedExtensionId: "pi-swe", repositorySupported: true, requiredTools: ["read", "grep", "find", "ls", "bash"], availableTools: pi.getAllTools().map((tool) => tool.name) });
+  harness.runtime = runtime;
+  harness.activation = registerQualifiedV2Runtime(pi, qualification, runtime);
+}
+`;
+}
+
+async function submitTaskVerification(runtime: any, parent: ParentExecutionIdentity, topic: string, callId: string): Promise<void> {
+  await new Promise((resolveDelay) => setTimeout(resolveDelay, 2));
+  const workflow = runtime.mutations.read(topic, false).workflow as Workflow;
+  const task = workflow.tasks.find((candidate) => candidate.id === workflow.activeTask)!;
+  const authorization = runtime.verificationAuthority.authorize({ workflow, taskId: task.id, toolName: "bash", toolCallId: callId, commandLine: renderVerificationCommand(task.verification[0]!), parent });
+  const submission = runtime.verificationAuthority.finish({ authorizationId: authorization.id, workflow, taskId: task.id, toolCallId: callId, exitCode: 0, parent });
+  const handoff = await runtime.engine.advance(topic, workflow.revision, { verification: submission });
+  assert.equal(handoff.kind, "advanced");
+}
+
+async function submitInitiativeVerification(runtime: any, parent: ParentExecutionIdentity, topic: string, callId: string): Promise<void> {
+  await new Promise((resolveDelay) => setTimeout(resolveDelay, 2));
+  const workflow = runtime.mutations.read(topic, false).workflow as Workflow;
+  const authorization = runtime.closeoutAuthority.authorize({ workflow, toolName: "bash", toolCallId: callId, commandLine: renderVerificationCommand(workflow.initiativeVerification[0]!), parent });
+  const submission = runtime.closeoutAuthority.finish({ authorizationId: authorization.id, workflow, toolCallId: callId, exitCode: 0, parent });
+  const handoff = await runtime.engine.advance(topic, workflow.revision, { initiativeVerification: submission });
+  assert.equal(handoff.kind, "advanced");
+}
+
+test("cutover corpus has an exhaustive one-to-one correspondence with the authoritative migration corpus", () => {
+  assert.equal(rehearsalCorpus.schemaVersion, 2);
+  assert.equal(migrationCorpus.schemaVersion, 1);
+  const covered = rehearsalCorpus.cases.flatMap((item) => item.migrationCaseId ? [item.migrationCaseId] : []);
+  assert.deepEqual(covered, migrationCorpus.cases.map((item) => item.id));
+  assert.equal(new Set(covered).size, migrationCorpus.cases.length);
+});
+
+test("disposable candidate checkout rehearses exhaustive migration, production entrypoint activation, durable restart, acceptance, and rollback", async () => {
   const controlRoot = process.cwd();
+  const controlHead = git(controlRoot, "rev-parse", "HEAD");
   const controlStatus = git(controlRoot, "status", "--porcelain=v1", "--untracked-files=all");
-  const controlWorkflowPath = join(controlRoot, ".model-artifacts/initiatives/swe-production-rollout/workflow.json");
-  const controlWorkflow = readFileSync(controlWorkflowPath);
-  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-cutover-rehearsal-"));
+  const controlRetained = snapshotRetainedState(controlRoot);
+  const controlSources = new Map([
+    ["extensions/pi-swe/src/cutover.ts", readFileSync(join(controlRoot, "extensions/pi-swe/src/cutover.ts"))],
+    ["test/pi-swe-cutover.test.ts", readFileSync(join(controlRoot, "test/pi-swe-cutover.test.ts"))],
+    ["test/fixtures/pi-swe-cutover/corpus.json", readFileSync(join(controlRoot, "test/fixtures/pi-swe-cutover/corpus.json"))],
+    ["scripts/release-verify.ts", readFileSync(join(controlRoot, "scripts/release-verify.ts"))],
+  ]);
+  const checkoutParent = mkdtempSync(join(tmpdir(), "pi-swe-cutover-candidate-"));
+  const cwd = join(checkoutParent, "checkout");
   const exactFiles = new Map<string, Buffer>();
+  const retainedPaths = new Set<string>();
+  let temporaryRuntime: any;
+  let temporaryActivation: { invalidate?: () => void } | undefined;
   try {
+    git(checkoutParent, "clone", "--quiet", "--no-hardlinks", controlRoot, cwd);
+    assert.equal(git(cwd, "rev-parse", "HEAD"), controlHead);
+    assert.equal(git(cwd, "status", "--porcelain=v1", "--untracked-files=all"), "");
+    for (const path of ["extensions/pi-swe/index.ts", "extensions/pi-swe/src/runtime.ts", ".model-artifacts/initiatives/swe-production-rollout/workflow.json"]) {
+      assert.deepEqual(readFileSync(join(cwd, path)), rawGit(controlRoot, "show", `${controlHead}:${path}`), path);
+    }
+    symlinkSync(join(controlRoot, "node_modules"), join(cwd, "node_modules"), "dir");
+
     for (const fixture of rehearsalCorpus.cases) {
       if (fixture.kind === "historical-contracts") {
         const contractRoot = `.model-artifacts/initiatives/${fixture.id}/plans/revisions/r1`;
@@ -491,117 +667,213 @@ test("disposable checkout rehearses every migration, temporary v2 activation, re
       } else if (fixture.kind === "layout-conflict") {
         writeJson(cwd, `.model-artifacts/initiatives/${fixture.id}/workflow.json`, legacyWorkflowFixture(fixture.id, "paused"));
         writeJson(cwd, `.model-artifacts/plans/${fixture.id}/fixture.json`, { retained: true });
+      } else if (fixture.kind === "malformed") {
+        const path = `.model-artifacts/initiatives/${fixture.id}/workflow.json`;
+        mkdirSync(dirname(join(cwd, path)), { recursive: true });
+        writeFileSync(join(cwd, path), "{corrupt-json\n");
       } else if (fixture.kind === "unsupported-workflow") {
         writeJson(cwd, `.model-artifacts/initiatives/${fixture.id}/workflow.json`, { version: 99, topic: fixture.id, retained: true });
-      } else {
-        const status = fixture.id === "native-active" ? "active" : fixture.id === "native-blocked" ? "blocked" : fixture.kind === "native-v1-complete" ? "complete" : "paused";
-        writeJson(cwd, `.model-artifacts/initiatives/${fixture.id}/workflow.json`, legacyWorkflowFixture(fixture.id, status, fixture.id === "native-lifecycle" ? 2 : 1));
+      } else if (fixture.kind !== "cutover-lifecycle") {
+        const status = fixture.id === "active" ? "active" : fixture.id === "blocked" ? "blocked" : fixture.id === "draft" ? "draft" : fixture.kind === "native-v1-complete" ? "complete" : "paused";
+        writeJson(cwd, `.model-artifacts/initiatives/${fixture.id}/workflow.json`, legacyWorkflowFixture(fixture.id, status));
       }
     }
-    for (const path of [
-      ".model-artifacts/initiatives/layout-conflict/workflow.json",
-      ".model-artifacts/plans/layout-conflict/fixture.json",
-      ".model-artifacts/initiatives/unsupported-version/workflow.json",
-    ]) exactFiles.set(path, readFileSync(join(cwd, path)));
-    for (const topic of ["rollback-before-selection", "rollback-after-selection"]) {
+
+    for (const topic of ["rollback-before-selection", "rollback-edited-postimage", "rollback-exact-postimage"]) {
       const acceptedPath = `.model-artifacts/initiatives/${topic}/reports/accepted.txt`;
       const workspacePath = `.model-artifacts/system/logs/workspaces/${topic}.bin`;
+      const intentPath = `.git/pi-swe-intents/${topic}.json`;
       mkdirSync(dirname(join(cwd, acceptedPath)), { recursive: true });
       writeFileSync(join(cwd, acceptedPath), `accepted-${topic}\n`);
       mkdirSync(dirname(join(cwd, workspacePath)), { recursive: true });
       writeFileSync(join(cwd, workspacePath), Buffer.from([0, 1, 2, 255]));
-      for (const path of [`.model-artifacts/initiatives/${topic}/workflow.json`, acceptedPath, workspacePath]) exactFiles.set(path, readFileSync(join(cwd, path)));
+      writeJson(cwd, intentPath, { topic, retained: true });
+      for (const path of [`.model-artifacts/initiatives/${topic}/workflow.json`, acceptedPath, workspacePath, intentPath]) {
+        exactFiles.set(path, readFileSync(join(cwd, path)));
+        retainedPaths.add(path);
+      }
     }
-    git(cwd, "init", "-q");
-    git(cwd, "config", "user.name", "Cutover Rehearsal");
-    git(cwd, "config", "user.email", "cutover@example.invalid");
-    git(cwd, "add", ".");
-    git(cwd, "commit", "-qm", "rehearsal fixtures");
 
     const initial = inventoryWorkflowMigrations(cwd);
     for (const fixture of rehearsalCorpus.cases.filter((item) => item.remediation)) {
       const entry = initial.entries.find((candidate) => candidate.topic === fixture.id)!;
-      const before = entry.sourcePaths.filter((path) => lstatSync(join(cwd, path)).isFile()).map((path) => [path, readFileSync(join(cwd, path))] as const);
-      assert.equal(cutoverMigrationRemediation(entry), fixture.remediation);
-      for (const [path, bytes] of before) assert.deepEqual(readFileSync(join(cwd, path)), bytes);
+      assert.ok(entry, fixture.id);
+      const before = entry.sourcePaths.filter((path) => existsSync(join(cwd, path)) && lstatSync(join(cwd, path)).isFile()).map((path) => [path, readFileSync(join(cwd, path))] as const);
+      assert.deepEqual([cutoverMigrationRemediation(entry)], [fixture.remediation]);
+      for (const [path, bytes] of before) {
+        exactFiles.set(path, bytes);
+        assert.deepEqual(readFileSync(join(cwd, path)), bytes);
+      }
     }
 
-    const migratable = rehearsalCorpus.cases.filter((fixture) => fixture.disposition);
-    const appliedReceipts = new Map<string, Record<string, unknown>>();
-    for (const fixture of migratable) {
+    const ordinary = rehearsalCorpus.cases.filter((item) => item.disposition && !["crash-after-postimage", "concurrent-writer", "rollback-edited-postimage", "rollback-exact-postimage", "rollback-before-selection"].includes(item.id));
+    for (const fixture of ordinary) {
       const plan = planWorkflowMigration(cwd, fixture.id, { disposition: fixture.disposition, decidedBy: "cutover-rehearsal", now: rehearsalAt });
       assert.equal(plan.eligible, true, fixture.id);
       assert.equal((await applyWorkflowMigration(cwd, plan)).status, "applied", fixture.id);
-      if (fixture.rollback) appliedReceipts.set(fixture.id, JSON.parse(readFileSync(join(cwd, workflowMigrationReceiptPath(fixture.id)), "utf8")) as Record<string, unknown>);
     }
 
+    const crashPlan = planWorkflowMigration(cwd, "crash-after-postimage", { disposition: "continue", decidedBy: "cutover-rehearsal", now: rehearsalAt });
+    await assert.rejects(() => applyWorkflowMigration(cwd, crashPlan, { fault: (stage) => { if (stage === "workflow-written") throw new Error("rehearsed power loss"); } }), /rehearsed power loss/);
+    assert.equal((await recoverWorkflowMigration(cwd, "crash-after-postimage")).status, "recovered");
+
+    const concurrentPath = ".model-artifacts/initiatives/concurrent-writer/workflow.json";
+    const concurrentBefore = readFileSync(join(cwd, concurrentPath));
+    const concurrentPlan = planWorkflowMigration(cwd, "concurrent-writer", { disposition: "continue", decidedBy: "cutover-rehearsal", now: rehearsalAt });
+    writeJson(cwd, concurrentPath, { ...legacyWorkflowFixture("concurrent-writer", "paused"), revision: 4 });
+    await assert.rejects(() => applyWorkflowMigration(cwd, concurrentPlan), /stale migration plan/);
+    writeFileSync(join(cwd, concurrentPath), concurrentBefore);
+
+    const editedPlan = planWorkflowMigration(cwd, "rollback-edited-postimage", { disposition: "continue", decidedBy: "cutover-rehearsal", now: rehearsalAt });
+    await applyWorkflowMigration(cwd, editedPlan);
+    writeFileSync(join(cwd, ".model-artifacts/initiatives/rollback-edited-postimage/workflow.json"), `${editedPlan.postimage} `);
+    await assert.rejects(() => rollbackWorkflowMigration(cwd, "rollback-edited-postimage"), /intervening edits/);
+    writeFileSync(join(cwd, ".model-artifacts/initiatives/rollback-edited-postimage/workflow.json"), editedPlan.postimage!);
+    await rollbackWorkflowMigration(cwd, "rollback-edited-postimage");
+
+    const beforeSelectionPlan = planWorkflowMigration(cwd, "rollback-before-selection", { disposition: "continue", decidedBy: "cutover-rehearsal", now: rehearsalAt });
+    await applyWorkflowMigration(cwd, beforeSelectionPlan);
     await rollbackWorkflowMigration(cwd, "rollback-before-selection");
-    assert.equal(existsSync(join(cwd, ".git/pi-swe-runtime-selector")), false);
+    const selectorPath = join(cwd, ".git/pi-swe-runtime-selector");
+    const absentPreimage = captureCutoverRuntimeSelector(cwd);
+    assert.equal(absentPreimage.existed, false);
+    rollbackCutoverRuntime(cwd, absentPreimage);
+    assert.equal(existsSync(selectorPath), false);
 
+    writeFileSync(selectorPath, Buffer.from([9, 8, 7, 0, 255]));
+    const exactSelectorPreimage = selectCutoverRuntime(cwd);
+    rollbackCutoverRuntime(cwd, exactSelectorPreimage);
+    assert.deepEqual(readFileSync(selectorPath), Buffer.from([9, 8, 7, 0, 255]));
+    rmSync(selectorPath);
+
+    const afterSelectionPlan = planWorkflowMigration(cwd, "rollback-exact-postimage", { disposition: "continue", decidedBy: "cutover-rehearsal", now: rehearsalAt });
+    const afterSelectionReceipt = await applyWorkflowMigration(cwd, afterSelectionPlan);
+    assert.equal(afterSelectionReceipt.status, "applied");
+
+    const entrypointPath = join(cwd, "extensions/pi-swe/index.ts");
+    const entrypointPreimage = readFileSync(entrypointPath);
+    writeFileSync(entrypointPath, temporaryEntrypoint());
+    const activationSelectorPreimage = selectCutoverRuntime(cwd);
+    assert.equal(activationSelectorPreimage.existed, false);
+    assert.equal(readFileSync(selectorPath, "utf8"), "v2-temporary\n");
+
+    const runner = new RehearsalRunner();
+    const workspace = new RehearsalWorkspace(cwd);
+    const sourceInspector = new RehearsalSourceInspector();
+    const closeoutInspector = new RehearsalCloseoutInspector();
+    const oldParent: ParentExecutionIdentity = { ownerId: "parent-old", sessionId: "session-old", runtimeId: "runtime-old", cwd: resolve(cwd), branchLength: 0 };
     const registrations: string[] = [];
-    const pi = {
-      registerCommand: (name: string) => { registrations.push(`command:${name}`); },
-      registerTool: (tool: { name: string }) => { registrations.push(`tool:${tool.name}`); },
-      on: (name: string) => { registrations.push(`hook:${name}`); },
-      getAllTools: () => ["read", "grep", "find", "ls", "bash"].map((name) => ({ name, sourceInfo: { source: "builtin", path: `<builtin:${name}>` } })),
-    };
-    const qualification = qualifyV2Activation({ requested: true, migrationReady: true, piVersion: "0.84.2", expectedPiVersion: "0.84.2", extensionId: "pi-swe", expectedExtensionId: "pi-swe", repositorySupported: true, requiredTools: ["read", "grep", "find", "ls", "bash"], availableTools: ["read", "grep", "find", "ls", "bash"] });
-    const surface = { registry: { list: () => [], dismiss: () => false, signal: () => false } as never, driver: { start: async () => undefined, resume: async () => undefined, pause: () => false, stop: () => false } as never };
-    const activation = registerQualifiedV2Runtime(pi as never, qualification, surface);
-    assert.equal(activation.active, true);
-    mkdirSync(join(cwd, ".git"), { recursive: true });
-    writeFileSync(join(cwd, ".git/pi-swe-runtime-selector"), "v2-temporary\n");
-    await rollbackWorkflowMigration(cwd, "rollback-after-selection");
+    const harness: RehearsalHarness = { options: { cwd, parent: oldParent, provider: "deterministic-cutover", model: "deterministic-cutover", qualificationMode: true, overrides: { runner, workspace, sourceInspector, closeoutInspector } } };
+    (globalThis as typeof globalThis & { __PI_SWE_CUTOVER_REHEARSAL__?: RehearsalHarness }).__PI_SWE_CUTOVER_REHEARSAL__ = harness;
+    const activatedEntrypoint = await import(`${pathToFileURL(entrypointPath).href}?temporary-v2=${Date.now()}`);
+    activatedEntrypoint.default(fakePi(registrations) as never);
+    temporaryRuntime = harness.runtime;
+    temporaryActivation = harness.activation;
+    assert.equal(temporaryActivation?.active, true);
     assert.deepEqual(registrations, ["hook:session_start", "hook:tool_call", "hook:tool_result", "hook:before_agent_start", "hook:user_bash", "hook:session_shutdown", "command:swe", "tool:swe_workflow"]);
-    activation.invalidate?.();
 
-    let lifecycle = createWorkflow({
+    const lifecycle = createWorkflow({
       topic: "rehearsal-lifecycle",
-      goal: "Prove a complete multi-task cutover lifecycle",
+      goal: "Prove a complete multi-task cutover lifecycle through the activated production composition",
+      plan: "Use deterministic providers and durable restart recovery.",
       now: rehearsalAt,
       tasks: [
         { id: "T1", title: "first lifecycle task", writeScope: ["src/**"], nonGoals: ["no release"], approaches: ["tdd"], approachReasons: { tdd: "the lifecycle is deterministic" }, assessmentStatus: "assessed", verification: [{ command: "node", args: ["--version"] }] },
         { id: "T2", title: "second lifecycle task", dependsOn: ["T1"], writeScope: ["src/**"], nonGoals: ["no release"], approaches: ["tdd"], approachReasons: { tdd: "the lifecycle is deterministic" }, assessmentStatus: "assessed", verification: [{ command: "node", args: ["--version"] }] },
       ],
     });
-    const oldParent = { ownerId: "parent-old", sessionId: "session-old", runtimeId: "runtime-old", cwd, branchLength: 0 };
-    lifecycle = reduceWorkflow(lifecycle, { type: "record-plan-review", report: stageReport("plan-review", "plan-reviewer", "plan-1", lifecycle.contract.hash) }, "2026-09-17T08:00:01.000Z").workflow;
-    lifecycle = reduceWorkflow(lifecycle, { type: "claim-parent", authority: { ...oldParent, claimedAt: "2026-09-17T08:00:02.000Z", valid: true } }, "2026-09-17T08:00:02.000Z").workflow;
-    lifecycle = reduceWorkflow(lifecycle, { type: "start" }, "2026-09-17T08:00:03.000Z").workflow;
-    assert.equal(lifecycle.status, "active", JSON.stringify({ status: lifecycle.status, activeTask: lifecycle.activeTask, tasks: lifecycle.tasks.map(({ id, status, phase, blockedReason }) => ({ id, status, phase, blockedReason })) }));
-    lifecycle = completeRehearsalTask(cwd, lifecycle, "T1", 1);
-    const retainedTask = JSON.stringify(lifecycle.tasks[0]);
-    lifecycle = reduceWorkflow(lifecycle, { type: "invalidate-parent", ownerId: oldParent.ownerId, sessionId: oldParent.sessionId, runtimeId: oldParent.runtimeId, reason: "rehearsed parent restart" }, "2026-09-17T08:02:00.000Z").workflow;
-    const newParent = { ownerId: "parent-new", sessionId: "session-new", runtimeId: "runtime-new", cwd, branchLength: 0 };
-    lifecycle = reduceWorkflow(lifecycle, { type: "recover-parent", authority: { ...newParent, claimedAt: "2026-09-17T08:02:01.000Z", valid: true }, reason: "resume after disposable parent restart", decidedBy: "cutover-rehearsal" }, "2026-09-17T08:02:01.000Z").workflow;
-    lifecycle = reduceWorkflow(lifecycle, { type: "resume" }, "2026-09-17T08:02:02.000Z").workflow;
-    assert.equal(JSON.stringify(lifecycle.tasks[0]), retainedTask);
-    lifecycle = completeRehearsalTask(cwd, lifecycle, "T2", 2);
-    lifecycle = finishRehearsalLifecycle(cwd, lifecycle, newParent);
-    writeJson(cwd, ".model-artifacts/initiatives/rehearsal-lifecycle/workflow.json", lifecycle);
-    assert.equal(lifecycle.status, "complete");
-    assert.equal(lifecycle.initiativeAcceptance?.outcome, "approved");
-    assert.equal(lifecycle.tasks.every((task) => task.workspaceReceipt && task.reports.length >= 2 && task.evidence.length === 1), true);
-    assert.equal(lifecycle.orchestration.history.some((item) => item.type === "parent-recovered"), true);
+    await temporaryRuntime.mutations.create(lifecycle);
+    const firstRun = await temporaryRuntime.driver.start(lifecycle.topic);
+    assert.equal(firstRun.outcome, "handoff");
+    assert.equal(firstRun.handoff.kind, "verification-required");
+    const verificationCheckpoint = temporaryRuntime.mutations.read(lifecycle.topic, false).workflow as Workflow;
+    assert.equal(verificationCheckpoint.orchestration.activeRun, undefined);
+    assert.equal(verificationCheckpoint.tasks[0]!.phase, "verification");
+    await submitTaskVerification(temporaryRuntime, oldParent, lifecycle.topic, "task-verification-1");
+    const readyToComplete = temporaryRuntime.mutations.read(lifecycle.topic, false).workflow as Workflow;
+    const completedFirstTask = await temporaryRuntime.engine.advance(lifecycle.topic, readyToComplete.revision);
+    assert.equal(completedFirstTask.kind, "advanced");
+    const durableCheckpoint = temporaryRuntime.mutations.read(lifecycle.topic, false).workflow as Workflow;
+    assert.equal(durableCheckpoint.orchestration.activeRun, undefined);
+    assert.equal(durableCheckpoint.activeTask, undefined);
+    assert.equal(durableCheckpoint.tasks[0]!.status, "complete");
+    const checkpointBytes = readFileSync(join(cwd, ".model-artifacts/initiatives/rehearsal-lifecycle/workflow.json"));
 
-    for (const [path, bytes] of exactFiles) assert.deepEqual(readFileSync(join(cwd, path)), bytes, path);
-    for (const topic of ["rollback-before-selection", "rollback-after-selection"]) {
-      const receipt = JSON.parse(readFileSync(join(cwd, workflowMigrationReceiptPath(topic)), "utf8")) as Record<string, unknown>;
-      const applied = appliedReceipts.get(topic)!;
-      const { state: _rolledBackState, rolledBackAt, ...retainedReceipt } = receipt;
-      const { state: _appliedState, ...appliedReceipt } = applied;
-      assert.equal(receipt.state, "rolled-back");
-      assert.equal(typeof rolledBackAt, "string");
-      assert.deepEqual(retainedReceipt, appliedReceipt);
-      assert.equal(String(receipt.preimageHash).slice("sha256:".length), digest(exactFiles.get(`.model-artifacts/initiatives/${topic}/workflow.json`)!));
-    }
+    const discardedRuntime = temporaryRuntime;
+    discardedRuntime.shutdown();
+    temporaryActivation?.invalidate?.();
+    const newParent: ParentExecutionIdentity = { ownerId: "parent-new", sessionId: "session-new", runtimeId: "runtime-new", cwd: resolve(cwd), branchLength: 0 };
+    const freshRegistrations: string[] = [];
+    const freshHarness: RehearsalHarness = { options: { ...harness.options, parent: newParent } };
+    (globalThis as typeof globalThis & { __PI_SWE_CUTOVER_REHEARSAL__?: RehearsalHarness }).__PI_SWE_CUTOVER_REHEARSAL__ = freshHarness;
+    activatedEntrypoint.default(fakePi(freshRegistrations) as never);
+    const freshRuntime = freshHarness.runtime;
+    temporaryRuntime = freshRuntime;
+    temporaryActivation = freshHarness.activation;
+    const reloaded = freshRuntime.mutations.read(lifecycle.topic, false).workflow as Workflow;
+    assert.deepEqual(readFileSync(join(cwd, ".model-artifacts/initiatives/rehearsal-lifecycle/workflow.json")), checkpointBytes);
+    assert.equal(reloaded.orchestration.parent?.ownerId, oldParent.ownerId);
+    await freshRuntime.mutations.mutate(lifecycle.topic, reloaded.revision, (workflow: Workflow) => reduceWorkflow(workflow, { type: "invalidate-parent", ownerId: oldParent.ownerId, sessionId: oldParent.sessionId, runtimeId: oldParent.runtimeId, reason: "fresh runtime fenced discarded parent authority" }, new Date().toISOString()));
+    const fencedState = freshRuntime.mutations.read(lifecycle.topic, false).workflow as Workflow;
+    assert.equal(fencedState.orchestration.parent?.valid, false);
+    assert.equal(fencedState.status, "paused");
+    const staleAttempt = await discardedRuntime.engine.advance(lifecycle.topic, fencedState.revision);
+    assert.equal(staleAttempt.kind, "blocked");
+    assert.match(staleAttempt.message, /parent|authority/i);
+    await freshRuntime.mutations.mutate(lifecycle.topic, fencedState.revision, (workflow: Workflow) => reduceWorkflow(workflow, { type: "recover-parent", authority: { ...newParent, claimedAt: new Date().toISOString(), valid: true }, reason: "resume durable no-child cutover checkpoint", decidedBy: "cutover-rehearsal" }, new Date().toISOString()));
+
+    let resumed = await freshRuntime.driver.resume(lifecycle.topic);
+    assert.equal(resumed.handoff.kind, "verification-required");
+    assert.equal(resumed.handoff.taskId, "T2");
+    await submitTaskVerification(freshRuntime, newParent, lifecycle.topic, "task-verification-2");
+    resumed = await freshRuntime.driver.resume(lifecycle.topic);
+    assert.equal(resumed.handoff.kind, "verification-required");
+    assert.equal(resumed.handoff.stage, "initiative-acceptance");
+    await submitInitiativeVerification(freshRuntime, newParent, lifecycle.topic, "initiative-verification-1");
+    const completedRun = await freshRuntime.driver.resume(lifecycle.topic);
+    assert.equal(completedRun.outcome, "completed");
+    const completed = freshRuntime.mutations.read(lifecycle.topic, false).workflow as Workflow;
+    assert.equal(completed.status, "complete");
+    assert.equal(completed.initiativeAcceptance?.outcome, "approved");
+    assert.equal(completed.tasks.every((task) => task.status === "complete" && task.workspaceReceipt && task.integrationReceipt && task.evidence.length === 1), true);
+    assert.equal(completed.orchestration.history.some((item) => item.type === "parent-recovered"), true);
+    assert.equal(runner.requests.filter((request) => request.role === "implementer").length, 2);
+    const acceptedLifecycleBytes = readFileSync(join(cwd, ".model-artifacts/initiatives/rehearsal-lifecycle/workflow.json"));
+
+    await rollbackWorkflowMigration(cwd, "rollback-exact-postimage");
+    const rolledBackReceipt = JSON.parse(readFileSync(join(cwd, workflowMigrationReceiptPath("rollback-exact-postimage")), "utf8")) as Record<string, unknown>;
+    assert.equal(rolledBackReceipt.state, "rolled-back");
+    assert.equal(String(rolledBackReceipt.preimageHash).slice("sha256:".length), digest(exactFiles.get(".model-artifacts/initiatives/rollback-exact-postimage/workflow.json")!));
+    for (const path of retainedPaths) assert.deepEqual(readFileSync(join(cwd, path)), exactFiles.get(path), path);
+
+    freshRuntime.shutdown();
+    freshHarness.activation?.invalidate?.();
+    rollbackCutoverRuntime(cwd, activationSelectorPreimage);
+    assert.equal(existsSync(selectorPath), false);
+    writeFileSync(entrypointPath, entrypointPreimage);
+    assert.deepEqual(readFileSync(entrypointPath), entrypointPreimage);
+    assert.deepEqual(readFileSync(join(cwd, ".model-artifacts/initiatives/rehearsal-lifecycle/workflow.json")), acceptedLifecycleBytes);
+
+    const compatibilityRegistrations: string[] = [];
+    const compatibilityEntrypoint = await import(`${pathToFileURL(entrypointPath).href}?rollback=${Date.now()}`);
+    compatibilityEntrypoint.default(fakePi(compatibilityRegistrations) as never);
+    assert.equal(compatibilityEntrypoint.PI_SWE_ACTIVATION, "disabled");
+    assert.deepEqual(compatibilityRegistrations, ["command:swe", "tool:swe_workflow"]);
+
     for (const fixture of rehearsalCorpus.cases.filter((item) => item.remediation)) {
       const entry = inventoryWorkflowMigrations(cwd).entries.find((candidate) => candidate.topic === fixture.id)!;
-      assert.equal(cutoverMigrationRemediation(entry), fixture.remediation);
+      assert.deepEqual([cutoverMigrationRemediation(entry)], [fixture.remediation]);
+      for (const path of entry.sourcePaths.filter((path) => exactFiles.has(path))) assert.deepEqual(readFileSync(join(cwd, path)), exactFiles.get(path), path);
     }
-    assert.deepEqual(readFileSync(controlWorkflowPath), controlWorkflow);
+
+    assert.equal(git(controlRoot, "rev-parse", "HEAD"), controlHead);
     assert.equal(git(controlRoot, "status", "--porcelain=v1", "--untracked-files=all"), controlStatus);
+    assert.deepEqual(snapshotRetainedState(controlRoot), controlRetained);
+    for (const [path, bytes] of controlSources) assert.deepEqual(readFileSync(join(controlRoot, path)), bytes, path);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    delete (globalThis as typeof globalThis & { __PI_SWE_CUTOVER_REHEARSAL__?: RehearsalHarness }).__PI_SWE_CUTOVER_REHEARSAL__;
+    temporaryRuntime?.shutdown?.();
+    temporaryActivation?.invalidate?.();
+    rmSync(checkoutParent, { recursive: true, force: true });
   }
 });
