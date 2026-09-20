@@ -1,5 +1,6 @@
-import { existsSync, lstatSync, opendirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync, type Dirent } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
+import { closeSync, existsSync, fsyncSync, linkSync, lstatSync, openSync, opendirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync, type Dirent } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { inventoryWorkflowMigrations, type WorkflowMigrationInventoryEntry } from "./migration.ts";
@@ -14,6 +15,14 @@ const MAX_SCAN_DEPTH = 8;
 const MAX_GIT_OUTPUT_BYTES = 64 * 1024;
 const MAX_GIT_PATH_BYTES = 4 * 1024;
 const GIT_TIMEOUT_MS = 5_000;
+const MAX_SELECTOR_BYTES = 16 * 1024;
+const MAX_SELECTOR_LOCK_BYTES = 1_024;
+const SELECTOR_LOCK_RETRIES = 20;
+const SELECTOR_LOCK_RETRY_MS = 25;
+const MAX_AUTHORIZATION_AGE_MS = 60 * 60_000;
+const MAX_ROLLBACK_WINDOW_MS = 30 * 24 * 60 * 60_000;
+export const REVIEWED_READINESS_EVIDENCE_HASH = "sha256:c20d05e239978d456801410ac986c22ef21c7f78bb6e3cad485a00181fabfadc" as const;
+export const REVIEWED_MIGRATION_EVIDENCE_HASH = "sha256:0b40a9d1b4352408d0b22ba3814cd0858ebd13e7c04728e563adf294ccd5f157" as const;
 const CANONICAL_WORKFLOW_CONTRACT = { revision: 6, hash: "sha256:3894b64f481fc360ba799bba914eeb08f88e1f85b18fad6d33b5e2e25c47f78f" } as const;
 const CANONICAL_PREREQUISITE_CONTRACTS = {
   "migration-qualification": { revision: 6, hash: "sha256:8b28d01b0ca3feb60e0a139cad5256e8301f0c69c5c6f8f9791ed6c659abe134" },
@@ -73,6 +82,39 @@ export type CutoverRuntimeSelectorPreimage = {
   existed: boolean;
   bytes?: Buffer;
 };
+export type ManagedRuntime = "compatibility" | "v2";
+export type Gate2Decision = {
+  decisionId: string;
+  authorizedBy: string;
+  authorizedAt: string;
+  readinessEvidenceHash: string;
+  migrationEvidenceHash: string;
+  targetRuntime: "v2";
+  rollbackSelector: "compatibility";
+  rollbackWindowEnd: string;
+  rationale: string;
+};
+export type RuntimeSelectionRecord = {
+  schemaVersion: 1;
+  generation: number;
+  selectedRuntime: ManagedRuntime;
+  controllingTopic: typeof CONTROLLING_TOPIC;
+  decision: Gate2Decision;
+  handoff: {
+    id: string;
+    from: ManagedRuntime;
+    to: ManagedRuntime;
+    preparedWorkflowRevision: number;
+    preparedAt: string;
+    selectedAt: string;
+    parent: { ownerId: string; sessionId: string; runtimeId: string };
+  };
+};
+export type RuntimeSelectionState =
+  | { status: "selected"; runtime: ManagedRuntime; generation: number; preimageHash: string; record?: RuntimeSelectionRecord }
+  | { status: "blocked"; runtime: null; generation: null; preimageHash: null; reason: string };
+export type NoChildCheckpoint = { topic: string; workflowRevision: number; checkedAt: string };
+export type Gate2EvidencePaths = { readiness: string; migration: string };
 
 type TechnicalGate = CutoverReadinessGate & { nextAction: string };
 
@@ -134,6 +176,134 @@ export function cutoverMigrationRemediation(entry: WorkflowMigrationInventoryEnt
     return "Rename the topic to a supported canonical topic, then rerun the SWE migration inventory.";
   }
   return "Repair the malformed workflow authority, then rerun the SWE migration inventory.";
+}
+
+/** Parse the human Gate 2 decision. Model-authored placeholders and stale decisions fail closed. */
+export function parseGate2Decision(value: unknown, now = new Date()): Gate2Decision {
+  if (!record(value)) throw new Error("Gate 2 decision must be an object");
+  exactKeys(value, ["decisionId", "authorizedBy", "authorizedAt", "readinessEvidenceHash", "migrationEvidenceHash", "targetRuntime", "rollbackSelector", "rollbackWindowEnd", "rationale"], "Gate 2 decision");
+  const decision: Gate2Decision = {
+    decisionId: decisionText(value.decisionId, "decision id", 128),
+    authorizedBy: decisionText(value.authorizedBy, "authorized actor", 128),
+    authorizedAt: decisionTimestamp(value.authorizedAt, "authorization timestamp"),
+    readinessEvidenceHash: String(value.readinessEvidenceHash ?? ""),
+    migrationEvidenceHash: String(value.migrationEvidenceHash ?? ""),
+    targetRuntime: value.targetRuntime as "v2",
+    rollbackSelector: value.rollbackSelector as "compatibility",
+    rollbackWindowEnd: decisionTimestamp(value.rollbackWindowEnd, "rollback deadline"),
+    rationale: decisionText(value.rationale, "authorization rationale", 2048),
+  };
+  if (/^<.*>$/.test(decision.decisionId) || /^<.*>$/.test(decision.authorizedBy) || /^<.*>$/.test(decision.rationale)) throw new Error("Gate 2 decision contains a placeholder");
+  if (decision.readinessEvidenceHash !== REVIEWED_READINESS_EVIDENCE_HASH || decision.migrationEvidenceHash !== REVIEWED_MIGRATION_EVIDENCE_HASH) throw new Error("Gate 2 evidence hash differs from the reviewed reports");
+  if (decision.targetRuntime !== "v2" || decision.rollbackSelector !== "compatibility") throw new Error("Gate 2 runtime or rollback selector is ambiguous");
+  const authorizedAt = Date.parse(decision.authorizedAt);
+  const rollbackEnd = Date.parse(decision.rollbackWindowEnd);
+  if (authorizedAt > now.getTime() + 60_000 || now.getTime() - authorizedAt > MAX_AUTHORIZATION_AGE_MS) throw new Error("Gate 2 authorization is stale or future-dated");
+  if (rollbackEnd <= now.getTime() || rollbackEnd <= authorizedAt || rollbackEnd - authorizedAt > MAX_ROLLBACK_WINDOW_MS) throw new Error("Gate 2 rollback deadline is invalid");
+  return decision;
+}
+
+/** Resolve the sole checkout-local runtime selector. Absence means compatibility; malformed state blocks. */
+export function readRuntimeSelection(cwd: string): RuntimeSelectionState {
+  try {
+    const path = cutoverRuntimeSelectorPath(cwd);
+    if (!existsSync(path)) return { status: "selected", runtime: "compatibility", generation: 0, preimageHash: hashSelector(Buffer.alloc(0)) };
+    const stat = lstatSync(path);
+    if (stat.isSymbolicLink() || !stat.isFile() || stat.size < 2 || stat.size > MAX_SELECTOR_BYTES || (stat.mode & 0o777) !== 0o600) throw new Error("runtime selector must be a mode 0600 regular bounded file");
+    const bytes = readFileSync(path);
+    const record = parseRuntimeSelectionRecord(JSON.parse(bytes.toString("utf8")));
+    return { status: "selected", runtime: record.selectedRuntime, generation: record.generation, preimageHash: hashSelector(bytes), record };
+  } catch (error) {
+    return { status: "blocked", runtime: null, generation: null, preimageHash: null, reason: message(error) };
+  }
+}
+
+export type SelectorPersistenceBoundary = "lock-acquired" | "temporary-fsynced" | "selector-renamed" | "directory-fsynced";
+
+/** Persist one selector generation with compare-and-swap and an atomic mode-0600 rename. */
+export function writeRuntimeSelection(cwd: string, record: RuntimeSelectionRecord, expectedGeneration: number, expectedPreimageHash: string, boundary?: (stage: SelectorPersistenceBoundary) => void): RuntimeSelectionRecord {
+  const parsed = parseRuntimeSelectionRecord(record);
+  if (parsed.generation !== expectedGeneration + 1) throw new Error("runtime selector generation must advance exactly once");
+  const path = cutoverRuntimeSelectorPath(cwd);
+  const lockPath = `${path}.lock`;
+  const ownership = acquireSelectorLock(lockPath);
+  try {
+    boundary?.("lock-acquired");
+    const current = readRuntimeSelection(cwd);
+    if (current.status === "blocked") throw new Error(`runtime selector is ambiguous: ${current.reason}`);
+    if (current.generation !== expectedGeneration || current.preimageHash !== expectedPreimageHash) throw new Error(`runtime selector preimage changed before generation ${expectedGeneration + 1}`);
+    const temporary = `${path}.tmp-${ownership.pid}-${ownership.token}`;
+    const bytes = Buffer.from(`${JSON.stringify(parsed, null, 2)}\n`);
+    if (bytes.length > MAX_SELECTOR_BYTES) throw new Error("runtime selector exceeds bounded size");
+    const fd = openSync(temporary, "wx", 0o600);
+    try { writeFileSync(fd, bytes); fsyncSync(fd); } finally { closeSync(fd); }
+    boundary?.("temporary-fsynced");
+    try {
+      renameSync(temporary, path);
+      boundary?.("selector-renamed");
+      fsyncDirectory(dirname(path));
+      boundary?.("directory-fsynced");
+    } finally { rmSync(temporary, { force: true }); }
+    return parsed;
+  } finally {
+    releaseSelectorLock(lockPath, ownership);
+  }
+}
+
+/** Verify the exact reviewed reports and their explicitly human-scoped Gate 2 eligibility. */
+export function validateGate2Evidence(cwd: string, paths: Gate2EvidencePaths): void {
+  const root = realpathSync(resolve(cwd));
+  const reports = [
+    { path: paths.readiness, hash: REVIEWED_READINESS_EVIDENCE_HASH, kind: "swe-gate2-preparation-readiness" },
+    { path: paths.migration, hash: REVIEWED_MIGRATION_EVIDENCE_HASH, kind: "swe-gate2-post-migration" },
+  ] as const;
+  for (const expected of reports) {
+    if (!isAbsolute(expected.path) || !existsSync(expected.path)) throw new Error("Gate 2 evidence file is missing");
+    const stat = lstatSync(expected.path);
+    if (stat.isSymbolicLink() || !stat.isFile() || (stat.mode & 0o777) !== 0o600 || stat.size < 2 || stat.size > 256 * 1024) throw new Error("Gate 2 evidence must be a mode 0600 bounded regular file");
+    const bytes = readFileSync(expected.path);
+    if (hashSelector(bytes) !== expected.hash) throw new Error("Gate 2 evidence hash differs from the reviewed report");
+    const report = JSON.parse(bytes.toString("utf8")) as unknown;
+    if (!record(report) || report.schemaVersion !== 1 || report.reportKind !== expected.kind || report.candidateHead !== "aaebcc66ec78d9a019421d08a79669a51bdad775") throw new Error("Gate 2 evidence identity is invalid");
+    if (expected.kind === "swe-gate2-preparation-readiness") {
+      const human = report.humanScopedPreparation;
+      if (!record(human) || human.eligibleForGate2Decision !== true || human.authorizesActivation !== false || !Array.isArray(human.remainingUnwaivedBlockers) || human.remainingUnwaivedBlockers.length) throw new Error("readiness report is not eligible for a human Gate 2 decision");
+    }
+  }
+  const base = "aaebcc66ec78d9a019421d08a79669a51bdad775";
+  const ancestor = spawnSync("git", ["merge-base", "--is-ancestor", base, "HEAD"], { cwd: root, stdio: "ignore", timeout: GIT_TIMEOUT_MS });
+  if (ancestor.status !== 0) throw new Error("repository no longer descends from the reviewed Gate 2 candidate");
+  const allowed = new Set(["extensions/pi-swe/index.ts", "extensions/pi-swe/src/command.ts", "extensions/pi-swe/src/cutover.ts", "extensions/pi-swe/src/integrity.ts", "extensions/pi-swe/src/runtime.ts", "extensions/pi-swe/src/service.ts", "extensions/pi-swe/src/tool.ts", "extensions/pi-swe/src/workflow.ts", "extensions/pi-swe/workflow.schema.json", "extensions/pi-swe/runtime.schema.json", "test/pi-swe-cutover.test.ts", "test/pi-swe-integrity.test.ts", "test/pi-swe-runtime.test.ts"]);
+  const changed = [
+    ...runGit(root, ["diff", "--name-only", "-z", `${base}..HEAD`, "--"], MAX_GIT_OUTPUT_BYTES).split("\0").filter(Boolean),
+    ...runGit(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"], MAX_GIT_OUTPUT_BYTES).split("\0").filter(Boolean).map((entry) => entry.slice(3)),
+  ];
+  if (changed.some((path) => !allowed.has(path))) throw new Error("repository changed outside the authorized Session 7 writeScope");
+}
+
+/** Require a durable repository checkpoint with no child, lease, claim, journal, or recovery temp file. */
+export function requireNoChildCheckpoint(cwd: string, topic = CONTROLLING_TOPIC, now = new Date().toISOString()): NoChildCheckpoint {
+  const root = realpathSync(resolve(cwd));
+  if (!supportedNode(process.version, REQUIRED_NODE_SUPPORT)) throw new Error(`runtime handoff requires Node ${REQUIRED_NODE_SUPPORT}`);
+  const git = inspectGit(root);
+  if (!git.clean && !onlyControllingWorkflowChanged(root, topic)) throw new Error("runtime handoff requires a clean repository checkout except for its durable controlling authority");
+  for (const workflowTopic of listWorkflowTopics(root)) {
+    const located = loadWorkflow(root, workflowTopic, false);
+    if (!located) throw new Error(`workflow ${workflowTopic} is unreadable`);
+    if (located.workflow.orchestration.activeRun) throw new Error(`live child or lease exists for ${workflowTopic}`);
+    if (workflowTopic !== topic && located.workflow.status === "active" && located.workflow.activeTask) throw new Error(`live workflow ownership exists for ${workflowTopic}`);
+  }
+  if (!inventoryWorkflowMigrations(root).complete) throw new Error("repository migration inventory is not clean");
+  if (hasRecoveryMarkers(root, git.commonDirectory) || hasTemporaryRecoveryFiles(root, git.commonDirectory)) throw new Error("claim, recovery journal, or temporary recovery file exists");
+  const controlling = loadWorkflow(root, topic, false);
+  if (!controlling) throw new Error(`controlling workflow ${topic} was not found`);
+  decisionTimestamp(now, "checkpoint timestamp");
+  return { topic, workflowRevision: controlling.workflow.revision, checkedAt: now };
+}
+
+export function runtimeSelectionStatus(cwd: string): string {
+  const state = readRuntimeSelection(cwd);
+  return state.status === "blocked" ? `runtime: blocked; ${state.reason}` : `runtime: ${state.runtime}; selector generation ${state.generation}`;
 }
 
 /** Capture the exact checkout-local selector preimage used by a disposable rehearsal. */
@@ -296,6 +466,189 @@ function supportedPi(versions: string[], expected: string): boolean {
   return /^\d+\.\d+\.\d+$/.test(expected) && versions.length === 3 && versions.every((version) => version === expected);
 }
 
+function parseRuntimeSelectionRecord(value: unknown): RuntimeSelectionRecord {
+  if (!record(value)) throw new Error("runtime selector must be an object");
+  exactKeys(value, ["schemaVersion", "generation", "selectedRuntime", "controllingTopic", "decision", "handoff"], "runtime selector");
+  if (value.schemaVersion !== 1 || !Number.isSafeInteger(value.generation) || (value.generation as number) < 1) throw new Error("unsupported runtime selector schema or generation");
+  if (value.selectedRuntime !== "v2" && value.selectedRuntime !== "compatibility") throw new Error("runtime selector is ambiguous");
+  if (value.controllingTopic !== CONTROLLING_TOPIC || !record(value.handoff)) throw new Error("runtime selector has invalid controlling handoff");
+  exactKeys(value.handoff, ["id", "from", "to", "preparedWorkflowRevision", "preparedAt", "selectedAt", "parent"], "runtime handoff receipt");
+  if ((value.handoff.from !== "v2" && value.handoff.from !== "compatibility") || value.handoff.to !== value.selectedRuntime) throw new Error("runtime handoff direction is invalid");
+  if (!Number.isSafeInteger(value.handoff.preparedWorkflowRevision) || (value.handoff.preparedWorkflowRevision as number) < 1 || !record(value.handoff.parent)) throw new Error("runtime handoff revision or parent is invalid");
+  exactKeys(value.handoff.parent, ["ownerId", "sessionId", "runtimeId"], "runtime handoff parent");
+  const decision = parseStoredGate2Decision(value.decision);
+  if (value.selectedRuntime === "v2" && decision.targetRuntime !== "v2") throw new Error("runtime selector contradicts Gate 2 target");
+  return {
+    schemaVersion: 1,
+    generation: value.generation as number,
+    selectedRuntime: value.selectedRuntime,
+    controllingTopic: CONTROLLING_TOPIC,
+    decision,
+    handoff: {
+      id: decisionText(value.handoff.id, "handoff id", 128),
+      from: value.handoff.from as ManagedRuntime,
+      to: value.handoff.to as ManagedRuntime,
+      preparedWorkflowRevision: value.handoff.preparedWorkflowRevision as number,
+      preparedAt: decisionTimestamp(value.handoff.preparedAt, "handoff prepared timestamp"),
+      selectedAt: decisionTimestamp(value.handoff.selectedAt, "handoff selected timestamp"),
+      parent: {
+        ownerId: decisionText(value.handoff.parent.ownerId, "handoff parent owner", 128),
+        sessionId: decisionText(value.handoff.parent.sessionId, "handoff parent session", 128),
+        runtimeId: decisionText(value.handoff.parent.runtimeId, "handoff parent runtime", 128),
+      },
+    },
+  };
+}
+
+export function parseStoredGate2Decision(value: unknown): Gate2Decision {
+  if (!record(value)) throw new Error("stored Gate 2 decision is invalid");
+  exactKeys(value, ["decisionId", "authorizedBy", "authorizedAt", "readinessEvidenceHash", "migrationEvidenceHash", "targetRuntime", "rollbackSelector", "rollbackWindowEnd", "rationale"], "stored Gate 2 decision");
+  const decision: Gate2Decision = {
+    decisionId: decisionText(value.decisionId, "decision id", 128), authorizedBy: decisionText(value.authorizedBy, "authorized actor", 128),
+    authorizedAt: decisionTimestamp(value.authorizedAt, "authorization timestamp"), readinessEvidenceHash: String(value.readinessEvidenceHash ?? ""), migrationEvidenceHash: String(value.migrationEvidenceHash ?? ""),
+    targetRuntime: value.targetRuntime as "v2", rollbackSelector: value.rollbackSelector as "compatibility", rollbackWindowEnd: decisionTimestamp(value.rollbackWindowEnd, "rollback deadline"), rationale: decisionText(value.rationale, "authorization rationale", 2048),
+  };
+  if (decision.readinessEvidenceHash !== REVIEWED_READINESS_EVIDENCE_HASH || decision.migrationEvidenceHash !== REVIEWED_MIGRATION_EVIDENCE_HASH || decision.targetRuntime !== "v2" || decision.rollbackSelector !== "compatibility") throw new Error("stored Gate 2 decision does not match reviewed activation evidence");
+  return decision;
+}
+
+function decisionText(value: unknown, name: string, max: number): string {
+  if (typeof value !== "string") throw new Error(`${name} is missing`);
+  const text = value.trim();
+  if (!text || text.length > max || /[\r\n\0]/.test(text) || /^<.*>$/.test(text)) throw new Error(`${name} is invalid or contains a placeholder`);
+  return text;
+}
+
+function decisionTimestamp(value: unknown, name: string): string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value) || !Number.isFinite(Date.parse(value))) throw new Error(`${name} must be an ISO-8601 UTC timestamp`);
+  return new Date(Date.parse(value)).toISOString();
+}
+
+function exactKeys(value: Record<string, unknown>, expected: string[], name: string): void {
+  const actual = Object.keys(value).sort();
+  const wanted = [...expected].sort();
+  if (actual.length !== wanted.length || actual.some((key, index) => key !== wanted[index])) throw new Error(`${name} has missing or unknown fields`);
+}
+
+function fsyncDirectory(path: string): void {
+  const fd = openSync(path, "r");
+  try { fsyncSync(fd); } finally { closeSync(fd); }
+}
+
+type SelectorLockOwnership = { schemaVersion: 2; token: string; pid: number; processStartIdentity: string; createdAt: string };
+type StoredSelectorLockOwnership = SelectorLockOwnership | { schemaVersion: 1; token: string; pid: number; createdAt: string };
+
+function acquireSelectorLock(lockPath: string): SelectorLockOwnership {
+  const processStartIdentity = readProcessStartIdentity(process.pid);
+  if (!processStartIdentity) throw new Error("runtime selector cannot establish writer process-start identity");
+  const ownership: SelectorLockOwnership = { schemaVersion: 2, token: randomUUID(), pid: process.pid, processStartIdentity, createdAt: new Date().toISOString() };
+  const bytes = Buffer.from(`${JSON.stringify(ownership)}\n`);
+  for (let attempt = 0; attempt <= SELECTOR_LOCK_RETRIES; attempt += 1) {
+    const ownerPath = `${lockPath}.owner-${process.pid}-${ownership.token}`;
+    let fd: number | undefined;
+    try {
+      fd = openSync(ownerPath, "wx", 0o600);
+      writeFileSync(fd, bytes);
+      fsyncSync(fd);
+      closeSync(fd);
+      fd = undefined;
+      linkSync(ownerPath, lockPath);
+      fsyncDirectory(dirname(lockPath));
+      rmSync(ownerPath, { force: true });
+      fsyncDirectory(dirname(lockPath));
+      return ownership;
+    } catch (error) {
+      if (fd !== undefined) closeSync(fd);
+      rmSync(ownerPath, { force: true });
+      if (!isAlreadyExists(error)) throw error;
+      if (reclaimStaleSelectorLock(lockPath)) continue;
+      if (attempt === SELECTOR_LOCK_RETRIES) throw new Error("runtime selector is locked by a live writer");
+      sleepSync(SELECTOR_LOCK_RETRY_MS);
+    }
+  }
+  throw new Error("runtime selector lock acquisition exhausted");
+}
+
+function reclaimStaleSelectorLock(lockPath: string): boolean {
+  let before;
+  let bytes: Buffer;
+  try {
+    before = lstatSync(lockPath);
+    if (before.isSymbolicLink() || !before.isFile() || (before.mode & 0o777) !== 0o600 || before.size < 2 || before.size > MAX_SELECTOR_LOCK_BYTES) return false;
+    bytes = readFileSync(lockPath);
+  } catch { return false; }
+  let owner: StoredSelectorLockOwnership;
+  try {
+    const value = JSON.parse(bytes.toString("utf8")) as Partial<Omit<SelectorLockOwnership, "schemaVersion">> & { schemaVersion?: 1 | 2 };
+    if ((value.schemaVersion !== 1 && value.schemaVersion !== 2) || typeof value.token !== "string" || !/^[0-9a-f-]{36}$/i.test(value.token) || !Number.isSafeInteger(value.pid) || value.pid! < 1 || typeof value.createdAt !== "string" || !Number.isFinite(Date.parse(value.createdAt))) return false;
+    if (value.schemaVersion === 2 && (typeof value.processStartIdentity !== "string" || !/^[A-Za-z0-9:._-]{1,256}$/.test(value.processStartIdentity))) return false;
+    owner = value as StoredSelectorLockOwnership;
+  } catch { return false; }
+  if (processIsAlive(owner.pid)) {
+    if (owner.schemaVersion === 1) return false;
+    const currentIdentity = readProcessStartIdentity(owner.pid);
+    if (!currentIdentity || currentIdentity === owner.processStartIdentity) return false;
+  }
+  try {
+    const current = lstatSync(lockPath);
+    if (current.dev !== before.dev || current.ino !== before.ino || !readFileSync(lockPath).equals(bytes)) return false;
+    rmSync(lockPath);
+    rmSync(`${lockPath.slice(0, -".lock".length)}.tmp-${owner.pid}-${owner.token}`, { force: true });
+    fsyncDirectory(dirname(lockPath));
+    return true;
+  } catch { return false; }
+}
+
+function releaseSelectorLock(lockPath: string, ownership: SelectorLockOwnership): void {
+  try {
+    const bytes = readFileSync(lockPath);
+    const current = JSON.parse(bytes.toString("utf8")) as Partial<SelectorLockOwnership>;
+    if (current.schemaVersion !== 2 || current.token !== ownership.token || current.pid !== ownership.pid || current.processStartIdentity !== ownership.processStartIdentity) throw new Error("runtime selector lock ownership changed before release");
+    rmSync(lockPath);
+    fsyncDirectory(dirname(lockPath));
+  } catch (error) {
+    if (!existsSync(lockPath)) return;
+    throw error;
+  }
+}
+
+function processIsAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return (error as NodeJS.ErrnoException).code !== "ESRCH"; }
+}
+
+function readProcessStartIdentity(pid: number): string | undefined {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const close = stat.lastIndexOf(")");
+    if (close < 0) return undefined;
+    const fields = stat.slice(close + 2).trim().split(/\s+/);
+    const startTicks = fields[19]; // field 22; the suffix begins at field 3
+    const bootId = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
+    if (!startTicks || !/^\d+$/.test(startTicks) || !/^[0-9a-f-]{36}$/i.test(bootId)) return undefined;
+    return `linux:${bootId}:${startTicks}`;
+  } catch {
+    const inspected = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 1_000, maxBuffer: 4_096, env: { ...process.env, LC_ALL: "C" } });
+    const started = typeof inspected.stdout === "string" ? inspected.stdout.trim() : "";
+    if (inspected.status !== 0 || !started || /[\r\n\0]/.test(started)) return undefined;
+    return `ps:${createHash("sha256").update(started).digest("hex")}`;
+  }
+}
+function isAlreadyExists(error: unknown): boolean { return (error as NodeJS.ErrnoException)?.code === "EEXIST"; }
+function sleepSync(milliseconds: number): void { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds); }
+
+function hasTemporaryRecoveryFiles(root: string, gitCommonDirectory: string): boolean {
+  const matches = (name: string) => /(?:\.tmp(?:-|$)|\.journal$|\.lock$|active\.claim\.json$)/.test(name);
+  return [
+    resolve(root, ".model-artifacts/system/logs/pi-swe-migration"),
+    resolve(root, ".model-artifacts/system/logs/model-artifact-migration"),
+    resolve(gitCommonDirectory, "pi-swe-intents"),
+  ].some((path) => containsEntry(path, matches));
+}
+
+function hashSelector(bytes: Buffer): string { return `sha256:${createHash("sha256").update(bytes).digest("hex")}`; }
+function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
+
 function cutoverRuntimeSelectorPath(cwd: string): string {
   const root = realpathSync(resolve(cwd));
   const output = runGit(root, ["rev-parse", "--path-format=absolute", "--absolute-git-dir"], MAX_GIT_PATH_BYTES);
@@ -314,6 +667,12 @@ function inspectGit(root: string): { clean: boolean; commonDirectory: string } {
   const commonDirectory = realpathSync(commonPath);
   if (!lstatSync(commonDirectory).isDirectory()) throw new Error("Git common directory is not a directory");
   return { clean: status.length === 0, commonDirectory };
+}
+
+function onlyControllingWorkflowChanged(root: string, topic: string): boolean {
+  const status = runGit(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"], MAX_GIT_OUTPUT_BYTES).split("\0").filter(Boolean);
+  const expected = `.model-artifacts/initiatives/${topic}/workflow.json`;
+  return status.length > 0 && status.every((entry) => entry.slice(3) === expected);
 }
 
 function runGit(root: string, args: string[], maxBuffer: number): string {

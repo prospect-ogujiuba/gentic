@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import test from "node:test";
 
 import {
@@ -14,8 +14,12 @@ import {
   evaluateCutoverReadiness,
   formatCutoverReadiness,
   inspectCutoverReadiness,
+  parseGate2Decision,
+  readRuntimeSelection,
   rollbackCutoverRuntime,
+  runtimeSelectionStatus,
   selectCutoverRuntime,
+  writeRuntimeSelection,
   type CutoverInspectionInput,
   type CutoverReadinessObservation,
 } from "../extensions/pi-swe/src/cutover.ts";
@@ -45,6 +49,19 @@ const passingObservation = (): CutoverReadinessObservation => ({
   activeTodoCount: 0,
   recoveryClean: true,
   releaseChecks: releaseChecks(),
+});
+
+const gate2Decision = (overrides: Record<string, unknown> = {}) => ({
+  decisionId: "gate2-test-decision",
+  authorizedBy: "project-owner",
+  authorizedAt: "2099-09-19T16:06:48Z",
+  readinessEvidenceHash: "sha256:c20d05e239978d456801410ac986c22ef21c7f78bb6e3cad485a00181fabfadc",
+  migrationEvidenceHash: "sha256:0b40a9d1b4352408d0b22ba3814cd0858ebd13e7c04728e563adf294ccd5f157",
+  targetRuntime: "v2",
+  rollbackSelector: "compatibility",
+  rollbackWindowEnd: "2099-09-26T16:06:48Z",
+  rationale: "Project owner authorizes the bounded v2 cutover.",
+  ...overrides,
 });
 
 function writeJson(cwd: string, path: string, value: unknown): void {
@@ -123,6 +140,114 @@ function tree(cwd: string): string[] {
 function failedGate(report: ReturnType<typeof evaluateCutoverReadiness>, id: string): boolean {
   return report.categories.some((category) => category.gates.some((gate) => gate.id === id && gate.status === "failed"));
 }
+
+test("Gate 2 decisions and selector files reject placeholders, stale evidence, ambiguity, and unsafe modes", () => {
+  const now = new Date("2099-09-19T16:10:00Z");
+  const decision = parseGate2Decision(gate2Decision(), now);
+  assert.equal(decision.targetRuntime, "v2");
+  assert.throws(() => parseGate2Decision(gate2Decision({ decisionId: "<unique id>" }), now), /placeholder/i);
+  assert.throws(() => parseGate2Decision(gate2Decision({ readinessEvidenceHash: "sha256:" + "0".repeat(64) }), now), /evidence hash/i);
+  assert.throws(() => parseGate2Decision(gate2Decision({ authorizedAt: "2099-09-19T10:00:00Z" }), now), /stale/i);
+  assert.throws(() => parseGate2Decision(gate2Decision({ rollbackWindowEnd: "2099-09-19T16:09:00Z" }), now), /rollback deadline/i);
+
+  const cwd = createQualifiedRepository("pi-swe-selector-");
+  try {
+    const absent = readRuntimeSelection(cwd);
+    assert.deepEqual({ ...absent, preimageHash: undefined }, { status: "selected", runtime: "compatibility", generation: 0, preimageHash: undefined });
+    assert.equal(absent.status, "selected");
+    const record = { schemaVersion: 1 as const, generation: 1, selectedRuntime: "v2" as const, controllingTopic: "swe-production-rollout" as const, decision, handoff: { id: "handoff", from: "compatibility" as const, to: "v2" as const, preparedWorkflowRevision: 10, preparedAt: "2099-09-19T16:10:00.000Z", selectedAt: "2099-09-19T16:10:01.000Z", parent: { ownerId: "owner", sessionId: "session", runtimeId: "runtime" } } };
+    writeRuntimeSelection(cwd, record, 0, absent.preimageHash);
+    const selected = readRuntimeSelection(cwd);
+    assert.equal(selected.status, "selected");
+    const path = join(cwd, ".git/pi-swe-runtime-selector");
+    const edited = JSON.parse(readFileSync(path, "utf8"));
+    edited.decision.rationale = "Edited same-generation decision preimage.";
+    writeFileSync(path, `${JSON.stringify(edited)}\n`, { mode: 0o600 });
+    assert.throws(() => writeRuntimeSelection(cwd, { ...record, generation: 2, selectedRuntime: "compatibility", handoff: { ...record.handoff, from: "v2", to: "compatibility" } }, 1, selected.preimageHash), /preimage changed/i);
+    writeFileSync(path, "{}\n", { mode: 0o600 });
+    assert.equal(readRuntimeSelection(cwd).status, "blocked");
+    chmodSync(path, 0o644);
+    assert.match(runtimeSelectionStatus(cwd), /blocked/i);
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
+});
+
+test("selector persistence recovers a killed subprocess at every fsync and rename boundary", async () => {
+  const moduleUrl = pathToFileURL(resolve(process.cwd(), "extensions/pi-swe/src/cutover.ts")).href;
+  for (const stage of ["lock-acquired", "temporary-fsynced", "selector-renamed", "directory-fsynced"] as const) {
+    const cwd = mkdtempSync(join(tmpdir(), `pi-swe-selector-${stage}-`));
+    try {
+      spawnSync("git", ["init", "-q"], { cwd });
+      const decision = parseGate2Decision(gate2Decision(), new Date("2099-09-19T16:10:00.000Z"));
+      const empty = readRuntimeSelection(cwd);
+      assert.equal(empty.status, "selected");
+      const first = { schemaVersion: 1 as const, generation: 1, selectedRuntime: "v2" as const, controllingTopic: "swe-production-rollout" as const, decision, handoff: { id: `handoff-${stage}`, from: "compatibility" as const, to: "v2" as const, preparedWorkflowRevision: 1, preparedAt: "2099-09-19T16:10:00.000Z", selectedAt: "2099-09-19T16:10:01.000Z", parent: { ownerId: "owner", sessionId: "session", runtimeId: `runtime-${stage}` } } };
+      const script = `import { writeSync } from "node:fs"; import { writeRuntimeSelection } from ${JSON.stringify(moduleUrl)}; const record=JSON.parse(process.env.RECORD); writeRuntimeSelection(process.env.CWD, record, 0, process.env.HASH, (s)=>{ if(s===process.env.STAGE){ writeSync(1,s+"\\n"); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0); }});`;
+      const child = spawn(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", script], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, CWD: cwd, HASH: empty.preimageHash, STAGE: stage, RECORD: JSON.stringify(first) } });
+      await new Promise<void>((resolveReady, reject) => {
+        let output = "";
+        child.stdout.on("data", (chunk) => { output += chunk; if (output.includes(stage)) resolveReady(); });
+        child.once("error", reject);
+        child.once("exit", (code) => { if (!output.includes(stage)) reject(new Error(`selector writer exited ${code} before ${stage}`)); });
+      });
+      child.kill("SIGKILL");
+      await new Promise<void>((resolveExit) => child.once("exit", () => resolveExit()));
+      const observed = readRuntimeSelection(cwd);
+      assert.equal(observed.status, "selected");
+      if (stage === "lock-acquired" || stage === "temporary-fsynced") {
+        writeRuntimeSelection(cwd, first, 0, observed.preimageHash!);
+      } else {
+        assert.equal(observed.generation, 1);
+        writeRuntimeSelection(cwd, { ...first, generation: 2, handoff: { ...first.handoff, id: `recovered-${stage}`, from: "v2", to: "v2", parent: { ...first.handoff.parent, runtimeId: `fresh-${stage}` } } }, 1, observed.preimageHash!);
+      }
+      assert.equal(existsSync(join(cwd, ".git", "pi-swe-runtime-selector.lock")), false);
+    } finally { rmSync(cwd, { recursive: true, force: true }); }
+  }
+});
+
+test("selector lock reclaims a live reused PID when process-start identity differs", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-selector-pid-reuse-"));
+  try {
+    spawnSync("git", ["init", "-q"], { cwd });
+    const decision = parseGate2Decision(gate2Decision(), new Date("2099-09-19T16:10:00.000Z"));
+    const empty = readRuntimeSelection(cwd);
+    assert.equal(empty.status, "selected");
+    const token = "00000000-0000-4000-8000-000000000001";
+    writeFileSync(join(cwd, ".git", "pi-swe-runtime-selector.lock"), `${JSON.stringify({ schemaVersion: 2, token, pid: process.pid, processStartIdentity: "linux:00000000-0000-4000-8000-000000000000:1", createdAt: new Date().toISOString() })}\n`, { mode: 0o600 });
+    const record = { schemaVersion: 1 as const, generation: 1, selectedRuntime: "v2" as const, controllingTopic: "swe-production-rollout" as const, decision, handoff: { id: "pid-reuse", from: "compatibility" as const, to: "v2" as const, preparedWorkflowRevision: 1, preparedAt: "2099-09-19T16:10:00.000Z", selectedAt: "2099-09-19T16:10:01.000Z", parent: { ownerId: "owner", sessionId: "session", runtimeId: "runtime" } } };
+    writeRuntimeSelection(cwd, record, 0, empty.preimageHash!);
+    assert.equal(readRuntimeSelection(cwd).generation, 1);
+    assert.equal(existsSync(join(cwd, ".git", "pi-swe-runtime-selector.lock")), false);
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
+});
+
+test("independent selector writer processes admit exactly one CAS winner", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-swe-selector-contention-"));
+  try {
+    spawnSync("git", ["init", "-q"], { cwd });
+    const decision = parseGate2Decision(gate2Decision(), new Date("2099-09-19T16:10:00.000Z"));
+    const empty = readRuntimeSelection(cwd);
+    assert.equal(empty.status, "selected");
+    const moduleUrl = pathToFileURL(resolve(process.cwd(), "extensions/pi-swe/src/cutover.ts")).href;
+    const script = `import { writeRuntimeSelection } from ${JSON.stringify(moduleUrl)}; writeRuntimeSelection(process.env.CWD, JSON.parse(process.env.RECORD), 0, process.env.HASH);`;
+    const record = (id: string) => ({ schemaVersion: 1, generation: 1, selectedRuntime: "v2", controllingTopic: "swe-production-rollout", decision, handoff: { id, from: "compatibility", to: "v2", preparedWorkflowRevision: 1, preparedAt: "2099-09-19T16:10:00.000Z", selectedAt: "2099-09-19T16:10:01.000Z", parent: { ownerId: "owner", sessionId: "session", runtimeId: `runtime-${id}` } } });
+    const run = (id: string) => new Promise<number | null>((resolveExit, reject) => {
+      const child = spawn(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", script], { stdio: "ignore", env: { ...process.env, CWD: cwd, HASH: empty.preimageHash, RECORD: JSON.stringify(record(id)) } });
+      child.once("error", reject); child.once("exit", resolveExit);
+    });
+    const codes = await Promise.all([run("left"), run("right")]);
+    assert.equal(codes.filter((code) => code === 0).length, 1);
+    assert.equal(readRuntimeSelection(cwd).generation, 1);
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
+});
+
+test("prepared handoff fences every ordinary reducer event until exact reclaim", () => {
+  const workflow = qualifiedWorkflow();
+  const decision = parseGate2Decision(gate2Decision(), new Date("2099-09-19T16:10:00.000Z"));
+  const prepared = reduceWorkflow(workflow, { type: "prepare-runtime-handoff", handoff: { id: "handoff", decisionId: decision.decisionId, decision, from: "compatibility", to: "v2", selectorGeneration: 1 } }, "2099-09-19T16:10:00.000Z").workflow;
+  assert.equal(prepared.orchestration.runtimeHandoff?.phase, "prepared");
+  assert.throws(() => reduceWorkflow(prepared, { type: "start" }, "2099-09-19T16:10:01.000Z"), /only exact fresh-parent reclaim/i);
+  assert.throws(() => reduceWorkflow(prepared, { type: "claim-run", lease: { id: "lease", runId: "run", ownerId: "old", stage: "plan-review", fence: prepared.orchestration.nextFence, acquiredAt: "2099-09-19T16:10:01.000Z", expiresAt: "2099-09-19T16:20:01.000Z" } }, "2099-09-19T16:10:01.000Z"), /only exact fresh-parent reclaim/i);
+});
 
 test("cutover readiness reports four independent categories without granting activation", () => {
   const first = evaluateCutoverReadiness(passingObservation());

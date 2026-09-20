@@ -1,12 +1,16 @@
+import { execFileSync } from "node:child_process";
+
 import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { coordinatedActiveTodo } from "../../../src/lifecycle-coordination.ts";
 import { parseGate1Authorization, type Gate1Authorization } from "../../../src/swe-migration-record.ts";
+import { parseGate2Decision, parseStoredGate2Decision, readRuntimeSelection, runtimeSelectionStatus, type Gate2Decision } from "./cutover.ts";
 import { loadWorkflow, resolveTopic } from "./store.ts";
 import { applyWorkflowMigration, applyWorkflowMigrationBatch, inventoryWorkflowMigrations, planWorkflowMigration, recoverWorkflowMigration, renderWorkflowMigrationAudit, rollbackWorkflowMigration, type WorkflowMigrationDisposition } from "./migration.ts";
+import type { RuntimeSurfaceResolver } from "./runtime.ts";
 import { WorkflowMutationService } from "./service.ts";
-import { identityFromContext, renderRunTails, sweRuntimeRegistry, WorkflowControlService } from "./ux.ts";
+import { identityFromContext, renderRunTails, SweRuntimeRegistry, WorkflowControlService } from "./ux.ts";
 import { reduceWorkflow, type Workflow, type WorkflowApproach, type WorkflowTask } from "./workflow.ts";
 
 const APPROACH_INSTRUCTIONS: Record<WorkflowApproach, string> = {
@@ -24,7 +28,12 @@ const ROOT: AutocompleteItem[] = [
   { value: "status", label: "status", description: "/swe status [topic] — show workflow state" },
   { value: "work", label: "work", description: "/swe work <start|resume|pause|stop|status|inspect|runs> [topic] — control or inspect one workflow" },
   { value: "migrate", label: "migrate", description: "/swe migrate <audit|apply|recover|rollback> [topic] — explicit workflow migration" },
+  { value: "runtime", label: "runtime", description: "/swe runtime <cutover|rollback> — keyboard-controlled Gate 2 runtime handoff" },
   { value: "config", label: "config", description: "/swe config — explain the zero-config replacement" },
+];
+const RUNTIME: AutocompleteItem[] = [
+  { value: "runtime cutover", label: "cutover", description: "/swe runtime cutover — validate reviewed Gate 2 evidence and activate v2" },
+  { value: "runtime rollback", label: "rollback", description: "/swe runtime rollback — use the retained decision and rollback window" },
 ];
 const WORK: AutocompleteItem[] = [
   { value: "work status", label: "status", description: "/swe work status [topic] — show bounded workflow and run state" },
@@ -42,17 +51,22 @@ const WORK: AutocompleteItem[] = [
 
 export function completeSweArgument(prefix: string): AutocompleteItem[] | null {
   const normalized = prefix.trimStart();
-  const choices = normalized.startsWith("work ") || normalized === "work" ? WORK : ROOT;
+  const choices = normalized.startsWith("work ") || normalized === "work" ? WORK : normalized.startsWith("runtime ") || normalized === "runtime" ? RUNTIME : ROOT;
   const matches = choices.filter((item) => item.value.startsWith(normalized));
   return matches.length ? matches : null;
 }
 
-export function registerSweCommand(pi: ExtensionAPI): void {
+export function registerControllerBoundSweCommand(pi: ExtensionAPI, runtimeResolver: RuntimeSurfaceResolver): void {
+  registerSweCommandAdapter(pi, runtimeResolver);
+}
+
+function registerSweCommandAdapter(pi: ExtensionAPI, runtimeResolver: RuntimeSurfaceResolver, assertCwd?: (cwd: string) => void): void {
   pi.registerCommand("swe", {
     description: "Manage lightweight durable SWE workflows",
     getArgumentCompletions: completeSweArgument,
     handler: async (raw, ctx) => {
       try {
+        assertCwd?.(ctx.cwd);
         const args = raw.trim().split(/\s+/).filter(Boolean);
         const root = args[0] ?? "status";
         if (root === "config") {
@@ -101,21 +115,57 @@ export function registerSweCommand(pi: ExtensionAPI): void {
           ctx.ui.notify(`pi-swe migration ${outcome.status}: ${topic}; receipt ${outcome.receiptPath}; next: re-audit before start/resume`, "info");
           return;
         }
+        if (root === "runtime") {
+          if (!ctx.hasUI) throw new Error("Gate 2 cutover and rollback require an interactive keyboard-accessible decision");
+          const operation = args[1];
+          if (operation !== "cutover" && operation !== "rollback") throw new Error("usage: /swe runtime <cutover|rollback>");
+          const selector = readRuntimeSelection(ctx.cwd);
+          if (selector.status === "blocked") throw new Error(`runtime selector is ambiguous: ${selector.reason}`);
+          const durableHandoff = operation === "cutover" ? loadWorkflow(ctx.cwd, "swe-production-rollout", false)?.workflow.orchestration.runtimeHandoff : undefined;
+          let hasPreparedAttestation = false;
+          if (durableHandoff?.phase === "prepared" && durableHandoff.decision) {
+            parseStoredGate2Decision(durableHandoff.decision);
+            hasPreparedAttestation = true;
+          }
+          const initialV2Admission = operation === "cutover" && !selector.record && !hasPreparedAttestation;
+          let decision: Gate2Decision | undefined;
+          if (initialV2Admission) {
+            const raw = await ctx.ui.input("Gate 2 decision JSON", "Paste the complete human authorization record");
+            if (!raw || Buffer.byteLength(raw) > 16 * 1024) throw new Error("Gate 2 decision was cancelled, empty, or exceeds 16384 bytes");
+            try { decision = parseGate2Decision(JSON.parse(raw)); } catch (error) { throw new Error(`invalid Gate 2 decision: ${error instanceof Error ? error.message : String(error)}`); }
+          }
+          let evidence: { readiness: string; migration: string } | undefined;
+          if (initialV2Admission) {
+            const readiness = await ctx.ui.input("Reviewed readiness evidence", "Absolute path to the mode-0600 readiness report");
+            const migration = await ctx.ui.input("Reviewed migration evidence", "Absolute path to the mode-0600 migration report");
+            if (!readiness?.trim() || !migration?.trim()) throw new Error("both reviewed Gate 2 evidence paths are required for initial v2 admission");
+            evidence = { readiness: readiness.trim(), migration: migration.trim() };
+          }
+          const targetRuntime = operation === "cutover" ? "v2" as const : "compatibility" as const;
+          if (!await ctx.ui.confirm(`${operation === "cutover" ? "Activate v2" : "Rollback to compatibility"} runtime`, `${runtimeSelectionStatus(ctx.cwd)}; atomically rotate parent authority to ${targetRuntime}?`)) throw new Error(`runtime ${operation} was not confirmed`);
+          const identity = identityFromContext(ctx);
+          const receipt = await runtimeResolver.handoff({ cwd: ctx.cwd, targetRuntime, ...(decision ? { decision } : {}), ...(evidence ? { evidence } : {}), identity, lifecycleContext: ctx, sessionFile: ctx.sessionManager.getSessionFile?.() });
+          ctx.ui.notify(`pi-swe runtime ${operation} complete; generation ${receipt.selectorGeneration}; handoff ${receipt.handoffId}; fresh parent ${receipt.freshParentRuntimeId}\n${runtimeSelectionStatus(ctx.cwd)}`, operation === "rollback" ? "warning" : "info");
+          return;
+        }
         const workAction = root === "work" ? args[1] ?? "status" : root;
         const topicArg = root === "work" ? args[2] : args[1];
         const topic = resolveTopic(ctx.cwd, topicArg);
-        const control = new WorkflowControlService(ctx.cwd);
         const identity = identityFromContext(ctx);
+        const binding = await runtimeResolver.resolve(ctx.cwd, identity);
+        const boundIdentity = binding.identity;
+        const control = new WorkflowControlService(ctx.cwd, { mutations: binding.mutations, runtimes: binding.registry });
         if (workAction === "status" || workAction === "inspect") {
-          ctx.ui.notify(control.inspect(topic, identity), "info");
+          ctx.ui.notify(`${runtimeSelectionStatus(ctx.cwd)}\n${control.inspect(topic, boundIdentity)}`, "info");
           return;
         }
         if (workAction === "runs") {
           const located = loadWorkflow(ctx.cwd, topic);
           if (!located) throw new Error(`workflow ${topic} was not found`);
-          ctx.ui.notify(renderRunTails(located.workflow, sweRuntimeRegistry.list(topic)), "info");
+          ctx.ui.notify(renderRunTails(located.workflow, binding.registry.list(topic)), "info");
           return;
         }
+        if (binding?.kind === "blocked") throw new Error(`managed execution blocked: ${binding.reason}`);
         if (["answer", "reset", "validate"].includes(workAction)) {
           if (!ctx.hasUI) throw new Error(`${workAction} requires an interactive keyboard-accessible user decision`);
           const located = control.mutations.read(topic);
@@ -131,8 +181,8 @@ export function registerSweCommand(pi: ExtensionAPI): void {
             const answer = await ctx.ui.input(question.question, "Type an explicit answer");
             if (!answer?.trim()) throw new Error("clarification answer was cancelled or empty");
             const taskId = current.tasks.find((task) => task.clarifications.some((item) => item.id === question.id))?.id;
-            const decision = await control.mutations.mutate(topic, current.revision, (state) => reduceWorkflow(state, { type: "respond-clarification", ...(taskId ? { taskId } : {}), questionId: question.id, answer, answeredBy: `interactive-user:${identity.sessionId}` }));
-            ctx.ui.notify(`${decision.message}\n${control.inspect(topic, identity)}`, "info");
+            const decision = await control.mutations.mutate(topic, current.revision, (state) => reduceWorkflow(state, { type: "respond-clarification", ...(taskId ? { taskId } : {}), questionId: question.id, answer, answeredBy: `interactive-user:${boundIdentity.sessionId}` }));
+            ctx.ui.notify(`${decision.message}\n${control.inspect(topic, boundIdentity)}`, "info");
             return;
           }
           if (workAction === "reset") {
@@ -140,8 +190,8 @@ export function registerSweCommand(pi: ExtensionAPI): void {
             if (!task) throw new Error("no remediation-blocked task is available to reset");
             const reason = await ctx.ui.input(`Reset remediation budget for ${task.id}?`, "Reason for explicit reset");
             if (!reason?.trim() || !await ctx.ui.confirm("Reset remediation budget", `${task.id}: ${reason}`)) throw new Error("remediation reset was not confirmed");
-            const decision = await control.mutations.mutate(topic, current.revision, (state) => reduceWorkflow(state, { type: "reset-remediation", taskId: task.id, max: task.remediation.max + 1, reason, decidedBy: `interactive-user:${identity.sessionId}` }));
-            ctx.ui.notify(`${decision.message}\n${control.inspect(topic, identity)}`, "info");
+            const decision = await control.mutations.mutate(topic, current.revision, (state) => reduceWorkflow(state, { type: "reset-remediation", taskId: task.id, max: task.remediation.max + 1, reason, decidedBy: `interactive-user:${boundIdentity.sessionId}` }));
+            ctx.ui.notify(`${decision.message}\n${control.inspect(topic, boundIdentity)}`, "info");
             return;
           }
           const disposition = args[3];
@@ -149,8 +199,8 @@ export function registerSweCommand(pi: ExtensionAPI): void {
           if (current.closeout?.manualValidation?.status !== "required") throw new Error("manual validation is not currently required");
           const rationale = await ctx.ui.input(`Manual validation: ${disposition}`, "Observed result and rationale");
           if (!rationale?.trim() || !await ctx.ui.confirm("Record manual validation", `${disposition}: ${rationale}`)) throw new Error("manual validation was not confirmed");
-          const decision = await control.mutations.mutate(topic, current.revision, (state) => reduceWorkflow(state, { type: "record-manual-validation", outcome: { status: disposition === "approve" ? "approved" : "rejected", rationale, decidedBy: `interactive-user:${identity.sessionId}`, at: new Date().toISOString() } }));
-          ctx.ui.notify(`${decision.message}\n${control.inspect(topic, identity)}`, "info");
+          const decision = await control.mutations.mutate(topic, current.revision, (state) => reduceWorkflow(state, { type: "record-manual-validation", outcome: { status: disposition === "approve" ? "approved" : "rejected", rationale, decidedBy: `interactive-user:${boundIdentity.sessionId}`, at: new Date().toISOString() } }));
+          ctx.ui.notify(`${decision.message}\n${control.inspect(topic, boundIdentity)}`, "info");
           return;
         }
         const transitionAction = workAction === "retry" ? "resume" : workAction;
@@ -161,9 +211,14 @@ export function registerSweCommand(pi: ExtensionAPI): void {
         }
         const located = control.mutations.read(topic);
         if (!located) throw new Error(`workflow ${topic} was not found`);
-        const outcome = await control.transition(topic, transitionAction as "start" | "resume" | "pause" | "stop", identity);
+        if (binding?.kind === "v2" && (transitionAction === "start" || transitionAction === "resume")) {
+          const driven = await binding.runtime!.driver[transitionAction](topic);
+          ctx.ui.notify(`pi-swe v2 ${driven.outcome}: ${driven.handoff.message}\n${runtimeSelectionStatus(ctx.cwd)}\n${control.inspect(topic, boundIdentity)}`, driven.outcome === "infrastructure-failure" ? "error" : "info");
+          return;
+        }
+        const outcome = await control.transition(topic, transitionAction as "start" | "resume" | "pause" | "stop", boundIdentity);
         const { decision } = outcome;
-        ctx.ui.notify(`pi-swe ${decision.message}\n${control.inspect(topic, identity)}`, decision.changed ? "info" : "warning");
+        ctx.ui.notify(`pi-swe ${decision.message}\n${runtimeSelectionStatus(ctx.cwd)}\n${control.inspect(topic, boundIdentity)}`, decision.changed ? "info" : "warning");
         if (!decision.changed || (transitionAction !== "start" && transitionAction !== "resume")) return;
         if (outcome.prompt) {
           pi.sendUserMessage(outcome.prompt);
@@ -188,6 +243,39 @@ async function requestMigrationAuthorization(ctx: Parameters<Parameters<Extensio
   const covered = Object.keys(authorization.topicDispositions);
   if (JSON.stringify(covered) !== JSON.stringify([...selectedTopics].sort())) throw new Error("migration authorization topic dispositions must exactly cover the selected topics");
   return authorization;
+}
+
+/** @deprecated Test-fixture-only adapter retained for legacy unit tests. Production must use registerControllerBoundSweCommand. */
+export function registerSweCommandFixtureOnly(pi: ExtensionAPI, suppliedResolver?: RuntimeSurfaceResolver): void {
+  assertFixtureOnlyPi(pi);
+  if (suppliedResolver) {
+    registerSweCommandAdapter(pi, suppliedResolver, assertFixtureOnlyCheckout);
+    return;
+  }
+  const fixtureResolver: RuntimeSurfaceResolver = {
+    async resolve(cwd, identity) {
+      assertFixtureOnlyCheckout(cwd);
+      return { kind: "compatibility", generation: 0, identity, mutations: new WorkflowMutationService(cwd), registry: new SweRuntimeRegistry() };
+    },
+    async handoff() { throw new Error("runtime handoff is unavailable in the test-fixture-only adapter"); },
+    shutdown() {},
+  };
+  registerSweCommandAdapter(pi, fixtureResolver, assertFixtureOnlyCheckout);
+}
+
+/** @deprecated Legacy unit-test alias; never import this from production composition. */
+export const registerSweCommand = registerSweCommandFixtureOnly;
+
+function assertFixtureOnlyPi(pi: ExtensionAPI): void {
+  if (typeof (pi as ExtensionAPI & { on?: unknown }).on === "function" || typeof (pi as ExtensionAPI & { getAllTools?: unknown }).getAllTools === "function") throw new Error("test-fixture-only command registration rejects the complete production ExtensionAPI");
+}
+
+function assertFixtureOnlyCheckout(cwd: string): void {
+  try {
+    if (execFileSync("git", ["rev-parse", "--is-inside-work-tree"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() === "true") throw new Error("test-fixture-only command adapter rejects Git worktrees");
+  } catch (error) {
+    if (error instanceof Error && error.message === "test-fixture-only command adapter rejects Git worktrees") throw error;
+  }
 }
 
 export function buildTaskExecutionPrompt(workflow: Workflow, task: WorkflowTask, path: string): string {

@@ -12,7 +12,7 @@ import {
 } from "./store.ts";
 import { assertWorkflowMigrationEligible } from "./migration.ts";
 import { GitWorkspaceManager } from "./workspace.ts";
-import { BOOTSTRAP_NATIVE_TAKEOVER_TASK, BOOTSTRAP_PLAN_ANCHOR, hashContract, reduceWorkflow, type BootstrapAdoption, type RepositorySnapshot, type RunLease, type Workflow, type WorkflowDecision } from "./workflow.ts";
+import { BOOTSTRAP_NATIVE_TAKEOVER_TASK, BOOTSTRAP_PLAN_ANCHOR, hashContract, reduceWorkflow, type BootstrapAdoption, type ParentAuthority, type RepositorySnapshot, type RunLease, type RuntimeHandoff, type Workflow, type WorkflowDecision } from "./workflow.ts";
 
 const MAX_LINKED_PLAN_BYTES = 256 * 1024;
 export const BOOTSTRAP_ANCHOR_COMMIT = BOOTSTRAP_PLAN_ANCHOR;
@@ -126,6 +126,22 @@ export class WorkflowMutationService {
       if (inspection.anchorCommit !== BOOTSTRAP_ANCHOR_COMMIT) throw new Error("bootstrap inspector changed the authorized rollout-plan anchor");
       return reduceWorkflow(workflow, { type: "adopt-bootstrap", adoption: { ...request, ...inspection, taskIds: workflow.tasks.slice(0, takeoverIndex).map((task) => task.id) } }, now);
     });
+  }
+
+  async prepareRuntimeHandoff(topic: string, expectedRevision: number, handoff: Omit<RuntimeHandoff, "phase" | "preparedAt" | "reclaimedAt" | "previousParent">, now = new Date().toISOString()): Promise<WorkflowDecision> {
+    return this.mutate(topic, expectedRevision, (workflow) => reduceWorkflow(workflow, { type: "prepare-runtime-handoff", handoff }, now));
+  }
+
+  async reclaimRuntimeHandoff(topic: string, expectedRevision: number, input: { handoffId: string; decisionId: string; selectorGeneration: number; authority: ParentAuthority }, now = new Date().toISOString()): Promise<WorkflowDecision> {
+    return this.mutate(topic, expectedRevision, (workflow) => reduceWorkflow(workflow, { type: "reclaim-runtime-handoff", ...input }, now));
+  }
+
+  async rotateRuntimeParent(topic: string, expectedRevision: number, input: { handoffId: string; decisionId: string; from: "compatibility" | "v2"; to: "compatibility" | "v2"; selectorGeneration: number; authority: ParentAuthority }, now = new Date().toISOString()): Promise<WorkflowDecision> {
+    return this.mutate(topic, expectedRevision, (workflow) => reduceWorkflow(workflow, { type: "rotate-runtime-parent", ...input }, now));
+  }
+
+  async fenceParent(topic: string, expectedRevision: number, parent: Pick<ParentAuthority, "ownerId" | "sessionId" | "runtimeId">, reason: string, now = new Date().toISOString()): Promise<WorkflowDecision> {
+    return this.mutate(topic, expectedRevision, (workflow) => reduceWorkflow(workflow, { type: "fence-parent", ...parent, reason }, now));
   }
 
   async claimRun(topic: string, expectedRevision: number, claim: RunClaim): Promise<{ workflow: Workflow; lease: RunLease }> {

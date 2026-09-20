@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
@@ -5,10 +7,12 @@ import { Type } from "typebox";
 import { coordinatedActiveTodo } from "../../../src/lifecycle-coordination.ts";
 import type { Gate1Authorization } from "../../../src/swe-migration-record.ts";
 import { buildTaskExecutionPrompt } from "./command.ts";
+import { runtimeSelectionStatus } from "./cutover.ts";
 import { applyWorkflowMigration, inventoryWorkflowMigrations, planWorkflowMigration, recoverWorkflowMigration, renderWorkflowMigrationAudit, rollbackWorkflowMigration } from "./migration.ts";
 import { loadWorkflow, resolveTopic, workflowPath } from "./store.ts";
 import { WorkflowMutationService } from "./service.ts";
-import { identityFromContext, renderRunTails, sweRuntimeRegistry, WorkflowControlService } from "./ux.ts";
+import type { RuntimeSurfaceResolver } from "./runtime.ts";
+import { identityFromContext, renderRunTails, SweRuntimeRegistry, WorkflowControlService } from "./ux.ts";
 import { bindVerificationCheckpoint, createWorkflow, reduceWorkflow, reviseWorkflow, summarizeWorkflow, WORKFLOW_APPROACHES, type ApproachReasons, type VerificationCommand, type Workflow, type WorkflowApproach, type WorkflowEvent } from "./workflow.ts";
 
 const Action = StringEnum(["status", "inspect", "runs", "dismiss-run", "create", "migrate", "migration-audit", "migration-recover", "migration-rollback", "revise", "start", "pause", "stop", "resume", "verify", "complete", "block"] as const);
@@ -68,7 +72,11 @@ export type SweWorkflowInput = {
   migrationAuthorization?: Gate1Authorization;
 };
 
-export function registerSweWorkflowTool(pi: ExtensionAPI): void {
+export function registerControllerBoundSweWorkflowTool(pi: ExtensionAPI, runtimeResolver: RuntimeSurfaceResolver): void {
+  registerSweWorkflowToolAdapter(pi, runtimeResolver);
+}
+
+function registerSweWorkflowToolAdapter(pi: ExtensionAPI, runtimeResolver: RuntimeSurfaceResolver, assertCwd?: (cwd: string) => void): void {
   pi.registerTool({
     name: "swe_workflow",
     label: "SWE Workflow",
@@ -85,6 +93,7 @@ export function registerSweWorkflowTool(pi: ExtensionAPI): void {
     ],
     parameters: sweWorkflowParameters,
     async execute(_toolCallId, params: SweWorkflowInput, _signal, onUpdate, ctx) {
+      assertCwd?.(ctx.cwd);
       if (params.action === "migration-audit") {
         const report = inventoryWorkflowMigrations(ctx.cwd);
         return { content: [{ type: "text" as const, text: renderWorkflowMigrationAudit(report) }], details: { report } };
@@ -93,16 +102,23 @@ export function registerSweWorkflowTool(pi: ExtensionAPI): void {
         const topic = resolveTopic(ctx.cwd, params.topic);
         const located = loadWorkflow(ctx.cwd, topic);
         if (!located) throw new Error(`workflow ${topic} was not found`);
-        const control = new WorkflowControlService(ctx.cwd);
+        const identity = identityFromContext(ctx);
+        const binding = await runtimeResolver.resolve(ctx.cwd, identity);
+        const boundIdentity = binding.identity;
+        const control = new WorkflowControlService(ctx.cwd, { mutations: binding.mutations, runtimes: binding.registry });
         if (params.action === "dismiss-run") {
-          const dismissed = sweRuntimeRegistry.dismiss(topic, required(params.runId, "runId"));
-          return result(`${dismissed ? "dismissed exited runtime entry" : "no exited runtime entry matched"}; accepted reports remain in workflow.json\n${control.inspect(topic, identityFromContext(ctx))}`, located.workflow, located.kind);
+          const dismissed = binding.registry.dismiss(topic, required(params.runId, "runId"));
+          return result(`${dismissed ? "dismissed exited runtime entry" : "no exited runtime entry matched"}; accepted reports remain in workflow.json\n${control.inspect(topic, boundIdentity)}`, located.workflow, located.kind);
         }
-        const text = params.action === "runs" ? renderRunTails(located.workflow, sweRuntimeRegistry.list(topic)) : control.inspect(topic, identityFromContext(ctx));
+        const text = params.action === "runs" ? renderRunTails(located.workflow, binding.registry.list(topic)) : `${runtimeSelectionStatus(ctx.cwd)}\n${control.inspect(topic, boundIdentity)}`;
         return result(text, located.workflow, located.kind);
       }
       const topic = params.action === "create" ? required(params.topic, "topic") : resolveTopic(ctx.cwd, params.topic);
-      const service = new WorkflowMutationService(ctx.cwd);
+      const identity = identityFromContext(ctx);
+      const binding = await runtimeResolver.resolve(ctx.cwd, identity);
+      const boundIdentity = binding.identity;
+      const service = binding.mutations;
+      if (binding?.kind === "blocked" && !["migration-recover", "migration-rollback", "migrate"].includes(params.action)) throw new Error(`managed execution blocked: ${binding.reason}`);
       if (params.action === "create") {
         const workflow = createWorkflow({ topic, goal: required(params.goal, "goal"), plan: params.plan, linkedPlanContent: service.linkedPlanContent(params.plan), tasks: params.tasks ?? [] });
         const path = await service.create(workflow);
@@ -130,14 +146,19 @@ export function registerSweWorkflowTool(pi: ExtensionAPI): void {
         if (!located) throw new Error(`workflow ${topic} was not found after migration`);
         return result(`migration ${outcome.status}; receipt ${outcome.receiptPath}; next: re-audit before mutation\n${summarizeWorkflow(located.workflow)}`, located.workflow, "native");
       }
+      if (binding?.kind === "blocked") throw new Error(`managed execution blocked: ${binding.reason}`);
       const located = service.read(topic);
       if (!located) throw new Error(`workflow ${topic} was not found`);
       const workflow = located.workflow;
       if (params.action === "start" || params.action === "resume") await requireNoActiveTodo(ctx);
       if (["start", "resume", "pause", "stop"].includes(params.action)) {
-        const control = new WorkflowControlService(ctx.cwd, { mutations: service });
-        const transition = await control.transition(topic, params.action as "start" | "resume" | "pause" | "stop", identityFromContext(ctx));
-        let text = `${transition.decision.message}\n${control.inspect(topic, identityFromContext(ctx))}`;
+        const control = new WorkflowControlService(ctx.cwd, { mutations: service, runtimes: binding.registry });
+        if (binding?.kind === "v2" && (params.action === "start" || params.action === "resume")) {
+          const driven = await binding.runtime!.driver[params.action](topic);
+          return result(`v2 ${driven.outcome}: ${driven.handoff.message}\n${runtimeSelectionStatus(ctx.cwd)}\n${control.inspect(topic, boundIdentity)}`, driven.handoff.workflow, "native");
+        }
+        const transition = await control.transition(topic, params.action as "start" | "resume" | "pause" | "stop", boundIdentity);
+        let text = `${transition.decision.message}\n${runtimeSelectionStatus(ctx.cwd)}\n${control.inspect(topic, boundIdentity)}`;
         if (transition.prompt) text += `\n\n${transition.prompt}`;
         else if ((params.action === "start" || params.action === "resume") && transition.decision.changed) {
           const task = activeTask(transition.decision.workflow);
@@ -187,6 +208,35 @@ export function registerSweWorkflowTool(pi: ExtensionAPI): void {
       return result(text, decision.workflow, "native");
     },
   });
+}
+
+/** @deprecated Test-fixture-only adapter retained for legacy unit tests. Production must use registerControllerBoundSweWorkflowTool. */
+export function registerSweWorkflowToolFixtureOnly(pi: ExtensionAPI): void {
+  assertFixtureOnlyPi(pi);
+  const fixtureResolver: RuntimeSurfaceResolver = {
+    async resolve(cwd, identity) {
+      assertFixtureOnlyCheckout(cwd);
+      return { kind: "compatibility", generation: 0, identity, mutations: new WorkflowMutationService(cwd), registry: new SweRuntimeRegistry() };
+    },
+    async handoff() { throw new Error("runtime handoff is unavailable in the test-fixture-only adapter"); },
+    shutdown() {},
+  };
+  registerSweWorkflowToolAdapter(pi, fixtureResolver, assertFixtureOnlyCheckout);
+}
+
+/** @deprecated Legacy unit-test alias; never import this from production composition. */
+export const registerSweWorkflowTool = registerSweWorkflowToolFixtureOnly;
+
+function assertFixtureOnlyPi(pi: ExtensionAPI): void {
+  if (typeof (pi as ExtensionAPI & { on?: unknown }).on === "function" || typeof (pi as ExtensionAPI & { getAllTools?: unknown }).getAllTools === "function") throw new Error("test-fixture-only workflow-tool registration rejects the complete production ExtensionAPI");
+}
+
+function assertFixtureOnlyCheckout(cwd: string): void {
+  try {
+    if (execFileSync("git", ["rev-parse", "--is-inside-work-tree"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() === "true") throw new Error("test-fixture-only workflow-tool adapter rejects Git worktrees");
+  } catch (error) {
+    if (error instanceof Error && error.message === "test-fixture-only workflow-tool adapter rejects Git worktrees") throw error;
+  }
 }
 
 async function requireNoActiveTodo(ctx: { cwd: string; sessionManager: { getBranch(): readonly unknown[] } }): Promise<void> {

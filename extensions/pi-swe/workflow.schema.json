@@ -155,8 +155,19 @@
         "nextFence": { "type": "integer", "minimum": 1 },
         "activeRun": { "$ref": "#/$defs/lease" },
         "parent": { "$ref": "#/$defs/parentAuthority" },
+        "runtimeHandoff": { "$ref": "#/$defs/runtimeHandoff" },
         "history": { "type": "array", "maxItems": 128, "items": { "$ref": "#/$defs/history" } }
       },
+      "allOf": [
+        {
+          "if": { "properties": { "runtimeHandoff": { "properties": { "phase": { "const": "prepared" } }, "required": ["phase"] } }, "required": ["runtimeHandoff"] },
+          "then": { "properties": { "parent": { "properties": { "valid": { "const": false } }, "required": ["valid"] } } }
+        },
+        {
+          "if": { "properties": { "runtimeHandoff": { "properties": { "phase": { "const": "reclaimed" } }, "required": ["phase"] } }, "required": ["runtimeHandoff"] },
+          "then": { "required": ["parent"] }
+        }
+      ],
       "additionalProperties": false
     },
     "parentAuthority": {
@@ -172,6 +183,42 @@
         "valid": { "type": "boolean" },
         "invalidatedAt": { "$ref": "#/$defs/timestamp" },
         "invalidatedReason": { "$ref": "#/$defs/text" }
+      },
+      "additionalProperties": false
+    },
+    "runtimeHandoff": {
+      "type": "object",
+      "required": ["id", "decisionId", "from", "to", "phase", "selectorGeneration", "preparedAt"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "decisionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "decision": { "$ref": "#/$defs/gate2DecisionAttestation" },
+        "from": { "enum": ["compatibility", "v2"] },
+        "to": { "enum": ["compatibility", "v2"] },
+        "phase": { "enum": ["prepared", "reclaimed"] },
+        "selectorGeneration": { "type": "integer", "minimum": 1 },
+        "preparedAt": { "$ref": "#/$defs/timestamp" },
+        "reclaimedAt": { "$ref": "#/$defs/timestamp" },
+        "previousParent": { "$ref": "#/$defs/parentAuthority" }
+      },
+      "allOf": [
+        { "if": { "properties": { "phase": { "const": "prepared" } }, "required": ["phase"] }, "then": { "required": ["decision"] } }
+      ],
+      "additionalProperties": false
+    },
+    "gate2DecisionAttestation": {
+      "type": "object",
+      "required": ["decisionId", "authorizedBy", "authorizedAt", "readinessEvidenceHash", "migrationEvidenceHash", "targetRuntime", "rollbackSelector", "rollbackWindowEnd", "rationale"],
+      "properties": {
+        "decisionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "authorizedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "authorizedAt": { "$ref": "#/$defs/timestamp" },
+        "readinessEvidenceHash": { "const": "sha256:c20d05e239978d456801410ac986c22ef21c7f78bb6e3cad485a00181fabfadc" },
+        "migrationEvidenceHash": { "const": "sha256:0b40a9d1b4352408d0b22ba3814cd0858ebd13e7c04728e563adf294ccd5f157" },
+        "targetRuntime": { "const": "v2" },
+        "rollbackSelector": { "const": "compatibility" },
+        "rollbackWindowEnd": { "$ref": "#/$defs/timestamp" },
+        "rationale": { "$ref": "#/$defs/text" }
       },
       "additionalProperties": false
     },

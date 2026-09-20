@@ -1,12 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
+import { realpathSync } from "node:fs";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+import { readRuntimeSelection } from "./cutover.ts";
 import { listWorkflowTopics, loadWorkflow } from "./store.ts";
 import { WorkflowMutationService } from "./service.ts";
 import { reduceWorkflow, type VerificationCommand, type VerificationEvidence, type Workflow, type WorkflowTask } from "./workflow.ts";
 import { GitWorkspaceManager, type GitIntegrationReceipt, type GitWorkspaceReceipt } from "./workspace.ts";
 
+const MAX_REVOKED_TOOL_CALLS = 1_024;
 const APPROVED_READ_ONLY_TOOLS = new Set([
   "read", "grep", "find", "ls", "code_search",
   "ctx_search", "ctx_stats", "ctx_doctor", "context_mode_ctx_search", "context_mode_ctx_stats", "context_mode_ctx_doctor",
@@ -253,30 +256,107 @@ export class ManagedVerificationAuthority {
   }
 }
 
-export function registerParentIntegrity(pi: ExtensionAPI): { runtimeId: string; invalidate(): void } {
-  const runtimeId = `parent-runtime-${randomUUID()}`;
-  const authorities = new Map<string, ManagedVerificationAuthority>();
-  const pending = new Map<string, { topic: string; authorizationId: string }>();
-  const trustedTools = new Map<string, string>();
+export type ParentIntegrityRouter = {
+  install(cwd: string, generation: number, runtimeId: string, sessionId: string): void;
+  block(cwd: string): void;
+  remove(cwd: string, generation?: number): void;
+  identity(cwd: string): { generation: number; runtimeId: string; sessionId: string } | undefined;
+  onSessionShutdown(handler: (cwd: string) => void | Promise<void>): void;
+  invalidate(): void;
+};
 
-  const authorityFor = (cwd: string, topic: string): ManagedVerificationAuthority => {
-    let authority = authorities.get(topic);
+/** Register one hook router. Runtime generations are installed atomically by the checkout controller. */
+export function registerParentIntegrity(pi: ExtensionAPI, options: { passive?: boolean; authorityFactory?: (cwd: string) => ManagedVerificationAuthority } = {}): ParentIntegrityRouter {
+  const routes = new Map<string, { generation: number; runtimeId: string; sessionId: string }>();
+  const blockedCheckouts = new Set<string>();
+  const authorities = new Map<string, ManagedVerificationAuthority>();
+  const pending = new Map<string, { key: string; topic: string; authorizationId: string; generation: number }>();
+  const revoked = new Map<string, string>();
+  const revoke = (callId: string, reason: string) => {
+    revoked.delete(callId);
+    revoked.set(callId, reason);
+    while (revoked.size > MAX_REVOKED_TOOL_CALLS) revoked.delete(revoked.keys().next().value!);
+  };
+  const revokePending = (matches: (item: { key: string }) => boolean, reason: string) => {
+    for (const [callId, item] of pending) if (matches(item)) { pending.delete(callId); revoke(callId, reason); }
+  };
+  const trustedTools = new Map<string, string>();
+  let shutdownHandler: ((cwd: string) => void | Promise<void>) | undefined;
+  const root = (cwd: string) => { try { return realpathSync(cwd); } catch { return cwd; } };
+  const keyFor = (cwd: string, generation: number, topic: string) => `${root(cwd)}\0${generation}\0${topic}`;
+
+  const authorityFor = (cwd: string, generation: number, topic: string): ManagedVerificationAuthority => {
+    const key = keyFor(cwd, generation, topic);
+    let authority = authorities.get(key);
     if (!authority) {
-      authority = new ManagedVerificationAuthority(cwd, new GitRelevantSourceInspector(cwd));
-      authorities.set(topic, authority);
+      authority = options.authorityFactory?.(root(cwd)) ?? new ManagedVerificationAuthority(root(cwd), new GitRelevantSourceInspector(root(cwd)));
+      authorities.set(key, authority);
     }
     return authority;
   };
 
-  if (typeof (pi as ExtensionAPI & { on?: unknown }).on !== "function") return { runtimeId, invalidate: () => undefined };
+  const router: ParentIntegrityRouter = {
+    install(cwd, generation, runtimeId, sessionId) {
+      if (!Number.isSafeInteger(generation) || generation < 0 || !runtimeId.trim() || !sessionId.trim()) throw new Error("integrity route identity is invalid");
+      const key = root(cwd);
+      const prior = routes.get(key);
+      if (prior && generation < prior.generation) throw new Error("integrity route generation cannot move backwards");
+      if (prior && (prior.generation !== generation || prior.runtimeId !== runtimeId || prior.sessionId !== sessionId)) {
+        for (const [authorityKey, authority] of authorities) if (authorityKey.startsWith(`${key}\0`)) { authority.invalidate(); authorities.delete(authorityKey); }
+        revokePending((item) => item.key.startsWith(`${key}\0`), "runtime generation changed during verification");
+      }
+      blockedCheckouts.delete(key);
+      routes.set(key, { generation, runtimeId, sessionId });
+    },
+    block(cwd) {
+      const key = root(cwd);
+      router.remove(key);
+      blockedCheckouts.add(key);
+    },
+    remove(cwd, generation) {
+      const key = root(cwd);
+      const route = routes.get(key);
+      if (!route) { if (generation === undefined) blockedCheckouts.delete(key); return; }
+      if (generation !== undefined && route.generation !== generation) return;
+      routes.delete(key);
+      blockedCheckouts.delete(key);
+      for (const [authorityKey, authority] of authorities) if (authorityKey.startsWith(`${key}\0`)) { authority.invalidate(); authorities.delete(authorityKey); }
+      revokePending((item) => item.key.startsWith(`${key}\0`), "runtime route was removed during verification");
+    },
+    identity(cwd) { return routes.get(root(cwd)); },
+    onSessionShutdown(handler) { shutdownHandler = handler; },
+    invalidate() { for (const authority of authorities.values()) authority.invalidate(); authorities.clear(); revokePending(() => true, "integrity controller shut down during verification"); routes.clear(); blockedCheckouts.clear(); },
+  };
+
+  if (typeof (pi as ExtensionAPI & { on?: unknown }).on !== "function") return router;
   const subscribe: ExtensionAPI["on"] = pi.on.bind(pi);
 
-  subscribe("session_start", async () => {
+  subscribe("session_start", async (_event, ctx) => {
     trustedTools.clear();
     for (const tool of pi.getAllTools()) if (approvedRegisteredTool(tool)) trustedTools.set(tool.name, toolFingerprint(tool));
+    const sessionId = typeof ctx.sessionManager.getSessionId === "function" ? ctx.sessionManager.getSessionId() : "unbound-session";
+    if (!routes.has(root(ctx.cwd))) {
+      if (!options.passive) {
+        router.install(ctx.cwd, 1, `parent-runtime-${randomUUID()}`, sessionId);
+      } else {
+        const selected = readRuntimeSelection(ctx.cwd);
+        if (selected.status === "blocked") router.block(ctx.cwd);
+        else if (!selected.record) router.install(ctx.cwd, 0, `parent-runtime-${randomUUID()}`, sessionId);
+        // Recorded generations are installed only after the controller validates
+        // and, on process restart, atomically rotates the durable parent.
+      }
+    }
   });
 
   subscribe("tool_call", async (event, ctx) => {
+    const checkout = root(ctx.cwd);
+    if (blockedCheckouts.has(checkout)) {
+      const decision = decideManagedToolCall({ managed: true, phase: "pending", planned: [], toolName: event.toolName, input: event.input as Record<string, unknown>, cwd: ctx.cwd, expectedCwd: ctx.cwd, trustedTool: trustedToolCall(pi, trustedTools, event.toolName) });
+      return decision.allow ? undefined : { block: true, reason: `managed execution blocked by malformed runtime selector: ${decision.reason}` };
+    }
+    const route = routes.get(checkout);
+    if (!route) return undefined;
+    const runtimeId = route.runtimeId;
     let workflows: Workflow[];
     try { workflows = managedWorkflows(ctx.cwd); }
     catch (error) {
@@ -299,8 +379,10 @@ export function registerParentIntegrity(pi: ExtensionAPI): { runtimeId: string; 
     if (!task || !parentAuthority?.valid || parentAuthority.runtimeId !== runtimeId || parentAuthority.sessionId !== ctx.sessionManager.getSessionId()) return { block: true, reason: "protected bash requires the current claimed parent session and runtime" };
     const parent = executionIdentity(ctx, parentAuthority.ownerId, runtimeId);
     try {
-      const authorization = authorityFor(ctx.cwd, workflow.topic).authorize({ workflow, taskId: task.id, toolName: "bash", toolCallId: event.toolCallId, commandLine: String((event.input as { command?: unknown }).command ?? ""), parent });
-      pending.set(event.toolCallId, { topic: workflow.topic, authorizationId: authorization.id });
+      const key = keyFor(ctx.cwd, route.generation, workflow.topic);
+      const authorization = authorityFor(ctx.cwd, route.generation, workflow.topic).authorize({ workflow, taskId: task.id, toolName: "bash", toolCallId: event.toolCallId, commandLine: String((event.input as { command?: unknown }).command ?? ""), parent });
+      revoked.delete(event.toolCallId);
+      pending.set(event.toolCallId, { key, topic: workflow.topic, authorizationId: authorization.id, generation: route.generation });
       return undefined;
     } catch (error) {
       return { block: true, reason: error instanceof Error ? error.message : String(error) };
@@ -308,9 +390,28 @@ export function registerParentIntegrity(pi: ExtensionAPI): { runtimeId: string; 
   });
 
   subscribe("tool_result", async (event, ctx) => {
+    if (event.toolName !== "bash") return undefined;
+    const revokedReason = revoked.get(event.toolCallId);
+    if (revokedReason) {
+      revoked.delete(event.toolCallId);
+      return { isError: true, content: [...event.content, { type: "text" as const, text: `\npi-swe rejected verification evidence: ${revokedReason}` }] };
+    }
     const active = pending.get(event.toolCallId);
-    if (!active || event.toolName !== "bash") return undefined;
+    if (!active) {
+      const checkout = root(ctx.cwd);
+      if (blockedCheckouts.has(checkout) || routes.has(checkout)) {
+        try {
+          if (blockedCheckouts.has(checkout) || managedWorkflows(ctx.cwd).length > 0) return { isError: true, content: [...event.content, { type: "text" as const, text: "\npi-swe rejected verification evidence: unknown or evicted protected bash authorization" }] };
+        } catch (error) {
+          return { isError: true, content: [...event.content, { type: "text" as const, text: `\npi-swe rejected verification evidence: managed workflow discovery failed closed: ${error instanceof Error ? error.message : String(error)}` }] };
+        }
+      }
+      return undefined;
+    }
     pending.delete(event.toolCallId);
+    const route = routes.get(root(ctx.cwd));
+    if (!route || route.generation !== active.generation || active.key !== keyFor(ctx.cwd, route.generation, active.topic)) return { isError: true, content: [...event.content, { type: "text" as const, text: "\npi-swe rejected verification evidence: runtime generation changed during verification" }] };
+    const runtimeId = route.runtimeId;
     try {
       const located = loadWorkflow(ctx.cwd, active.topic);
       if (!located) throw new Error(`managed workflow ${active.topic} disappeared during verification`);
@@ -323,7 +424,7 @@ export function registerParentIntegrity(pi: ExtensionAPI): { runtimeId: string; 
       const details = event.details && typeof event.details === "object" ? event.details as Record<string, unknown> : {};
       const detailCode = details.exitCode;
       const exitCode = Number.isSafeInteger(detailCode) ? detailCode as number : event.isError ? 1 : 0;
-      const authority = authorityFor(ctx.cwd, workflow.topic);
+      const authority = authorityFor(ctx.cwd, route.generation, workflow.topic);
       const submission = authority.finish({ authorizationId: active.authorizationId, workflow, taskId: task.id, toolCallId: event.toolCallId, exitCode, parent });
       authority.consume(submission, workflow, task, parent);
       const service = new WorkflowMutationService(ctx.cwd);
@@ -335,34 +436,42 @@ export function registerParentIntegrity(pi: ExtensionAPI): { runtimeId: string; 
       } : { type: "record-verification", evidence: submission.evidence }));
       return { details: { ...details, piSweProtectedVerification: { topic: workflow.topic, taskId: task.id, authorizationId: submission.authorizationId, sourceChanged } } };
     } catch (error) {
-      authorityFor(ctx.cwd, active.topic).invalidate();
+      authorityFor(ctx.cwd, route.generation, active.topic).invalidate();
       return { isError: true, content: [...event.content, { type: "text" as const, text: `\npi-swe rejected verification evidence: ${error instanceof Error ? error.message : String(error)}` }] };
     }
   });
 
   subscribe("before_agent_start", async (_event, ctx) => {
+    if (!routes.has(root(ctx.cwd))) return;
     for (const workflow of managedWorkflows(ctx.cwd)) await invalidateIntegratedDrift(ctx.cwd, workflow);
   });
 
   subscribe("user_bash", async () => {
     for (const authority of authorities.values()) authority.invalidate();
-    pending.clear();
+    revokePending(() => true, "user bash invalidated protected verification");
     return undefined;
   });
 
   subscribe("session_shutdown", async (event, ctx) => {
-    for (const authority of authorities.values()) authority.invalidate();
-    pending.clear();
-    for (const workflow of managedWorkflows(ctx.cwd)) {
-      const parent = workflow.orchestration.parent;
-      if (!parent?.valid || parent.runtimeId !== runtimeId || parent.sessionId !== ctx.sessionManager.getSessionId()) continue;
-      const service = new WorkflowMutationService(ctx.cwd);
-      try { await service.mutate(workflow.topic, workflow.revision, (current) => reduceWorkflow(current, { type: "invalidate-parent", ownerId: parent.ownerId, sessionId: parent.sessionId, runtimeId, reason: `session ${event.reason}` })); }
-      catch { /* A concurrent transition already invalidated or fenced this authority. */ }
+    const cwd = root(ctx.cwd);
+    const route = routes.get(cwd);
+    if (route) {
+      for (const workflow of managedWorkflows(cwd)) {
+        const parent = workflow.orchestration.parent;
+        if (!parent?.valid || parent.runtimeId !== route.runtimeId || parent.sessionId !== route.sessionId) continue;
+        const service = new WorkflowMutationService(cwd);
+        try { await service.fenceParent(workflow.topic, workflow.revision, parent, `session ${event.reason}`); }
+        catch (error) {
+          const latest = service.read(workflow.topic, false)?.workflow.orchestration.parent;
+          if (latest?.valid && latest.runtimeId === route.runtimeId) throw error;
+        }
+      }
+      router.remove(cwd, route.generation);
     }
+    await shutdownHandler?.(cwd);
   });
 
-  return { runtimeId, invalidate: () => { for (const authority of authorities.values()) authority.invalidate(); pending.clear(); } };
+  return router;
 }
 
 function managedWorkflows(cwd: string): Workflow[] {
@@ -380,7 +489,7 @@ async function invalidateIntegratedDrift(cwd: string, workflow: Workflow): Promi
     const parent = workflow.orchestration.parent;
     if (!parent?.valid) throw new Error("managed Git branch/HEAD drift has no valid parent authority to invalidate");
     const service = new WorkflowMutationService(cwd);
-    await service.mutate(workflow.topic, workflow.revision, (current) => reduceWorkflow(current, { type: "invalidate-parent", ownerId: parent.ownerId, sessionId: parent.sessionId, runtimeId: parent.runtimeId, reason: "Git branch or HEAD changed outside the managed checkpoint" }));
+    await service.fenceParent(workflow.topic, workflow.revision, parent, "Git branch or HEAD changed outside the managed checkpoint");
     return;
   }
   if (!observed.changedPaths.length) throw new Error("managed source drift could not be attributed to bounded paths");

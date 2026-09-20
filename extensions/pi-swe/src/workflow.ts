@@ -13,6 +13,23 @@ export type ApproachReasons = Partial<Record<WorkflowApproach, string>>;
 export type AssessmentStatus = "assessed" | "unassessed";
 export type VerificationCheckpoint = { revision: number; at: string; sessionId?: string; branchLength?: number };
 export type ParentAuthority = { ownerId: string; sessionId: string; runtimeId: string; cwd: string; sessionFile?: string; claimedAt: string; valid: boolean; invalidatedAt?: string; invalidatedReason?: string };
+export type Gate2DecisionAttestation = {
+  decisionId: string; authorizedBy: string; authorizedAt: string;
+  readinessEvidenceHash: string; migrationEvidenceHash: string;
+  targetRuntime: "v2"; rollbackSelector: "compatibility"; rollbackWindowEnd: string; rationale: string;
+};
+export type RuntimeHandoff = {
+  id: string;
+  decisionId: string;
+  decision?: Gate2DecisionAttestation;
+  from: "compatibility" | "v2";
+  to: "compatibility" | "v2";
+  phase: "prepared" | "reclaimed";
+  selectorGeneration: number;
+  preparedAt: string;
+  reclaimedAt?: string;
+  previousParent?: ParentAuthority;
+};
 export type ContractIdentity = { revision: number; hash: string; linkedPlanHash?: string };
 export type TaskKind = "implementation" | "coordination";
 export type TaskPhase = "pending" | "implementation" | "general-review" | "concern-review" | "remediation" | "workspace" | "integration" | "verification" | "ready-to-complete" | "historical";
@@ -221,7 +238,7 @@ export type Workflow = {
   goal: string;
   plan?: string;
   contract: ContractIdentity;
-  orchestration: { mode: "legacy" | "multi-agent"; phase: WorkflowPhase; nextFence: number; activeRun?: RunLease; parent?: ParentAuthority; history: HistoryEntry[] };
+  orchestration: { mode: "legacy" | "multi-agent"; phase: WorkflowPhase; nextFence: number; activeRun?: RunLease; parent?: ParentAuthority; runtimeHandoff?: RuntimeHandoff; history: HistoryEntry[] };
   planReview?: StageReport;
   initiativeVerification: VerificationCommand[];
   closeout?: InitiativeCloseout;
@@ -271,7 +288,11 @@ export type WorkflowEvent =
   | { type: "respond-clarification"; taskId?: string; questionId: string; answer: string; answeredBy: string }
   | { type: "claim-parent"; authority: ParentAuthority }
   | { type: "invalidate-parent"; ownerId: string; sessionId: string; runtimeId: string; reason: string }
-  | { type: "recover-parent"; authority: ParentAuthority; reason: string; decidedBy: string };
+  | { type: "fence-parent"; ownerId: string; sessionId: string; runtimeId: string; reason: string }
+  | { type: "recover-parent"; authority: ParentAuthority; reason: string; decidedBy: string }
+  | { type: "prepare-runtime-handoff"; handoff: Omit<RuntimeHandoff, "phase" | "preparedAt" | "reclaimedAt" | "previousParent"> }
+  | { type: "reclaim-runtime-handoff"; handoffId: string; decisionId: string; selectorGeneration: number; authority: ParentAuthority }
+  | { type: "rotate-runtime-parent"; handoffId: string; decisionId: string; from: "compatibility" | "v2"; to: "compatibility" | "v2"; selectorGeneration: number; authority: ParentAuthority };
 
 export type WorkflowDecision = { workflow: Workflow; changed: boolean; message: string };
 export type WorkflowTaskRevision = Pick<WorkflowTask, "id" | "title"> & Partial<Pick<WorkflowTask, "kind" | "dependsOn" | "acceptance" | "approaches" | "approachReasons" | "writeScope" | "nonGoals" | "verification" | "verificationDecision">>;
@@ -429,9 +450,14 @@ export function reduceWorkflow(workflow: Workflow, event: WorkflowEvent, now = n
 
 function reduceWorkflowStep(workflow: Workflow, event: WorkflowEvent, now: string): WorkflowDecision {
   validTimestamp(now, "workflow timestamp");
+  if (workflow.orchestration.runtimeHandoff?.phase === "prepared" && event.type !== "reclaim-runtime-handoff") throw new Error("runtime handoff is prepared; only exact fresh-parent reclaim may mutate the workflow");
   if (event.type === "claim-parent") return claimParent(workflow, event.authority, now);
   if (event.type === "invalidate-parent") return invalidateParent(workflow, event, now);
+  if (event.type === "fence-parent") return fenceParent(workflow, event, now);
   if (event.type === "recover-parent") return recoverParent(workflow, event, now);
+  if (event.type === "prepare-runtime-handoff") return prepareRuntimeHandoff(workflow, event, now);
+  if (event.type === "reclaim-runtime-handoff") return reclaimRuntimeHandoff(workflow, event, now);
+  if (event.type === "rotate-runtime-parent") return rotateRuntimeParent(workflow, event, now);
   if (event.type === "claim-run") return claimRun(workflow, event.lease, now);
   if (event.type === "cancel-run") return cancelRun(workflow, event.lease, event.reason, now);
   if (event.type === "respond-clarification") return respondClarification(workflow, event, now);
@@ -446,7 +472,7 @@ function reduceWorkflowStep(workflow: Workflow, event: WorkflowEvent, now: strin
   return reduceOrchestratedWorkflow(workflow, event, now);
 }
 
-function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, { type: "claim-parent" | "invalidate-parent" | "recover-parent" | "claim-run" | "cancel-run" | "pause" | "record-plan-review" | "record-run-failure" }>, now: string): WorkflowDecision {
+function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, { type: "claim-parent" | "invalidate-parent" | "fence-parent" | "recover-parent" | "prepare-runtime-handoff" | "reclaim-runtime-handoff" | "rotate-runtime-parent" | "claim-run" | "cancel-run" | "pause" | "record-plan-review" | "record-run-failure" }>, now: string): WorkflowDecision {
   const current = activeTask(workflow);
   if ((event.type === "start" || event.type === "resume") && workflow.status === "complete") return unchanged(workflow, "workflow is already complete");
   if (event.type !== "block" && !approvedReport(workflow.planReview, workflow.contract.hash)) throw new Error("current plan contract requires independent plan review approval before task execution");
@@ -657,7 +683,7 @@ function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowE
   throw new Error("event is not valid in the current orchestration stage");
 }
 
-function reduceLegacyWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, { type: "claim-parent" | "invalidate-parent" | "recover-parent" | "claim-run" | "cancel-run" | "pause" | "record-plan-review" | "record-run-failure" }>, now: string): WorkflowDecision {
+function reduceLegacyWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, { type: "claim-parent" | "invalidate-parent" | "fence-parent" | "recover-parent" | "prepare-runtime-handoff" | "reclaim-runtime-handoff" | "rotate-runtime-parent" | "claim-run" | "cancel-run" | "pause" | "record-plan-review" | "record-run-failure" }>, now: string): WorkflowDecision {
   const current = activeTask(workflow);
   if (event.type === "start" || event.type === "resume") {
     if (workflow.status === "complete") return unchanged(workflow, "workflow is already complete");
@@ -705,20 +731,28 @@ function claimParent(workflow: Workflow, raw: ParentAuthority, now: string): Wor
   return update(workflow, { orchestration: { ...workflow.orchestration, parent: authority } }, now, `claimed parent authority for ${authority.ownerId}`);
 }
 
+function staleAuthorityPatch(workflow: Workflow): Pick<Workflow, "tasks" | "closeout" | "initiativeAcceptance"> {
+  const tasks = workflow.tasks.map((task) => ({
+    ...task,
+    ...(["verification", "ready-to-complete"].includes(task.phase) ? { phase: "verification" as const, evidence: [] } : {}),
+    verificationCheckpoint: undefined,
+  }));
+  return { tasks, closeout: undefined, initiativeAcceptance: undefined };
+}
+
 function invalidateParent(workflow: Workflow, event: Extract<WorkflowEvent, { type: "invalidate-parent" }>, now: string): WorkflowDecision {
+  if (workflow.orchestration.runtimeHandoff?.phase === "reclaimed") throw new Error("reclaimed runtime authority must use the atomic parent fence transition");
+  return fenceParent(workflow, { ...event, type: "fence-parent" }, now);
+}
+
+function fenceParent(workflow: Workflow, event: Extract<WorkflowEvent, { type: "fence-parent" }>, now: string): WorkflowDecision {
   const parent = workflow.orchestration.parent;
-  if (!parent || !parent.valid || parent.ownerId !== event.ownerId || parent.sessionId !== event.sessionId || parent.runtimeId !== event.runtimeId) throw new Error("parent invalidation does not match current authority");
-  const reason = boundedText(event.reason, "parent invalidation reason");
-  const tasks = workflow.tasks.map((task) => {
-    if (task.id !== workflow.activeTask) return task;
-    const mustReverify = task.phase === "verification" || task.phase === "ready-to-complete";
-    return { ...task, ...(mustReverify ? { phase: "verification" as const, evidence: [] } : {}), verificationCheckpoint: undefined };
-  });
+  if (!parent || !parent.valid || parent.ownerId !== event.ownerId || parent.sessionId !== event.sessionId || parent.runtimeId !== event.runtimeId) throw new Error("parent fence does not match current authority");
+  const reason = boundedText(event.reason, "parent fence reason");
   return update(workflow, {
-    status: workflow.status === "complete" ? workflow.status : "paused", tasks,
-    ...(workflow.orchestration.phase === "initiative-acceptance" ? { closeout: undefined, initiativeAcceptance: undefined } : {}),
-    orchestration: { ...workflow.orchestration, parent: { ...parent, valid: false, invalidatedAt: now, invalidatedReason: reason } },
-  }, now, `invalidated parent authority: ${reason}`);
+    status: workflow.status === "complete" ? workflow.status : "paused", ...staleAuthorityPatch(workflow),
+    orchestration: { ...workflow.orchestration, nextFence: workflow.orchestration.nextFence + 1, activeRun: undefined, parent: { ...parent, valid: false, invalidatedAt: now, invalidatedReason: reason } },
+  }, now, `fenced parent authority: ${reason}`);
 }
 
 function recoverParent(workflow: Workflow, event: Extract<WorkflowEvent, { type: "recover-parent" }>, now: string): WorkflowDecision {
@@ -738,6 +772,63 @@ function recoverParent(workflow: Workflow, event: Extract<WorkflowEvent, { type:
     ...(workflow.orchestration.phase === "initiative-acceptance" ? { closeout: undefined, initiativeAcceptance: undefined } : {}),
     orchestration: { ...workflow.orchestration, parent: authority, activeRun: undefined, history },
   }, now, `recovered parent authority for ${authority.ownerId}; fresh checkpoints are required`);
+}
+
+function prepareRuntimeHandoff(workflow: Workflow, event: Extract<WorkflowEvent, { type: "prepare-runtime-handoff" }>, now: string): WorkflowDecision {
+  if (workflow.orchestration.mode !== "multi-agent" || workflow.orchestration.phase === "complete") throw new Error("runtime handoff requires a managed multi-agent workflow");
+  if (workflow.orchestration.activeRun) throw new Error("runtime handoff requires a durable no-child checkpoint");
+  if (workflow.orchestration.runtimeHandoff?.phase === "prepared") throw new Error("a runtime handoff is already prepared");
+  const id = boundedText(event.handoff.id, "runtime handoff id", 128);
+  const decisionId = boundedText(event.handoff.decisionId, "runtime handoff decision id", 128);
+  if (!Number.isSafeInteger(event.handoff.selectorGeneration) || event.handoff.selectorGeneration < 1) throw new Error("runtime handoff selector generation is invalid");
+  const parent = workflow.orchestration.parent;
+  if (parent && !parent.valid) throw new Error("runtime handoff cannot begin from invalid parent authority");
+  const invalidatedParent = parent ? { ...parent, valid: false, invalidatedAt: now, invalidatedReason: `runtime handoff ${id} prepared` } : undefined;
+  const tasks = workflow.tasks.map((task) => task.id === workflow.activeTask
+    ? { ...task, verificationCheckpoint: undefined, ...(["verification", "ready-to-complete"].includes(task.phase) ? { phase: "verification" as const, evidence: [] } : {}) }
+    : task);
+  const decision = normalizeGate2DecisionAttestation(event.handoff.decision);
+  if (decision.decisionId !== decisionId) throw new Error("runtime handoff decision attestation identity does not match");
+  const runtimeHandoff: RuntimeHandoff = { ...event.handoff, id, decisionId, decision, phase: "prepared", preparedAt: now, ...(parent ? { previousParent: parent } : {}) };
+  const history = appendHistory(workflow.orchestration.history, { id: `runtime-handoff-${workflow.revision + 1}-prepared`, type: "runtime-handoff-prepared", at: now, summary: `${event.handoff.from} to ${event.handoff.to}; decision ${decisionId}`, auditCritical: true });
+  return update(workflow, {
+    status: "paused", tasks,
+    ...(workflow.orchestration.phase === "initiative-acceptance" ? { closeout: undefined, initiativeAcceptance: undefined } : {}),
+    orchestration: { ...workflow.orchestration, nextFence: workflow.orchestration.nextFence + 1, activeRun: undefined, ...(invalidatedParent ? { parent: invalidatedParent } : {}), runtimeHandoff, history },
+  }, now, `prepared runtime handoff ${id} at a durable no-child checkpoint`);
+}
+
+function reclaimRuntimeHandoff(workflow: Workflow, event: Extract<WorkflowEvent, { type: "reclaim-runtime-handoff" }>, now: string): WorkflowDecision {
+  const handoff = workflow.orchestration.runtimeHandoff;
+  if (!handoff || handoff.phase !== "prepared" || handoff.id !== event.handoffId || handoff.decisionId !== event.decisionId || handoff.selectorGeneration !== event.selectorGeneration) throw new Error("runtime handoff reclaim does not match the durable prepared checkpoint");
+  if (workflow.orchestration.activeRun) throw new Error("runtime handoff reclaim requires no active child");
+  const authority = normalizeParentAuthority(event.authority);
+  if (!authority.valid) throw new Error("reclaimed parent authority must be valid");
+  const previous = handoff.previousParent;
+  if (previous && (authority.cwd !== previous.cwd || authority.ownerId !== previous.ownerId || authority.sessionId !== previous.sessionId || authority.runtimeId === previous.runtimeId)) throw new Error("runtime handoff must preserve owner, session, and repository while using a fresh parent runtime");
+  if (workflow.orchestration.parent?.valid) throw new Error("runtime handoff cannot replace live parent authority");
+  if (!handoff.decision) throw new Error("runtime handoff reclaim requires its durable Gate 2 decision attestation");
+  const reclaimed: RuntimeHandoff = { ...handoff, phase: "reclaimed", reclaimedAt: now };
+  const history = appendHistory(workflow.orchestration.history, { id: `runtime-handoff-${workflow.revision + 1}-reclaimed`, type: "runtime-handoff-reclaimed", at: now, summary: `${handoff.to} generation ${handoff.selectorGeneration}; parent ${authority.runtimeId}`, auditCritical: true });
+  return update(workflow, { status: "paused", orchestration: { ...workflow.orchestration, parent: authority, activeRun: undefined, runtimeHandoff: reclaimed, history } }, now, `reclaimed workflow under fresh ${handoff.to} parent authority`);
+}
+
+function rotateRuntimeParent(workflow: Workflow, event: Extract<WorkflowEvent, { type: "rotate-runtime-parent" }>, now: string): WorkflowDecision {
+  if (workflow.orchestration.mode !== "multi-agent" || workflow.orchestration.phase === "complete") throw new Error("runtime parent rotation requires a managed workflow");
+  const previous = workflow.orchestration.parent;
+  if (!previous) throw new Error("runtime parent rotation requires current fenced or valid authority");
+  const authority = normalizeParentAuthority(event.authority);
+  if (!authority.valid || authority.ownerId !== previous.ownerId || authority.sessionId !== previous.sessionId || authority.cwd !== previous.cwd || authority.runtimeId === previous.runtimeId) throw new Error("runtime parent rotation must preserve owner, session, and cwd while installing a fresh runtime id");
+  if (!Number.isSafeInteger(event.selectorGeneration) || event.selectorGeneration !== (workflow.orchestration.runtimeHandoff?.selectorGeneration ?? 0) + 1) throw new Error("runtime parent rotation selector generation is stale");
+  const handoff: RuntimeHandoff = {
+    id: boundedText(event.handoffId, "runtime rotation id", 128), decisionId: boundedText(event.decisionId, "runtime rotation decision id", 128),
+    from: event.from, to: event.to, phase: "reclaimed", selectorGeneration: event.selectorGeneration, preparedAt: now, reclaimedAt: now, previousParent: previous,
+  };
+  const history = appendHistory(workflow.orchestration.history, { id: `runtime-parent-${workflow.revision + 1}-rotated`, type: "runtime-parent-rotated", at: now, summary: `${event.to} generation ${event.selectorGeneration}; parent ${authority.runtimeId}`, auditCritical: true });
+  return update(workflow, {
+    status: "paused", ...staleAuthorityPatch(workflow),
+    orchestration: { ...workflow.orchestration, nextFence: workflow.orchestration.nextFence + 1, activeRun: undefined, parent: authority, runtimeHandoff: handoff, history },
+  }, now, `atomically rotated ${event.to} parent authority`);
 }
 
 function recordRunFailure(workflow: Workflow, event: Extract<WorkflowEvent, { type: "record-run-failure" }>, now: string): WorkflowDecision {
@@ -941,6 +1032,7 @@ function parseV2(value: Record<string, unknown>): Workflow {
   const history = normalizeHistory(value.orchestration.history);
   const activeRun = value.orchestration.activeRun === undefined ? undefined : normalizeLease(value.orchestration.activeRun);
   const parent = value.orchestration.parent === undefined ? undefined : normalizeParentAuthority(value.orchestration.parent);
+  const runtimeHandoff = value.orchestration.runtimeHandoff === undefined ? undefined : normalizeRuntimeHandoff(value.orchestration.runtimeHandoff);
   const nextFence = value.orchestration.nextFence;
   if (!Number.isSafeInteger(nextFence) || (nextFence as number) < 1) throw new Error("invalid orchestration fence");
   const tasks = (value.tasks as unknown[]).map((task) => normalizeTask(task as Partial<WorkflowTask> & Pick<WorkflowTask, "id" | "title">, { contract, compatibility: true }));
@@ -961,7 +1053,7 @@ function parseV2(value: Record<string, unknown>): Workflow {
     version: WORKFLOW_VERSION, topic: value.topic as string, revision: value.revision as number, status: parsedStatus,
     goal: (value.goal as string).trim(), ...(typeof value.plan === "string" ? { plan: value.plan.trim() } : {}), contract,
     initiativeVerification: value.initiativeVerification === undefined ? deriveInitiativeVerification(tasks) : normalizeCommands(value.initiativeVerification, "initiative"),
-    orchestration: { mode: mode as "legacy" | "multi-agent", phase: parsedPhase, nextFence: nextFence as number, ...(activeRun ? { activeRun } : {}), ...(parent ? { parent } : {}), history },
+    orchestration: { mode: mode as "legacy" | "multi-agent", phase: parsedPhase, nextFence: nextFence as number, ...(activeRun ? { activeRun } : {}), ...(parent ? { parent } : {}), ...(runtimeHandoff ? { runtimeHandoff } : {}), history },
     ...(planReview ? { planReview } : {}),
     ...(closeout ? { closeout } : {}),
     ...(initiativeAcceptance ? { initiativeAcceptance } : {}),
@@ -970,6 +1062,13 @@ function parseV2(value: Record<string, unknown>): Workflow {
     ...(normalizeMigration(value.migration) ? { migration: normalizeMigration(value.migration)! } : {}),
     ...(normalizeWorkflowImport(value.importedFrom) ? { importedFrom: normalizeWorkflowImport(value.importedFrom)! } : {}),
   };
+  const handoff = parsed.orchestration.runtimeHandoff;
+  if (handoff?.phase === "prepared" && parsed.orchestration.parent?.valid) throw new Error("prepared runtime handoff cannot retain valid parent authority");
+  if (handoff?.phase === "reclaimed") {
+    const currentParent = parsed.orchestration.parent;
+    if (!currentParent || !handoff.reclaimedAt || Date.parse(handoff.reclaimedAt) < Date.parse(handoff.preparedAt)) throw new Error("reclaimed runtime handoff requires retained parent authority");
+    if (handoff.previousParent && (currentParent.ownerId !== handoff.previousParent.ownerId || currentParent.sessionId !== handoff.previousParent.sessionId || currentParent.cwd !== handoff.previousParent.cwd || currentParent.runtimeId === handoff.previousParent.runtimeId)) throw new Error("reclaimed runtime handoff changed ownership or reused the prior runtime");
+  }
   if (parsed.status === "complete" && parsed.orchestration.mode === "multi-agent") {
     const completedCloseout = requireCompleteCloseoutVerification(parsed);
     const report = parsed.initiativeAcceptance!;
@@ -1324,6 +1423,29 @@ function normalizeIntegrationReceipt(value: unknown): IntegrationReceipt {
 }
 function normalizeLease(value: unknown): RunLease { if (!record(value) || typeof value.id !== "string" || !value.id || typeof value.runId !== "string" || !value.runId || typeof value.ownerId !== "string" || !value.ownerId || !Number.isSafeInteger(value.fence) || (value.fence as number) < 1 || !['plan-review','task-execution','initiative-acceptance','complete','pending','implementation','general-review','concern-review','remediation','workspace','integration','verification','ready-to-complete','historical'].includes(value.stage as string)) throw new Error("invalid run lease"); const acquiredAt = validTimestamp(value.acquiredAt, "run lease acquiredAt"); const expiresAt = validTimestamp(value.expiresAt, "run lease expiresAt"); if (Date.parse(expiresAt) <= Date.parse(acquiredAt)) throw new Error("run lease must expire after acquisition"); return { id: boundedText(value.id, "lease id", 128), runId: boundedText(value.runId, "run id", 128), ownerId: boundedText(value.ownerId, "lease owner", 128), stage: value.stage as RunLease["stage"], ...(typeof value.taskId === "string" ? { taskId: value.taskId } : {}), fence: value.fence as number, acquiredAt, expiresAt }; }
 function normalizeParentAuthority(value: unknown): ParentAuthority { if (!record(value) || typeof value.ownerId !== "string" || !value.ownerId || typeof value.sessionId !== "string" || !value.sessionId || typeof value.runtimeId !== "string" || !value.runtimeId || typeof value.cwd !== "string" || !value.cwd || typeof value.valid !== "boolean") throw new Error("invalid parent authority"); return { ownerId: boundedText(value.ownerId, "parent owner", 128), sessionId: boundedText(value.sessionId, "parent session", 128), runtimeId: boundedText(value.runtimeId, "parent runtime", 128), cwd: boundedText(value.cwd, "parent cwd"), ...(typeof value.sessionFile === "string" && value.sessionFile ? { sessionFile: boundedText(value.sessionFile, "parent session file") } : {}), claimedAt: validTimestamp(value.claimedAt, "parent authority claimedAt"), valid: value.valid, ...(typeof value.invalidatedAt === "string" ? { invalidatedAt: validTimestamp(value.invalidatedAt, "parent authority invalidatedAt") } : {}), ...(typeof value.invalidatedReason === "string" ? { invalidatedReason: boundedText(value.invalidatedReason, "parent authority invalidation reason") } : {}) }; }
+function normalizeRuntimeHandoff(value: unknown): RuntimeHandoff {
+  if (!record(value) || (value.from !== "compatibility" && value.from !== "v2") || (value.to !== "compatibility" && value.to !== "v2") || (value.phase !== "prepared" && value.phase !== "reclaimed") || !Number.isSafeInteger(value.selectorGeneration) || (value.selectorGeneration as number) < 1) throw new Error("invalid runtime handoff");
+  const reclaimedAt = typeof value.reclaimedAt === "string" ? validTimestamp(value.reclaimedAt, "runtime handoff reclaimedAt") : undefined;
+  if ((value.phase === "reclaimed") !== !!reclaimedAt) throw new Error("runtime handoff phase does not match reclaim timestamp");
+  const decision = value.decision === undefined ? undefined : normalizeGate2DecisionAttestation(value.decision);
+  if (value.phase === "prepared" && !decision) throw new Error("prepared runtime handoff lacks durable Gate 2 decision attestation");
+  const decisionId = boundedText(value.decisionId, "runtime handoff decision id", 128);
+  if (decision && decision.decisionId !== decisionId) throw new Error("runtime handoff decision attestation identity does not match");
+  return { id: boundedText(value.id, "runtime handoff id", 128), decisionId, ...(decision ? { decision } : {}), from: value.from, to: value.to, phase: value.phase, selectorGeneration: value.selectorGeneration as number, preparedAt: validTimestamp(value.preparedAt, "runtime handoff preparedAt"), ...(reclaimedAt ? { reclaimedAt } : {}), ...(value.previousParent === undefined ? {} : { previousParent: normalizeParentAuthority(value.previousParent) }) };
+}
+function normalizeGate2DecisionAttestation(value: unknown): Gate2DecisionAttestation {
+  if (!record(value)) throw new Error("runtime handoff Gate 2 decision attestation is missing");
+  const expectedKeys = ["authorizedAt", "authorizedBy", "decisionId", "migrationEvidenceHash", "rationale", "readinessEvidenceHash", "rollbackSelector", "rollbackWindowEnd", "targetRuntime"];
+  const actualKeys = Object.keys(value).sort();
+  if (actualKeys.length !== expectedKeys.length || actualKeys.some((key, index) => key !== expectedKeys[index])) throw new Error("runtime handoff Gate 2 attestation has missing or unknown fields");
+  const decision: Gate2DecisionAttestation = {
+    decisionId: boundedText(value.decisionId, "Gate 2 decision id", 128), authorizedBy: boundedText(value.authorizedBy, "Gate 2 authorized actor", 128),
+    authorizedAt: validTimestamp(value.authorizedAt, "Gate 2 authorization"), readinessEvidenceHash: String(value.readinessEvidenceHash ?? ""), migrationEvidenceHash: String(value.migrationEvidenceHash ?? ""),
+    targetRuntime: value.targetRuntime as "v2", rollbackSelector: value.rollbackSelector as "compatibility", rollbackWindowEnd: validTimestamp(value.rollbackWindowEnd, "Gate 2 rollback deadline"), rationale: boundedText(value.rationale, "Gate 2 rationale"),
+  };
+  if ([decision.decisionId, decision.authorizedBy, decision.rationale].some((text) => /^<.*>$/.test(text)) || decision.readinessEvidenceHash !== "sha256:c20d05e239978d456801410ac986c22ef21c7f78bb6e3cad485a00181fabfadc" || decision.migrationEvidenceHash !== "sha256:0b40a9d1b4352408d0b22ba3814cd0858ebd13e7c04728e563adf294ccd5f157" || decision.targetRuntime !== "v2" || decision.rollbackSelector !== "compatibility" || Date.parse(decision.rollbackWindowEnd) <= Date.parse(decision.authorizedAt)) throw new Error("runtime handoff Gate 2 attestation does not match reviewed evidence");
+  return decision;
+}
 function normalizeContract(value: unknown): ContractIdentity { if (!record(value) || !Number.isSafeInteger(value.revision) || (value.revision as number) < 1 || typeof value.hash !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.hash)) throw new Error("invalid contract identity"); return { revision: value.revision as number, hash: value.hash, ...(typeof value.linkedPlanHash === "string" ? { linkedPlanHash: value.linkedPlanHash } : {}) }; }
 function normalizeCheckpoint(value: unknown): VerificationCheckpoint | undefined { if (value === undefined) return undefined; if (!record(value) || !Number.isSafeInteger(value.revision) || (value.revision as number) < 1) throw new Error("invalid verification checkpoint"); return { revision: value.revision as number, at: validTimestamp(value.at, "verification checkpoint"), ...(typeof value.sessionId === "string" && value.sessionId ? { sessionId: value.sessionId } : {}), ...(Number.isSafeInteger(value.branchLength) && (value.branchLength as number) >= 0 ? { branchLength: value.branchLength as number } : {}) }; }
 function normalizeVerificationDecision(value: unknown): WorkflowTask["verificationDecision"] { if (value === undefined) return undefined; if (!record(value) || value.kind !== "manual" || typeof value.decidedBy !== "string" || !value.decidedBy) throw new Error("invalid manual verification decision"); return { kind: "manual", rationale: boundedText(value.rationale, "manual verification rationale"), decidedBy: boundedText(value.decidedBy, "manual verification decision owner", 128), at: validTimestamp(value.at, "manual verification decision timestamp") }; }
