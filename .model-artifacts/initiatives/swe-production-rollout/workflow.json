@@ -1,7 +1,7 @@
 {
   "version": 2,
   "topic": "swe-production-rollout",
-  "revision": 18,
+  "revision": 19,
   "status": "paused",
   "goal": "Migrate every supported pi-swe workflow safely, activate the complete v2 orchestration runtime with simplified start/resume operation, cut production over with bounded rollback, and retire obsolete v1 execution paths while retaining required compatibility readers.",
   "plan": "One dependency-enforced 17-task rollout. Complete migration inventory, policy, atomic apply, operator surfaces, and qualification first. Then compose and atomically register the complete v2 runtime, add its autonomous driver and contextual UX, qualify recovery and the production entrypoint, rehearse cutover, migrate repository workflows under explicit control, make v2 the default with bounded rollback, retire v1 execution only, and finish release qualification. Retain v1 read/migration compatibility through the documented Gentic 1.0 boundary. No push, publish, deployment, release, self-upgrade, compatibility-reader deletion, or other external side effect without separate authorization. The production entrypoint must preserve pi-todo ownership precedence, dirty-index and file-fidelity guarantees, distinct terminal outcomes, durable evidence retention, explicit cutover authorization, and clean-checkout release-report evidence. The active rollout workflow is never a migration target. Runtime cutover and rollback use a no-child durable self-hosting handoff, and clean-checkout release verification runs separately from the control checkout that owns workflow.json. Bootstrap execution is explicit: before native v2 is registered, do not start this workflow through /swe. Implement the migration and activation segment in dependency order from the Git commit containing this approved plan, retaining scoped Git diffs, exact checks, and review evidence; commits occur only with separate explicit authorization. Activation qualification must adopt that bounded bootstrap delta through a dedicated authorized reducer event after fresh cumulative independent review; only then may native v2 take lifecycle authority at cutover-readiness. Kind-first artifact relocation remains solely owned by pi-artifacts, registration preflights precede hook side effects, and secrets never enter retained workflow evidence.",
@@ -62,7 +62,7 @@
   "orchestration": {
     "mode": "multi-agent",
     "phase": "plan-review",
-    "nextFence": 5,
+    "nextFence": 6,
     "parent": {
       "ownerId": "parent:01a0c0f9-a693-725c-8fc2-c54f5ed28b0c",
       "sessionId": "01a0c0f9-a693-725c-8fc2-c54f5ed28b0c",
@@ -70,7 +70,9 @@
       "cwd": "/home/priz/projects/gentic",
       "sessionFile": "/home/priz/.pi/agent/sessions/--home-priz-projects-gentic--/2026-09-20T22-39-41-716Z_01a0c0f9-a693-725c-8fc2-c54f5ed28b0c.jsonl",
       "claimedAt": "2026-09-20T22:42:54.578Z",
-      "valid": true
+      "valid": false,
+      "invalidatedAt": "2026-09-20T22:56:17.429Z",
+      "invalidatedReason": "session quit"
     },
     "runtimeHandoff": {
       "id": "916cbd68-2203-4cec-9436-3adcab543491",
@@ -1565,5 +1567,5 @@
       "verificationDriftPaths": []
     }
   ],
-  "updatedAt": "2026-09-20T22:42:54.578Z"
+  "updatedAt": "2026-09-20T22:56:17.429Z"
 }

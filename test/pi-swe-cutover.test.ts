@@ -261,7 +261,8 @@ test("prepared handoff fences every ordinary reducer event until exact reclaim",
 test("reclaimed handoff authority cannot disappear during parsing, recovery, or service mutation", async () => {
   const baseline = qualifiedWorkflow();
   const decision = parseGate2Decision(gate2Decision(), new Date("2099-09-19T16:10:00.000Z"));
-  const prepared = reduceWorkflow(baseline, { type: "prepare-runtime-handoff", handoff: { id: "retained-handoff", decisionId: decision.decisionId, decision, from: "compatibility", to: "v2", selectorGeneration: 1 } }, "2099-09-19T16:10:00.000Z").workflow;
+  const claimed = reduceWorkflow(baseline, { type: "claim-parent", authority: { ownerId: "parent", sessionId: "session", runtimeId: "old-runtime", cwd: "/repo", claimedAt: "2099-09-19T16:09:59.000Z", valid: true } }, "2099-09-19T16:09:59.000Z").workflow;
+  const prepared = reduceWorkflow(claimed, { type: "prepare-runtime-handoff", handoff: { id: "retained-handoff", decisionId: decision.decisionId, decision, from: "compatibility", to: "v2", selectorGeneration: 1 } }, "2099-09-19T16:10:00.000Z").workflow;
   const original = reduceWorkflow(prepared, { type: "reclaim-runtime-handoff", handoffId: "retained-handoff", decisionId: decision.decisionId, selectorGeneration: 1, authority: { ownerId: "parent", sessionId: "session", runtimeId: "runtime", cwd: "/repo", claimedAt: "2099-09-19T16:10:01.000Z", valid: true } }, "2099-09-19T16:10:01.000Z").workflow;
   const receipt = structuredClone(original.orchestration.runtimeHandoff);
   assert.equal(receipt?.phase, "reclaimed");
@@ -272,8 +273,9 @@ test("reclaimed handoff authority cannot disappear during parsing, recovery, or 
 
   const parent = original.orchestration.parent!;
   const fenced = reduceWorkflow(original, { type: "fence-parent", ownerId: parent.ownerId, sessionId: parent.sessionId, runtimeId: parent.runtimeId, reason: "restart" }, "2099-09-20T00:00:00.000Z").workflow;
-  const recovered = reduceWorkflow(fenced, { type: "recover-parent", authority: { ...parent, runtimeId: "fresh-runtime", claimedAt: "2099-09-20T00:00:01.000Z", valid: true }, reason: "resume", decidedBy: "operator" }, "2099-09-20T00:00:01.000Z").workflow;
+  const recovered = reduceWorkflow(fenced, { type: "recover-parent", authority: { ...parent, ownerId: "new-parent", sessionId: "new-session", runtimeId: "fresh-runtime", claimedAt: "2099-09-20T00:00:01.000Z", valid: true }, reason: "resume", decidedBy: "operator" }, "2099-09-20T00:00:01.000Z").workflow;
   assert.deepEqual(recovered.orchestration.runtimeHandoff, receipt);
+  assert.equal(parseWorkflow(recovered).orchestration.parent?.sessionId, "new-session");
 
   const cwd = createQualifiedRepository("pi-swe-retained-handoff-", (workflow) => Object.assign(workflow, original));
   try {

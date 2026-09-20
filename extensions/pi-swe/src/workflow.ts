@@ -1069,7 +1069,8 @@ function parseV2(value: Record<string, unknown>): Workflow {
   if (handoff?.phase === "reclaimed") {
     const currentParent = parsed.orchestration.parent;
     if (!currentParent || !handoff.reclaimedAt || Date.parse(handoff.reclaimedAt) < Date.parse(handoff.preparedAt)) throw new Error("reclaimed runtime handoff requires retained parent authority");
-    if (handoff.previousParent && (currentParent.ownerId !== handoff.previousParent.ownerId || currentParent.sessionId !== handoff.previousParent.sessionId || currentParent.cwd !== handoff.previousParent.cwd || currentParent.runtimeId === handoff.previousParent.runtimeId)) throw new Error("reclaimed runtime handoff changed ownership or reused the prior runtime");
+    const subsequentRecovery = history.some((entry) => entry.type === "parent-recovered" && Date.parse(entry.at) > Date.parse(handoff.reclaimedAt!));
+    if (handoff.previousParent && !subsequentRecovery && (currentParent.ownerId !== handoff.previousParent.ownerId || currentParent.sessionId !== handoff.previousParent.sessionId || currentParent.cwd !== handoff.previousParent.cwd || currentParent.runtimeId === handoff.previousParent.runtimeId)) throw new Error("reclaimed runtime handoff changed ownership or reused the prior runtime without an audited recovery");
   }
   if (parsed.status === "complete" && parsed.orchestration.mode === "multi-agent") {
     const completedCloseout = requireCompleteCloseoutVerification(parsed);
