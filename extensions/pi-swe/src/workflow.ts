@@ -1033,6 +1033,8 @@ function parseV2(value: Record<string, unknown>): Workflow {
   const activeRun = value.orchestration.activeRun === undefined ? undefined : normalizeLease(value.orchestration.activeRun);
   const parent = value.orchestration.parent === undefined ? undefined : normalizeParentAuthority(value.orchestration.parent);
   const runtimeHandoff = value.orchestration.runtimeHandoff === undefined ? undefined : normalizeRuntimeHandoff(value.orchestration.runtimeHandoff);
+  const retainedHandoffHistory = history.some((entry) => entry.type === "runtime-handoff-reclaimed" || entry.type === "runtime-parent-rotated");
+  if (retainedHandoffHistory && !runtimeHandoff) throw new Error("runtime handoff history requires a retained runtime handoff authority receipt");
   const nextFence = value.orchestration.nextFence;
   if (!Number.isSafeInteger(nextFence) || (nextFence as number) < 1) throw new Error("invalid orchestration fence");
   const tasks = (value.tasks as unknown[]).map((task) => normalizeTask(task as Partial<WorkflowTask> & Pick<WorkflowTask, "id" | "title">, { contract, compatibility: true }));

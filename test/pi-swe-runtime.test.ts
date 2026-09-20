@@ -33,12 +33,40 @@ function fakePi(registrations: string[] = []) {
   };
 }
 
+function resetClonedRolloutAuthority(cwd: string): void {
+  const path = join(cwd, ".model-artifacts", "initiatives", "swe-production-rollout", "workflow.json");
+  const workflow = parseWorkflow(JSON.parse(readFileSync(path, "utf8")));
+  const reset = {
+    ...workflow,
+    status: "paused" as const,
+    orchestration: {
+      ...workflow.orchestration,
+      activeRun: undefined,
+      parent: undefined,
+      runtimeHandoff: undefined,
+      history: workflow.orchestration.history.filter((entry) => entry.type !== "runtime-handoff-prepared" && entry.type !== "runtime-handoff-reclaimed" && entry.type !== "runtime-parent-rotated" && entry.type !== "parent-recovered"),
+    },
+  };
+  writeFileSync(path, `${JSON.stringify(reset, null, 2)}\n`);
+}
+
 function selectedV2Checkout(rollbackWindowEnd = new Date(Date.now() + 86_400_000).toISOString()): { parent: string; cwd: string; decision: Gate2Decision } {
   const parent = mkdtempSync(join(tmpdir(), "pi-swe-handoff-checkout-"));
   const cwd = join(parent, "checkout");
   execFileSync("git", ["clone", "-q", "--no-hardlinks", process.cwd(), cwd]);
   const path = join(cwd, ".model-artifacts", "initiatives", "swe-production-rollout", "workflow.json");
   let workflow = parseWorkflow(JSON.parse(readFileSync(path, "utf8")));
+  workflow = {
+    ...workflow,
+    status: "paused",
+    orchestration: {
+      ...workflow.orchestration,
+      activeRun: undefined,
+      parent: undefined,
+      runtimeHandoff: undefined,
+      history: workflow.orchestration.history.filter((entry) => entry.type !== "runtime-handoff-prepared" && entry.type !== "runtime-handoff-reclaimed" && entry.type !== "runtime-parent-rotated" && entry.type !== "parent-recovered"),
+    },
+  };
   const at = new Date().toISOString();
   workflow = reduceWorkflow(workflow, { type: "claim-parent", authority: { ownerId: "parent:session", sessionId: "session", runtimeId: "selected-runtime", cwd, claimedAt: at, valid: true } }, at).workflow;
   workflow = { ...workflow, orchestration: { ...workflow.orchestration, runtimeHandoff: { id: "initial-cutover", decisionId: "decision", from: "compatibility", to: "v2", phase: "reclaimed", selectorGeneration: 1, preparedAt: at, reclaimedAt: at } } };
@@ -198,6 +226,7 @@ test("successful compatibility to v2 cutover uses the real controller and exact 
   const migration = join(parent, "migration.json");
   try {
     execFileSync("git", ["clone", "-q", "--no-hardlinks", process.cwd(), cwd]);
+    resetClonedRolloutAuthority(cwd);
     writeFileSync(readiness, gunzipSync(Buffer.from(GATE2_READINESS_GZIP_BASE64, "base64")));
     writeFileSync(migration, gunzipSync(Buffer.from(GATE2_MIGRATION_GZIP_BASE64, "base64")));
     chmodSync(readiness, 0o600);
@@ -227,6 +256,7 @@ for (const faultStage of ["after-prepare", "after-selector-persist"] as const) {
     const migration = join(parent, "migration.json");
     try {
       execFileSync("git", ["clone", "-q", "--no-hardlinks", process.cwd(), cwd]);
+      resetClonedRolloutAuthority(cwd);
       writeFileSync(readiness, gunzipSync(Buffer.from(GATE2_READINESS_GZIP_BASE64, "base64")));
       writeFileSync(migration, gunzipSync(Buffer.from(GATE2_MIGRATION_GZIP_BASE64, "base64")));
       chmodSync(readiness, 0o600); chmodSync(migration, 0o600);
@@ -255,6 +285,7 @@ test("initial cutover recovers after a SIGKILLed controller process at durable p
   const migration = join(parent, "migration.json");
   try {
     execFileSync("git", ["clone", "-q", "--no-hardlinks", process.cwd(), cwd]);
+    resetClonedRolloutAuthority(cwd);
     writeFileSync(readiness, gunzipSync(Buffer.from(GATE2_READINESS_GZIP_BASE64, "base64")));
     writeFileSync(migration, gunzipSync(Buffer.from(GATE2_MIGRATION_GZIP_BASE64, "base64")));
     chmodSync(readiness, 0o600); chmodSync(migration, 0o600);
@@ -312,6 +343,7 @@ test("cutover restart rollback restart and re-cutover advance monotonic generati
   const controllers: SharedRuntimeController[] = [];
   try {
     execFileSync("git", ["clone", "-q", "--no-hardlinks", process.cwd(), cwd]);
+    resetClonedRolloutAuthority(cwd);
     writeFileSync(readiness, gunzipSync(Buffer.from(GATE2_READINESS_GZIP_BASE64, "base64"))); writeFileSync(migration, gunzipSync(Buffer.from(GATE2_MIGRATION_GZIP_BASE64, "base64")));
     chmodSync(readiness, 0o600); chmodSync(migration, 0o600);
     const at = new Date().toISOString();

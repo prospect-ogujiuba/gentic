@@ -27,7 +27,8 @@ import { applyWorkflowMigration, inventoryWorkflowMigrations, planWorkflowMigrat
 import { renderVerificationCommand, type ParentExecutionIdentity, type RelevantSourceSnapshot } from "../extensions/pi-swe/src/integrity.ts";
 import type { AgentRunRequest, RunnerResult } from "../extensions/pi-swe/src/runner.ts";
 import type { OrchestrationRunner, OrchestrationWorkspace } from "../extensions/pi-swe/src/orchestration.ts";
-import { createWorkflow, reduceWorkflow, type StageReport, type Workflow } from "../extensions/pi-swe/src/workflow.ts";
+import { WorkflowMutationService } from "../extensions/pi-swe/src/service.ts";
+import { createWorkflow, parseWorkflow, reduceWorkflow, type StageReport, type Workflow } from "../extensions/pi-swe/src/workflow.ts";
 import type { GitIntegrationReceipt, GitWorkspaceReceipt, PreparedIntegration } from "../extensions/pi-swe/src/workspace.ts";
 
 const CANONICAL_WORKFLOW_CONTRACT = { revision: 6, hash: "sha256:3894b64f481fc360ba799bba914eeb08f88e1f85b18fad6d33b5e2e25c47f78f" } as const;
@@ -93,6 +94,14 @@ function qualifiedWorkflow(): ReturnType<typeof createWorkflow> {
     task.status = "complete";
     task.phase = "historical";
   }
+  workflow.status = "paused";
+  workflow.orchestration = {
+    ...workflow.orchestration,
+    activeRun: undefined,
+    parent: undefined,
+    runtimeHandoff: undefined,
+    history: workflow.orchestration.history.filter((entry) => entry.type !== "runtime-handoff-prepared" && entry.type !== "runtime-handoff-reclaimed" && entry.type !== "runtime-parent-rotated" && entry.type !== "parent-recovered"),
+  };
   return workflow;
 }
 
@@ -247,6 +256,35 @@ test("prepared handoff fences every ordinary reducer event until exact reclaim",
   assert.equal(prepared.orchestration.runtimeHandoff?.phase, "prepared");
   assert.throws(() => reduceWorkflow(prepared, { type: "start" }, "2099-09-19T16:10:01.000Z"), /only exact fresh-parent reclaim/i);
   assert.throws(() => reduceWorkflow(prepared, { type: "claim-run", lease: { id: "lease", runId: "run", ownerId: "old", stage: "plan-review", fence: prepared.orchestration.nextFence, acquiredAt: "2099-09-19T16:10:01.000Z", expiresAt: "2099-09-19T16:20:01.000Z" } }, "2099-09-19T16:10:01.000Z"), /only exact fresh-parent reclaim/i);
+});
+
+test("reclaimed handoff authority cannot disappear during parsing, recovery, or service mutation", async () => {
+  const baseline = qualifiedWorkflow();
+  const decision = parseGate2Decision(gate2Decision(), new Date("2099-09-19T16:10:00.000Z"));
+  const prepared = reduceWorkflow(baseline, { type: "prepare-runtime-handoff", handoff: { id: "retained-handoff", decisionId: decision.decisionId, decision, from: "compatibility", to: "v2", selectorGeneration: 1 } }, "2099-09-19T16:10:00.000Z").workflow;
+  const original = reduceWorkflow(prepared, { type: "reclaim-runtime-handoff", handoffId: "retained-handoff", decisionId: decision.decisionId, selectorGeneration: 1, authority: { ownerId: "parent", sessionId: "session", runtimeId: "runtime", cwd: "/repo", claimedAt: "2099-09-19T16:10:01.000Z", valid: true } }, "2099-09-19T16:10:01.000Z").workflow;
+  const receipt = structuredClone(original.orchestration.runtimeHandoff);
+  assert.equal(receipt?.phase, "reclaimed");
+
+  const malformed = structuredClone(original);
+  malformed.orchestration.runtimeHandoff = undefined;
+  assert.throws(() => parseWorkflow(malformed), /retained runtime handoff/i);
+
+  const parent = original.orchestration.parent!;
+  const fenced = reduceWorkflow(original, { type: "fence-parent", ownerId: parent.ownerId, sessionId: parent.sessionId, runtimeId: parent.runtimeId, reason: "restart" }, "2099-09-20T00:00:00.000Z").workflow;
+  const recovered = reduceWorkflow(fenced, { type: "recover-parent", authority: { ...parent, runtimeId: "fresh-runtime", claimedAt: "2099-09-20T00:00:01.000Z", valid: true }, reason: "resume", decidedBy: "operator" }, "2099-09-20T00:00:01.000Z").workflow;
+  assert.deepEqual(recovered.orchestration.runtimeHandoff, receipt);
+
+  const cwd = createQualifiedRepository("pi-swe-retained-handoff-", (workflow) => Object.assign(workflow, original));
+  try {
+    const service = new WorkflowMutationService(cwd);
+    const stored = service.read("swe-production-rollout", false)!.workflow;
+    await assert.rejects(() => service.mutate(stored.topic, stored.revision, (current) => ({
+      changed: true,
+      message: "drop receipt",
+      workflow: { ...current, revision: current.revision + 1, updatedAt: "2099-09-20T00:00:02.000Z", orchestration: { ...current.orchestration, runtimeHandoff: undefined } },
+    })), /cannot discard retained runtime handoff/i);
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
 });
 
 test("cutover readiness reports four independent categories without granting activation", () => {
@@ -723,17 +761,26 @@ class RehearsalCloseoutInspector {
 
 function temporaryEntrypoint(): string {
   return `import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { createProductionRuntime, qualifyV2Activation, recoverRuntimeWorkflows, registerQualifiedV2Runtime } from "./src/runtime.ts";
+import { registerControllerBoundSweCommand } from "./src/command.ts";
+import { createProductionRuntime, recoverRuntimeWorkflows, SharedRuntimeController } from "./src/runtime.ts";
+import { registerControllerBoundSweWorkflowTool } from "./src/tool.ts";
 export { recoverRuntimeWorkflows };
 export const PI_SWE_EXTENSION_ID = "pi-swe";
 export const PI_SWE_ACTIVATION = "temporary-v2" as const;
 export default function piSwe(pi: ExtensionAPI): void {
   const harness = (globalThis as typeof globalThis & { __PI_SWE_CUTOVER_REHEARSAL__?: any }).__PI_SWE_CUTOVER_REHEARSAL__;
   if (!harness) throw new Error("cutover rehearsal harness is unavailable");
+  const controller = new SharedRuntimeController(pi);
   const runtime = createProductionRuntime({ ...harness.options, pi });
-  const qualification = qualifyV2Activation({ requested: true, migrationReady: true, piVersion: "0.84.2", expectedPiVersion: "0.84.2", extensionId: "pi-swe", expectedExtensionId: "pi-swe", repositorySupported: true, requiredTools: ["read", "grep", "find", "ls", "bash"], availableTools: pi.getAllTools().map((tool) => tool.name) });
+  const resolver = {
+    async resolve(_cwd: string, identity: any) { return { kind: "v2" as const, generation: 0, identity, mutations: runtime.mutations, registry: runtime.registry, runtime }; },
+    async handoff() { throw new Error("runtime handoff is outside the temporary rehearsal adapter"); },
+    shutdown() { runtime.shutdown(); },
+  };
+  registerControllerBoundSweCommand(pi, resolver);
+  registerControllerBoundSweWorkflowTool(pi, resolver);
   harness.runtime = runtime;
-  harness.activation = registerQualifiedV2Runtime(pi, qualification, runtime);
+  harness.activation = { active: true, invalidate: () => { runtime.shutdown(); controller.shutdown(); } };
 }
 `;
 }
@@ -1003,8 +1050,8 @@ test("disposable candidate checkout rehearses exhaustive migration, production e
     const compatibilityRegistrations: string[] = [];
     const compatibilityEntrypoint = await import(`${pathToFileURL(entrypointPath).href}?rollback=${Date.now()}`);
     compatibilityEntrypoint.default(fakePi(compatibilityRegistrations) as never);
-    assert.equal(compatibilityEntrypoint.PI_SWE_ACTIVATION, "disabled");
-    assert.deepEqual(compatibilityRegistrations, ["command:swe", "tool:swe_workflow"]);
+    assert.equal(compatibilityEntrypoint.PI_SWE_ACTIVATION, "runtime-selector");
+    assert.deepEqual(compatibilityRegistrations, ["hook:session_start", "hook:tool_call", "hook:tool_result", "hook:before_agent_start", "hook:user_bash", "hook:session_shutdown", "command:swe", "tool:swe_workflow"]);
 
     for (const fixture of rehearsalCorpus.cases.filter((item) => item.remediation)) {
       const entry = inventoryWorkflowMigrations(cwd).entries.find((candidate) => candidate.topic === fixture.id)!;

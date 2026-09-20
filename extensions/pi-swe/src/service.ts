@@ -108,6 +108,7 @@ export class WorkflowMutationService {
       }
       const decision = reducer(located.workflow);
       if (decision.workflow.topic !== topic) throw new Error("workflow reducer cannot change topic identity");
+      if (located.workflow.orchestration.runtimeHandoff && !decision.workflow.orchestration.runtimeHandoff) throw new Error("workflow mutation cannot discard retained runtime handoff authority");
       if (decision.changed && decision.workflow.revision !== located.workflow.revision + 1) throw new Error("workflow reducer must advance mutation revision exactly once");
       if (!decision.changed && decision.workflow !== located.workflow) throw new Error("unchanged workflow decision must preserve state identity");
       if (decision.changed) {

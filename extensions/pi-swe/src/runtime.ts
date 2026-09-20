@@ -427,6 +427,16 @@ export class SharedRuntimeController implements RuntimeSurfaceResolver {
     this.preflight();
     const current = await this.resolveUnlocked(cwd, options.identity);
     const topic = "swe-production-rollout";
+    const controlling = current.mutations.read(topic, false)?.workflow;
+    if (controlling?.orchestration.parent && !controlling.orchestration.parent.valid && controlling.orchestration.runtimeHandoff?.phase !== "prepared") {
+      const recoveredAt = new Date().toISOString();
+      await current.mutations.mutate(topic, controlling.revision, (workflow) => reduceWorkflow(workflow, {
+        type: "recover-parent",
+        authority: { ownerId: `parent:${options.identity.sessionId}`, sessionId: options.identity.sessionId, runtimeId: `handoff-recovery-${randomUUID()}`, cwd, ...(options.sessionFile ? { sessionFile: options.sessionFile } : {}), claimedAt: recoveredAt, valid: true },
+        reason: "explicit runtime handoff after fenced parent shutdown",
+        decidedBy: `interactive-session:${options.identity.sessionId}`,
+      }, recoveredAt));
+    }
     const freshRuntimeId = randomUUID();
     const activeTodo = await coordinatedActiveTodo(options.lifecycleContext);
     let provisional: RuntimeSurfaceBinding | undefined;

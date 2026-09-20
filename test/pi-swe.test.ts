@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,6 +22,18 @@ function sample() {
     { id: "T1", title: "Core" },
     { id: "T2", title: "Integration", dependsOn: ["T1"] },
   ] });
+}
+
+function fixturePi(overrides: Record<string, unknown>) {
+  return {
+    on: () => undefined,
+    getAllTools: () => ["read", "grep", "find", "ls", "bash"].map((name) => ({ name, sourceInfo: { source: "builtin", path: `<builtin:${name}>` } })),
+    ...overrides,
+  } as never;
+}
+
+function initRepository(cwd: string): void {
+  execFileSync("git", ["init", "-q"], { cwd });
 }
 
 test("workflow reducer selects dependencies, requires verification, and completes", () => {
@@ -232,23 +245,24 @@ test("revision reopens a completed workflow when planned work is added", () => {
 test("extension registers one command and one tool", () => {
   const commands = new Map<string, unknown>();
   const tools = new Map<string, unknown>();
-  piSwe({ registerCommand: (name: string, value: unknown) => commands.set(name, value), registerTool: (value: { name: string }) => tools.set(value.name, value) } as never);
+  piSwe(fixturePi({ registerCommand: (name: string, value: unknown) => commands.set(name, value), registerTool: (value: { name: string }) => tools.set(value.name, value) }));
   assert.deepEqual([...commands], [["swe", commands.get("swe")]]);
   assert.deepEqual([...tools.keys()], ["swe_workflow"]);
 });
 
 test("workflow tool creates, starts, objectively verifies, and completes", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "pi-swe-tool-"));
+  initRepository(cwd);
   let tool: any;
   const branch: any[] = [
     { type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "stale-bash", name: "bash", arguments: { command: "node --version" } }] } },
     { type: "message", message: { role: "toolResult", toolName: "bash", toolCallId: "stale-bash", content: [{ type: "text", text: "v22" }], isError: false, timestamp: Date.now() + 300_000 } },
   ];
-  piSwe({
+  piSwe(fixturePi({
     registerCommand: () => undefined,
     registerTool: (value: unknown) => { tool = value; },
     exec: async () => { throw new Error("verification must not invoke pi.exec"); },
-  } as never);
+  }));
   const ctx = { cwd, sessionManager: { getBranch: () => branch, getSessionId: () => "session-1" } };
   const call = (params: Record<string, unknown>) => tool.execute("call", params, undefined, undefined, ctx);
   await call({ action: "create", topic: "tool-demo", goal: "Exercise workflow", tasks: [{ id: "T1", title: "Implement", approaches: ["tdd"], approachReasons: { tdd: "Behavior needs regression coverage" }, verification: [{ command: "node", args: ["--version"] }] }] });
@@ -280,11 +294,12 @@ test("workflow tool creates, starts, objectively verifies, and completes", async
 
 test("unassessed active work is not presented as executable", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "pi-swe-unassessed-"));
+  initRepository(cwd);
   let workflow = reduceWorkflow(sample(), { type: "start" }, now).workflow;
   workflow = { ...workflow, tasks: workflow.tasks.map((task) => task.id === "T1" ? { ...task, assessmentStatus: "unassessed" as const, verificationCheckpoint: undefined } : task) };
   saveWorkflow(cwd, workflow);
   let tool: any;
-  piSwe({ registerCommand: () => undefined, registerTool: (value: unknown) => { tool = value; } } as never);
+  piSwe(fixturePi({ registerCommand: () => undefined, registerTool: (value: unknown) => { tool = value; } }));
   const response = await tool.execute("call", { action: "start", topic: "demo" }, undefined, undefined, { cwd });
   assert.match(response.content[0].text, /unassessed; revise/);
   assert.doesNotMatch(response.content[0].text, /Continue pi-swe workflow/);
@@ -292,22 +307,24 @@ test("unassessed active work is not presented as executable", async () => {
 
 test("only one repository workflow can be active", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "pi-swe-single-active-"));
+  initRepository(cwd);
   const first = reduceWorkflow(sample(), { type: "start" }, now).workflow;
   saveWorkflow(cwd, first);
   saveWorkflow(cwd, createWorkflow({ topic: "other", goal: "Other", now, tasks: [{ id: "A", title: "Other", approaches: [] }] }));
   let tool: any;
-  piSwe({ registerCommand: () => undefined, registerTool: (value: unknown) => { tool = value; } } as never);
+  piSwe(fixturePi({ registerCommand: () => undefined, registerTool: (value: unknown) => { tool = value; } }));
   await assert.rejects(() => tool.execute("call", { action: "start", topic: "other" }, undefined, undefined, { cwd, sessionManager: { getBranch: () => [], getSessionId: () => "session" } }), /workflow demo is active/);
   assert.equal(loadWorkflow(cwd, "other")!.workflow.status, "draft");
 });
 
 test("workflow activation rejects competing active todo ownership", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "pi-swe-todo-owner-"));
+  initRepository(cwd);
   saveWorkflow(cwd, sample());
   registerTodoActivityProbe(async () => ({ id: "todo-1", title: "Existing implementation" }));
   let tool: any;
   let command: any;
-  piSwe({ registerCommand: (_name: string, value: unknown) => { command = value; }, registerTool: (value: unknown) => { tool = value; }, sendUserMessage: () => assert.fail("blocked activation must not enqueue execution") } as never);
+  piSwe(fixturePi({ registerCommand: (_name: string, value: unknown) => { command = value; }, registerTool: (value: unknown) => { tool = value; }, sendUserMessage: () => assert.fail("blocked activation must not enqueue execution") }));
   const sessionManager = { getBranch: () => [], getSessionId: () => "session" };
   await assert.rejects(() => tool.execute("call", { action: "start", topic: "demo" }, undefined, undefined, { cwd, sessionManager }), /finish or block that todo first/);
   const notifications: string[] = [];
@@ -319,10 +336,11 @@ test("workflow activation rejects competing active todo ownership", async () => 
 
 test("create rejects a legacy initiative instead of shadowing it", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "pi-swe-shadow-"));
+  initRepository(cwd);
   mkdirSync(join(cwd, ".model-artifacts/initiatives/demo/specs"), { recursive: true });
   writeFileSync(join(cwd, ".model-artifacts/initiatives/demo/specs/manifest.json"), "{}");
   let tool: any;
-  piSwe({ registerCommand: () => undefined, registerTool: (value: unknown) => { tool = value; } } as never);
+  piSwe(fixturePi({ registerCommand: () => undefined, registerTool: (value: unknown) => { tool = value; } }));
   await assert.rejects(() => tool.execute("call", { action: "create", topic: "demo", goal: "x", tasks: [{ id: "T1", title: "x", approaches: [] }] }, undefined, undefined, { cwd }), /migrate it instead/);
   assert.equal(existsSync(join(cwd, workflowPath("demo"))), false);
 });
