@@ -12,7 +12,7 @@ import {
 } from "./store.ts";
 import { assertWorkflowMigrationEligible } from "./migration.ts";
 import { GitWorkspaceManager } from "./workspace.ts";
-import { BOOTSTRAP_NATIVE_TAKEOVER_TASK, BOOTSTRAP_PLAN_ANCHOR, hashContract, reduceWorkflow, type BootstrapAdoption, type ParentAuthority, type RepositorySnapshot, type RunLease, type RuntimeHandoff, type Workflow, type WorkflowDecision } from "./workflow.ts";
+import { BOOTSTRAP_NATIVE_TAKEOVER_TASK, BOOTSTRAP_PLAN_ANCHOR, hashContract, reduceWorkflow, retiredV1ExecutionError, type BootstrapAdoption, type ParentAuthority, type RepositorySnapshot, type RunLease, type RuntimeHandoff, type Workflow, type WorkflowDecision } from "./workflow.ts";
 
 const MAX_LINKED_PLAN_BYTES = 256 * 1024;
 export const BOOTSTRAP_ANCHOR_COMMIT = BOOTSTRAP_PLAN_ANCHOR;
@@ -65,6 +65,10 @@ export type RunClaim = {
  * intentionally held only while loading, reducing, and atomically persisting.
  * Child work in runWithLease executes after the lock is released.
  */
+export function assertV2ExecutionRuntime(runtimeKind: "compatibility" | "v2" | "blocked", action: string): void {
+  if (runtimeKind === "compatibility") throw retiredV1ExecutionError(action);
+}
+
 export class WorkflowMutationService {
   readonly cwd: string;
   readonly bootstrapInspector: BootstrapRepositoryInspector;

@@ -6,7 +6,7 @@ A small, opt-in workflow extension for durable multi-step software work. Normal 
 
 - **What it does:** stores a goal and dependency-ordered tasks in one file, instructs the agent to assess applicable engineering approaches during planning, selects at most one active workflow task per repository, binds protected bash results as verification evidence, and advances completed work.
 - **Commands/tools:** `/swe status`, `/swe config`, `/swe migrate`, `/swe work`; model-callable `swe_workflow`.
-- **Events:** the v2 integrity controller defines fail-closed `tool_call`/`tool_result`, user-shell, agent-start, and session-shutdown guards. The installed v1 runtime remains the production runtime: its entrypoint intentionally does not register the v2 controller until a production fenced-orchestration surface is delivered. Isolated tests exercise v2 with a deterministic fixture provider. Do not hot-reload, self-upgrade, or partially activate v2. Version-1 compatibility views are always excluded until explicit migration.
+- **Events:** the v2 integrity controller defines fail-closed `tool_call`/`tool_result`, user-shell, agent-start, and session-shutdown guards. Managed execution is v2-only. V1 workflows and artifacts remain readable and migratable through Gentic 1.0, but v1 start, resume, verification, completion, single-parent fallback, and runtime rollback execution are retired.
 - **State:** `.model-artifacts/initiatives/<topic>/workflow.json` is the sole mutable authority. The bundled schema describes canonical writes; the runtime explicitly normalizes older version-1 tasks missing assessment fields to `unassessed`.
 - **Modules:** `src/workflow.ts` owns types and the reducer; `src/store.ts` owns bounded atomic persistence and the legacy importer; `src/workspace.ts` owns recoverable Git baselines, detached worktrees, index-preserving integration, and whole-source fingerprints; `src/integrity.ts` owns parent capability and protected-verification authority; `src/tool.ts` and `src/command.ts` are Pi adapters.
 - **Tests:** `npm run test:swe`; use `npm run typecheck` and `npm run check` for package integration.
@@ -32,16 +32,18 @@ Small tasks should use normal Pi tools. Create a workflow only when work must su
         "performance": "latency is the reason for the change"
       },
       "acceptance": ["Repeated reads hit the cache"],
+      "writeScope": ["src/cache/**", "test/cache/**"],
+      "nonGoals": ["No release operations"],
       "verification": [{ "command": "npm", "args": ["test"] }]
     },
-    { "id": "T2", "title": "Integrate callers", "dependsOn": ["T1"], "approaches": [] }
+    { "id": "T2", "title": "Integrate callers", "dependsOn": ["T1"], "approaches": [], "writeScope": ["src/callers/**"], "nonGoals": ["No API redesign"] }
   ]
 }
 ```
 
 On `create`, the agent is instructed to assess each task; on `revise`, it reassesses each incomplete task for `tdd`, `diagnosis`, `dsa`, `security`, `performance`, `migration`, `accessibility-ux`, and `operations`. It stores only applicable approaches plus concise reasons; `[]` means none apply. This is advisory and transparent: `/swe status` and `swe_workflow status` show the active assessment, and users can override incomplete-task assessments through `revise`. Applicable concerns are folded into the one coarse execution prompt rather than dispatched as specialists. A material scope or design discovery requires revision and reassessment.
 
-Then use `swe_workflow` actions `start`, `verify`, and `complete`. Every selected approach requires a concise reason. Migrated tasks are explicitly `unassessed`; an imported active selection is paused until revision and resume. Add objective approach-specific checks to `verification` wherever possible.
+Then use `swe_workflow` actions `start`, `verify`, and `complete` on the active v2 runtime. Every selected approach requires a concise reason. Migrated tasks are explicitly `unassessed`; an imported active selection is paused until revision and v2 resume. Add objective approach-specific checks to `verification` wherever possible. A v1 execution request fails with directions to audit/apply migration or recover an interrupted migration; it never falls back to single-parent execution.
 
 ## Explicit workflow migration
 
@@ -56,7 +58,7 @@ Migration never occurs on first mutation. Audit is read-only and bounded:
 /swe migrate rollback <topic>
 ```
 
-Apply is per-topic and requires the selected dry-run classification, exact preimage hash, shared mutation lock, atomic workflow write, and retained recovery receipt under `.model-artifacts/system/logs/pi-swe-migration/`. Repeating the same apply is idempotent; stale plans, concurrent writers, malformed or unknown versions, layout conflicts, and edited rollback postimages fail closed. An interrupted postimage can be finalized with `recover`; rollback compare-and-restores the exact retained preimage and keeps its receipt.
+Apply is per-topic and requires the selected dry-run classification, exact preimage hash, shared mutation lock, atomic workflow write, and retained recovery receipt under `.model-artifacts/system/logs/pi-swe-migration/`. Repeating the same apply is idempotent; stale plans, concurrent writers, malformed or unknown versions, layout conflicts, and edited rollback postimages fail closed. An interrupted postimage can be finalized with `recover`; migration rollback compare-and-restores the exact retained preimage and keeps its receipt for recovery or inspection, but does not re-enable v1 execution.
 
 Incomplete or active v1 work is paused, stale execution evidence and leases are cleared, and durable evidence links/import provenance remain. Completed tasks stay immutable historical records and never satisfy fresh v2 review. A completed workflow requires a keyboard-confirmed choice: `reopen` for fresh v2 final acceptance, `grandfather-read-only` for immutable history, or no apply pending operator review. The model-callable tool cannot choose that disposition or authorize rollback.
 
@@ -73,7 +75,7 @@ Evidence must be newer than the task's activation or latest revision timestamp, 
 
 Use `revise` with the desired full task graph to add, remove, or update planned work. Completed, active, and blocked tasks cannot be removed; statuses, evidence, evidence links, completion timestamps, and imported provenance are retained for matching tasks.
 
-Every activation path—commands, model-callable start/resume, and automatic advancement—returns the same coarse implementation guidance. It does not dispatch separate planning, implementation, verification, review, and finalization turns.
+Every v2 activation path—commands, model-callable start/resume, and automatic advancement—uses the orchestrated lifecycle. There is no compatibility or single-parent implementation fallback.
 
 ## Managed v2 lifecycle
 

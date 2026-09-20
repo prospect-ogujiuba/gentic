@@ -10,7 +10,7 @@ import { buildTaskExecutionPrompt } from "./command.ts";
 import { runtimeSelectionStatus } from "./cutover.ts";
 import { applyWorkflowMigration, inventoryWorkflowMigrations, planWorkflowMigration, recoverWorkflowMigration, renderWorkflowMigrationAudit, rollbackWorkflowMigration } from "./migration.ts";
 import { loadWorkflow, resolveTopic, workflowPath } from "./store.ts";
-import { WorkflowMutationService } from "./service.ts";
+import { assertV2ExecutionRuntime, WorkflowMutationService } from "./service.ts";
 import type { RuntimeSurfaceResolver } from "./runtime.ts";
 import { identityFromContext, renderRunTails, SweRuntimeRegistry, WorkflowControlService } from "./ux.ts";
 import { bindVerificationCheckpoint, createWorkflow, reduceWorkflow, reviseWorkflow, summarizeWorkflow, WORKFLOW_APPROACHES, type ApproachReasons, type VerificationCommand, type Workflow, type WorkflowApproach, type WorkflowEvent } from "./workflow.ts";
@@ -147,6 +147,7 @@ function registerSweWorkflowToolAdapter(pi: ExtensionAPI, runtimeResolver: Runti
         return result(`migration ${outcome.status}; receipt ${outcome.receiptPath}; next: re-audit before mutation\n${summarizeWorkflow(located.workflow)}`, located.workflow, "native");
       }
       if (binding?.kind === "blocked") throw new Error(`managed execution blocked: ${binding.reason}`);
+      if (["start", "resume", "verify", "complete"].includes(params.action)) assertV2ExecutionRuntime(binding.kind, params.action);
       const located = service.read(topic);
       if (!located) throw new Error(`workflow ${topic} was not found`);
       const workflow = located.workflow;
@@ -157,7 +158,7 @@ function registerSweWorkflowToolAdapter(pi: ExtensionAPI, runtimeResolver: Runti
           const driven = await binding.runtime!.driver[params.action](topic);
           return result(`v2 ${driven.outcome}: ${driven.handoff.message}\n${runtimeSelectionStatus(ctx.cwd)}\n${control.inspect(topic, boundIdentity)}`, driven.handoff.workflow, "native");
         }
-        const transition = await control.transition(topic, params.action as "start" | "resume" | "pause" | "stop", boundIdentity);
+        const transition = await control.transition(topic, params.action as "pause" | "stop", boundIdentity);
         let text = `${transition.decision.message}\n${runtimeSelectionStatus(ctx.cwd)}\n${control.inspect(topic, boundIdentity)}`;
         if (transition.prompt) text += `\n\n${transition.prompt}`;
         else if ((params.action === "start" || params.action === "resume") && transition.decision.changed) {

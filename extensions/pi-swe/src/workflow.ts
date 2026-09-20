@@ -683,40 +683,18 @@ function reduceOrchestratedWorkflow(workflow: Workflow, event: Exclude<WorkflowE
   throw new Error("event is not valid in the current orchestration stage");
 }
 
+export function retiredV1ExecutionError(action: string): Error {
+  return new Error(`v1 execution is retired; cannot ${action}. Run /swe migrate audit and /swe migrate apply <topic> before v2 execution. If migration was interrupted, run /swe migrate recover <topic>, then inspect the workflow before retrying`);
+}
+
 function reduceLegacyWorkflow(workflow: Workflow, event: Exclude<WorkflowEvent, { type: "claim-parent" | "invalidate-parent" | "fence-parent" | "recover-parent" | "prepare-runtime-handoff" | "reclaim-runtime-handoff" | "rotate-runtime-parent" | "claim-run" | "cancel-run" | "pause" | "record-plan-review" | "record-run-failure" }>, now: string): WorkflowDecision {
+  if (["start", "resume", "record-verification", "complete-task"].includes(event.type)) throw retiredV1ExecutionError(event.type);
   const current = activeTask(workflow);
-  if (event.type === "start" || event.type === "resume") {
-    if (workflow.status === "complete") return unchanged(workflow, "workflow is already complete");
-    if (current) {
-      if (current.assessmentStatus === "unassessed") return unchanged(workflow, `${current.id} is unassessed; revise the workflow before execution`);
-      return replaceTask(workflow, current.id, { verificationCheckpoint: { revision: workflow.revision + 1, at: now } }, { status: "active" }, now, `resumed ${current.id}`);
-    }
-    const blocked = event.type === "resume" ? workflow.tasks.find((task) => task.status === "blocked") : undefined;
-    const next = blocked ?? readyTasks(workflow)[0];
-    if (!next) return unchanged(workflow, "no dependency-ready task is available");
-    if (next.assessmentStatus === "unassessed") return unchanged(workflow, `${next.id} is unassessed; revise the workflow before execution`);
-    return replaceTask(workflow, next.id, { status: "active", phase: "implementation", blockedReason: undefined, verificationCheckpoint: { revision: workflow.revision + 1, at: now } }, { status: "active", activeTask: next.id }, now, `${event.type === "resume" ? "resumed" : "started"} ${next.id}`);
-  }
   if (event.type === "block") {
     if (!current) return unchanged(workflow, "no active task to block");
     return replaceTask(workflow, current.id, { status: "blocked", blockedReason: boundedText(event.reason, "blocked reason") || "blocked" }, { status: "blocked", activeTask: undefined }, now, `${current.id} blocked`);
   }
-  if (event.type === "record-verification") {
-    if (workflow.status !== "active" || !current) return unchanged(workflow, "no actively executing task to verify");
-    return replaceTask(workflow, current.id, { evidence: boundedAppend(current.evidence, normalizeEvidence(event.evidence), 32, "verification evidence") }, {}, now, `recorded verification for ${current.id}`);
-  }
-  if (event.type !== "complete-task") throw new Error(`event ${event.type} is unavailable in compatibility mode`);
-  if (workflow.status !== "active" || !current) return unchanged(workflow, "no actively executing task to complete");
-  const latestEvidence = current.evidence.at(-1);
-  const checkpoint = current.verificationCheckpoint;
-  const currentEvidence = checkpoint ? current.evidence.filter((item) => evidenceMatchesCheckpoint(item, checkpoint)) : [];
-  const missingChecks = current.verification.filter((planned) => !currentEvidence.some((item) => item.exitCode === 0 && legacyCommandKey(item) === legacyCommandKey(planned)));
-  if (!event.allowGap && (latestEvidence?.exitCode !== 0 || !checkpoint || !latestEvidence || !evidenceMatchesCheckpoint(latestEvidence, checkpoint) || missingChecks.length)) return unchanged(workflow, `${current.id} requires passing protected bash results recorded after its activation/revision checkpoint${missingChecks.length ? `; missing passing checks: ${missingChecks.map(commandDisplay).join(", ")}` : ""}`);
-  const completed = replaceTask(workflow, current.id, { status: "complete", phase: "historical", blockedReason: undefined, completedAt: now }, { activeTask: undefined }, now, `completed ${current.id}`).workflow;
-  const next = readyTasks(completed)[0];
-  if (next) return replaceTask(completed, next.id, { status: "active", phase: "implementation", verificationCheckpoint: { revision: completed.revision + 1, at: now } }, { status: "active", activeTask: next.id }, now, `completed ${current.id}; started ${next.id}`);
-  const unfinished = completed.tasks.some((task) => ["pending", "active", "blocked"].includes(task.status));
-  return update(completed, { status: unfinished ? "blocked" : "complete", orchestration: { ...completed.orchestration, phase: unfinished ? "task-execution" : "complete" } }, now, unfinished ? `completed ${current.id}; remaining work is blocked` : `completed ${current.id}; workflow complete`);
+  throw new Error(`event ${event.type} is unavailable in compatibility mode; inspect the historical workflow or migrate it to v2`);
 }
 
 function claimParent(workflow: Workflow, raw: ParentAuthority, now: string): WorkflowDecision {

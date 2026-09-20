@@ -9,7 +9,7 @@ import { parseGate2Decision, parseStoredGate2Decision, readRuntimeSelection, run
 import { loadWorkflow, resolveTopic } from "./store.ts";
 import { applyWorkflowMigration, applyWorkflowMigrationBatch, inventoryWorkflowMigrations, planWorkflowMigration, recoverWorkflowMigration, renderWorkflowMigrationAudit, rollbackWorkflowMigration, type WorkflowMigrationDisposition } from "./migration.ts";
 import type { RuntimeSurfaceResolver } from "./runtime.ts";
-import { WorkflowMutationService } from "./service.ts";
+import { assertV2ExecutionRuntime, WorkflowMutationService } from "./service.ts";
 import { identityFromContext, renderRunTails, SweRuntimeRegistry, WorkflowControlService } from "./ux.ts";
 import { reduceWorkflow, type Workflow, type WorkflowApproach, type WorkflowTask } from "./workflow.ts";
 
@@ -28,12 +28,11 @@ const ROOT: AutocompleteItem[] = [
   { value: "status", label: "status", description: "/swe status [topic] — show workflow state" },
   { value: "work", label: "work", description: "/swe work <start|resume|pause|stop|status|inspect|runs> [topic] — control or inspect one workflow" },
   { value: "migrate", label: "migrate", description: "/swe migrate <audit|apply|recover|rollback> [topic] — explicit workflow migration" },
-  { value: "runtime", label: "runtime", description: "/swe runtime <cutover|rollback> — keyboard-controlled Gate 2 runtime handoff" },
+  { value: "runtime", label: "runtime", description: "/swe runtime cutover — keyboard-controlled Gate 2 v2 activation" },
   { value: "config", label: "config", description: "/swe config — explain the zero-config replacement" },
 ];
 const RUNTIME: AutocompleteItem[] = [
   { value: "runtime cutover", label: "cutover", description: "/swe runtime cutover — validate reviewed Gate 2 evidence and activate v2" },
-  { value: "runtime rollback", label: "rollback", description: "/swe runtime rollback — use the retained decision and rollback window" },
 ];
 const WORK: AutocompleteItem[] = [
   { value: "work status", label: "status", description: "/swe work status [topic] — show bounded workflow and run state" },
@@ -118,16 +117,17 @@ function registerSweCommandAdapter(pi: ExtensionAPI, runtimeResolver: RuntimeSur
         if (root === "runtime") {
           if (!ctx.hasUI) throw new Error("Gate 2 cutover and rollback require an interactive keyboard-accessible decision");
           const operation = args[1];
-          if (operation !== "cutover" && operation !== "rollback") throw new Error("usage: /swe runtime <cutover|rollback>");
+          if (operation === "rollback") assertV2ExecutionRuntime("compatibility", "roll back the runtime and restart");
+          if (operation !== "cutover") throw new Error("usage: /swe runtime cutover");
           const selector = readRuntimeSelection(ctx.cwd);
           if (selector.status === "blocked") throw new Error(`runtime selector is ambiguous: ${selector.reason}`);
-          const durableHandoff = operation === "cutover" ? loadWorkflow(ctx.cwd, "swe-production-rollout", false)?.workflow.orchestration.runtimeHandoff : undefined;
+          const durableHandoff = loadWorkflow(ctx.cwd, "swe-production-rollout", false)?.workflow.orchestration.runtimeHandoff;
           let hasPreparedAttestation = false;
           if (durableHandoff?.phase === "prepared" && durableHandoff.decision) {
             parseStoredGate2Decision(durableHandoff.decision);
             hasPreparedAttestation = true;
           }
-          const initialV2Admission = operation === "cutover" && !selector.record && !hasPreparedAttestation;
+          const initialV2Admission = !selector.record && !hasPreparedAttestation;
           let decision: Gate2Decision | undefined;
           if (initialV2Admission) {
             const raw = await ctx.ui.input("Gate 2 decision JSON", "Paste the complete human authorization record");
@@ -141,11 +141,11 @@ function registerSweCommandAdapter(pi: ExtensionAPI, runtimeResolver: RuntimeSur
             if (!readiness?.trim() || !migration?.trim()) throw new Error("both reviewed Gate 2 evidence paths are required for initial v2 admission");
             evidence = { readiness: readiness.trim(), migration: migration.trim() };
           }
-          const targetRuntime = operation === "cutover" ? "v2" as const : "compatibility" as const;
-          if (!await ctx.ui.confirm(`${operation === "cutover" ? "Activate v2" : "Rollback to compatibility"} runtime`, `${runtimeSelectionStatus(ctx.cwd)}; atomically rotate parent authority to ${targetRuntime}?`)) throw new Error(`runtime ${operation} was not confirmed`);
+          const targetRuntime = "v2" as const;
+          if (!await ctx.ui.confirm("Activate v2 runtime", `${runtimeSelectionStatus(ctx.cwd)}; atomically rotate parent authority to ${targetRuntime}?`)) throw new Error("runtime cutover was not confirmed");
           const identity = identityFromContext(ctx);
           const receipt = await runtimeResolver.handoff({ cwd: ctx.cwd, targetRuntime, ...(decision ? { decision } : {}), ...(evidence ? { evidence } : {}), identity, lifecycleContext: ctx, sessionFile: ctx.sessionManager.getSessionFile?.() });
-          ctx.ui.notify(`pi-swe runtime ${operation} complete; generation ${receipt.selectorGeneration}; handoff ${receipt.handoffId}; fresh parent ${receipt.freshParentRuntimeId}\n${runtimeSelectionStatus(ctx.cwd)}`, operation === "rollback" ? "warning" : "info");
+          ctx.ui.notify(`pi-swe runtime cutover complete; generation ${receipt.selectorGeneration}; handoff ${receipt.handoffId}; fresh parent ${receipt.freshParentRuntimeId}\n${runtimeSelectionStatus(ctx.cwd)}`, "info");
           return;
         }
         const workAction = root === "work" ? args[1] ?? "status" : root;
@@ -166,6 +166,7 @@ function registerSweCommandAdapter(pi: ExtensionAPI, runtimeResolver: RuntimeSur
           return;
         }
         if (binding?.kind === "blocked") throw new Error(`managed execution blocked: ${binding.reason}`);
+        if (["start", "resume", "retry"].includes(workAction)) assertV2ExecutionRuntime(binding.kind, workAction === "retry" ? "resume" : workAction);
         if (["answer", "reset", "validate"].includes(workAction)) {
           if (!ctx.hasUI) throw new Error(`${workAction} requires an interactive keyboard-accessible user decision`);
           const located = control.mutations.read(topic);
@@ -216,7 +217,7 @@ function registerSweCommandAdapter(pi: ExtensionAPI, runtimeResolver: RuntimeSur
           ctx.ui.notify(`pi-swe v2 ${driven.outcome}: ${driven.handoff.message}\n${runtimeSelectionStatus(ctx.cwd)}\n${control.inspect(topic, boundIdentity)}`, driven.outcome === "infrastructure-failure" ? "error" : "info");
           return;
         }
-        const outcome = await control.transition(topic, transitionAction as "start" | "resume" | "pause" | "stop", boundIdentity);
+        const outcome = await control.transition(topic, transitionAction as "pause" | "stop", boundIdentity);
         const { decision } = outcome;
         ctx.ui.notify(`pi-swe ${decision.message}\n${runtimeSelectionStatus(ctx.cwd)}\n${control.inspect(topic, boundIdentity)}`, decision.changed ? "info" : "warning");
         if (!decision.changed || (transitionAction !== "start" && transitionAction !== "resume")) return;

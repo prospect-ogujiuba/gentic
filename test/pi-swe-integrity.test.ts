@@ -66,7 +66,7 @@ function verificationWorkflow(): Workflow {
 
 const verificationParent = (runtimeId = "runtime-old"): ParentExecutionIdentity => ({ ownerId: "parent:session", sessionId: "session", runtimeId, cwd: "/repo", sessionBranchId: "leaf", branchLength: 2 });
 
-test("real registered command and tool handlers use the controller-selected bound identity, and session shutdown cleanup leaves a parser-valid restartable fence", async () => {
+test("real registered handlers inspect compatibility state but tombstone its start and resume execution", async () => {
   const cwd = repository("pi-swe-bound-surfaces-");
   try {
     const captured = harness();
@@ -84,20 +84,18 @@ test("real registered command and tool handlers use the controller-selected boun
     const fencedAfterResolve = parseWorkflow(JSON.parse(readFileSync(path, "utf8")));
     assert.equal(fencedAfterResolve.orchestration.parent?.valid, false);
     await captured.command().handler("work start bound-surfaces", ctx);
-    const resumed = parseWorkflow(JSON.parse(readFileSync(path, "utf8")));
-    assert.equal(resumed.orchestration.parent?.valid, true);
-    assert.notEqual(resumed.orchestration.parent?.runtimeId, "session:session");
-    assert.notEqual(resumed.orchestration.parent?.runtimeId, "dead-process");
+    assert.match(ctx.notifications.at(-1)!, /v1 execution is retired.*migrate.*recover/i);
+    const afterStart = parseWorkflow(JSON.parse(readFileSync(path, "utf8")));
+    assert.equal(afterStart.orchestration.parent?.valid, false);
 
     await captured.hooks.get("session_shutdown")!({ reason: "shutdown" }, ctx);
     const shutdown = parseWorkflow(JSON.parse(readFileSync(path, "utf8")));
     assert.equal(shutdown.orchestration.parent?.valid, false);
     assert.equal(shutdown.orchestration.activeRun, undefined);
-    const shutdownRuntimeId = shutdown.orchestration.parent!.runtimeId;
     await captured.command().handler("work resume bound-surfaces", ctx);
-    const restarted = parseWorkflow(JSON.parse(readFileSync(path, "utf8")));
-    assert.equal(restarted.orchestration.parent?.valid, true);
-    assert.notEqual(restarted.orchestration.parent?.runtimeId, shutdownRuntimeId);
+    assert.match(ctx.notifications.at(-1)!, /v1 execution is retired.*migrate.*recover/i);
+    const afterResume = parseWorkflow(JSON.parse(readFileSync(path, "utf8")));
+    assert.equal(afterResume.orchestration.parent?.valid, false);
   } finally { rmSync(cwd, { recursive: true, force: true }); }
 });
 

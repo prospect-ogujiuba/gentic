@@ -49,8 +49,11 @@ test("todo ownership shares pi-swe discovery and releases blocked workflows", ()
       now,
       tasks: [{ id: "T1", title: "blocked", assessmentStatus: "assessed", approaches: [], approachReasons: {}, verification: [] }],
     });
-    workflow = reduceWorkflow(workflow, { type: "start" }, now).workflow;
-    workflow = reduceWorkflow(workflow, { type: "block", reason: "external" }, now).workflow;
+    workflow = {
+      ...workflow,
+      status: "blocked",
+      tasks: workflow.tasks.map((task) => ({ ...task, status: "blocked", phase: "implementation", blockedReason: "external" })),
+    };
     const topicDir = join(cwd, ".model-artifacts", "initiatives", "blocked-topic");
     mkdirSync(topicDir, { recursive: true });
     writeFileSync(join(topicDir, "workflow.json"), JSON.stringify(workflow));
@@ -323,19 +326,15 @@ function toolHarness(cwd: string) {
   return (params: any) => definition.execute("tool-call", params, new AbortController().signal, undefined, ctx);
 }
 
-test("tool start and slash-command control share the same orchestrator ownership and stage service", async () => {
+test("compatibility tool execution actions are tombstoned without partial fallback", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "pi-swe-tool-parity-"));
   try {
     writeUxWorkflow(cwd, uxWorkflow("tool-parity"));
     const execute = toolHarness(cwd);
-    const result = await execute({ action: "start", topic: "tool-parity" });
-    const text = result.content[0].text as string;
-    assert.match(text, /Use the v2 OrchestrationEngine/);
-    assert.match(text, /do not implement in this parent/);
-    assert.match(text, /fixture-provider\/fixture-model/);
-    assert.equal(result.details.workflow.status, "active");
-    assert.equal(result.details.workflow.activeTask, "T1");
-    assert.equal(result.details.workflow.orchestration.phase, "task-execution");
+    for (const action of ["start", "resume", "verify", "complete"] as const) {
+      await assert.rejects(execute({ action, topic: "tool-parity" }), /v1 execution is retired.*migrate.*recover/i);
+    }
+    assert.equal(new WorkflowControlService(cwd).mutations.read("tool-parity")!.workflow.status, "draft");
   } finally { rmSync(cwd, { recursive: true, force: true }); }
 });
 

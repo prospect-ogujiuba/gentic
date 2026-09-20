@@ -53,9 +53,10 @@ function commandHarness(cwd: string, decisions: { input?: string; confirm?: bool
   return { handler: (raw: string) => definition!.handler(raw, ctx), messages, notifications };
 }
 
-test("command autocomplete exposes keyboard-addressable status, inspect, runs, pause, stop, and resume", () => {
+test("command autocomplete exposes v2 work controls but no retired compatibility rollback selector", () => {
   const values = completeSweArgument("work ")!.map((item) => item.value);
   for (const expected of ["work status", "work inspect", "work runs", "work start", "work resume", "work pause", "work stop"]) assert.ok(values.includes(expected));
+  assert.deepEqual(completeSweArgument("runtime ")!.map((item) => item.value), ["runtime cutover"]);
 });
 
 test("contextual operator actions expose one primary legal action plus keyboard-addressable controls", () => {
@@ -69,17 +70,14 @@ test("contextual operator actions expose one primary legal action plus keyboard-
   assert.ok(actions.some((action) => action.id === "stop"));
 });
 
-test("/swe work start emits an orchestrator prompt and never a single-parent implementation fallback", async () => {
+test("compatibility command start is tombstoned without a single-parent fallback", async () => {
   const f = fixture();
   try {
     const harness = commandHarness(f.cwd);
     await harness.handler("work start command-fixture");
-    assert.equal(harness.messages.length, 1);
-    assert.match(harness.messages[0]!, /Use the v2 OrchestrationEngine/);
-    assert.match(harness.messages[0]!, /do not implement in this parent/);
-    assert.match(harness.messages[0]!, /fixture-provider\/fixture-model/);
-    assert.match(harness.messages[0]!, /interactive-shell \/attach does not apply/);
-    assert.doesNotMatch(harness.messages[0]!, /call swe_workflow action=complete/);
+    assert.equal(harness.messages.length, 0);
+    assert.match(harness.notifications.at(-1)!, /v1 execution is retired.*migrate.*recover/i);
+    assert.equal(new WorkflowControlService(f.cwd).mutations.read("command-fixture")!.workflow.status, "draft");
   } finally { f.cleanup(); }
 });
 
@@ -133,20 +131,20 @@ test("legacy start returns migration-required guidance and performs no implicit 
   try {
     const harness = commandHarness(cwd);
     await harness.handler("work start legacy-command");
-    assert.match(harness.notifications.at(-1)!, /requires explicit migration/);
+    assert.match(harness.notifications.at(-1)!, /v1 execution is retired.*migrate.*recover/i);
     assert.equal(JSON.parse(readFileSync(path, "utf8")).version, 1);
     assert.equal(harness.messages.length, 0);
   } finally { rmSync(cwd, { recursive: true, force: true }); }
 });
 
-test("/swe work resume emits the same orchestrator contract", async () => {
+test("compatibility command resume is tombstoned with recovery guidance", async () => {
   const value = { ...workflow(), status: "paused" as const };
   const f = fixture(value);
   try {
     const harness = commandHarness(f.cwd);
     await harness.handler("work resume command-fixture");
-    assert.match(harness.messages[0]!, /Orchestrate pi-swe workflow command-fixture/);
-    assert.match(harness.messages[0]!, /fresh role children/);
+    assert.equal(harness.messages.length, 0);
+    assert.match(harness.notifications.at(-1)!, /v1 execution is retired.*migrate.*recover/i);
   } finally { f.cleanup(); }
 });
 

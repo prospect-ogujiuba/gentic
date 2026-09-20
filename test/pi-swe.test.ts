@@ -36,17 +36,15 @@ function initRepository(cwd: string): void {
   execFileSync("git", ["init", "-q"], { cwd });
 }
 
-test("workflow reducer selects dependencies, requires verification, and completes", () => {
-  let workflow = sample();
+for (const [action, event] of [
+  ["start", { type: "start" as const }],
+  ["resume", { type: "resume" as const }],
+  ["verification", { type: "record-verification" as const, evidence: { ...evidence("node", 0, 2), args: ["--test"] } }],
+  ["completion", { type: "complete-task" as const }],
+] as const) test(`legacy reducer ${action} is retired with explicit migration and recovery guidance`, () => {
+  const workflow = sample();
   assert.deepEqual(readyTasks(workflow).map((task) => task.id), ["T1"]);
-  workflow = reduceWorkflow(workflow, { type: "start" }, now).workflow;
-  assert.equal(workflow.activeTask, "T1");
-  assert.equal(reduceWorkflow(workflow, { type: "complete-task" }, now).changed, false);
-  workflow = reduceWorkflow(workflow, { type: "record-verification", evidence: { ...evidence("node", 0, 2), args: ["--test"] } }, now).workflow;
-  workflow = reduceWorkflow(workflow, { type: "complete-task" }, now).workflow;
-  assert.equal(workflow.tasks[0]!.status, "complete");
-  assert.equal(workflow.tasks[0]!.completedAt, now);
-  assert.equal(workflow.activeTask, "T2");
+  assert.throws(() => reduceWorkflow(workflow, event, now), /v1 execution is retired.*migrate.*recover/i);
 });
 
 test("workflow parser rejects missing dependencies and cycles", () => {
@@ -99,7 +97,7 @@ test("store writes one file and rejects stale revisions", () => {
   const workflow = sample();
   saveWorkflow(cwd, workflow);
   assert.equal(loadWorkflow(cwd, "demo")!.workflow.goal, "Ship demo");
-  const next = reduceWorkflow(workflow, { type: "start" }, now).workflow;
+  const next = reduceWorkflow(workflow, { type: "pause" }, now).workflow;
   saveWorkflow(cwd, next, 1);
   assert.throws(() => saveWorkflow(cwd, workflow, 1), /workflow changed/);
   assert.equal(existsSync(join(cwd, workflowPath("demo"))), true);
@@ -164,37 +162,19 @@ test("active workflow scan ignores malformed unrelated legacy initiatives", () =
   assert.deepEqual(activeWorkflowTopics(cwd, "demo"), []);
 });
 
-test("revision preserves completed and active state and all evidence", () => {
-  let workflow = reduceWorkflow(sample(), { type: "start" }, now).workflow;
-  workflow = reduceWorkflow(workflow, { type: "record-verification", evidence: evidence("npm test", 0, 2) }, now).workflow;
-  workflow = reduceWorkflow(workflow, { type: "complete-task" }, now).workflow;
-  const revised = reviseWorkflow(workflow, { tasks: [
+test("legacy non-execution revision remains available", () => {
+  const revised = reviseWorkflow(sample(), { tasks: [
     { id: "T1", title: "Reworded core" },
     { id: "T2", title: "Reworded integration", dependsOn: ["T1"] },
     { id: "T3", title: "New task", dependsOn: ["T2"] },
   ] }, now).workflow;
-  assert.equal(revised.tasks[0]!.status, "complete");
-  assert.equal(revised.tasks[0]!.evidence.length, 1);
-  assert.equal(revised.tasks[1]!.status, "active");
-  assert.throws(() => reviseWorkflow(workflow, { tasks: [{ id: "T2", title: "Only active" }] }), /cannot remove complete task/);
+  assert.deepEqual(revised.tasks.map((task) => task.id), ["T1", "T2", "T3"]);
 });
 
-test("paused workflows cannot verify or complete until resumed", () => {
-  let workflow = reduceWorkflow(sample(), { type: "start" }, now).workflow;
-  workflow = reduceWorkflow(workflow, { type: "pause" }, "2026-01-01T00:00:01.000Z").workflow;
-  assert.equal(reduceWorkflow(workflow, { type: "record-verification", evidence: evidence("npm test", 0, workflow.revision) }, now).changed, false);
-  assert.equal(reduceWorkflow(workflow, { type: "complete-task" }, now).changed, false);
-});
-
-test("all planned verification commands must pass after activation", () => {
-  let workflow = createWorkflow({ topic: "checks", goal: "verify", now, tasks: [{
-    id: "T1", title: "Check", approaches: [], verification: [{ command: "npm test", args: [] }, { command: "npm run typecheck", args: [] }],
-  }] });
-  workflow = reduceWorkflow(workflow, { type: "start" }, now).workflow;
-  workflow = reduceWorkflow(workflow, { type: "record-verification", evidence: { ...evidence("npm test", 0, 2), at: "2026-01-01T00:00:01.000Z" } }, now).workflow;
-  assert.match(reduceWorkflow(workflow, { type: "complete-task" }, now).message, /missing passing checks: npm run typecheck/);
-  workflow = reduceWorkflow(workflow, { type: "record-verification", evidence: { ...evidence("npm run typecheck", 0, 3), at: "2026-01-01T00:00:02.000Z" } }, now).workflow;
-  assert.equal(reduceWorkflow(workflow, { type: "complete-task" }, now).changed, true);
+test("legacy pause safety control remains available without restoring verification", () => {
+  const paused = reduceWorkflow(sample(), { type: "pause" }, "2026-01-01T00:00:01.000Z").workflow;
+  assert.equal(paused.status, "paused");
+  assert.throws(() => reduceWorkflow(paused, { type: "record-verification", evidence: evidence("npm test", 0, paused.revision) }, now), /v1 execution is retired.*migrate.*recover/i);
 });
 
 test("assessment reasons are required and status shows every task", () => {
@@ -207,39 +187,14 @@ test("assessment reasons are required and status shows every task", () => {
   assert.match(summarizeWorkflow(workflow), /B: none/);
 });
 
-test("a no-op contract revision does not stale current verification", () => {
-  let workflow = createWorkflow({ topic: "revision-check", goal: "verify", now, tasks: [{ id: "T1", title: "Check", approaches: [], verification: [{ command: "npm test", args: [] }] }] });
-  workflow = reduceWorkflow(workflow, { type: "start" }, now).workflow;
-  workflow = reviseWorkflow(workflow, { tasks: [{ id: "T1", title: "Check", approaches: [], verification: [{ command: "npm test", args: [] }] }] }, "2026-01-01T00:00:01.000Z").workflow;
-  workflow = reduceWorkflow(workflow, { type: "record-verification", evidence: { ...evidence("npm test", 0, workflow.revision), at: "2026-01-01T00:00:02.000Z" } }, now).workflow;
-  assert.equal(reduceWorkflow(workflow, { type: "complete-task" }, now).changed, true);
+test("legacy execution retirement does not remove status summaries", () => {
+  assert.match(summarizeWorkflow(sample()), /T1/);
 });
 
-test("latest verification must pass", () => {
-  let workflow = reduceWorkflow(sample(), { type: "start" }, now).workflow;
-  workflow = reduceWorkflow(workflow, { type: "record-verification", evidence: evidence("node", 0, 2) }, now).workflow;
-  workflow = reduceWorkflow(workflow, { type: "record-verification", evidence: evidence("node", 1, 3) }, now).workflow;
-  assert.equal(reduceWorkflow(workflow, { type: "complete-task" }, now).changed, false);
-});
-
-test("revision preserves evidence but requires fresh verification", () => {
-  let workflow = reduceWorkflow(sample(), { type: "start" }, now).workflow;
-  workflow = reduceWorkflow(workflow, { type: "record-verification", evidence: evidence("npm test", 0, 2) }, now).workflow;
-  workflow = reviseWorkflow(workflow, { tasks: [{ id: "T1", title: "Changed acceptance", acceptance: ["new behavior"] }, { id: "T2", title: "Integration", dependsOn: ["T1"] }] }, now).workflow;
-  assert.equal(workflow.tasks[0]!.evidence.length, 0);
-  assert.equal(reduceWorkflow(workflow, { type: "complete-task" }, now).changed, false);
-});
-
-test("revision reopens a completed workflow when planned work is added", () => {
-  let workflow = createWorkflow({ topic: "done", goal: "done", now, tasks: [{ id: "T1", title: "Done" }] });
-  workflow = reduceWorkflow(workflow, { type: "start" }, now).workflow;
-  workflow = reduceWorkflow(workflow, { type: "record-verification", evidence: evidence("npm test", 0, 2) }, now).workflow;
-  workflow = reduceWorkflow(workflow, { type: "complete-task" }, now).workflow;
-  assert.equal(workflow.status, "complete");
-  const revised = reviseWorkflow(workflow, { tasks: [{ id: "T1", title: "Cannot rewrite completed" }, { id: "T2", title: "Added" }] }, now).workflow;
-  assert.equal(revised.status, "draft");
-  assert.equal(revised.tasks[0]!.title, "Done");
-  assert.deepEqual(readyTasks(revised).map((task) => task.id), ["T2"]);
+test("legacy execution retirement preserves task graph reads without completion", () => {
+  const workflow = sample();
+  assert.deepEqual(readyTasks(workflow).map((task) => task.id), ["T1"]);
+  assert.throws(() => reduceWorkflow(workflow, { type: "complete-task" }, now), /v1 execution is retired.*migrate.*recover/i);
 });
 
 test("extension registers one command and one tool", () => {
@@ -250,70 +205,39 @@ test("extension registers one command and one tool", () => {
   assert.deepEqual([...tools.keys()], ["swe_workflow"]);
 });
 
-test("workflow tool creates, starts, objectively verifies, and completes", async () => {
+test("workflow tool can create compatibility state but cannot execute it", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "pi-swe-tool-"));
   initRepository(cwd);
   let tool: any;
-  const branch: any[] = [
-    { type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "stale-bash", name: "bash", arguments: { command: "node --version" } }] } },
-    { type: "message", message: { role: "toolResult", toolName: "bash", toolCallId: "stale-bash", content: [{ type: "text", text: "v22" }], isError: false, timestamp: Date.now() + 300_000 } },
-  ];
-  piSwe(fixturePi({
-    registerCommand: () => undefined,
-    registerTool: (value: unknown) => { tool = value; },
-    exec: async () => { throw new Error("verification must not invoke pi.exec"); },
-  }));
-  const ctx = { cwd, sessionManager: { getBranch: () => branch, getSessionId: () => "session-1" } };
+  piSwe(fixturePi({ registerCommand: () => undefined, registerTool: (value: unknown) => { tool = value; } }));
+  const ctx = { cwd, sessionManager: { getBranch: () => [], getSessionId: () => "session-1" } };
   const call = (params: Record<string, unknown>) => tool.execute("call", params, undefined, undefined, ctx);
   await call({ action: "create", topic: "tool-demo", goal: "Exercise workflow", tasks: [{ id: "T1", title: "Implement", approaches: ["tdd"], approachReasons: { tdd: "Behavior needs regression coverage" }, verification: [{ command: "node", args: ["--version"] }] }] });
-  const started = await call({ action: "start", topic: "tool-demo" });
-  assert.match(started.content[0].text, /Establish a failing or characterization test/);
-  await assert.rejects(() => call({ action: "verify", topic: "tool-demo" }), /predates the active task branch checkpoint/);
-  branch.push(
-    { type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "bash-1", name: "bash", arguments: { command: "node --version" } }] } },
-    { type: "message", message: { role: "toolResult", toolName: "bash", toolCallId: "bash-1", content: [{ type: "text", text: "v22" }], isError: false, timestamp: Date.now() + 60_000 } },
-    { type: "message", message: { role: "toolResult", toolName: "read", toolCallId: "read-1", content: [{ type: "text", text: "file" }], isError: false, timestamp: Date.now() + 61_000 } },
-  );
-  await assert.rejects(() => call({ action: "verify", topic: "tool-demo" }), /latest session tool result must be from the protected bash tool/);
-  branch.pop();
-  branch.push(
-    { type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "bash-2", name: "bash", arguments: { command: "npm test" } }] } },
-    { type: "message", message: { role: "toolResult", toolName: "bash", toolCallId: "bash-2", content: [{ type: "text", text: "ok" }], isError: false, timestamp: Date.now() + 120_000 } },
-  );
-  await assert.rejects(() => call({ action: "verify", topic: "tool-demo" }), /not a planned verification/);
-  branch.splice(-2);
-  await call({ action: "verify", topic: "tool-demo" });
-  branch.push({ type: "message", message: { role: "toolResult", toolName: "edit", toolCallId: "edit-after-check", content: [{ type: "text", text: "changed" }], isError: false, timestamp: Date.now() + 180_000 } });
-  await assert.rejects(() => call({ action: "complete", topic: "tool-demo" }), /potentially mutating tool ran after recorded verification/);
-  branch.pop();
-  await call({ action: "complete", topic: "tool-demo" });
-  const completed = loadWorkflow(cwd, "tool-demo")!.workflow;
-  assert.equal(completed.status, "complete");
-  assert.equal(completed.tasks[0]!.evidence[0]!.source?.toolCallId, "bash-1");
+  for (const action of ["start", "verify", "complete"]) await assert.rejects(() => call({ action, topic: "tool-demo" }), /v1 execution is retired.*migrate.*recover/i);
+  assert.equal(loadWorkflow(cwd, "tool-demo")!.workflow.status, "draft");
 });
 
 test("unassessed active work is not presented as executable", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "pi-swe-unassessed-"));
   initRepository(cwd);
-  let workflow = reduceWorkflow(sample(), { type: "start" }, now).workflow;
-  workflow = { ...workflow, tasks: workflow.tasks.map((task) => task.id === "T1" ? { ...task, assessmentStatus: "unassessed" as const, verificationCheckpoint: undefined } : task) };
+  let workflow = sample();
+  workflow = { ...workflow, status: "active", activeTask: "T1", tasks: workflow.tasks.map((task) => task.id === "T1" ? { ...task, status: "active" as const, assessmentStatus: "unassessed" as const, verificationCheckpoint: undefined } : task) };
   saveWorkflow(cwd, workflow);
   let tool: any;
   piSwe(fixturePi({ registerCommand: () => undefined, registerTool: (value: unknown) => { tool = value; } }));
-  const response = await tool.execute("call", { action: "start", topic: "demo" }, undefined, undefined, { cwd });
-  assert.match(response.content[0].text, /unassessed; revise/);
-  assert.doesNotMatch(response.content[0].text, /Continue pi-swe workflow/);
+  await assert.rejects(() => tool.execute("call", { action: "start", topic: "demo" }, undefined, undefined, { cwd }), /v1 execution is retired.*migrate.*recover/i);
 });
 
 test("only one repository workflow can be active", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "pi-swe-single-active-"));
   initRepository(cwd);
-  const first = reduceWorkflow(sample(), { type: "start" }, now).workflow;
+  const initial = sample();
+  const first = { ...initial, status: "active" as const, activeTask: "T1", tasks: initial.tasks.map((task) => task.id === "T1" ? { ...task, status: "active" as const } : task) };
   saveWorkflow(cwd, first);
   saveWorkflow(cwd, createWorkflow({ topic: "other", goal: "Other", now, tasks: [{ id: "A", title: "Other", approaches: [] }] }));
   let tool: any;
   piSwe(fixturePi({ registerCommand: () => undefined, registerTool: (value: unknown) => { tool = value; } }));
-  await assert.rejects(() => tool.execute("call", { action: "start", topic: "other" }, undefined, undefined, { cwd, sessionManager: { getBranch: () => [], getSessionId: () => "session" } }), /workflow demo is active/);
+  await assert.rejects(() => tool.execute("call", { action: "start", topic: "other" }, undefined, undefined, { cwd, sessionManager: { getBranch: () => [], getSessionId: () => "session" } }), /v1 execution is retired.*migrate.*recover/i);
   assert.equal(loadWorkflow(cwd, "other")!.workflow.status, "draft");
 });
 
@@ -326,10 +250,10 @@ test("workflow activation rejects competing active todo ownership", async () => 
   let command: any;
   piSwe(fixturePi({ registerCommand: (_name: string, value: unknown) => { command = value; }, registerTool: (value: unknown) => { tool = value; }, sendUserMessage: () => assert.fail("blocked activation must not enqueue execution") }));
   const sessionManager = { getBranch: () => [], getSessionId: () => "session" };
-  await assert.rejects(() => tool.execute("call", { action: "start", topic: "demo" }, undefined, undefined, { cwd, sessionManager }), /finish or block that todo first/);
+  await assert.rejects(() => tool.execute("call", { action: "start", topic: "demo" }, undefined, undefined, { cwd, sessionManager }), /v1 execution is retired.*migrate.*recover/i);
   const notifications: string[] = [];
   await command.handler("work start demo", { cwd, sessionManager, ui: { notify: (message: string) => notifications.push(message) } });
-  assert.match(notifications.at(-1)!, /finish or block that todo first/);
+  assert.match(notifications.at(-1)!, /v1 execution is retired.*migrate.*recover/i);
   assert.equal(loadWorkflow(cwd, "demo")!.workflow.status, "draft");
   registerTodoActivityProbe(async () => undefined);
 });

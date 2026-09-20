@@ -36,17 +36,17 @@ test("operator documentation covers the complete managed lifecycle and trust bou
   ]) assert.match(docs, required);
 });
 
-test("installed v1 entrypoint cannot partially activate the isolated v2 runtime", () => {
+test("retired compatibility execution preserves v1 readers and explicit migration support", () => {
   const entrypoint = read("extensions/pi-swe/index.ts");
   assert.match(entrypoint, /registerSweCommand\(pi\)/);
   assert.match(entrypoint, /registerSweWorkflowTool\(pi\)/);
   assert.doesNotMatch(entrypoint, /OrchestrationEngine|registerParentIntegrity|AgentRunner|GitWorkspaceManager/);
 
   const docs = read("extensions/pi-swe/README.md");
-  assert.match(docs, /installed v1 runtime remains the production runtime/i);
-  assert.match(docs, /deterministic fixture provider/i);
-  assert.match(docs, /real-model smoke test[^]*credentials[^]*explicit user authorization[^]*skip/i);
-  assert.match(docs, /do not hot-reload, self-upgrade, or partially activate v2/i);
+  assert.match(docs, /managed execution is v2-only/i);
+  assert.match(docs, /v1 workflows and artifacts remain readable and migratable through Gentic 1\.0/i);
+  assert.match(docs, /v1 start, resume, verification, completion, single-parent fallback, and runtime rollback execution are retired/i);
+  assert.match(docs, /migration rollback[^]*does not re-enable v1 execution/i);
 });
 
 test("slash-command and tool adapters share managed ownership and cannot expose a completion bypass", () => {
