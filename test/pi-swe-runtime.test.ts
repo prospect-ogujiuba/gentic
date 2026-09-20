@@ -176,6 +176,29 @@ test("SharedRuntimeController restart rotates selector generation and durable pa
   } finally { rmSync(cwd, { recursive: true, force: true }); }
 });
 
+test("explicit same-runtime v2 handoff recovers a fenced cross-session parent from retained selector evidence", async () => {
+  const fixture = selectedV2Checkout();
+  try {
+    const workflowPath = join(fixture.cwd, ".model-artifacts", "initiatives", "swe-production-rollout", "workflow.json");
+    const raw = JSON.parse(readFileSync(workflowPath, "utf8"));
+    raw.orchestration.parent.valid = false;
+    raw.orchestration.parent.invalidatedAt = new Date().toISOString();
+    raw.orchestration.parent.invalidatedReason = "session quit";
+    writeFileSync(workflowPath, `${JSON.stringify(raw, null, 2)}\n`);
+    const identity = { ...liveIdentity, sessionId: "new-session", runtimeId: "new-session-context" };
+    const controller = new SharedRuntimeController(fakePi() as never);
+    const receipt = await controller.handoff({ cwd: fixture.cwd, targetRuntime: "v2", identity, lifecycleContext: lifecycleContext(fixture.cwd) });
+    assert.equal(receipt.selectedRuntime, "v2");
+    assert.equal(receipt.selectorGeneration, 2);
+    assert.equal(readRuntimeSelection(fixture.cwd).record?.decision.decisionId, fixture.decision.decisionId);
+    const recovered = parseWorkflow(JSON.parse(readFileSync(workflowPath, "utf8")));
+    assert.equal(recovered.orchestration.runtimeHandoff?.phase, "reclaimed");
+    assert.equal(recovered.orchestration.runtimeHandoff?.selectorGeneration, 2);
+    assert.equal(recovered.orchestration.parent?.sessionId, "new-session");
+    controller.shutdown();
+  } finally { rmSync(fixture.parent, { recursive: true, force: true }); }
+});
+
 test("cached slot revalidates exact selector bytes and durable parent authority on every resolve", async () => {
   const fixture = selectedV2Checkout();
   try {

@@ -167,7 +167,7 @@ async function performRuntimeHandoff(options: RuntimeHandoffOptions): Promise<Ru
   let decision: Gate2Decision;
   if (preparedDecision) {
     decision = preparedDecision;
-  } else if (retainedDecision && (selectorRecovery || options.targetRuntime === "compatibility" || initialSelection.runtime === "compatibility" && initialSelection.record)) {
+  } else if (retainedDecision && (selectorRecovery || options.targetRuntime === "compatibility" || initialSelection.runtime === "compatibility" && initialSelection.record || options.targetRuntime === initialSelection.runtime && !!initialSelection.record)) {
     decision = retainedDecision;
   } else if (options.targetRuntime === "v2") {
     if (!options.evidence) throw new Error("initial v2 admission requires reviewed Gate 2 evidence paths");
