@@ -1,8 +1,8 @@
 {
   "version": 2,
   "topic": "swe-production-rollout",
-  "revision": 10,
-  "status": "draft",
+  "revision": 12,
+  "status": "paused",
   "goal": "Migrate every supported pi-swe workflow safely, activate the complete v2 orchestration runtime with simplified start/resume operation, cut production over with bounded rollback, and retire obsolete v1 execution paths while retaining required compatibility readers.",
   "plan": "One dependency-enforced 17-task rollout. Complete migration inventory, policy, atomic apply, operator surfaces, and qualification first. Then compose and atomically register the complete v2 runtime, add its autonomous driver and contextual UX, qualify recovery and the production entrypoint, rehearse cutover, migrate repository workflows under explicit control, make v2 the default with bounded rollback, retire v1 execution only, and finish release qualification. Retain v1 read/migration compatibility through the documented Gentic 1.0 boundary. No push, publish, deployment, release, self-upgrade, compatibility-reader deletion, or other external side effect without separate authorization. The production entrypoint must preserve pi-todo ownership precedence, dirty-index and file-fidelity guarantees, distinct terminal outcomes, durable evidence retention, explicit cutover authorization, and clean-checkout release-report evidence. The active rollout workflow is never a migration target. Runtime cutover and rollback use a no-child durable self-hosting handoff, and clean-checkout release verification runs separately from the control checkout that owns workflow.json. Bootstrap execution is explicit: before native v2 is registered, do not start this workflow through /swe. Implement the migration and activation segment in dependency order from the Git commit containing this approved plan, retaining scoped Git diffs, exact checks, and review evidence; commits occur only with separate explicit authorization. Activation qualification must adopt that bounded bootstrap delta through a dedicated authorized reducer event after fresh cumulative independent review; only then may native v2 take lifecycle authority at cutover-readiness. Kind-first artifact relocation remains solely owned by pi-artifacts, registration preflights precede hook side effects, and secrets never enter retained workflow evidence.",
   "contract": {
@@ -62,8 +62,53 @@
   "orchestration": {
     "mode": "multi-agent",
     "phase": "plan-review",
-    "nextFence": 1,
-    "history": []
+    "nextFence": 2,
+    "parent": {
+      "ownerId": "parent:01a0bf79-52f4-775e-83d2-519810804a7b",
+      "sessionId": "01a0bf79-52f4-775e-83d2-519810804a7b",
+      "runtimeId": "c8d0479a-5e5f-474b-8321-7bcc08ce03ab",
+      "cwd": "/home/priz/projects/gentic",
+      "sessionFile": "/home/priz/.pi/agent/sessions/--home-priz-projects-gentic--/2026-09-20T15-39-54-485Z_01a0bf79-52f4-775e-83d2-519810804a7b.jsonl",
+      "claimedAt": "2026-09-20T15:42:16.909Z",
+      "valid": true
+    },
+    "runtimeHandoff": {
+      "id": "e481614a-f02d-4e83-9616-9a8e5c8eaed0",
+      "decisionId": "gate2-574c423f-794d-4b37-9f90-df8aadd70343",
+      "decision": {
+        "decisionId": "gate2-574c423f-794d-4b37-9f90-df8aadd70343",
+        "authorizedBy": "project-owner (requesting user)",
+        "authorizedAt": "2026-09-20T15:39:49.000Z",
+        "readinessEvidenceHash": "sha256:c20d05e239978d456801410ac986c22ef21c7f78bb6e3cad485a00181fabfadc",
+        "migrationEvidenceHash": "sha256:0b40a9d1b4352408d0b22ba3814cd0858ebd13e7c04728e563adf294ccd5f157",
+        "targetRuntime": "v2",
+        "rollbackSelector": "compatibility",
+        "rollbackWindowEnd": "2026-09-26T16:06:48.000Z",
+        "rationale": "The project owner authorizes production default-v2 activation after validated readiness and migration evidence, with compatibility rollback retained through the stated window."
+      },
+      "from": "compatibility",
+      "to": "v2",
+      "phase": "reclaimed",
+      "selectorGeneration": 1,
+      "preparedAt": "2026-09-20T15:42:16.831Z",
+      "reclaimedAt": "2026-09-20T15:42:16.909Z"
+    },
+    "history": [
+      {
+        "id": "runtime-handoff-11-prepared",
+        "type": "runtime-handoff-prepared",
+        "at": "2026-09-20T15:42:16.831Z",
+        "summary": "compatibility to v2; decision gate2-574c423f-794d-4b37-9f90-df8aadd70343",
+        "auditCritical": true
+      },
+      {
+        "id": "runtime-handoff-12-reclaimed",
+        "type": "runtime-handoff-reclaimed",
+        "at": "2026-09-20T15:42:16.909Z",
+        "summary": "v2 generation 1; parent c8d0479a-5e5f-474b-8321-7bcc08ce03ab",
+        "auditCritical": true
+      }
+    ]
   },
   "tasks": [
     {
@@ -1483,5 +1528,5 @@
       "verificationDriftPaths": []
     }
   ],
-  "updatedAt": "2026-09-16T22:13:51.592Z"
+  "updatedAt": "2026-09-20T15:42:16.909Z"
 }
