@@ -24,11 +24,9 @@ Small initiatives stay small. A light initiative may contain one executable task
 
 Public surfaces are `/swe plan|open|list|status|next|resume|pause <topic>`, `/swe start|implemented|complete <topic> <work-id>`, and one `swe` structured tool. The keyboard docket is a bounded, read-only projection of the canonical graph; command and tool mutations both use `SweService`, and command completion cannot bypass evidence gates. Non-TUI `open` and `list` return bounded text. pi-swe has no pi-todo dependency; pi-todo remains a thin separate surface and cannot write SWE authority.
 
-## Artifacts and migration boundaries
+## Artifact boundary
 
-Referenced artifacts use safe normalized topic-first paths beneath `.model-artifacts/initiatives/<topic>/<kind>/`, with optional verified content hashes. Artifacts support authority but do not replace it. Schema identity is `kind: gentic.swe.initiative` with `schemaVersion: 1`.
-
-Historical `version: 1|2` workflows remain inspection-only and are never automatically selected, executed, rewritten, or bulk-migrated. Explicit future import must preserve IDs and provenance and must treat historical completion as history rather than fresh verification. Artifact-layout migration remains owned by pi-artifacts and is separate from semantic initiative migration.
+Referenced artifacts use safe canonical paths beneath `.model-artifacts/initiatives/<topic>/<kind>/`, with optional verified content hashes. Create model-generated Markdown through pi-artifacts, then attach its returned path and hash through a reviewed initiative revision. Artifacts support authority but do not replace it. Schema identity is `kind: gentic.swe.initiative` with `schemaVersion: 1`, and `workflow.json` remains exclusively owned by pi-swe.
 
 ## Qualification
 
