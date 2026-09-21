@@ -16,7 +16,7 @@ import {
 } from "../extensions/pi-swe/src/pi/context.ts";
 import { contractFingerprint, parseInitiative } from "../extensions/pi-swe/src/domain/initiative.ts";
 
-const bootstrap = JSON.parse(readFileSync(new URL("../.model-artifacts/initiatives/pi-swe-foundation/workflow.json", import.meta.url), "utf8"));
+const bootstrap = JSON.parse(readFileSync(new URL("./fixtures/pi-swe-foundation.json", import.meta.url), "utf8"));
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "pi-swe-revision-"));

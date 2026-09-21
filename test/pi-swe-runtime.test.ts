@@ -10,7 +10,7 @@ import { InitiativeStore, initiativePath } from "../extensions/pi-swe/src/app/st
 import { VerificationCollector } from "../extensions/pi-swe/src/app/verification.ts";
 import { getSweCommandCompletions } from "../extensions/pi-swe/src/pi/register.ts";
 
-const bootstrap = JSON.parse(readFileSync(new URL("../.model-artifacts/initiatives/pi-swe-foundation/workflow.json", import.meta.url), "utf8"));
+const bootstrap = JSON.parse(readFileSync(new URL("./fixtures/pi-swe-foundation.json", import.meta.url), "utf8"));
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "pi-swe-runtime-"));

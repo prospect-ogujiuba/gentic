@@ -10,7 +10,7 @@ import { parseInitiative, transitionWork } from "../extensions/pi-swe/src/domain
 import { SweService } from "../extensions/pi-swe/src/app/service.ts";
 import { InitiativeStore, initiativePath } from "../extensions/pi-swe/src/app/store.ts";
 
-const bootstrap = JSON.parse(readFileSync(new URL("../.model-artifacts/initiatives/pi-swe-foundation/workflow.json", import.meta.url), "utf8"));
+const bootstrap = JSON.parse(readFileSync(new URL("./fixtures/pi-swe-foundation.json", import.meta.url), "utf8"));
 bootstrap.evidence = [];
 bootstrap.work = bootstrap.work.map((item: { kind: string }) => item.kind === "phase" ? item : { ...item, status: "pending" });
 

@@ -9,7 +9,7 @@ import {
   transitionWork,
 } from "../extensions/pi-swe/src/domain/initiative.ts";
 
-const bootstrap = JSON.parse(readFileSync(new URL("../.model-artifacts/initiatives/pi-swe-foundation/workflow.json", import.meta.url), "utf8"));
+const bootstrap = JSON.parse(readFileSync(new URL("./fixtures/pi-swe-foundation.json", import.meta.url), "utf8"));
 bootstrap.revision = 1;
 bootstrap.evidence = [];
 bootstrap.work = bootstrap.work.map((item: { kind: string }) => item.kind === "phase" ? item : { ...item, status: "pending" });

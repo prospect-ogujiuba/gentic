@@ -6,7 +6,7 @@ import test from "node:test";
 
 import { InitiativeStore, initiativePath } from "../extensions/pi-swe/src/app/store.ts";
 
-const bootstrap = readFileSync(new URL("../.model-artifacts/initiatives/pi-swe-foundation/workflow.json", import.meta.url), "utf8");
+const bootstrap = readFileSync(new URL("./fixtures/pi-swe-foundation.json", import.meta.url), "utf8");
 
 function fixture(): { root: string; store: InitiativeStore } {
   const root = mkdtempSync(join(tmpdir(), "pi-swe-store-"));

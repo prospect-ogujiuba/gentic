@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -12,8 +11,7 @@ import { parseInitiative } from "../extensions/pi-swe/src/domain/initiative.ts";
 import { projectSweDocket, renderSweDocketLines } from "../extensions/pi-swe/src/ui/docket.ts";
 import { plainSweTheme } from "../extensions/pi-swe/src/ui/theme.ts";
 
-const repositoryRoot = new URL("..", import.meta.url).pathname;
-const bootstrap = JSON.parse(readFileSync(new URL("../.model-artifacts/initiatives/pi-swe-foundation/workflow.json", import.meta.url), "utf8"));
+const bootstrap = JSON.parse(readFileSync(new URL("./fixtures/pi-swe-foundation.json", import.meta.url), "utf8"));
 
 function lightInitiative() {
   const criterion = structuredClone(bootstrap.acceptanceCriteria.find((item: { id: string }) => item.id === "AC-6"));
@@ -58,10 +56,6 @@ function lightInitiative() {
   });
 }
 
-function digest(bytes: Buffer): string {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
 test("a light one-task initiative stays proportional while retaining canonical gates", async () => {
   const root = mkdtempSync(join(tmpdir(), "pi-swe-small-"));
   try {
@@ -94,18 +88,21 @@ test("a light one-task initiative stays proportional while retaining canonical g
 });
 
 test("unsupported workflow authorities fail closed and remain byte-identical", async () => {
-  for (const topic of ["multi-agent-swe-orchestration", "swe-production-rollout"]) {
-    const path = join(repositoryRoot, ".model-artifacts", "initiatives", topic, "workflow.json");
-    const before = readFileSync(path);
-    const unsupported = JSON.parse(before.toString("utf8"));
-    assert.equal(unsupported.version, 2);
-    assert.equal(unsupported.kind, undefined);
-    assert.equal(unsupported.schemaVersion, undefined);
+  const root = mkdtempSync(join(tmpdir(), "pi-swe-legacy-"));
+  try {
+    for (const topic of ["legacy-complete", "legacy-obsolete"]) {
+      const path = initiativePath(root, topic);
+      const before = `${JSON.stringify({ version: 2, topic, status: "paused", tasks: [] }, null, 2)}\n`;
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, before);
 
-    const service = new SweService(repositoryRoot, new InitiativeStore(repositoryRoot));
-    assert.throws(() => service.status(topic), /unsupported initiative schema/i);
-    await assert.rejects(() => service.start(topic, "W-1"), /unsupported initiative schema/i);
-    assert.equal(digest(readFileSync(path)), digest(before));
+      const service = new SweService(root, new InitiativeStore(root));
+      assert.throws(() => service.status(topic), /unsupported initiative schema/i);
+      await assert.rejects(() => service.start(topic, "W-1"), /unsupported initiative schema/i);
+      assert.equal(readFileSync(path, "utf8"), before);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
