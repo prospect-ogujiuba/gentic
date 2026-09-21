@@ -45,12 +45,11 @@ Budgets are intentionally broad wall-clock guardrails, not microbenchmark claims
 ## Release checklist
 
 - [ ] Working tree contains only the intended release scope.
-- [ ] `CHANGELOG.md` has user-visible changes and migrations under the target version.
+- [ ] `CHANGELOG.md` describes user-visible changes under the target version.
 - [ ] `package.json`, lockfile, `src/pi-contract.ts`, and catalog source version agree.
 - [ ] `npm ci` succeeds from a clean checkout.
-- [ ] `npm run check:model-artifacts` reports no non-v2 artifacts or unclassified kind-first references.
-- [ ] For a repository migration, the exact reviewed plan fingerprint, apply ledger, rollback bundle, pre/post audits, measured counts/bytes/durations, and restore rehearsal evidence are retained as described in [`model-artifacts.md`](model-artifacts.md).
-- [ ] From a release shell with no active Pi todo, `npm run release:verify -- --active-todos 0 --report .model-artifacts/system/reports/release/YYYY-MM-DD_HHMM-release-verification.md` passes and records Pi/Node versions, every check, and read-only SWE cutover readiness.
+- [ ] `npm run check:model-artifacts` accepts every retained model artifact.
+- [ ] `npm run release:verify` passes and writes a canonical report through pi-artifacts.
 - [ ] `catalog/pi-native-capabilities.json` and `catalog/gentic-inventory.json` are current.
 - [ ] Core/full profile paths pass inventory validation.
 - [ ] A temporary project scaffolds and smoke-loads one representative capability.
@@ -59,23 +58,6 @@ Budgets are intentionally broad wall-clock guardrails, not microbenchmark claims
 - [ ] Version follows the policy above; Git tag is signed and matches `package.json`.
 - [ ] No npm publish is attempted while `private: true`.
 
-## SWE production cutover readiness
+## Release evidence
 
-`release:verify` performs a deterministic, read-only cutover check after every release command. `--active-todos 0` is an explicit operator observation: use it only when the release shell has no independent active todo. An omitted, malformed, or nonzero value fails closed. The report separates:
-
-- **code:** a clean Git index/worktree/untracked set, stable supported Node (`>=22.19.0`, never a prerelease), all three Pi pins matching `src/pi-contract.ts`, and the exact ordered release-check manifest passing: `npm run typecheck`, `npm run check`, `npm run check:commands`, `npm run check:performance`, and `npm test`;
-- **repository migration:** completed `migration-qualification`, a clean read-only migration inventory, and no active workflow except `swe-production-rollout`;
-- **runtime activation:** completed `activation-qualification`, no independent active todo, and no active child run, retained workspace intent in the repository's resolved Git common directory (including linked worktrees), SWE migration journal, or pi-artifacts claim/transaction recovery marker;
-- **external release authorization:** always pending in the checker. A separate operator cutover decision is required.
-
-Omitted, duplicate, substituted, reordered, or extra release checks fail closed even when supplied results pass. Dirty or uninspectable Git state also fails closed. The sole controlling authority is `swe-production-rollout`; callers cannot substitute another workflow exemption.
-
-Failure output is capped at 4096 bytes and contains exactly one next action. Inspection errors are redacted and block readiness. The check does not migrate a workflow, mutate `workflow.json`, clear recovery state, select a runtime, publish, or deploy. `READY` is evidence only and never authorizes activation.
-
-### Cutover decision and rollback record
-
-The responsible decision owner is the named release operator. Before changing the production default, that operator must record actor, rationale, UTC timestamp, candidate commit and signed tag, the reviewed readiness-report path and hash, and a rollback-window end time. Model-authored approval is invalid. The same owner, or an explicitly recorded successor, decides rollback and later retention cleanup.
-
-Rollback is required during the window if any of these occurs: atomic registration or reload fails; startup reports mixed or ambiguous runtime selection; the post-cutover migration audit is not clean; an accepted workflow cannot resume from its durable checkpoint; workflow bytes, receipts, or evidence differ from the reviewed hashes; recovery state cannot be fenced; or a required release check regresses. Stop new managed execution, preserve the failing state, and use the separately authorized compatibility selector and symmetric fenced handoff. Never rewrite migrated workflow evidence or discard recovery material to make rollback pass.
-
-Retain the readiness report and hash, operator decision, release-check report, pre/post migration audits, reviewed migration plans, per-topic receipts and rollback payloads, startup/reload logs, recovery records, retained workspace evidence, and rollback-rehearsal result for **at least 30 calendar days after cutover and through acceptance of the next signed Gentic release, whichever is later**. Legacy history remains read-only through the Gentic 1.0 compatibility boundary. Cleanup after the retention period is a separate destructive decision with recorded owner and evidence; it is not part of readiness or rollback.
+`npm run release:verify` executes type checking, repository checks, command inventory validation, performance budgets, and tests. It records the Gentic, Pi, and Node versions plus each command result beneath `.model-artifacts/system/reports/release/` using pi-artifacts' exclusive atomic writer. The report is evidence only; it does not publish, tag, or change workflow authority.

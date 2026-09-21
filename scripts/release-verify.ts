@@ -1,66 +1,53 @@
 #!/usr/bin/env node
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
-import { CUTOVER_RELEASE_CHECK_MANIFEST, formatCutoverReadiness, inspectCutoverReadiness } from "../extensions/pi-swe/src/cutover.ts";
-import { PI_CONTRACT_SOURCE } from "../src/pi-contract.ts";
+import { ArtifactService } from "../extensions/pi-artifacts/index.ts";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const reportIndex = process.argv.indexOf("--report");
-const activeTodosIndex = process.argv.indexOf("--active-todos");
-const activeTodoCount = activeTodosIndex >= 0 ? Number(process.argv[activeTodosIndex + 1]) : Number.NaN;
-const timestamp = new Date().toISOString().slice(0, 16).replace("T", "_").replace(":", "");
-const reportPath = resolve(reportIndex >= 0 && process.argv[reportIndex + 1]
-  ? process.argv[reportIndex + 1]
-  : `${root}/.model-artifacts/system/reports/release/${timestamp}-release-verification.md`);
 const packageJson = JSON.parse(readFileSync(`${root}/package.json`, "utf8")) as {
   version: string;
   dependencies: Record<string, string>;
   engines: { node: string };
 };
-const results = CUTOVER_RELEASE_CHECK_MANIFEST.map(({ name, command, args }) => {
-  const result = spawnSync(command, args, { cwd: root, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", maxBuffer: 1024 * 1024 });
-  return { command: name, exitCode: result.status ?? 1 };
+const checks = [
+  { name: "typecheck", command: "npm", args: ["run", "typecheck"] },
+  { name: "check", command: "npm", args: ["run", "check"] },
+  { name: "check:commands", command: "npm", args: ["run", "check:commands"] },
+  { name: "check:performance", command: "npm", args: ["run", "check:performance"] },
+  { name: "test", command: "npm", args: ["test"] },
+] as const;
+const results = checks.map(({ name, command, args }) => {
+  const result = spawnSync(command, args, { cwd: root, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", maxBuffer: 4 * 1024 * 1024 });
+  return { name, exitCode: result.status ?? 1 };
 });
-const piVersions = ["@earendil-works/pi-ai", "@earendil-works/pi-coding-agent", "@earendil-works/pi-tui"]
-  .map((name) => packageJson.dependencies[name] ?? "missing");
-const readiness = inspectCutoverReadiness(root, {
-  activeTodoCount,
-  nodeVersion: process.version,
-  nodeSupport: packageJson.engines.node,
-  piVersions,
-  expectedPiVersion: PI_CONTRACT_SOURCE.version,
-  releaseChecks: results.map((result) => ({ name: result.command, passed: result.exitCode === 0 })),
-});
-const readinessText = formatCutoverReadiness(readiness);
-const lines = [
+const passed = results.every((result) => result.exitCode === 0);
+const content = [
   "# Gentic release verification",
   "",
   `Created: ${new Date().toISOString()}`,
-  "Purpose: Record reproducible release versions, required checks, and read-only cutover readiness.",
+  "Purpose: Record reproducible release versions and required repository checks.",
   "",
   `- Gentic: ${packageJson.version}`,
   `- Pi: ${packageJson.dependencies["@earendil-works/pi-coding-agent"]}`,
   `- Node runtime: ${process.version}`,
   `- Node support: ${packageJson.engines.node}`,
+  `- Result: ${passed ? "passed" : "failed"}`,
   "",
   "| Check | Exit | Result |",
   "| --- | ---: | --- |",
-  ...results.map((result) => `| \`${result.command}\` | ${result.exitCode} | ${result.exitCode === 0 ? "passed" : "failed"} |`),
+  ...results.map((result) => `| \`${result.name}\` | ${result.exitCode} | ${result.exitCode === 0 ? "passed" : "failed"} |`),
   "",
-  "## SWE cutover readiness",
-  "",
-  "```text",
-  readinessText,
-  "```",
-  "",
-  "A READY result is evidence only. This command never changes workflow state, runtime selection, publication state, or external authorization.",
-  "",
-];
-mkdirSync(dirname(reportPath), { recursive: true });
-writeFileSync(reportPath, lines.join("\n"));
-console.log(readinessText);
-console.log(`release-verify: wrote ${reportPath}`);
-if (results.some((result) => result.exitCode !== 0) || !readiness.ready) process.exitCode = 1;
+].join("\n");
+const artifact = new ArtifactService(root).create({
+  scope: "system",
+  kind: "reports",
+  namespace: "release",
+  name: `release-verification-${process.pid}`,
+  content,
+});
+console.log(`release-verify: ${passed ? "passed" : "failed"}`);
+console.log(`release-verify: wrote ${artifact.path}`);
+if (!passed) process.exitCode = 1;

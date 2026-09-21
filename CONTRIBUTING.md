@@ -67,7 +67,7 @@ npm run check:performance
 npm test
 ```
 
-Use `npm run release:verify -- --report <path>` for a versioned release evidence report. Generated repository-wide reports belong under `.model-artifacts/system/reports/` and are not package resources.
+Use `npm run release:verify` for a versioned release evidence report. The command creates a canonical file beneath `.model-artifacts/system/reports/release/` through pi-artifacts; generated reports are not package resources.
 
 ## Updating Pi
 
