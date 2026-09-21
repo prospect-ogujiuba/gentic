@@ -174,17 +174,22 @@ test("registered tool-call gate denies direct writes and dynamically registered 
   const bashExecute = () => undefined;
   const intercomExecute = () => undefined;
   const intercomPath = join(cwd, "trusted", "pi-intercom", "index.ts");
+  const gitSnapshotPath = join(cwd, "trusted", "pi-git", "index.ts");
   mkdirSync(join(cwd, "trusted", "pi-intercom"), { recursive: true });
+  mkdirSync(join(cwd, "trusted", "pi-git"), { recursive: true });
   writeFileSync(intercomPath, "export default 'trusted';\n");
+  writeFileSync(gitSnapshotPath, "export default 'trusted';\n");
   let tools = [
     { name: "read", execute: readExecute, sourceInfo: { source: "builtin", path: "<builtin:read>" } },
     { name: "bash", execute: bashExecute, sourceInfo: { source: "builtin", path: "<builtin:bash>" } },
     { name: "intercom", execute: intercomExecute, sourceInfo: { source: "local", path: intercomPath } },
+    { name: "git_snapshot", execute: () => undefined, sourceInfo: { source: "local", path: gitSnapshotPath } },
   ];
   const trustedIntercomTool = tools[2]!;
   const router = registerParentIntegrity({
     on: (name: string, handler: Function) => { handlers.set(name, [...(handlers.get(name) ?? []), handler]); },
-    getAllTools: () => tools,
+    // Pi returns fresh metadata wrappers from every getAllTools() call.
+    getAllTools: () => tools.map((tool) => ({ ...tool, sourceInfo: { ...tool.sourceInfo } })),
   } as never);
   const toolCall = handlers.get("tool_call")![0]!;
   const ctx = { cwd, sessionManager: { getSessionId: () => "session-a", getBranch: () => [], getLeafId: () => null, getSessionFile: () => undefined } };
@@ -194,6 +199,7 @@ test("registered tool-call gate denies direct writes and dynamically registered 
     assert.equal(blocked?.block, true, toolName);
   }
   assert.equal(await toolCall({ toolName: "read", toolCallId: "read-1", input: { path: "src/a.ts" } }, ctx), undefined);
+  assert.equal(await toolCall({ toolName: "git_snapshot", toolCallId: "snapshot-1", input: {} }, ctx), undefined);
   assert.equal(await toolCall({ toolName: "intercom", toolCallId: "intercom-1", input: { action: "reply", message: "bounded finding" } }, ctx), undefined);
   assert.equal((await toolCall({ toolName: "intercom", toolCallId: "intercom-send", input: { action: "send", to: "other", message: "delegate" } }, ctx))?.block, true);
   tools = [{ name: "read", execute: () => undefined, sourceInfo: { source: "dynamic-extension", path: "/tmp/override.ts" } }, ...tools.slice(1)];
@@ -205,6 +211,7 @@ test("registered tool-call gate denies direct writes and dynamically registered 
     { name: "read", execute: readExecute, sourceInfo: { source: "builtin", path: "<builtin:read>" } },
     { name: "bash", execute: bashExecute, sourceInfo: { source: "builtin", path: "<builtin:bash>" } },
     { name: "intercom", execute: intercomExecute, sourceInfo: { source: "local", path: intercomPath } },
+    { name: "git_snapshot", execute: () => undefined, sourceInfo: { source: "local", path: gitSnapshotPath } },
   ];
   writeFileSync(intercomPath, "export default 'replaced';\n");
   const replacedIntercom = await toolCall({ toolName: "intercom", toolCallId: "intercom-replaced", input: { action: "reply", message: "bounded" } }, ctx);

@@ -11,7 +11,7 @@ import { GitWorkspaceManager, type GitIntegrationReceipt, type GitWorkspaceRecei
 
 const MAX_REVOKED_TOOL_CALLS = 1_024;
 const APPROVED_READ_ONLY_TOOLS = new Set([
-  "read", "grep", "find", "ls", "code_search",
+  "read", "grep", "find", "ls", "code_search", "git_snapshot",
   "ctx_search", "ctx_stats", "ctx_doctor", "context_mode_ctx_search", "context_mode_ctx_stats", "context_mode_ctx_doctor",
   "web_search", "source_check", "fetch_content", "get_search_content",
 ]);
@@ -288,7 +288,7 @@ export function registerParentIntegrity(pi: ExtensionAPI, options: { passive?: b
   const revokePending = (matches: (item: { key: string }) => boolean, reason: string) => {
     for (const [callId, item] of pending) if (matches(item)) { pending.delete(callId); revoke(callId, reason); }
   };
-  const trustedTools = new Map<string, { fingerprint: string; identity: unknown }>();
+  const trustedTools = new Map<string, string>();
   let shutdownHandler: ((cwd: string) => void | Promise<void>) | undefined;
   const root = (cwd: string) => { try { return realpathSync(cwd); } catch { return cwd; } };
   const keyFor = (cwd: string, generation: number, topic: string) => `${root(cwd)}\0${generation}\0${topic}`;
@@ -342,7 +342,7 @@ export function registerParentIntegrity(pi: ExtensionAPI, options: { passive?: b
 
   subscribe("session_start", async (_event, ctx) => {
     trustedTools.clear();
-    for (const tool of pi.getAllTools()) if (approvedRegisteredTool(tool)) trustedTools.set(tool.name, { fingerprint: toolFingerprint(tool), identity: tool });
+    for (const tool of pi.getAllTools()) if (approvedRegisteredTool(tool)) trustedTools.set(tool.name, toolFingerprint(tool));
     const sessionId = typeof ctx.sessionManager.getSessionId === "function" ? ctx.sessionManager.getSessionId() : "unbound-session";
     if (!routes.has(root(ctx.cwd))) {
       if (!options.passive) {
@@ -526,23 +526,26 @@ function approvedRegisteredTool(tool: { name: string; sourceInfo?: unknown }): b
   const sourceInfo = tool.sourceInfo && typeof tool.sourceInfo === "object" ? tool.sourceInfo as { source?: unknown; path?: unknown } : undefined;
   if (["read", "grep", "find", "ls", "bash"].includes(tool.name)) return sourceInfo?.source === "builtin" && typeof sourceInfo.path === "string" && sourceInfo.path === `<builtin:${tool.name}>`;
   if (tool.name === "intercom") return typeof sourceInfo?.source === "string" && sourceInfo.source !== "builtin" && typeof sourceInfo.path === "string" && /(?:^|[\\/])pi-intercom[\\/]index\.ts$/.test(sourceInfo.path);
+  if (tool.name === "git_snapshot") return typeof sourceInfo?.source === "string" && sourceInfo.source !== "builtin" && typeof sourceInfo.path === "string" && /(?:^|[\\/])pi-git[\\/]index\.ts$/.test(sourceInfo.path);
   if (!APPROVED_READ_ONLY_TOOLS.has(tool.name) && tool.name !== "swe_workflow") return false;
   return typeof sourceInfo?.source === "string" && sourceInfo.source !== "builtin" && typeof sourceInfo.path === "string" && sourceInfo.path.length > 0;
 }
-function trustedToolCall(pi: ExtensionAPI, trusted: Map<string, { fingerprint: string; identity: unknown }>, name: string): boolean {
-  const captured = trusted.get(name);
-  if (!captured) return false;
+function trustedToolCall(pi: ExtensionAPI, trusted: Map<string, string>, name: string): boolean {
+  const capturedFingerprint = trusted.get(name);
+  if (!capturedFingerprint) return false;
   const current = pi.getAllTools().find((tool) => tool.name === name);
-  return !!current && current === captured.identity && toolFingerprint(current) === captured.fingerprint;
+  // getAllTools() intentionally returns fresh metadata objects on every call.
+  // Trust stable provenance and metadata, never ephemeral wrapper identity.
+  return !!current && approvedRegisteredTool(current) && toolFingerprint(current) === capturedFingerprint;
 }
-function toolFingerprint(tool: { name: string; sourceInfo?: unknown }): string {
+function toolFingerprint(tool: { name: string; description?: unknown; parameters?: unknown; promptGuidelines?: unknown; sourceInfo?: unknown }): string {
   const sourceInfo = tool.sourceInfo && typeof tool.sourceInfo === "object" ? tool.sourceInfo as { path?: unknown } : undefined;
   let sourceHash: string | null = null;
   if (typeof sourceInfo?.path === "string" && !sourceInfo.path.startsWith("<builtin:")) {
     try { sourceHash = createHash("sha256").update(readFileSync(realpathSync(sourceInfo.path))).digest("hex"); }
     catch { sourceHash = "unreadable"; }
   }
-  return JSON.stringify({ name: tool.name, sourceInfo: tool.sourceInfo ?? null, sourceHash });
+  return JSON.stringify({ name: tool.name, description: tool.description ?? null, parameters: tool.parameters ?? null, promptGuidelines: tool.promptGuidelines ?? null, sourceInfo: tool.sourceInfo ?? null, sourceHash });
 }
 
 function requireVerificationTask(workflow: Workflow, taskId: string): WorkflowTask {
