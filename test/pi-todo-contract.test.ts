@@ -11,6 +11,7 @@ import {
 test("lightweight todo contract exposes only essential focus-list actions", () => {
   assert.deepEqual(TODO_PUBLIC_ACTIONS, [
     "create",
+    "move",
     "start",
     "finish",
     "block",

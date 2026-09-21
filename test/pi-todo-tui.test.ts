@@ -35,6 +35,54 @@ test("lightweight docket restores counters, focus, progress, indentation, and ch
   }
 });
 
+test("docket renders reordered nested subtasks and an active breadcrumb", () => {
+  const nested: TodoCoreState = {
+    order: ["parent", "child-b", "grandchild", "child-a"],
+    activeTodoId: "grandchild",
+    todos: {
+      parent: { id: "parent", title: "Parent", status: "ready" },
+      "child-a": { id: "child-a", title: "Child A", status: "ready", parentTodoId: "parent" },
+      "child-b": { id: "child-b", title: "Child B", status: "completed", parentTodoId: "parent" },
+      grandchild: { id: "grandchild", title: "Grandchild", status: "in_progress", parentTodoId: "child-a" },
+    },
+  };
+  const output = renderTodoDocketLines(nested, plainTodoTheme, { width: 100, includeDone: true }).join("\n");
+  assert.match(output, /Total 4 · 3 subtasks/);
+  assert.match(output, /Parent → Child A → Grandchild/);
+  assert.ok(output.indexOf("[✓] Child B") < output.indexOf("[ ] Child A"));
+  assert.match(output, /└─ \[✓\] Child B/);
+  assert.match(output, /  └─ \[~\] Grandchild/);
+});
+
+test("nested active breadcrumbs do not interfere with modal selection scrolling", () => {
+  const order = ["parent", "active", ...Array.from({ length: 15 }, (_, index) => `root-${index}`)];
+  const nestedLong: TodoCoreState = {
+    order,
+    activeTodoId: "active",
+    todos: {
+      parent: { id: "parent", title: "Parent", status: "ready" },
+      active: { id: "active", title: "Active child", status: "in_progress", parentTodoId: "parent" },
+      ...Object.fromEntries(Array.from({ length: 15 }, (_, index) => [
+        `root-${index}`,
+        { id: `root-${index}`, title: `Root ${index}`, status: "ready" as const },
+      ])),
+    },
+  };
+  const modal = new LightweightTodoModal({
+    state: nestedLong,
+    theme: plainTodoTheme,
+    requestRender: () => {},
+    close: () => {},
+    terminalRows: () => 10,
+  });
+
+  assert.match(modal.render(72).join("\n"), /Parent → Active child/);
+  for (let index = 0; index < 12; index += 1) modal.handleInput("j");
+  const output = modal.render(72).join("\n");
+  assert.match(output, /› \[ \] Root 10/);
+  assert.match(output, /↑ more/);
+});
+
 test("lightweight modal keeps keyboard selection visible while navigating long lists", () => {
   const longState: TodoCoreState = {
     order: Array.from({ length: 12 }, (_, index) => `todo-${index}`),
@@ -72,11 +120,11 @@ test("lightweight modal restores keyboard navigation, expansion, filtering, and 
   });
 
   assert.match(modal.render(90).join("\n"), /╭.*TODO DOCKET.*╮/);
-  assert.match(modal.render(90).join("\n"), /› \[~\] Active task/);
-  modal.handleInput("j");
   assert.match(modal.render(90).join("\n"), /› \[ \] Ready task/);
+  modal.handleInput("j");
+  assert.match(modal.render(90).join("\n"), /› \[~\] Active task/);
   modal.handleInput(" ");
-  assert.match(modal.render(90).join("\n"), /id: ready/);
+  assert.match(modal.render(90).join("\n"), /id: active/);
   modal.handleInput("a");
   assert.match(modal.render(90).join("\n"), /open tasks/);
   assert.doesNotMatch(modal.render(90).join("\n"), /Done task/);

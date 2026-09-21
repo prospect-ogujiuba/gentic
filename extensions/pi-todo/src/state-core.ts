@@ -27,6 +27,7 @@ export type TodoCoreState = {
 type TodoCoreEvent =
   | { id: string; type: "todo.created"; at: string; todo: TodoPublicItem }
   | { id: string; type: "todo.started"; at: string; todoId: string }
+  | { id: string; type: "todo.moved"; at: string; todoId: string; beforeTodoId?: string; afterTodoId?: string }
   | { id: string; type: "todo.completed" | "todo.cancelled" | "todo.failed" | "todo.superseded" | "todo.verified"; at: string; todoId: string; summary?: string; evidence?: readonly unknown[] }
   | { id: string; type: "todo.blocked" | "todo.external_blocked"; at: string; todoId: string; reason: string }
   | { id: string; type: "todo.unblocked"; at: string; todoId: string };
@@ -84,15 +85,43 @@ export class BranchTodoCore {
     return decideTodoOwnership(action, hasActiveSweTask);
   }
 
-  create(title: string): TodoPublicItem {
+  create(title: string, parentTodoId?: string): TodoPublicItem {
     const normalized = requirePublicLine(title, TODO_TEXT_LIMITS.title, "todo title");
-    if (this.state().order.length >= TODO_MAX_ITEMS) throw new Error(`todo limit exceeded: maximum ${TODO_MAX_ITEMS}`);
+    const state = this.state();
+    if (state.order.length >= TODO_MAX_ITEMS) throw new Error(`todo limit exceeded: maximum ${TODO_MAX_ITEMS}`);
+    const normalizedParentId = parentTodoId === undefined ? undefined : requireTodoId(parentTodoId);
+    if (normalizedParentId) {
+      const parent = requireTodo(state, normalizedParentId);
+      if (parent.status === "completed") {
+        throw new TodoCoreError("INVALID_TRANSITION", "cannot add a subtask to a completed todo");
+      }
+    }
     const todo: TodoPublicItem = {
       id: requireTodoId(this.createId("todo")),
       title: normalized,
       status: "ready",
+      parentTodoId: normalizedParentId,
     };
     this.append({ type: "todo.created", todo });
+    return todo;
+  }
+
+  move(todoId: string, beforeTodoId?: string, afterTodoId?: string): TodoPublicItem {
+    const state = this.state();
+    const normalizedId = requireTodoId(todoId);
+    const todo = requireTodo(state, normalizedId);
+    if ((beforeTodoId === undefined) === (afterTodoId === undefined)) {
+      throw new Error("exactly one of beforeTodoId or afterTodoId is required");
+    }
+    const normalizedBeforeId = beforeTodoId === undefined ? undefined : requireTodoId(beforeTodoId);
+    const normalizedAfterId = afterTodoId === undefined ? undefined : requireTodoId(afterTodoId);
+    const anchorId = normalizedBeforeId ?? normalizedAfterId!;
+    const anchor = requireTodo(state, anchorId);
+    if (anchor.id === todo.id) return todo;
+    if (anchor.parentTodoId !== todo.parentTodoId) {
+      throw new TodoCoreError("INVALID_TRANSITION", "todos can only move before or after a sibling");
+    }
+    this.append({ type: "todo.moved", todoId: normalizedId, beforeTodoId: normalizedBeforeId, afterTodoId: normalizedAfterId });
     return todo;
   }
 
@@ -118,6 +147,10 @@ export class BranchTodoCore {
     const todo = requireTodo(state, targetId);
     if (todo.status !== "in_progress") {
       throw new TodoCoreError("INVALID_TRANSITION", `cannot finish todo from ${todo.status}`);
+    }
+    const incompleteSubtasks = descendantIds(state, targetId).filter((id) => state.todos[id]?.status !== "completed");
+    if (incompleteSubtasks.length) {
+      throw new TodoCoreError("INVALID_TRANSITION", `complete ${incompleteSubtasks.length} open subtask${incompleteSubtasks.length === 1 ? "" : "s"} first`);
     }
     const normalizedSummary = summary === undefined ? undefined : requirePublicLine(summary, TODO_TEXT_LIMITS.summary, "todo summary");
     this.append({ type: "todo.completed", todoId: targetId, summary: normalizedSummary, evidence: [] });
@@ -170,6 +203,13 @@ function decodeEvent(entry: TodoBranchEntry): TodoCoreEvent | undefined {
   if (candidate.type === "todo.started" || candidate.type === "todo.unblocked") {
     return { id: candidate.id, type: candidate.type, at: candidate.at, todoId };
   }
+  if (candidate.type === "todo.moved") {
+    const beforeTodoId = typeof candidate.beforeTodoId === "string" ? decodeTodoId(candidate.beforeTodoId) : undefined;
+    const afterTodoId = typeof candidate.afterTodoId === "string" ? decodeTodoId(candidate.afterTodoId) : undefined;
+    return (beforeTodoId === undefined) === (afterTodoId === undefined)
+      ? undefined
+      : { id: candidate.id, type: candidate.type, at: candidate.at, todoId, beforeTodoId, afterTodoId };
+  }
   if (["todo.completed", "todo.cancelled", "todo.failed", "todo.superseded", "todo.verified"].includes(candidate.type)) {
     return {
       id: candidate.id,
@@ -191,9 +231,16 @@ function applyEvent(state: TodoCoreState, event: TodoCoreEvent): void {
       if (state.order.length >= TODO_MAX_ITEMS) return;
       state.order.push(event.todo.id);
     }
-    state.todos[event.todo.id] = { ...event.todo };
-    if (event.todo.status === "in_progress") activate(state, event.todo.id);
-    else if (state.activeTodoId === event.todo.id) state.activeTodoId = undefined;
+    const todo = { ...event.todo };
+    if (todo.parentTodoId && state.todos[todo.parentTodoId]?.status === "completed") {
+      todo.parentTodoId = undefined;
+    }
+    state.todos[todo.id] = todo;
+    if (todo.status === "completed" && descendantIds(state, todo.id).some((id) => state.todos[id]?.status !== "completed")) {
+      state.todos[todo.id] = { ...todo, status: "ready" };
+    }
+    if (todo.status === "in_progress") activate(state, todo.id);
+    else if (state.activeTodoId === todo.id) state.activeTodoId = undefined;
     return;
   }
   const todo = state.todos[event.todoId];
@@ -202,7 +249,12 @@ function applyEvent(state: TodoCoreState, event: TodoCoreEvent): void {
     activate(state, event.todoId);
     return;
   }
+  if (event.type === "todo.moved") {
+    moveTodo(state, event.todoId, event.beforeTodoId, event.afterTodoId);
+    return;
+  }
   if (["todo.completed", "todo.cancelled", "todo.failed", "todo.superseded", "todo.verified"].includes(event.type)) {
+    if (descendantIds(state, event.todoId).some((id) => state.todos[id]?.status !== "completed")) return;
     state.todos[event.todoId] = { ...todo, status: "completed", blockedReason: undefined };
     if (state.activeTodoId === event.todoId) state.activeTodoId = undefined;
     return;
@@ -238,10 +290,39 @@ function decodeTodo(value: unknown): TodoPublicItem | undefined {
     id,
     title: boundedPublicLine(todo.title, TODO_TEXT_LIMITS.title),
     status,
+    parentTodoId: typeof todo.parentTodoId === "string" ? decodeTodoId(todo.parentTodoId) : undefined,
     blockedReason: typeof todo.blockedReason === "string"
       ? boundedPublicLine(todo.blockedReason, TODO_TEXT_LIMITS.reason)
       : typeof todo.externalBlocker === "string" ? boundedPublicLine(todo.externalBlocker, TODO_TEXT_LIMITS.reason) : undefined,
   };
+}
+
+function moveTodo(state: TodoCoreState, todoId: string, beforeTodoId?: string, afterTodoId?: string): void {
+  const todo = state.todos[todoId];
+  const anchorId = beforeTodoId ?? afterTodoId;
+  const anchor = anchorId ? state.todos[anchorId] : undefined;
+  if (!todo || !anchor || todo.id === anchor.id || todo.parentTodoId !== anchor.parentTodoId) return;
+  const without = state.order.filter((id) => id !== todoId);
+  const anchorIndex = without.indexOf(anchor.id);
+  if (anchorIndex < 0) return;
+  without.splice(anchorIndex + (afterTodoId ? 1 : 0), 0, todoId);
+  state.order = without;
+}
+
+function descendantIds(state: TodoCoreState, parentTodoId: string): string[] {
+  const result: string[] = [];
+  const queue = [parentTodoId];
+  const seen = new Set(queue);
+  while (queue.length) {
+    const parentId = queue.shift()!;
+    for (const id of state.order) {
+      if (seen.has(id) || state.todos[id]?.parentTodoId !== parentId) continue;
+      seen.add(id);
+      result.push(id);
+      queue.push(id);
+    }
+  }
+  return result;
 }
 
 function normalizePublicStatus(value: unknown): TodoPublicItem["status"] | undefined {

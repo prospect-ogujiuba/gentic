@@ -57,6 +57,66 @@ test("branch core enforces one active todo during mutation and reconstruction", 
   assert.equal(Object.values(reconstructed.todos).filter((todo) => todo.status === "in_progress").length, 1);
 });
 
+test("subtasks reconstruct as a tree, reorder among siblings, and gate parent completion", () => {
+  const h = harness();
+  const parent = h.core.create("Parent");
+  const first = h.core.create("First child", parent.id);
+  const second = h.core.create("Second child", parent.id);
+  const grandchild = h.core.create("Grandchild", first.id);
+
+  h.core.move(second.id, first.id);
+  let state = h.core.state();
+  assert.equal(state.todos[first.id].parentTodoId, parent.id);
+  assert.equal(state.todos[grandchild.id].parentTodoId, first.id);
+  assert.ok(state.order.indexOf(second.id) < state.order.indexOf(first.id));
+  assert.throws(() => h.core.move(grandchild.id, undefined, second.id), (error) =>
+    error instanceof TodoCoreError && error.code === "INVALID_TRANSITION");
+
+  h.core.start(parent.id);
+  assert.throws(() => h.core.finish(parent.id), /3 open subtasks/);
+  h.core.block(parent.id, "working through children");
+  for (const todo of [second, grandchild, first]) {
+    h.core.start(todo.id);
+    h.core.finish(todo.id);
+  }
+  h.core.unblock(parent.id);
+  h.core.start(parent.id);
+  h.core.finish(parent.id);
+  state = h.core.state();
+  assert.equal(state.todos[parent.id].status, "completed");
+  assert.equal(state.todos[first.id].status, "completed");
+  assert.throws(() => h.core.create("Too late", parent.id), /completed todo/);
+
+  const moved = h.branch.findLast((entry) => (entry.data as { event?: { type?: string } })?.event?.type === "todo.moved");
+  assert.ok(moved);
+});
+
+test("replay preserves the parent completion invariant across rollback-era events", () => {
+  const at = "2026-01-01T00:00:00.000Z";
+  const event = (id: string, value: Record<string, unknown>): TodoBranchEntry => ({
+    type: "custom",
+    customType: "gentic.todo.event",
+    data: { version: 1, event: { id, at, ...value } },
+  });
+  const h = harness([
+    event("create-parent", { type: "todo.created", todo: { id: "parent", title: "Parent", status: "ready" } }),
+    event("create-child", { type: "todo.created", todo: { id: "child", title: "Child", status: "ready", parentTodoId: "parent" } }),
+    event("old-reader-completion", { type: "todo.completed", todoId: "parent" }),
+    event("create-completed-parent", { type: "todo.created", todo: { id: "done-parent", title: "Done parent", status: "completed" } }),
+    event("late-child", { type: "todo.created", todo: { id: "late-child", title: "Late child", status: "ready", parentTodoId: "done-parent" } }),
+    event("forward-child", { type: "todo.created", todo: { id: "forward-child", title: "Forward child", status: "ready", parentTodoId: "future-parent" } }),
+    event("future-parent", { type: "todo.created", todo: { id: "future-parent", title: "Future parent", status: "completed" } }),
+  ]);
+
+  const state = h.core.state();
+  assert.equal(state.todos.parent.status, "ready");
+  assert.equal(state.todos.child.parentTodoId, "parent");
+  assert.equal(state.todos["done-parent"].status, "completed");
+  assert.equal(state.todos["late-child"].parentTodoId, undefined);
+  assert.equal(state.todos["future-parent"].status, "ready");
+  assert.equal(state.todos["forward-child"].parentTodoId, "future-parent");
+});
+
 test("minimal core reads essential legacy events and writes rollback-compatible envelopes", () => {
   const at = "2026-01-01T00:00:00.000Z";
   const legacy = (event: Record<string, unknown>): TodoBranchEntry => ({

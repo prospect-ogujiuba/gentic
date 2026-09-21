@@ -16,7 +16,7 @@ import {
   type TodoPublicRequest,
 } from "./contract.ts";
 import { BranchTodoCore, TodoCoreError, type TodoCoreState } from "./state-core.ts";
-import { createTodoDocketComponent, renderTodoDocketLines } from "./ui/docket.ts";
+import { createTodoDocketComponent, orderedTodoRows, renderTodoDocketLines } from "./ui/docket.ts";
 import { LightweightTodoModal } from "./ui/modal.ts";
 import { plainTodoTheme } from "./ui/theme.ts";
 
@@ -24,7 +24,8 @@ const STATUS_KEY = "todo";
 const TODO_COMMAND_COMPLETIONS = [
   { value: "open", label: "open", description: "Open the visual docket · /todo open" },
   { value: "list", label: "list", description: "List every todo · /todo list" },
-  { value: "create", label: "create", description: "Create ready work · /todo create <title>" },
+  { value: "create", label: "create", description: "Create work or a subtask · /todo create <title> [--parent <id>]" },
+  { value: "move", label: "move", description: "Reorder siblings · /todo move <id> before|after <id>" },
   { value: "start", label: "start", description: "Start one todo · /todo start <id>" },
   { value: "finish", label: "finish", description: "Finish active work · /todo finish [id]" },
   { value: "block", label: "block", description: "Record an external blocker · /todo block <id> <reason>" },
@@ -35,6 +36,9 @@ export const lightweightTodoParameters = Type.Object({
   action: StringEnum(TODO_PUBLIC_ACTIONS),
   title: Type.Optional(Type.String({ maxLength: TODO_TEXT_LIMITS.title })),
   todoId: Type.Optional(Type.String({ maxLength: TODO_TEXT_LIMITS.todoId })),
+  parentTodoId: Type.Optional(Type.String({ maxLength: TODO_TEXT_LIMITS.todoId })),
+  beforeTodoId: Type.Optional(Type.String({ maxLength: TODO_TEXT_LIMITS.todoId })),
+  afterTodoId: Type.Optional(Type.String({ maxLength: TODO_TEXT_LIMITS.todoId })),
   reason: Type.Optional(Type.String({ maxLength: TODO_TEXT_LIMITS.reason })),
   summary: Type.Optional(Type.String({ maxLength: TODO_TEXT_LIMITS.summary })),
 });
@@ -96,7 +100,7 @@ export function registerLightweightTodoSurface(pi: ExtensionAPI, options: Surfac
   pi.registerTool({
     name: "todo",
     label: "Todo",
-    description: "Small branch-aware focus list: create, start, finish, block, unblock, and list.",
+    description: "Small branch-aware focus list with subtasks and sibling reordering: create, move, start, finish, block, unblock, and list.",
     promptSnippet: "Use todo to keep one active task. pi-swe owns lifecycle while an assessed workflow task is active.",
     parameters: lightweightTodoParameters,
     executionMode: "sequential",
@@ -119,7 +123,7 @@ export function registerLightweightTodoSurface(pi: ExtensionAPI, options: Surfac
   });
 
   pi.registerCommand("todo", {
-    description: "/todo [open|list|create <title>|start <id>|finish [id]|block <id> <reason>|unblock <id>]",
+    description: "/todo [open|list|create <title> [--parent <id>]|move <id> before|after <id>|start <id>|finish [id]|block <id> <reason>|unblock <id>]",
     getArgumentCompletions: getTodoCommandCompletions,
     handler: async (args, ctx) => {
       if (args.trim() === "open") {
@@ -128,7 +132,7 @@ export function registerLightweightTodoSurface(pi: ExtensionAPI, options: Surfac
       }
       const request = commandRequest(args);
       if (!request) {
-        ctx.ui.notify("Usage: /todo [open|list|create <title>|start <id>|finish [id]|block <id> <reason>|unblock <id>]", "warning");
+        ctx.ui.notify("Usage: /todo [open|list|create <title> [--parent <id>]|move <id> before|after <id>|start <id>|finish [id]|block <id> <reason>|unblock <id>]", "warning");
         return;
       }
       const result = await execute(request, ctx);
@@ -155,13 +159,13 @@ function coreFor(pi: ExtensionAPI, ctx: ExtensionContext): BranchTodoCore {
 function dispatch(core: BranchTodoCore, request: TodoPublicRequest): SurfaceResult {
   if (request.action === "list") {
     const state = core.state();
-    const todos = state.order.map((id) => state.todos[id]).filter((todo): todo is TodoPublicItem => Boolean(todo));
     return {
-      content: [{ type: "text", text: renderList(todos) }],
+      content: [{ type: "text", text: renderList(state) }],
       details: { state },
     };
   }
-  const todo = request.action === "create" ? core.create(request.title)
+  const todo = request.action === "create" ? core.create(request.title, request.parentTodoId)
+    : request.action === "move" ? core.move(request.todoId, request.beforeTodoId, request.afterTodoId)
     : request.action === "start" ? core.start(request.todoId)
     : request.action === "finish" ? core.finish(request.todoId, request.summary)
     : request.action === "block" ? core.block(request.todoId, request.reason)
@@ -173,7 +177,13 @@ function dispatch(core: BranchTodoCore, request: TodoPublicRequest): SurfaceResu
 }
 
 function requestFrom(action: TodoPublicAction, params: Record<string, unknown>): TodoPublicRequest {
-  if (action === "create") return { action, title: stringParam(params.title, "title") };
+  if (action === "create") return { action, title: stringParam(params.title, "title"), parentTodoId: optionalString(params.parentTodoId) };
+  if (action === "move") return {
+    action,
+    todoId: stringParam(params.todoId, "todoId"),
+    beforeTodoId: optionalString(params.beforeTodoId),
+    afterTodoId: optionalString(params.afterTodoId),
+  };
   if (action === "start" || action === "unblock") return { action, todoId: stringParam(params.todoId, "todoId") };
   if (action === "finish") return { action, todoId: optionalString(params.todoId), summary: optionalString(params.summary) };
   if (action === "block") return { action, todoId: optionalString(params.todoId), reason: stringParam(params.reason, "reason") };
@@ -186,7 +196,22 @@ function commandRequest(args: string): TodoPublicRequest | undefined {
   const space = input.indexOf(" ");
   const action = space === -1 ? input : input.slice(0, space);
   const rest = space === -1 ? "" : input.slice(space + 1).trim();
-  if (action === "create" && rest) return { action, title: rest };
+  if (action === "create" && rest) {
+    const parentMarker = rest.lastIndexOf(" --parent ");
+    if (parentMarker > 0) {
+      const title = rest.slice(0, parentMarker).trim();
+      const parentTodoId = rest.slice(parentMarker + " --parent ".length).trim();
+      if (title && parentTodoId && !/\s/.test(parentTodoId)) return { action, title, parentTodoId };
+      return undefined;
+    }
+    return { action, title: rest };
+  }
+  if (action === "move") {
+    const match = /^(\S+)\s+(before|after)\s+(\S+)$/.exec(rest);
+    if (match) return match[2] === "before"
+      ? { action, todoId: match[1]!, beforeTodoId: match[3]! }
+      : { action, todoId: match[1]!, afterTodoId: match[3]! };
+  }
   if (action === "start" && rest) return { action, todoId: rest };
   if (action === "finish") return { action, todoId: rest || undefined };
   if (action === "unblock" && rest) return { action, todoId: rest };
@@ -241,12 +266,13 @@ function updateDisplay(core: BranchTodoCore, ctx: ExtensionContext | ExtensionCo
   }
 }
 
-function renderList(todos: TodoPublicItem[]): string {
-  return todos.length ? todos.map((todo) => `${todo.title} [${todo.status}]${todo.blockedReason ? ` — ${todo.blockedReason}` : ""}`).join("\n") : "No todos.";
+function renderList(state: TodoCoreState): string {
+  const rows = orderedTodoRows(state, true);
+  return rows.length ? rows.map(({ todo, depth }) => `${"  ".repeat(depth)}${todo.title} [${todo.status}] (${todo.id})${todo.blockedReason ? ` — ${todo.blockedReason}` : ""}`).join("\n") : "No todos.";
 }
 
 function verb(action: Exclude<TodoPublicAction, "list">): string {
-  return action === "create" ? "Created" : action === "start" ? "Started" : action === "finish" ? "Finished" : action === "block" ? "Blocked" : "Unblocked";
+  return action === "create" ? "Created" : action === "move" ? "Moved" : action === "start" ? "Started" : action === "finish" ? "Finished" : action === "block" ? "Blocked" : "Unblocked";
 }
 
 function stringParam(value: unknown, name: string): string {

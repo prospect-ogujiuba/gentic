@@ -8,12 +8,19 @@ type RegisteredTool = {
     action: { enum?: string[] };
     title?: { maxLength?: number };
     todoId?: { maxLength?: number };
+    parentTodoId?: { maxLength?: number };
+    beforeTodoId?: { maxLength?: number };
+    afterTodoId?: { maxLength?: number };
     reason?: { maxLength?: number };
     summary?: { maxLength?: number };
   } };
   execute: (id: string, params: Record<string, unknown>, signal: AbortSignal, onUpdate: () => void, ctx: unknown) => Promise<{
     content: Array<{ text: string }>;
-    details: { todo?: { id: string; status: string }; state?: { todos: Record<string, { status: string }> }; error?: { code: string } };
+    details: {
+      todo?: { id: string; status: string; parentTodoId?: string };
+      state?: { todos: Record<string, { status: string; parentTodoId?: string }>; order: string[] };
+      error?: { code: string };
+    };
     isError?: boolean;
   }>;
 };
@@ -59,13 +66,16 @@ test("thin surface exposes essential tool, command, and status behavior through 
 
   const tool = tools.get("todo");
   assert.ok(tool);
-  assert.deepEqual(tool.parameters.properties.action.enum, ["create", "start", "finish", "block", "unblock", "list"]);
+  assert.deepEqual(tool.parameters.properties.action.enum, ["create", "move", "start", "finish", "block", "unblock", "list"]);
   assert.deepEqual({
     title: tool.parameters.properties.title?.maxLength,
     todoId: tool.parameters.properties.todoId?.maxLength,
+    parentTodoId: tool.parameters.properties.parentTodoId?.maxLength,
+    beforeTodoId: tool.parameters.properties.beforeTodoId?.maxLength,
+    afterTodoId: tool.parameters.properties.afterTodoId?.maxLength,
     reason: tool.parameters.properties.reason?.maxLength,
     summary: tool.parameters.properties.summary?.maxLength,
-  }, { title: 256, todoId: 128, reason: 2_048, summary: 2_048 });
+  }, { title: 256, todoId: 128, parentTodoId: 128, beforeTodoId: 128, afterTodoId: 128, reason: 2_048, summary: 2_048 });
   const execute = (action: string, params: Record<string, unknown> = {}) =>
     tool.execute(action, { action, ...params }, new AbortController().signal, () => {}, ctx);
 
@@ -95,6 +105,20 @@ test("thin surface exposes essential tool, command, and status behavior through 
   await commands.get("todo")?.handler("open", ctx);
   assert.match(modalOutput, /TODO DOCKET/);
   assert.match(modalOutput, /Thin lifecycle/);
+
+  const parent = await execute("create", { title: "Parent" });
+  const parentId = parent.details.todo?.id;
+  assert.ok(parentId);
+  const childA = await execute("create", { title: "Child A", parentTodoId: parentId });
+  const childB = await execute("create", { title: "Child B", parentTodoId: parentId });
+  assert.equal(childA.details.todo?.parentTodoId, parentId);
+  await execute("move", { todoId: childB.details.todo?.id, beforeTodoId: childA.details.todo?.id });
+  const hierarchical = await execute("list");
+  assert.ok(hierarchical.content[0]!.text.indexOf("Child B") < hierarchical.content[0]!.text.indexOf("Child A"));
+  assert.match(hierarchical.content[0]!.text, /  Child B \[ready\]/);
+  await commands.get("todo")?.handler(`create Manual child --parent ${parentId}`, ctx);
+  assert.match(notifications.at(-1) ?? "", /Created Manual child/);
+  assert.match((await execute("list")).content[0]!.text, /  Manual child \[ready\]/);
 
   sweActive = true;
   const hook = handlers.get("tool_call") as ToolCallHandler;
@@ -178,7 +202,7 @@ test("queued abort and ownership probe failure cannot mutate todo state", async 
 
 test("todo command completions expose the lightweight visual and lifecycle surface", () => {
   const completions = getTodoCommandCompletions("");
-  assert.deepEqual(completions.map((item) => item.value), ["open", "list", "create", "start", "finish", "block", "unblock"]);
+  assert.deepEqual(completions.map((item) => item.value), ["open", "list", "create", "move", "start", "finish", "block", "unblock"]);
   assert.ok(completions.every((item) => item.description.includes(`/todo ${item.value}`)));
   assert.deepEqual(getTodoCommandCompletions("st").map((item) => item.value), ["start"]);
   assert.deepEqual(getTodoCommandCompletions("start "), []);
