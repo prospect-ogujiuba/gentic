@@ -1,60 +1,68 @@
-import { isAbsolute, posix, relative, resolve, sep } from "node:path";
+import { posix } from "node:path";
 
-import { ARTIFACT_KINDS, type ArtifactKind } from "./types.ts";
+import {
+  INITIATIVE_ARTIFACT_KINDS,
+  SYSTEM_ARTIFACT_KINDS,
+  type CreateArtifactRequest,
+  type InitiativeArtifactKind,
+  type SystemArtifactKind,
+} from "./types.ts";
 
-export const TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}_\d{4}$/;
-export const CANONICAL_FILE_PATTERN = /^(\d{4}-\d{2}-\d{2}_\d{4})-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/;
+const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const GENERATED_MARKDOWN = /^\d{4}-\d{2}-\d{2}_\d{4}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
+const MAX_SEGMENT = 128;
 
-export function toPosix(value: string): string {
-  return value.split(sep).join("/");
+export function artifactTimestamp(date = new Date()): string {
+  if (!Number.isFinite(date.getTime())) throw new Error("artifact date is invalid");
+  return date.toISOString().slice(0, 16).replace("T", "_").replace(":", "");
 }
 
-export function projectRelative(root: string, target: string): string {
-  const value = toPosix(relative(root, target));
-  if (!value || value === ".") return ".";
-  if (value === ".." || value.startsWith("../") || isAbsolute(value)) throw new Error(`path escapes project root: ${target}`);
-  return value;
-}
+export function createArtifactPath(request: CreateArtifactRequest, date = new Date()): string {
+  const name = kebab(request.name, "artifact name");
+  const filename = `${artifactTimestamp(date)}-${name}.md`;
 
-export function resolveProjectPath(root: string, source: string): string {
-  if (isAbsolute(source) || source.includes("\\") || /[\u0000-\u001f\u007f]/.test(source)) throw new Error(`source must be a project-relative .model-artifacts path: ${source}`);
-  const normalized = posix.normalize(source);
-  if (!normalized.startsWith(".model-artifacts/") || normalized.includes("..") || normalized !== source) {
-    throw new Error(`source must be a project-relative .model-artifacts path: ${source}`);
+  if (request.scope === "initiative") {
+    const topic = kebab(request.topic, "initiative topic");
+    if (!INITIATIVE_ARTIFACT_KINDS.includes(request.kind)) throw new Error("invalid initiative artifact kind");
+    return `.model-artifacts/initiatives/${topic}/${request.kind}/${filename}`;
   }
-  const target = resolve(root, ...normalized.split("/"));
-  projectRelative(root, target);
-  return target;
+
+  if (!SYSTEM_ARTIFACT_KINDS.includes(request.kind)) throw new Error("invalid system artifact kind");
+  const namespace = request.namespace === undefined ? "" : `/${kebab(request.namespace, "system namespace")}`;
+  return `.model-artifacts/system/${request.kind}${namespace}/${filename}`;
 }
 
-export function isArtifactKind(value: unknown): value is ArtifactKind {
-  return typeof value === "string" && (ARTIFACT_KINDS as readonly string[]).includes(value);
-}
-
-export function normalizeSegment(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .replace(/-{2,}/g, "-");
-}
-
-export function validateTopic(value: unknown): string {
-  if (typeof value !== "string" || !value) throw new Error("mapping topic must be a non-empty kebab-case path");
-  const segments = value.split("/");
-  if (segments.some((segment) => !segment || normalizeSegment(segment) !== segment)) throw new Error(`mapping topic must be kebab-case: ${value}`);
-  return value;
-}
-
-export function validateTimestamp(value: unknown): string {
-  if (typeof value !== "string" || !TIMESTAMP_PATTERN.test(value)) throw new Error(`mapping timestamp must match YYYY-MM-DD_HHMM: ${String(value)}`);
-  const [date, time] = value.split("_");
-  const parsed = new Date(`${date}T${time.slice(0, 2)}:${time.slice(2)}:00Z`);
-  if (Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 16).replace("T", "_").replace(":", "") !== value) {
-    throw new Error(`mapping timestamp is invalid: ${value}`);
+export function validateCanonicalArtifactPath(path: string): void {
+  if (!path || path.length > 1_024 || path.startsWith("/") || path.includes("\\") || path !== posix.normalize(path)) {
+    throw new Error("artifact path must be a normalized project-relative POSIX path");
   }
+  const parts = path.split("/");
+  if (parts[0] !== ".model-artifacts") throw new Error("artifact path must be beneath .model-artifacts");
+
+  if (parts[1] === "initiatives") {
+    if (parts.length === 4 && parts[3] === "workflow.json") {
+      kebab(parts[2]!, "initiative topic");
+      return;
+    }
+    if (parts.length !== 5) throw new Error("initiative artifacts must be directly beneath a topic kind");
+    kebab(parts[2]!, "initiative topic");
+    if (!INITIATIVE_ARTIFACT_KINDS.includes(parts[3] as InitiativeArtifactKind)) throw new Error("invalid initiative artifact kind");
+    if (!GENERATED_MARKDOWN.test(parts[4]!)) throw new Error("initiative artifact filename is not canonical");
+    return;
+  }
+
+  if (parts[1] === "system") {
+    if (parts.length !== 4 && parts.length !== 5) throw new Error("system artifacts support at most one namespace");
+    if (!SYSTEM_ARTIFACT_KINDS.includes(parts[2] as SystemArtifactKind)) throw new Error("invalid system artifact kind");
+    if (parts.length === 5) kebab(parts[3]!, "system namespace");
+    if (!GENERATED_MARKDOWN.test(parts.at(-1)!)) throw new Error("system artifact filename is not canonical");
+    return;
+  }
+
+  throw new Error("artifact path must use initiatives or system scope");
+}
+
+function kebab(value: string, label: string): string {
+  if (typeof value !== "string" || value.length > MAX_SEGMENT || !KEBAB.test(value)) throw new Error(`${label} must be kebab-case`);
   return value;
 }

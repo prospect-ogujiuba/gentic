@@ -93,30 +93,30 @@ test("a light one-task initiative stays proportional while retaining canonical g
   }
 });
 
-test("legacy workflow authorities fail closed and remain byte-identical", async () => {
+test("unsupported workflow authorities fail closed and remain byte-identical", async () => {
   for (const topic of ["multi-agent-swe-orchestration", "swe-production-rollout"]) {
     const path = join(repositoryRoot, ".model-artifacts", "initiatives", topic, "workflow.json");
     const before = readFileSync(path);
-    const legacy = JSON.parse(before.toString("utf8"));
-    assert.equal(legacy.version, 2);
-    assert.equal(legacy.kind, undefined);
-    assert.equal(legacy.schemaVersion, undefined);
+    const unsupported = JSON.parse(before.toString("utf8"));
+    assert.equal(unsupported.version, 2);
+    assert.equal(unsupported.kind, undefined);
+    assert.equal(unsupported.schemaVersion, undefined);
 
     const service = new SweService(repositoryRoot, new InitiativeStore(repositoryRoot));
-    assert.throws(() => service.status(topic), /legacy workflows are inspection-only/i);
-    await assert.rejects(() => service.start(topic, "W-1"), /legacy workflows are inspection-only/i);
+    assert.throws(() => service.status(topic), /unsupported initiative schema/i);
+    await assert.rejects(() => service.start(topic, "W-1"), /unsupported initiative schema/i);
     assert.equal(digest(readFileSync(path)), digest(before));
   }
 });
 
-test("stable operator documentation states the authority, permission, migration, UI, and proportionality boundaries", () => {
+test("stable operator documentation states the authority, permission, artifact, UI, and proportionality boundaries", () => {
   const readme = readFileSync(new URL("../extensions/pi-swe/README.md", import.meta.url), "utf8");
   for (const pattern of [
     /sole planning authority/i,
     /ordinary `bash` tool/i,
     /test-after/i,
     /small initiatives/i,
-    /inspection-only/i,
+    /create model-generated Markdown through pi-artifacts/i,
     /keyboard/i,
     /non-TUI/i,
     /session.*repository authority/i,

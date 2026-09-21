@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { registerArtifactsCommand } from "../extensions/pi-artifacts/src/pi/commands.ts";
 import { registerPiCatalog } from "../extensions/pi-catalog/src/pi/register.ts";
 import { completeScaffoldArgument } from "../extensions/pi-commands/commands/scaffold.ts";
 import { completePiContextArgument } from "../extensions/pi-context/src/pi/register.ts";
@@ -40,18 +39,13 @@ test("nested completions preserve the full argument prefix and explain values", 
   assert.deepEqual(completePiContextArgument("help "), []);
 });
 
-test("registered artifact and catalog commands describe their nested choices", () => {
+test("registered catalog command describes its nested choices", () => {
   const commands = new Map<string, Command>();
-  registerArtifactsCommand({ registerCommand: (name: string, command: Command) => commands.set(name, command) } as never);
   registerPiCatalog({
     on: () => undefined,
     registerTool: () => undefined,
     registerCommand: (name: string, command: Command) => commands.set(name, command),
   } as never);
-
-  const artifactItems = commands.get("artifacts")!.getArgumentCompletions!("a")!;
-  assert.deepEqual(artifactItems.map((item) => item.value), ["apply", "audit"]);
-  assertDescribed(artifactItems);
 
   const catalogItems = commands.get("catalog")!.getArgumentCompletions!("")!;
   assert.deepEqual(catalogItems.map((item) => item.value), ["status", "search"]);

@@ -99,7 +99,7 @@ const WORK_TRANSITIONS: Record<WorkStatus, readonly WorkStatus[]> = {
 export function parseInitiative(input: unknown): Initiative {
   if (!record(input)) throw new Error("initiative must be an object");
   if (input.kind !== INITIATIVE_KIND || input.schemaVersion !== INITIATIVE_SCHEMA_VERSION) {
-    throw new Error("unsupported initiative schema; legacy workflows are inspection-only");
+    throw new Error("unsupported initiative schema");
   }
   exact(input, ["kind", "schemaVersion", "id", "revision", "status", "objective", "bootstrap", "scope", "constraints", "acceptanceCriteria", "assessment", "practices", "obligations", "work", "artifacts", "evidence", "decisions", "risks"], "initiative", ["bootstrap"]);
   topic(input.id, "initiative id");

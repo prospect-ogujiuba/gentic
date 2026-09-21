@@ -1,135 +1,120 @@
-import { existsSync, lstatSync, mkdirSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  lstatSync,
+  linkSync,
+  mkdirSync,
+  openSync,
+  realpathSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 
-import { auditArtifacts, loadMigrationConfig } from "../domain/inventory.ts";
-import { createMigrationPlan, fingerprint, isNoopMigrationPlan, type MigrationPlan } from "../domain/plan.ts";
-import { projectRelative, toPosix } from "../domain/normalize.ts";
-import type { ArtifactInventory } from "../domain/types.ts";
+import { createArtifactPath, validateCanonicalArtifactPath } from "../domain/normalize.ts";
+import type { CreateArtifactRequest, CreatedArtifact } from "../domain/types.ts";
 
-const MIGRATION_LOG_DIRECTORY = ".model-artifacts/system/logs/model-artifact-migration";
+export const MAX_ARTIFACT_CONTENT_BYTES = 1_048_576;
 
-export type PlanMigrationOptions = {
-  cwd: string;
-  generatedAt?: string;
-  maxFiles?: number;
-  maxBytes?: number;
-  maxReferenceFiles?: number;
-  maxReferenceBytes?: number;
-  maxAffectedBytes?: number;
-  maxReferences?: number;
-  maxRewriteRecords?: number;
-  maxStagingBytes?: number;
-  maxRollbackBytes?: number;
-};
+export class ArtifactService {
+  readonly root: string;
 
-export type PlanMigrationResult = {
-  inventory: ArtifactInventory;
-  plan: MigrationPlan;
-  planPath: string;
-  reportPath: string;
-};
+  constructor(cwd: string) {
+    this.root = realpathSync(resolve(cwd));
+  }
 
-export function planMigration(options: PlanMigrationOptions): PlanMigrationResult {
-  const root = realpathSync(resolve(options.cwd));
-  const inventory = auditArtifacts({
-    cwd: root,
-    maxFiles: options.maxFiles,
-    maxBytes: options.maxBytes,
-    maxReferenceFiles: options.maxReferenceFiles,
-    maxReferenceBytes: options.maxReferenceBytes,
-  });
-  const config = loadMigrationConfig(root);
-  const generatedAt = options.generatedAt ?? new Date().toISOString();
-  const plan = createMigrationPlan(inventory, {
-    generatedAt,
-    configFingerprint: fingerprint(config),
-    maxAffectedBytes: options.maxAffectedBytes,
-    maxReferences: options.maxReferences,
-    maxRewriteRecords: options.maxRewriteRecords,
-    maxStagingBytes: options.maxStagingBytes,
-    maxRollbackBytes: options.maxRollbackBytes,
-  });
-  const timestamp = sortableTimestamp(generatedAt);
-  const id = plan.fingerprint.slice("sha256:".length, "sha256:".length + 12);
-  const directory = ensureSafeDirectory(root, MIGRATION_LOG_DIRECTORY);
-  const planAbsolute = join(directory, `${timestamp}-${id}-plan.json`);
-  const reportAbsolute = join(directory, `${timestamp}-${id}-plan-report.md`);
-  const planPath = toPosix(projectRelative(root, planAbsolute));
-  const reportPath = toPosix(projectRelative(root, reportAbsolute));
-  if (existsSync(planAbsolute)) throw fileExists(planAbsolute);
-  if (existsSync(reportAbsolute)) throw fileExists(reportAbsolute);
-  let wrotePlan = false;
+  create(request: CreateArtifactRequest, options: { now?: Date } = {}): CreatedArtifact {
+    validateContent(request.content);
+    const createdAt = (options.now ?? new Date()).toISOString();
+    const path = createArtifactPath(request, new Date(createdAt));
+    validateCanonicalArtifactPath(path);
+    const destination = resolve(this.root, path);
+    assertInside(this.root, destination);
+    ensureSafeDirectory(this.root, dirname(destination));
+    publishNewFile(this.root, destination, request.content);
+    return {
+      path,
+      createdAt,
+      bytes: Buffer.byteLength(request.content),
+      contentHash: `sha256:${createHash("sha256").update(request.content).digest("hex")}`,
+    };
+  }
+}
+
+function validateContent(content: string): void {
+  if (typeof content !== "string" || !content.trim()) throw new Error("artifact content must be non-empty text");
+  if (content.includes("\u0000")) throw new Error("artifact content contains a NUL byte");
+  if (Buffer.byteLength(content) > MAX_ARTIFACT_CONTENT_BYTES) throw new Error("artifact content exceeds the 1 MiB limit");
+}
+
+function ensureSafeDirectory(root: string, directory: string): void {
+  assertInside(root, directory);
+  const relativeDirectory = relative(root, directory);
+  let cursor = root;
+  for (const segment of relativeDirectory.split(sep).filter(Boolean)) {
+    cursor = join(cursor, segment);
+    if (!existsSync(cursor)) mkdirSync(cursor);
+    assertSafeDirectory(root, cursor);
+  }
+  assertSafeDirectory(root, directory);
+}
+
+function assertSafeDirectory(root: string, directory: string): void {
+  const stat = lstatSync(directory);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error(`artifact parent is not a safe directory: ${relative(root, directory)}`);
+  const canonical = realpathSync(directory);
+  assertInside(root, canonical);
+  if (canonical !== directory) throw new Error(`artifact parent changed or contains a symbolic link: ${relative(root, directory)}`);
+}
+
+function publishNewFile(root: string, destination: string, content: string): void {
+  const directory = dirname(destination);
+  assertSafeDirectory(root, directory);
+  if (existsSync(destination)) throw new Error(`artifact already exists: ${destination}`);
+  const temporary = join(directory, `.${randomUUID()}.artifact.tmp`);
+  let handle: number | undefined;
+  let published = false;
   try {
-    writeFileSync(planAbsolute, `${JSON.stringify(plan, null, 2)}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
-    wrotePlan = true;
-    writeFileSync(reportAbsolute, renderPlanReport(plan, planPath), { encoding: "utf8", flag: "wx", mode: 0o600 });
+    handle = openSync(temporary, "wx", 0o666);
+    writeFileSync(handle, content, "utf8");
+    fsyncSync(handle);
+    closeSync(handle);
+    handle = undefined;
+    assertSafeDirectory(root, directory);
+    linkSync(temporary, destination);
+    published = true;
+    assertPublishedPath(root, destination);
+    unlinkSync(temporary);
+    syncDirectory(directory);
   } catch (error) {
-    if (wrotePlan && existsSync(planAbsolute)) unlinkSync(planAbsolute);
+    if (handle !== undefined) closeSync(handle);
+    if (published && existsSync(destination)) {
+      try { unlinkSync(destination); syncDirectory(directory); }
+      catch { /* preserve the original publication error */ }
+    }
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new Error(`artifact already exists: ${destination}`);
     throw error;
+  } finally {
+    if (existsSync(temporary)) unlinkSync(temporary);
   }
-  return { inventory, plan, planPath, reportPath };
 }
 
-export function renderPlanReport(plan: MigrationPlan, planPath: string): string {
-  const blockers = plan.blockers.slice(0, 20).map((blocker) => `- ${blocker.code}: \`${blocker.source}\` — ${blocker.message}`);
-  return [
-    "# Model-artifact migration plan",
-    "",
-    `Generated: ${plan.generatedAt}`,
-    `Project root: \`${plan.projectRoot}\``,
-    `Plan: \`${planPath}\``,
-    `Fingerprint: \`${plan.fingerprint}\``,
-    `Eligible: ${plan.eligible ? "yes" : "no"}`,
-    "",
-    "## Summary",
-    "",
-    `- authority units: ${plan.authorityUnits.length}`,
-    `- eligible moves: ${plan.moves.length}`,
-    `- rewrite records: ${plan.rewrites.length}`,
-    `- affected bytes: ${plan.bounds.affectedBytes}`,
-    `- staging bytes: ${plan.bounds.stagingBytes}`,
-    `- rollback bytes: ${plan.bounds.rollbackBytes}`,
-    `- planning duration ms: ${plan.durationMs}`,
-    `- blockers: ${plan.blockers.length}`,
-    "",
-    "## Blockers",
-    "",
-    ...(blockers.length ? blockers : ["None."]),
-    ...(plan.blockers.length > blockers.length ? [`- … ${plan.blockers.length - blockers.length} additional blockers omitted from this bounded report.`] : []),
-    "",
-    "## Next action",
-    "",
-    plan.eligible
-      ? `Review and approve the exact fingerprint, then run \`/artifacts apply ${planPath}\`.`
-      : isNoopMigrationPlan(plan)
-        ? "No migration is needed; all discovered artifacts are already canonical or protected."
-        : "Resolve every blocker and generate a new plan. This plan cannot be applied.",
-    "",
-  ].join("\n");
+function assertPublishedPath(root: string, destination: string): void {
+  const stat = lstatSync(destination);
+  if (stat.isSymbolicLink() || !stat.isFile()) throw new Error("published artifact is not a regular file");
+  const canonical = realpathSync(destination);
+  assertInside(root, canonical);
+  if (canonical !== destination) throw new Error("published artifact escaped its canonical path");
 }
 
-function ensureSafeDirectory(root: string, relativePath: string): string {
-  let current = root;
-  for (const segment of relativePath.split("/")) {
-    current = join(current, segment);
-    if (!existsSync(current)) mkdirSync(current, { mode: 0o700 });
-    const stat = lstatSync(current);
-    if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error(`migration log path is not a safe directory: ${toPosix(projectRelative(root, current))}`);
-    const resolved = realpathSync(current);
-    projectRelative(root, resolved);
-    if (resolved !== current) throw new Error(`migration log directory resolves unexpectedly: ${toPosix(projectRelative(root, current))}`);
-  }
-  return current;
+function syncDirectory(directory: string): void {
+  const handle = openSync(directory, "r");
+  try { fsyncSync(handle); }
+  finally { closeSync(handle); }
 }
 
-function sortableTimestamp(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) throw new Error(`invalid generatedAt timestamp: ${value}`);
-  return date.toISOString().slice(0, 16).replace("T", "_").replace(":", "");
-}
-
-function fileExists(path: string): NodeJS.ErrnoException {
-  const error = new Error(`migration artifact already exists: ${path}`) as NodeJS.ErrnoException;
-  error.code = "EEXIST";
-  return error;
+function assertInside(root: string, path: string): void {
+  if (path === root || !path.startsWith(`${root}${sep}`)) throw new Error("artifact path escapes the project root");
 }

@@ -80,7 +80,7 @@ type BeforeAgentStartEvent = {
 
 type Handler = (event: BeforeAgentStartEvent) => { systemPrompt?: string } | undefined;
 
-const layoutV2 = JSON.parse(readFileSync(new URL("./fixtures/model-artifacts-layout-v2.json", import.meta.url), "utf8"));
+const artifactLayout = JSON.parse(readFileSync(new URL("./fixtures/model-artifacts-layout.json", import.meta.url), "utf8"));
 
 async function beforeAgentStartPipeline(): Promise<Handler> {
   const handlers: Handler[] = [];
@@ -178,20 +178,16 @@ test("model-artifacts primitive injects reusable artifact convention", async () 
   assert.match(result?.systemPrompt || "", /docs\/plans\/.*curated/s);
 });
 
-test("layout-v2 fixture declares namespaces, compatibility, safety, and source-of-truth cases", () => {
-  assert.deepEqual(layoutV2.initiativeKinds, ["specs", "plans", "todo", "findings", "reports", "logs"]);
-  assert.deepEqual(layoutV2.systemKinds, ["logs", "reports"]);
-  assert.equal(layoutV2.valid.initiative.length, layoutV2.initiativeKinds.length);
-  assert.ok(layoutV2.valid.system.every((path: string) => path.startsWith(".model-artifacts/system/")));
-  assert.ok(layoutV2.valid.canonicalExceptions.some((path: string) => path.endsWith("/manifest.json")));
-  assert.ok(layoutV2.valid.canonicalExceptions.some((path: string) => path.endsWith("/contracts.json")));
-  assert.ok(layoutV2.legacyReadOnly.every((path: string) => !path.startsWith(".model-artifacts/initiatives/")));
-  assert.equal(layoutV2.mixedAuthority.expected, "blocking-conflict");
-  assert.deepEqual(new Set(layoutV2.invalid.map((entry: { reason: string }) => entry.reason)), new Set([
-    "traversal", "absolute", "backslash", "non-kebab-topic", "wrong-initiative-kind", "wrong-system-kind", "invalid-generated-filename", "non-kebab-short-name",
+test("model-artifacts fixture declares canonical namespaces, safety, and source-of-truth cases", () => {
+  assert.deepEqual(artifactLayout.initiativeKinds, ["specs", "plans", "todo", "findings", "reports", "logs"]);
+  assert.deepEqual(artifactLayout.systemKinds, ["logs", "reports"]);
+  assert.equal(artifactLayout.valid.initiative.length, artifactLayout.initiativeKinds.length);
+  assert.ok(artifactLayout.valid.system.every((path: string) => path.startsWith(".model-artifacts/system/")));
+  assert.deepEqual(artifactLayout.valid.authority, [".model-artifacts/initiatives/demo/workflow.json"]);
+  assert.deepEqual(new Set(artifactLayout.invalid.map((entry: { reason: string }) => entry.reason)), new Set([
+    "wrong-scope", "traversal", "absolute", "backslash", "non-kebab-topic", "wrong-initiative-kind", "wrong-system-kind", "invalid-generated-filename", "non-kebab-short-name",
   ]));
-  assert.equal(layoutV2.symlink.expected, "reject-without-following");
-  assert.equal(layoutV2.sourceOfTruth.generatedMirrorAllowed, false);
+  assert.equal(artifactLayout.sourceOfTruth.generatedMirrorAllowed, false);
 });
 
 test("primitive triggers flatten structured context files", async () => {

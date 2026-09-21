@@ -69,27 +69,22 @@
       "sourceFiles": [
         "extensions/pi-artifacts/index.ts",
         "extensions/pi-artifacts/src/app/service.ts",
-        "extensions/pi-artifacts/src/app/transaction.ts",
-        "extensions/pi-artifacts/src/domain/inventory.ts",
         "extensions/pi-artifacts/src/domain/normalize.ts",
-        "extensions/pi-artifacts/src/domain/plan.ts",
         "extensions/pi-artifacts/src/domain/types.ts",
-        "extensions/pi-artifacts/src/pi/commands.ts"
+        "extensions/pi-artifacts/src/pi/register.ts"
       ],
       "registrations": {
-        "commands": [
-          "artifacts"
+        "commands": [],
+        "tools": [
+          "artifact"
         ],
-        "tools": [],
         "events": [],
         "shortcuts": [],
         "flags": [],
         "providers": [],
         "renderers": [],
         "markdownTransformers": 0,
-        "uiSurfaces": [
-          "notify"
-        ]
+        "uiSurfaces": []
       }
     },
     {

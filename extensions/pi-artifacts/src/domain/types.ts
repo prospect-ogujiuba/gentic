@@ -1,53 +1,30 @@
-export const ARTIFACT_KINDS = ["reports", "plans", "findings", "logs", "specs", "todo"] as const;
-export type ArtifactKind = (typeof ARTIFACT_KINDS)[number];
-export type ArtifactClassification = "canonical-valid" | "legacy-movable" | "protected" | "ambiguous" | "invalid";
+export const INITIATIVE_ARTIFACT_KINDS = ["specs", "plans", "todo", "findings", "reports", "logs"] as const;
+export const SYSTEM_ARTIFACT_KINDS = ["reports", "logs"] as const;
 
-export type MigrationMapping = {
-  kind: ArtifactKind;
+export type InitiativeArtifactKind = typeof INITIATIVE_ARTIFACT_KINDS[number];
+export type SystemArtifactKind = typeof SYSTEM_ARTIFACT_KINDS[number];
+
+export type CreateInitiativeArtifact = {
+  scope: "initiative";
   topic: string;
-  timestamp: string;
-  shortName: string;
+  kind: InitiativeArtifactKind;
+  name: string;
+  content: string;
 };
 
-export type MigrationConfig = {
-  schemaVersion: 1;
-  mappings: Record<string, MigrationMapping>;
+export type CreateSystemArtifact = {
+  scope: "system";
+  kind: SystemArtifactKind;
+  namespace?: string;
+  name: string;
+  content: string;
 };
 
-export type ArtifactInventoryEntry = {
-  source: string;
-  classification: ArtifactClassification;
-  reasons: string[];
+export type CreateArtifactRequest = CreateInitiativeArtifact | CreateSystemArtifact;
+
+export type CreatedArtifact = {
+  path: string;
+  createdAt: string;
   bytes: number;
-  contentHash?: string;
-  destination?: string;
-  topic?: string;
-  authorityUnit?: "initiative" | "system" | "isolated";
-  referenceSites?: string[];
-  referenceSiteHashes?: Record<string, string>;
-};
-
-export type ArtifactInventory = {
-  schemaVersion: 1;
-  projectRoot: string;
-  configPath: string | null;
-  entries: ArtifactInventoryEntry[];
-  totals: Record<ArtifactClassification, number>;
-  fileCount: number;
-  candidateBytes: number;
-  diagnostics: string[];
-};
-
-export type AuditArtifactsOptions = {
-  cwd: string;
-  maxFiles?: number;
-  maxBytes?: number;
-  maxReferenceFiles?: number;
-  maxReferenceBytes?: number;
-  maxDirectories?: number;
-  maxDepth?: number;
-  maxEntriesPerDirectory?: number;
-  maxReferenceDirectories?: number;
-  maxReferenceDepth?: number;
-  maxReferenceEntriesPerDirectory?: number;
+  contentHash: `sha256:${string}`;
 };
