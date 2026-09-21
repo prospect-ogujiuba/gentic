@@ -118,6 +118,7 @@ test("managed parent capability policy is fail-closed across alternate, nested, 
   assert.equal(decideManagedToolCall({ ...verification, toolName: "bash", input: { command: `${renderVerificationCommand(planned)} && echo ok` } }).allow, false);
   assert.equal(decideManagedToolCall({ ...verification, toolName: "bash", input: { command: renderVerificationCommand(planned), cwd: "/tmp" } }).allow, false);
   assert.equal(decideManagedToolCall({ ...verification, toolName: "swe_workflow", input: { action: "complete" } }).allow, false);
+  assert.equal(decideManagedToolCall({ ...verification, toolName: "swe_workflow", input: { action: "adopt-post-cutover" } }).allow, false);
   assert.equal(decideManagedToolCall({ ...verification, toolName: "swe_workflow", input: { action: "status" } }).allow, true);
 });
 

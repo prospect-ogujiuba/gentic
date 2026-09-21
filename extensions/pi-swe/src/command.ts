@@ -9,6 +9,7 @@ import { parseGate2Decision, parseStoredGate2Decision, readRuntimeSelection, run
 import { loadWorkflow, resolveTopic } from "./store.ts";
 import { applyWorkflowMigration, applyWorkflowMigrationBatch, inventoryWorkflowMigrations, planWorkflowMigration, recoverWorkflowMigration, renderWorkflowMigrationAudit, rollbackWorkflowMigration, type WorkflowMigrationDisposition } from "./migration.ts";
 import type { RuntimeSurfaceResolver } from "./runtime.ts";
+import { PostCutoverAdoptionCoordinator } from "./post-cutover.ts";
 import { assertV2ExecutionRuntime, WorkflowMutationService } from "./service.ts";
 import { identityFromContext, renderRunTails, SweRuntimeRegistry, WorkflowControlService } from "./ux.ts";
 import { reduceWorkflow, type Workflow, type WorkflowApproach, type WorkflowTask } from "./workflow.ts";
@@ -41,6 +42,7 @@ const WORK: AutocompleteItem[] = [
   { value: "work start", label: "start", description: "/swe work start [topic] — start orchestrated work" },
   { value: "work resume", label: "resume", description: "/swe work resume [topic] — resume paused or blocked work" },
   { value: "work retry", label: "retry", description: "/swe work retry [topic] — explicitly retry recoverable blocked work" },
+  { value: "work adopt-post-cutover", label: "adopt-post-cutover", description: "/swe work adopt-post-cutover swe-production-rollout — operator-confirmed authority repair" },
   { value: "work answer", label: "answer", description: "/swe work answer [topic] [question] — answer a clarification" },
   { value: "work reset", label: "reset", description: "/swe work reset [topic] — explicitly reset remediation budget" },
   { value: "work validate", label: "validate", description: "/swe work validate [topic] <approve|reject> — record manual validation" },
@@ -166,6 +168,44 @@ function registerSweCommandAdapter(pi: ExtensionAPI, runtimeResolver: RuntimeSur
           return;
         }
         if (binding?.kind === "blocked") throw new Error(`managed execution blocked: ${binding.reason}`);
+        if (workAction === "adopt-post-cutover") {
+          if (!ctx.hasUI) throw new Error("post-cutover adoption requires keyboard-accessible or RPC operator authorization and confirmation");
+          assertV2ExecutionRuntime(binding.kind, "adopt post-cutover authority");
+          if (topic !== "swe-production-rollout" || binding.kind !== "v2" || !binding.runtime) throw new Error("post-cutover adoption requires the selected controlling v2 runtime");
+          const todo = await coordinatedActiveTodo(ctx);
+          if (todo) throw new Error(`cannot adopt while todo '${todo.title}' is active; finish or block that todo first`);
+          const located = control.mutations.read(topic, false);
+          if (!located) throw new Error(`workflow ${topic} was not found`);
+          const coordinator = new PostCutoverAdoptionCoordinator(ctx.cwd, binding.runtime.mutations, binding.runtime.engine);
+          ctx.ui.notify("Preparing immutable disposable candidate, fresh independent reviews, and exact checks. No workflow state will change before explicit confirmation.", "info");
+          const prepared = await coordinator.prepare(located.workflow);
+          const blockingFindings = [prepared.planReview, prepared.generalReview, ...(prepared.concernReview ? [prepared.concernReview.report] : [])].flatMap((report) => report.findings).filter((finding) => finding.severity === "blocking" && finding.status === "open");
+          if (blockingFindings.length) {
+            const rawDecisions = await ctx.ui.input("Post-cutover blocking-finding decisions JSON", `Paste one explicit {findingId,disposition,decidedBy,at} entry for each: ${blockingFindings.map((finding) => finding.id).join(", ")}`);
+            if (!rawDecisions || Buffer.byteLength(rawDecisions) > 32 * 1024) throw new Error("post-cutover finding decisions were cancelled, empty, or exceed 32768 bytes");
+            let parsedDecisions: unknown;
+            try { parsedDecisions = JSON.parse(rawDecisions); } catch { throw new Error("post-cutover finding decisions must be valid JSON"); }
+            if (!Array.isArray(parsedDecisions)) throw new Error("post-cutover finding decisions must be an array");
+            prepared.decisions = parsedDecisions as never;
+          }
+          const evidenceHash = coordinator.evidenceHash(prepared);
+          const rawAuthorization = await ctx.ui.input("Post-cutover adoption authorization JSON", `Paste {id,authorizedBy,authorizedAt,evidenceHash,rationale}; evidenceHash must be ${evidenceHash}`);
+          if (!rawAuthorization || Buffer.byteLength(rawAuthorization) > 32 * 1024) throw new Error("post-cutover authorization was cancelled, empty, or exceeds 32768 bytes");
+          let parsed: unknown;
+          try { parsed = JSON.parse(rawAuthorization); } catch { throw new Error("post-cutover authorization must be valid JSON"); }
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("post-cutover authorization must be an object");
+          const authorization = parsed as Record<string, unknown>;
+          if (authorization.evidenceHash !== evidenceHash) throw new Error("post-cutover authorization does not bind the exact prepared evidence hash");
+          const complete = {
+            id: String(authorization.id ?? ""), authorizedBy: String(authorization.authorizedBy ?? ""), authorizedAt: String(authorization.authorizedAt ?? ""),
+            evidenceHash, rationale: String(authorization.rationale ?? ""), ownerId: located.workflow.orchestration.parent?.ownerId ?? "", sessionId: boundIdentity.sessionId, runtimeId: boundIdentity.runtimeId,
+          };
+          if (!complete.id.trim() || !complete.authorizedBy.trim() || !complete.authorizedAt.trim() || !complete.rationale.trim()) throw new Error("post-cutover authorization requires explicit id, authorizedBy, authorizedAt, evidenceHash, and rationale");
+          if (!await ctx.ui.confirm("Apply post-cutover authority adoption", `${complete.authorizedBy}; HEAD ${prepared.descendantHead}; tree ${prepared.candidateTree}; evidence ${evidenceHash}; complete tasks 1-16 and leave cutover-release-qualification pending?`)) throw new Error("post-cutover adoption was not confirmed");
+          await binding.runtime.mutations.adoptPostCutover(topic, located.workflow.revision, { ...prepared, authorization: complete });
+          ctx.ui.notify(`pi-swe post-cutover adoption complete\n${control.inspect(topic, boundIdentity)}`, "warning");
+          return;
+        }
         if (["start", "resume", "retry"].includes(workAction)) assertV2ExecutionRuntime(binding.kind, workAction === "retry" ? "resume" : workAction);
         if (["answer", "reset", "validate"].includes(workAction)) {
           if (!ctx.hasUI) throw new Error(`${workAction} requires an interactive keyboard-accessible user decision`);
@@ -205,7 +245,7 @@ function registerSweCommandAdapter(pi: ExtensionAPI, runtimeResolver: RuntimeSur
           return;
         }
         const transitionAction = workAction === "retry" ? "resume" : workAction;
-        if (!["start", "resume", "pause", "stop"].includes(transitionAction)) throw new Error("usage: /swe work <start|resume|retry|pause|stop|status|inspect|runs|answer|reset|validate> [topic]");
+        if (!["start", "resume", "pause", "stop"].includes(transitionAction)) throw new Error("usage: /swe work <start|resume|retry|adopt-post-cutover|pause|stop|status|inspect|runs|answer|reset|validate> [topic]");
         if (transitionAction === "start" || transitionAction === "resume") {
           const todo = await coordinatedActiveTodo(ctx);
           if (todo) throw new Error(`cannot activate while todo '${todo.title}' is active; finish or block that todo first`);

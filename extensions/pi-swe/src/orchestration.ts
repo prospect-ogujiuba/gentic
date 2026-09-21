@@ -1,6 +1,4 @@
-import { randomUUID } from "node:crypto";
-
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type { AgentRunRequest, AgentRunner, RunnerResult } from "./runner.ts";
 import type { InitiativeCloseoutAuthority, InitiativeCloseoutInspector, InitiativeVerificationSubmission } from "./closeout.ts";
@@ -8,6 +6,7 @@ import type { ManagedVerificationAuthority, ParentExecutionIdentity, ProtectedVe
 import { WorkflowMutationService } from "./service.ts";
 import { sweRuntimeRegistry, type RunOutcome, type SweRuntimeRegistry } from "./ux.ts";
 import {
+  assertPostCutoverRecoveryEligibility,
   reduceWorkflow,
   scopeAllowsPath,
   type RunLease,
@@ -74,6 +73,18 @@ type EngineOptions = {
 type ChildOutcome =
   | { ok: true; report: StageReport; receipt?: GitWorkspaceReceipt }
   | { ok: false; reason: string };
+
+export function postCutoverReviewRequest(base: AgentRunRequest, reviewInput: NonNullable<AgentRunRequest["reviewInput"]>): AgentRunRequest {
+  if (!["plan-reviewer", "general-reviewer", "concern-reviewer"].includes(base.role)) throw new Error("post-cutover review profile is restricted to direct independent review roles");
+  return {
+    ...base,
+    thinking: "off",
+    reviewInput,
+    projectInstructions: [...base.projectInstructions,
+      "Review the complete immutable post-cutover cumulative delta. When the snapshot provides cumulativeDeltaFile, read that verified file fully before deciding. Do not implement, edit, commit, push, deploy, release, or authorize adoption. Every changed path must be reported exactly.",
+      "Use the report-only surface without narrated analysis. Submit exactly one concise runner_report after completing the independent review."],
+  };
+}
 
 /**
  * One call performs at most one finite-state stage transition. Long-running child
@@ -162,6 +173,32 @@ export class OrchestrationEngine {
   async recordManualValidation(topic: string, expectedRevision: number, outcome: { status: "approved" | "rejected"; rationale: string; decidedBy: string }): Promise<OrchestrationHandoff> {
     if (!this.options.authorizeUserDecision?.({ kind: "manual-validation", decidedBy: outcome.decidedBy, reason: outcome.rationale })) throw new Error("manual validation requires independently authorized user-decision provenance");
     return this.mutateExpected(topic, expectedRevision, (workflow) => reduceWorkflow(workflow, { type: "record-manual-validation", outcome: { ...outcome, at: this.now() } }, this.now()));
+  }
+
+  assertPostCutoverPreparationEligibility(workflow: Workflow): void {
+    this.assertParent(workflow);
+    assertPostCutoverRecoveryEligibility(workflow);
+  }
+
+  async preparePostCutoverReviews(workflow: Workflow, candidateCwd: string, snapshot: { hash: string; payload: unknown; changedPaths: string[] }, reviewInput: { path: string; content: string; hash: string; bytes: number; changedPaths: string[] }): Promise<{ planReview: StageReport; generalReview: StageReport; concernReview?: { concerns: WorkflowApproach[]; report: StageReport } }> {
+    this.assertPostCutoverPreparationEligibility(workflow);
+    const selected = workflow.tasks.slice(0, -1);
+    const concerns = [...new Set(selected.flatMap((task) => task.approaches.filter((approach) => CONCERN_APPROACHES.has(approach))))].sort() as WorkflowApproach[];
+    const run = async (role: "plan-reviewer" | "general-reviewer" | "concern-reviewer", offset: number): Promise<StageReport> => {
+      const startedAt = this.now();
+      const runId = this.id(`post-cutover-${role}`);
+      const lease: RunLease = { id: this.id("post-cutover-lease"), runId, ownerId: this.options.ownerId, stage: "plan-review", fence: workflow.orchestration.nextFence + offset, acquiredAt: startedAt, expiresAt: new Date(Date.parse(startedAt) + 30 * 60_000).toISOString() };
+      const request = postCutoverReviewRequest(this.request(workflow, undefined, role, lease, candidateCwd, snapshot, role === "concern-reviewer" ? concerns : []), reviewInput);
+      delete request.approvedSkills; delete request.trustedExtensions; delete request.bootstrap;
+      const outcome = this.runnerOutcome(await this.runner.run(request), lease, workflow.contract.hash, role, snapshot.hash);
+      if (!outcome.ok) throw new Error(`post-cutover ${role} failed: ${outcome.reason}`);
+      if (outcome.report.outcome !== "approved") throw new Error(`post-cutover ${role} did not approve the unchanged candidate`);
+      return outcome.report;
+    };
+    const planReview = await run("plan-reviewer", 0);
+    const generalReview = await run("general-reviewer", 1);
+    const concernReview = concerns.length ? { concerns, report: await run("concern-reviewer", 2) } : undefined;
+    return { planReview, generalReview, ...(concernReview ? { concernReview } : {}) };
   }
 
   async resetRemediation(topic: string, expectedRevision: number, input: { taskId: string; max: number; reason: string; decidedBy: string }): Promise<OrchestrationHandoff> {

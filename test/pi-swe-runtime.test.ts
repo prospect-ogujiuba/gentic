@@ -50,10 +50,15 @@ function resetClonedRolloutAuthority(cwd: string): void {
   writeFileSync(path, `${JSON.stringify(reset, null, 2)}\n`);
 }
 
+function cloneReviewedGate2Candidate(cwd: string): void {
+  execFileSync("git", ["clone", "-q", "--no-hardlinks", process.cwd(), cwd]);
+  execFileSync("git", ["checkout", "-q", "aaebcc66ec78d9a019421d08a79669a51bdad775"], { cwd });
+}
+
 function selectedV2Checkout(rollbackWindowEnd = new Date(Date.now() + 86_400_000).toISOString()): { parent: string; cwd: string; decision: Gate2Decision } {
   const parent = mkdtempSync(join(tmpdir(), "pi-swe-handoff-checkout-"));
   const cwd = join(parent, "checkout");
-  execFileSync("git", ["clone", "-q", "--no-hardlinks", process.cwd(), cwd]);
+  cloneReviewedGate2Candidate(cwd);
   const path = join(cwd, ".model-artifacts", "initiatives", "swe-production-rollout", "workflow.json");
   let workflow = parseWorkflow(JSON.parse(readFileSync(path, "utf8")));
   workflow = {
@@ -248,7 +253,7 @@ test("successful compatibility to v2 cutover uses the real controller and exact 
   const readiness = join(parent, "readiness.json");
   const migration = join(parent, "migration.json");
   try {
-    execFileSync("git", ["clone", "-q", "--no-hardlinks", process.cwd(), cwd]);
+    cloneReviewedGate2Candidate(cwd);
     resetClonedRolloutAuthority(cwd);
     writeFileSync(readiness, gunzipSync(Buffer.from(GATE2_READINESS_GZIP_BASE64, "base64")));
     writeFileSync(migration, gunzipSync(Buffer.from(GATE2_MIGRATION_GZIP_BASE64, "base64")));
@@ -278,7 +283,7 @@ for (const faultStage of ["after-prepare", "after-selector-persist"] as const) {
     const readiness = join(parent, "readiness.json");
     const migration = join(parent, "migration.json");
     try {
-      execFileSync("git", ["clone", "-q", "--no-hardlinks", process.cwd(), cwd]);
+      cloneReviewedGate2Candidate(cwd);
       resetClonedRolloutAuthority(cwd);
       writeFileSync(readiness, gunzipSync(Buffer.from(GATE2_READINESS_GZIP_BASE64, "base64")));
       writeFileSync(migration, gunzipSync(Buffer.from(GATE2_MIGRATION_GZIP_BASE64, "base64")));
@@ -307,7 +312,7 @@ test("initial cutover recovers after a SIGKILLed controller process at durable p
   const readiness = join(parent, "readiness.json");
   const migration = join(parent, "migration.json");
   try {
-    execFileSync("git", ["clone", "-q", "--no-hardlinks", process.cwd(), cwd]);
+    cloneReviewedGate2Candidate(cwd);
     resetClonedRolloutAuthority(cwd);
     writeFileSync(readiness, gunzipSync(Buffer.from(GATE2_READINESS_GZIP_BASE64, "base64")));
     writeFileSync(migration, gunzipSync(Buffer.from(GATE2_MIGRATION_GZIP_BASE64, "base64")));
@@ -365,7 +370,7 @@ test("cutover restart rollback restart and re-cutover advance monotonic generati
   const migration = join(parent, "migration.json");
   const controllers: SharedRuntimeController[] = [];
   try {
-    execFileSync("git", ["clone", "-q", "--no-hardlinks", process.cwd(), cwd]);
+    cloneReviewedGate2Candidate(cwd);
     resetClonedRolloutAuthority(cwd);
     writeFileSync(readiness, gunzipSync(Buffer.from(GATE2_READINESS_GZIP_BASE64, "base64"))); writeFileSync(migration, gunzipSync(Buffer.from(GATE2_MIGRATION_GZIP_BASE64, "base64")));
     chmodSync(readiness, 0o600); chmodSync(migration, 0o600);

@@ -32,7 +32,7 @@ function fixture(value = workflow()) {
   return { cwd, cleanup: () => rmSync(cwd, { recursive: true, force: true }) };
 }
 
-function commandHarness(cwd: string, decisions: { input?: string; confirm?: boolean; select?: string } = {}) {
+function commandHarness(cwd: string, decisions: { input?: string; confirm?: boolean; select?: string; hasUI?: boolean } = {}) {
   let definition: { handler: (raw: string, ctx: any) => Promise<void> } | undefined;
   const messages: string[] = [];
   const notifications: string[] = [];
@@ -41,7 +41,7 @@ function commandHarness(cwd: string, decisions: { input?: string; confirm?: bool
     sendUserMessage: (message: string) => { messages.push(message); },
   } as never);
   const ctx = {
-    cwd, hasUI: true, model: { provider: identity.provider, id: identity.model }, thinkingLevel: identity.thinking,
+    cwd, hasUI: decisions.hasUI ?? true, model: { provider: identity.provider, id: identity.model }, thinkingLevel: identity.thinking,
     sessionManager: { getSessionId: () => identity.sessionId, getBranch: () => [{}, {}, {}] },
     ui: {
       notify: (message: string) => { notifications.push(message); },
@@ -55,8 +55,20 @@ function commandHarness(cwd: string, decisions: { input?: string; confirm?: bool
 
 test("command autocomplete exposes v2 work controls but no retired compatibility rollback selector", () => {
   const values = completeSweArgument("work ")!.map((item) => item.value);
-  for (const expected of ["work status", "work inspect", "work runs", "work start", "work resume", "work pause", "work stop"]) assert.ok(values.includes(expected));
+  for (const expected of ["work status", "work inspect", "work runs", "work start", "work resume", "work adopt-post-cutover", "work pause", "work stop"]) assert.ok(values.includes(expected));
   assert.deepEqual(completeSweArgument("runtime ")!.map((item) => item.value), ["runtime cutover"]);
+});
+
+test("post-cutover adoption rejects print mode before evidence preparation or workflow mutation", async () => {
+  const value = workflow("swe-production-rollout");
+  const f = fixture(value);
+  try {
+    const before = readFileSync(join(f.cwd, ".model-artifacts", "initiatives", value.topic, "workflow.json"), "utf8");
+    const harness = commandHarness(f.cwd, { hasUI: false });
+    await harness.handler("work adopt-post-cutover swe-production-rollout");
+    assert.match(harness.notifications.at(-1)!, /requires keyboard-accessible or RPC operator authorization/i);
+    assert.equal(readFileSync(join(f.cwd, ".model-artifacts", "initiatives", value.topic, "workflow.json"), "utf8"), before);
+  } finally { f.cleanup(); }
 });
 
 test("contextual operator actions expose one primary legal action plus keyboard-addressable controls", () => {

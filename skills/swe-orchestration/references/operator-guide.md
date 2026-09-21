@@ -60,6 +60,16 @@ After a crash or parent restart:
 
 Never dismiss workflow evidence to recover. Dismissing an exited runtime entry removes only its bounded in-memory tail; accepted reports and receipts remain durable.
 
+## Canonical post-cutover authority repair
+
+Only the controlling `swe-production-rollout` may use:
+
+```text
+/swe work adopt-post-cutover swe-production-rollout
+```
+
+The command fails closed unless the workflow is the exact canonical rev41 contract and settled output-limit plan-review blocker, every task is residue-free, and the control checkout differs only by the exact unstaged authority file. Provenance separates the historical task range (rollout anchor → post-Session9 `2c8fb31…`) from the fixed-scope authority-repair range (`2c8fb31…` → repair `HEAD`); the retained report truthfully remains pinned to `08a434f…`. It creates a disposable checkout, performs a lockfile-driven dependency install, gathers fresh independent reviews, and executes exact task checks through one-shot parent/session/runtime- and snapshot-bound grants. Any blocking-finding dispositions are entered first so the displayed stable evidence hash binds them; authorization JSON then supplies `id`, `authorizedBy`, `authorizedAt`, that `evidenceHash`, and `rationale`. A second keyboard/RPC confirmation is mandatory. `pi -p` and `swe_workflow` model calls cannot adopt. Successful adoption is one atomic history-preserving transition: tasks 1–16 become historical and only `cutover-release-qualification` remains pending.
+
 ## Authorization boundary
 
 Workflow completion authorizes none of the following: commit, push, pull-request creation, deployment, release, production rollout, self-upgrade, or cleanup/discard of retained workspaces. Request each side effect separately.

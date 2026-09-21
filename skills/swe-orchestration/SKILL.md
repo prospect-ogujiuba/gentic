@@ -26,9 +26,10 @@ If the topic is ambiguous, ask once. Never infer authorization to commit, push, 
 5. **Handle questions durably.** Surface each stable question ID. The operator answers with `/swe work answer <topic> [question-id]`; do not invent an answer. Resume the same stage after the answer is recorded.
 6. **Inspect without attaching.** Use `/swe work inspect <topic>` for durable state and `/swe work runs <topic>` for bounded tails. Native children are non-PTY processes, so interactive-shell `/attach` does not apply.
 7. **Recover explicitly.** Use pause/stop before interruption. After restart, inspect first, then resume so orphaned or expired leases are fenced and a fresh parent checkpoint is established. Use retry only for recoverable blocked work.
-8. **Respect remediation limits.** Reviewer disagreement, inadequate tests, failed or source-changing checks, and snapshot drift enter cumulative remediation. If budget is exhausted, require the operator's keyboard-confirmed `/swe work reset <topic>` decision.
-9. **Record manual validation.** When requested by the workflow, the operator uses `/swe work validate <topic> <approve|reject>`. Manual validation never substitutes for fresh final acceptance.
-10. **Finish only through final acceptance.** Task-local evidence, historical completion, UI actions, or a direct tool `complete` must not complete a managed initiative. Report completion as implementation acceptance only.
+8. **Use post-cutover adoption only for its canonical recovery.** `/swe work adopt-post-cutover swe-production-rollout` is operator-only, rejects print/model invocation, prepares evidence in a disposable committed candidate checkout, and requires a complete authorization record plus keyboard/RPC confirmation. Never construct or edit the adoption state manually.
+9. **Respect remediation limits.** Reviewer disagreement, inadequate tests, failed or source-changing checks, and snapshot drift enter cumulative remediation. If budget is exhausted, require the operator's keyboard-confirmed `/swe work reset <topic>` decision.
+10. **Record manual validation.** When requested by the workflow, the operator uses `/swe work validate <topic> <approve|reject>`. Manual validation never substitutes for fresh final acceptance.
+11. **Finish only through final acceptance.** Task-local evidence, historical completion, UI actions, or a direct tool `complete` must not complete a managed initiative. Report completion as implementation acceptance only.
 
 ## Success criteria
 

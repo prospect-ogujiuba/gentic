@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   OrchestrationEngine,
+  postCutoverReviewRequest,
   type OrchestrationHandoff,
   type OrchestrationRunner,
   type OrchestrationWorkspace,
@@ -200,6 +201,27 @@ test("explicit FSM advances one stage at a time and does not skip required gates
   assert.equal(current(value.service).tasks[0]!.phase, "general-review");
   assert.equal(value.runner.requests.length, 2);
   assert.throws(() => reduceWorkflow(current(value.service), { type: "record-integration", receipt: {} as never }, now()), /integration report is not valid|integration/);
+});
+
+test("post-cutover review profile disables thinking only for direct independent recovery reviews", async () => {
+  const value = await setup();
+  await advance(value);
+  const ordinary = value.runner.requests[0]!;
+  assert.equal(ordinary.role, "plan-reviewer");
+  assert.equal(ordinary.thinking, "high", "ordinary orchestration must retain configured thinking");
+  assert.equal(ordinary.reviewInput, undefined);
+  const reviewInput = { path: "node_modules/review.patch", content: "full immutable delta", hash: `sha256:${"a".repeat(64)}`, bytes: 20, changedPaths: ["src/a.ts"] };
+  for (const role of ["plan-reviewer", "general-reviewer", "concern-reviewer"] as const) {
+    const profiled = postCutoverReviewRequest({ ...ordinary, role }, reviewInput);
+    assert.equal(profiled.thinking, "off");
+    assert.equal(profiled.provider, ordinary.provider); assert.equal(profiled.model, ordinary.model);
+    assert.deepEqual(profiled.budgets, ordinary.budgets);
+    assert.equal(profiled.reviewInput, reviewInput, "the exact full delta attachment must be preserved");
+    assert.match(profiled.projectInstructions.at(-1)!, /exactly one concise runner_report/i);
+    assert.match(profiled.projectInstructions.at(-1)!, /without narrated analysis/i);
+  }
+  assert.equal(ordinary.thinking, "high", "profiling must not mutate the ordinary request");
+  for (const role of ["implementer", "final-reviewer"] as const) assert.throws(() => postCutoverReviewRequest({ ...ordinary, role }, reviewInput), /restricted to direct independent review roles/i);
 });
 
 test("plan rejection and clarification block without falling through to implementation", async () => {

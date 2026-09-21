@@ -297,10 +297,12 @@
         "extensions/pi-swe/index.ts",
         "extensions/pi-swe/src/closeout.ts",
         "extensions/pi-swe/src/command.ts",
+        "extensions/pi-swe/src/cutover.ts",
         "extensions/pi-swe/src/driver.ts",
         "extensions/pi-swe/src/integrity.ts",
         "extensions/pi-swe/src/migration.ts",
         "extensions/pi-swe/src/orchestration.ts",
+        "extensions/pi-swe/src/post-cutover.ts",
         "extensions/pi-swe/src/runner-child.ts",
         "extensions/pi-swe/src/runner-protocol.ts",
         "extensions/pi-swe/src/runner.ts",
@@ -319,7 +321,14 @@
         "tools": [
           "swe_workflow"
         ],
-        "events": [],
+        "events": [
+          "before_agent_start",
+          "session_shutdown",
+          "session_start",
+          "tool_call",
+          "tool_result",
+          "user_bash"
+        ],
         "shortcuts": [],
         "flags": [],
         "providers": [],

@@ -4,6 +4,69 @@ export const WORKFLOW_VERSION = 2 as const;
 export const LEGACY_WORKFLOW_VERSION = 1 as const;
 export const BOOTSTRAP_PLAN_ANCHOR = "e882cd62deb541aa437c16c72781a1ccd243055e" as const;
 export const BOOTSTRAP_NATIVE_TAKEOVER_TASK = "cutover-readiness" as const;
+export const POST_CUTOVER_TARGET_TASK = "cutover-release-qualification" as const;
+export const MAX_POST_CUTOVER_RECOVERY_ROTATIONS = 12;
+export const POST_CUTOVER_HISTORICAL_HEAD = "2c8fb31b4248d6f619977de0d6d69b1a2a613c68" as const;
+export const POST_CUTOVER_RETAINED_REPORT_COMMIT = "08a434f642eef18a6d1adf5f7f2ce399e9c5b139" as const;
+export const POST_CUTOVER_HISTORICAL_PATHS = [
+  "catalog/gentic-inventory.json", "docs/model-artifacts.md", "docs/release.md",
+  "extensions/pi-artifacts/src/app/transaction.ts", "extensions/pi-artifacts/src/domain/inventory.ts",
+  "extensions/pi-swe/README.md", "extensions/pi-swe/index.ts", "extensions/pi-swe/runtime.schema.json",
+  "extensions/pi-swe/src/closeout.ts", "extensions/pi-swe/src/command.ts", "extensions/pi-swe/src/cutover.ts", "extensions/pi-swe/src/driver.ts", "extensions/pi-swe/src/integrity.ts", "extensions/pi-swe/src/migration.ts", "extensions/pi-swe/src/runtime.ts", "extensions/pi-swe/src/service.ts", "extensions/pi-swe/src/store.ts", "extensions/pi-swe/src/tool.ts", "extensions/pi-swe/src/ux.ts", "extensions/pi-swe/src/workflow.ts", "extensions/pi-swe/workflow.schema.json",
+  "scripts/check-model-artifact-layout.ts", "scripts/release-verify.ts", "src/swe-migration-record.ts",
+  "test/fixtures/pi-swe-cutover/corpus.json", "test/fixtures/pi-swe-migration/corpus.json", "test/package-resources.test.ts", "test/pi-artifacts.test.ts", "test/pi-swe-command.test.ts", "test/pi-swe-cutover.test.ts", "test/pi-swe-docs-e2e.test.ts", "test/pi-swe-driver.test.ts", "test/pi-swe-integrity.test.ts", "test/pi-swe-migration.test.ts", "test/pi-swe-runtime.test.ts", "test/pi-swe-store.test.ts", "test/pi-swe-tool.test.ts", "test/pi-swe.test.ts",
+] as const;
+export const POST_CUTOVER_REPAIR_PATHS = [
+  "catalog/gentic-inventory.json",
+  "extensions/pi-swe/README.md",
+  "extensions/pi-swe/src/command.ts",
+  "extensions/pi-swe/src/integrity.ts",
+  "extensions/pi-swe/src/orchestration.ts",
+  "extensions/pi-swe/src/post-cutover.ts",
+  "extensions/pi-swe/src/runner.ts",
+  "extensions/pi-swe/src/runtime.ts",
+  "extensions/pi-swe/src/service.ts",
+  "extensions/pi-swe/src/tool.ts",
+  "extensions/pi-swe/src/workflow.ts",
+  "extensions/pi-swe/workflow.schema.json",
+  "skills/swe-orchestration/SKILL.md",
+  "skills/swe-orchestration/references/operator-guide.md",
+  "src/release/inventory.ts",
+  "test/pi-swe-agent-runner.test.ts",
+  "test/pi-swe-command.test.ts",
+  "test/pi-swe-integrity.test.ts",
+  "test/pi-swe-orchestration.test.ts",
+  "test/pi-swe-post-cutover.test.ts",
+  "test/pi-swe-runtime.test.ts",
+  "test/pi-swe-store.test.ts",
+  "test/pi-swe-tool.test.ts",
+] as const;
+export const POST_CUTOVER_ADOPTION_TASK_IDS = [
+  "migration-inventory", "migration-policy", "migration-apply", "migration-surfaces", "migration-qualification",
+  "runtime-composition", "runtime-registration", "orchestration-driver", "contextual-operator-ux", "activation-recovery",
+  "activation-qualification", "cutover-readiness", "cutover-rehearsal", "repository-migration", "default-v2-runtime",
+  "retire-v1-execution",
+] as const;
+export const POST_CUTOVER_CANONICAL_WORKFLOW_CONTRACT = { revision: 6, hash: "sha256:3894b64f481fc360ba799bba914eeb08f88e1f85b18fad6d33b5e2e25c47f78f" } as const;
+export const POST_CUTOVER_CANONICAL_TASK_CONTRACTS = [
+  ["migration-inventory", 7, "sha256:e00ef8f80b80cbfd8029b63c5762605b4f3c83eaaad1f5bc2ce9d6987d817d36"],
+  ["migration-policy", 6, "sha256:39565bbe3b159957f6a4918a89fc20da371c608fcce33d51178e820e46dcf9fd"],
+  ["migration-apply", 7, "sha256:7cbc934b9451beee901c37a01cf8a34665db3cd370d2c0c200d249a18c7857a1"],
+  ["migration-surfaces", 7, "sha256:8db64b168db5c88c508a12c75830083280068efcff5b30e0a59787b691de0dd3"],
+  ["migration-qualification", 6, "sha256:8b28d01b0ca3feb60e0a139cad5256e8301f0c69c5c6f8f9791ed6c659abe134"],
+  ["runtime-composition", 6, "sha256:d494864f2f252b86efe77fad7b11c9e32ef4437416f4b224f0750ede876d3943"],
+  ["runtime-registration", 7, "sha256:51cef3a604581f1244d464fe0dee0c9d9562b151b20e649d108012a51a600b20"],
+  ["orchestration-driver", 6, "sha256:eb3a28fdec32f7c48f51cdf5ca329429ed7b319a4d121d0e7c8c2453ff9b3f38"],
+  ["contextual-operator-ux", 6, "sha256:53a2d476f87a52df087f06df40f1629041ad0d8c68b3acbd1a2cc8214c2cc6cf"],
+  ["activation-recovery", 6, "sha256:93ef4d99fc5f1341823c1fe9a1438d87abcc422be693e1270ee8b601c4a7f769"],
+  ["activation-qualification", 6, "sha256:e6efba1a17d67dc23e60ffc9bac8095fa148fc84315b586bdc7540243cfb9efb"],
+  ["cutover-readiness", 6, "sha256:2dfa28727c91001732df0b744ababee9a5b1b1d838cfbd9d58c0f435490444eb"],
+  ["cutover-rehearsal", 6, "sha256:c2f5b71703561891a413075e59a5aa0b04f56214f0e77d7d867db5f7cc8f7b74"],
+  ["repository-migration", 6, "sha256:e7a9e1a185c8e1f6b9a19aa528ddc0ac847d5d5b67ec5b983a042b8b0306b7a1"],
+  ["default-v2-runtime", 6, "sha256:7e660077480cb940791fac7d9dc9cd6b0fc95b3b25aabaf010ae0f36019894de"],
+  ["retire-v1-execution", 7, "sha256:cad65244de78231b3d62e475c7c7f9391447ee47f42744582775caafe618efe1"],
+  ["cutover-release-qualification", 7, "sha256:572df2bc068d1ea6bbed41cc8ac019f36b9f5f142e3b7065eb450a048ff22d95"],
+] as const;
 
 export type WorkflowStatus = "draft" | "active" | "paused" | "blocked" | "complete";
 export type TaskStatus = "pending" | "active" | "blocked" | "deferred" | "complete";
@@ -18,6 +81,13 @@ export type Gate2DecisionAttestation = {
   readinessEvidenceHash: string; migrationEvidenceHash: string;
   targetRuntime: "v2"; rollbackSelector: "compatibility"; rollbackWindowEnd: string; rationale: string;
 };
+export type RuntimeInvalidationProof = {
+  revision: number;
+  parent: ParentAuthority;
+  before: { revision: number; generation: number; runtimeId: string };
+  after: { revision: number; generation: number; runtimeId: string };
+  proofHash: string;
+};
 export type RuntimeHandoff = {
   id: string;
   decisionId: string;
@@ -29,6 +99,7 @@ export type RuntimeHandoff = {
   preparedAt: string;
   reclaimedAt?: string;
   previousParent?: ParentAuthority;
+  invalidationProofs?: RuntimeInvalidationProof[];
 };
 export type ContractIdentity = { revision: number; hash: string; linkedPlanHash?: string };
 export type TaskKind = "implementation" | "coordination";
@@ -153,6 +224,46 @@ export type BootstrapAdoption = {
   authorization: { id: string; authorizedBy: string; ownerId: string; sessionId: string; runtimeId: string; authorizedAt: string };
   adoptedAt: string;
 };
+export type PostCutoverCheckReceipt = VerificationCommand & {
+  taskId: string;
+  exitCode: number;
+  contractHash: string;
+  snapshotHash: string;
+  beforeTree: string;
+  afterTree: string;
+  outputHash: string;
+  startedAt: string;
+  completedAt: string;
+  authorizationId: string;
+  executor: "post-cutover-protected-executor";
+  ownerId: string;
+  sessionId: string;
+  runtimeId: string;
+};
+export type PostCutoverAdoption = {
+  anchorCommit: string;
+  historicalHead: string;
+  historicalTree: string;
+  historicalChangedPaths: string[];
+  repairBase: string;
+  repairChangedPaths: string[];
+  descendantHead: string;
+  candidateTree: string;
+  snapshot: RepositorySnapshot;
+  authorityRevision: number;
+  authorityHistoryHash: string;
+  authorityCwd: string;
+  taskIds: string[];
+  taskContracts: Array<{ taskId: string; revision: number; hash: string }>;
+  planReview: StageReport;
+  generalReview: StageReport;
+  concernReview?: { concerns: WorkflowApproach[]; report: StageReport };
+  checks: PostCutoverCheckReceipt[];
+  retainedEvidence: Array<{ path: string; sha256: string; commit: string }>;
+  decisions: BootstrapFindingDecision[];
+  authorization: { id: string; authorizedBy: string; ownerId: string; sessionId: string; runtimeId: string; authorizedAt: string; evidenceHash: string; rationale: string };
+  adoptedAt: string;
+};
 export type InitiativeCloseout = {
   snapshot: RepositorySnapshot;
   cumulativeDeltaHash: string;
@@ -244,6 +355,7 @@ export type Workflow = {
   closeout?: InitiativeCloseout;
   initiativeAcceptance?: StageReport;
   bootstrapAdoption?: BootstrapAdoption;
+  postCutoverAdoption?: PostCutoverAdoption;
   activeTask?: string;
   tasks: WorkflowTask[];
   updatedAt: string;
@@ -265,6 +377,7 @@ export type WorkflowEvent =
   | { type: "block"; reason: string }
   | { type: "record-plan-review"; report: StageReport }
   | { type: "adopt-bootstrap"; adoption: Omit<BootstrapAdoption, "adoptedAt"> }
+  | { type: "adopt-post-cutover"; adoption: Omit<PostCutoverAdoption, "adoptedAt"> }
   | { type: "record-implementation"; report: StageReport; receipt?: WorkspaceReceipt }
   | { type: "record-review"; report: StageReport }
   | { type: "record-run-failure"; stage: WorkflowPhase | TaskPhase; taskId?: string; reason: string }
@@ -468,6 +581,7 @@ function reduceWorkflowStep(workflow: Workflow, event: WorkflowEvent, now: strin
   }
   if (event.type === "record-plan-review") return recordPlanReview(workflow, event.report, now);
   if (event.type === "adopt-bootstrap") return adoptBootstrap(workflow, event.adoption, now);
+  if (event.type === "adopt-post-cutover") return adoptPostCutover(workflow, event.adoption, now);
   if (workflow.orchestration.mode === "legacy") return reduceLegacyWorkflow(workflow, event, now);
   return reduceOrchestratedWorkflow(workflow, event, now);
 }
@@ -727,9 +841,11 @@ function fenceParent(workflow: Workflow, event: Extract<WorkflowEvent, { type: "
   const parent = workflow.orchestration.parent;
   if (!parent || !parent.valid || parent.ownerId !== event.ownerId || parent.sessionId !== event.sessionId || parent.runtimeId !== event.runtimeId) throw new Error("parent fence does not match current authority");
   const reason = boundedText(event.reason, "parent fence reason");
+  const invalidated = { ...parent, valid: false, invalidatedAt: now, invalidatedReason: reason };
+  const history = appendHistory(workflow.orchestration.history, { id: `runtime-parent-${workflow.revision + 1}-invalidated`, type: "runtime-parent-invalidated", at: now, summary: invalidationAuditSummary(invalidated), auditCritical: true });
   return update(workflow, {
     status: workflow.status === "complete" ? workflow.status : "paused", ...staleAuthorityPatch(workflow),
-    orchestration: { ...workflow.orchestration, nextFence: workflow.orchestration.nextFence + 1, activeRun: undefined, parent: { ...parent, valid: false, invalidatedAt: now, invalidatedReason: reason } },
+    orchestration: { ...workflow.orchestration, nextFence: workflow.orchestration.nextFence + 1, activeRun: undefined, parent: invalidated, history },
   }, now, `fenced parent authority: ${reason}`);
 }
 
@@ -791,18 +907,82 @@ function reclaimRuntimeHandoff(workflow: Workflow, event: Extract<WorkflowEvent,
   return update(workflow, { status: "paused", orchestration: { ...workflow.orchestration, parent: authority, activeRun: undefined, runtimeHandoff: reclaimed, history } }, now, `reclaimed workflow under fresh ${handoff.to} parent authority`);
 }
 
+function invalidationAuditSummary(parent: ParentAuthority): string {
+  if (parent.valid || !parent.invalidatedAt || !parent.invalidatedReason) throw new Error("parent invalidation audit requires exact invalid authority state");
+  return `parent ${parent.runtimeId}; invalidated ${parent.invalidatedAt}; reason ${parent.invalidatedReason}; proof ${hashContract(parent)}`;
+}
+
+function rotationHistoryIdentity(entry: HistoryEntry): { revision: number; generation: number; runtimeId: string } | undefined {
+  const id = /^runtime-parent-(\d+)-rotated$/.exec(entry.id);
+  const summary = /^v2 generation (\d+); parent ([0-9a-f-]{36})$/.exec(entry.summary);
+  if (!id || !summary || entry.type !== "runtime-parent-rotated" || entry.auditCritical !== true) return undefined;
+  return { revision: Number(id[1]), generation: Number(summary[1]), runtimeId: summary[2]! };
+}
+
+function sameParentIdentity(left: ParentAuthority, right: ParentAuthority): boolean {
+  return left.ownerId === right.ownerId && left.sessionId === right.sessionId && left.cwd === right.cwd && left.sessionFile === right.sessionFile;
+}
+
+function reconcileLegacyRuntimeInvalidations(workflow: Workflow, next: { revision: number; generation: number; runtimeId: string }, now: string): { history: HistoryEntry[]; proofs: RuntimeInvalidationProof[] } {
+  let history = workflow.orchestration.history;
+  const proofs = [...(workflow.orchestration.runtimeHandoff?.invalidationProofs ?? [])];
+  const rotations = history.map((entry) => ({ entry, identity: rotationHistoryIdentity(entry) })).filter((item): item is { entry: HistoryEntry; identity: NonNullable<ReturnType<typeof rotationHistoryIdentity>> } => !!item.identity);
+  const latest = rotations.at(-1);
+  const prior = rotations.at(-2);
+  const handoff = workflow.orchestration.runtimeHandoff;
+  const current = workflow.orchestration.parent;
+  if (!latest || !current) return { history, proofs };
+  const retainProof = (revision: number, parent: ParentAuthority, before: NonNullable<ReturnType<typeof rotationHistoryIdentity>>, after: NonNullable<ReturnType<typeof rotationHistoryIdentity>>): void => {
+    const body = { revision, parent, before, after };
+    const candidate: RuntimeInvalidationProof = { ...body, proofHash: hashContract(body) };
+    const matching = proofs.filter((proof) => proof.revision === revision);
+    if (matching.length > 1 || matching.length === 1 && hashContract(matching[0]) !== hashContract(candidate)) throw new Error("runtime invalidation retained proof is duplicate or mismatched");
+    if (matching.length === 0) proofs.push(candidate);
+    if (proofs.length > 8) throw new Error("runtime invalidation retained proof bound exceeded");
+  };
+  const appendReconciliation = (revision: number, parent: ParentAuthority, before: NonNullable<ReturnType<typeof rotationHistoryIdentity>>, after: NonNullable<ReturnType<typeof rotationHistoryIdentity>>): void => {
+    const id = `runtime-parent-${revision}-invalidation-reconciled`;
+    if (parent.valid || parent.invalidatedReason !== "session quit" || !parent.invalidatedAt || !Number.isFinite(Date.parse(parent.invalidatedAt))) throw new Error("legacy runtime invalidation proof has invalid state, reason, or time");
+    const expectedSummary = invalidationAuditSummary(parent);
+    const existing = history.filter((entry) => entry.id === id || entry.id === `runtime-parent-${revision}-invalidated`);
+    if (existing.length > 1) throw new Error("legacy runtime invalidation has duplicate audit reconciliation");
+    if (existing.length === 1) {
+      const entry = existing[0]!;
+      const exactNative = entry.id === `runtime-parent-${revision}-invalidated` && entry.type === "runtime-parent-invalidated" && entry.at === parent.invalidatedAt;
+      const exactReconciled = entry.id === id && entry.type === "runtime-parent-invalidation-reconciled" && Date.parse(entry.at) >= Date.parse(parent.invalidatedAt) && Date.parse(entry.at) <= Date.parse(now);
+      if (entry.auditCritical !== true || entry.summary !== expectedSummary || !exactNative && !exactReconciled) throw new Error("legacy runtime invalidation has mismatched audit type, time, or proof");
+      retainProof(revision, parent, before, after);
+      return;
+    }
+    history = appendHistory(history, { id, type: "runtime-parent-invalidation-reconciled", at: now, summary: expectedSummary, auditCritical: true });
+    retainProof(revision, parent, before, after);
+  };
+  if (prior && latest.identity.revision === prior.identity.revision + 2 && handoff?.phase === "reclaimed" && handoff.selectorGeneration === latest.identity.generation && handoff.previousParent) {
+    const legacy = handoff.previousParent;
+    if (legacy.runtimeId !== prior.identity.runtimeId || current.runtimeId !== latest.identity.runtimeId || !sameParentIdentity(legacy, current) || legacy.claimedAt !== prior.entry.at || Date.parse(legacy.invalidatedAt ?? "") <= Date.parse(prior.entry.at) || Date.parse(legacy.invalidatedAt ?? "") > Date.parse(latest.entry.at) || Date.parse(latest.entry.at) > Date.parse(now)) throw new Error("historical runtime invalidation proof does not match adjacent rotations");
+    appendReconciliation(prior.identity.revision + 1, legacy, prior.identity, latest.identity);
+  }
+  if (!current.valid && workflow.revision === latest.identity.revision + 1 && current.runtimeId === latest.identity.runtimeId) {
+    if (current.claimedAt !== latest.entry.at || Date.parse(current.invalidatedAt ?? "") <= Date.parse(latest.entry.at) || Date.parse(current.invalidatedAt ?? "") > Date.parse(now)) throw new Error("current legacy runtime invalidation time is outside its adjacent rotation window");
+    appendReconciliation(workflow.revision, current, latest.identity, next);
+  }
+  return { history, proofs };
+}
+
 function rotateRuntimeParent(workflow: Workflow, event: Extract<WorkflowEvent, { type: "rotate-runtime-parent" }>, now: string): WorkflowDecision {
   if (workflow.orchestration.mode !== "multi-agent" || workflow.orchestration.phase === "complete") throw new Error("runtime parent rotation requires a managed workflow");
   const previous = workflow.orchestration.parent;
   if (!previous) throw new Error("runtime parent rotation requires current fenced or valid authority");
   const authority = normalizeParentAuthority(event.authority);
-  if (!authority.valid || authority.ownerId !== previous.ownerId || authority.sessionId !== previous.sessionId || authority.cwd !== previous.cwd || authority.runtimeId === previous.runtimeId) throw new Error("runtime parent rotation must preserve owner, session, and cwd while installing a fresh runtime id");
+  if (!authority.valid || authority.ownerId !== previous.ownerId || authority.sessionId !== previous.sessionId || authority.cwd !== previous.cwd || authority.sessionFile !== previous.sessionFile || authority.runtimeId === previous.runtimeId) throw new Error("runtime parent rotation must preserve owner, session, cwd, and session file while installing a fresh runtime id");
   if (!Number.isSafeInteger(event.selectorGeneration) || event.selectorGeneration !== (workflow.orchestration.runtimeHandoff?.selectorGeneration ?? 0) + 1) throw new Error("runtime parent rotation selector generation is stale");
+  const reconciled = reconcileLegacyRuntimeInvalidations(workflow, { revision: workflow.revision + 1, generation: event.selectorGeneration, runtimeId: authority.runtimeId }, now);
   const handoff: RuntimeHandoff = {
     id: boundedText(event.handoffId, "runtime rotation id", 128), decisionId: boundedText(event.decisionId, "runtime rotation decision id", 128),
     from: event.from, to: event.to, phase: "reclaimed", selectorGeneration: event.selectorGeneration, preparedAt: now, reclaimedAt: now, previousParent: previous,
+    ...(reconciled.proofs.length ? { invalidationProofs: reconciled.proofs } : {}),
   };
-  const history = appendHistory(workflow.orchestration.history, { id: `runtime-parent-${workflow.revision + 1}-rotated`, type: "runtime-parent-rotated", at: now, summary: `${event.to} generation ${event.selectorGeneration}; parent ${authority.runtimeId}`, auditCritical: true });
+  const history = appendHistory(reconciled.history, { id: `runtime-parent-${workflow.revision + 1}-rotated`, type: "runtime-parent-rotated", at: now, summary: `${event.to} generation ${event.selectorGeneration}; parent ${authority.runtimeId}`, auditCritical: true });
   return update(workflow, {
     status: "paused", ...staleAuthorityPatch(workflow),
     orchestration: { ...workflow.orchestration, nextFence: workflow.orchestration.nextFence + 1, activeRun: undefined, parent: authority, runtimeHandoff: handoff, history },
@@ -892,6 +1072,142 @@ function adoptBootstrap(workflow: Workflow, raw: Omit<BootstrapAdoption, "adopte
   const adoption: BootstrapAdoption = { anchorCommit, descendantHead, snapshot, taskIds, planReview, generalReview, ...(concernReview ? { concernReview } : {}), checks, decisions, authorization, adoptedAt: now };
   const history = appendHistory(workflow.orchestration.history, { id: `bootstrap-adoption-${workflow.revision + 1}`, type: "bootstrap-adoption", at: now, summary: `authorized bootstrap adoption completed ${taskIds.length} ordered tasks from ${anchorCommit.slice(0, 12)} on snapshot ${snapshot.hash}`, auditCritical: true });
   return update(workflow, { tasks, planReview, bootstrapAdoption: adoption, status: "draft", orchestration: { ...workflow.orchestration, phase: "task-execution", history } }, now, `adopted ${taskIds.length} bootstrap tasks; ${workflow.tasks[selected.length]!.id} requires native start`);
+}
+
+export function assertPostCutoverRecoveryEligibility(workflow: Workflow): void {
+  if (workflow.topic !== "swe-production-rollout" || workflow.orchestration.mode !== "multi-agent") throw new Error("post-cutover adoption is restricted to the controlling multi-agent rollout");
+  if (!["blocked", "paused"].includes(workflow.status) || workflow.orchestration.phase !== "plan-review" || workflow.activeTask || workflow.planReview || workflow.bootstrapAdoption || workflow.postCutoverAdoption || workflow.orchestration.activeRun) throw new Error("post-cutover adoption requires the pristine blocked or same-session-reclaimed plan-review recovery state");
+  const settledFailureIndex = workflow.orchestration.history.findIndex((entry) => entry.id === "run-19-failed" && entry.auditCritical && entry.type === "run-failed" && entry.summary === "output-limit: agent run exceeded its output budget");
+  if (settledFailureIndex < 0) throw new Error("post-cutover adoption requires the exact preserved rev41 output-limit plan-review failure");
+  const parent = workflow.orchestration.parent;
+  if (!parent?.valid) throw new Error("post-cutover recovery requires a valid current parent authority");
+  const suffix = workflow.orchestration.history.slice(settledFailureIndex + 1);
+  const audited = suffix.map((entry) => {
+    const rotation = rotationHistoryIdentity(entry);
+    if (rotation) return { entry, revision: rotation.revision, kind: "rotation" as const, generation: rotation.generation, runtimeId: rotation.runtimeId };
+    const id = /^runtime-parent-(\d+)-(invalidated|invalidation-reconciled)$/.exec(entry.id);
+    const summary = /^parent ([0-9a-f-]{36}); invalidated ([^;]+); reason (session quit); proof (sha256:[a-f0-9]{64})$/.exec(entry.summary);
+    const expectedType = id?.[2] === "invalidated" ? "runtime-parent-invalidated" : "runtime-parent-invalidation-reconciled";
+    if (!id || !summary || entry.type !== expectedType || entry.auditCritical !== true || !Number.isFinite(Date.parse(summary[2]!))) throw new Error("post-cutover recovery suffix contains an unaudited or malformed event");
+    return { entry, revision: Number(id[1]), kind: "invalidation" as const, runtimeId: summary[1]!, invalidatedAt: summary[2]! };
+  }).sort((left, right) => left.revision - right.revision);
+  const originalRev41 = workflow.status === "blocked" && workflow.revision === 41 && audited.length === 0;
+  let rotations = 0;
+  const rawProofs = workflow.orchestration.runtimeHandoff?.invalidationProofs ?? [];
+  let proofs: RuntimeInvalidationProof[] = [];
+  try { proofs = rawProofs.map(normalizeRuntimeInvalidationProof); } catch { proofs = []; }
+  const invalidations = audited.filter((item) => item.kind === "invalidation");
+  let validAuditChain = audited.length > 0 && audited.every((item, index) => item.revision === 42 + index) && new Set(audited.map((item) => item.revision)).size === audited.length
+    && proofs.length === invalidations.length && new Set(proofs.map((proof) => proof.revision)).size === proofs.length;
+  for (let index = 0; validAuditChain && index < audited.length; index++) {
+    const item = audited[index]!;
+    if (item.kind === "rotation") {
+      rotations += 1;
+      if (rotations > MAX_POST_CUTOVER_RECOVERY_ROTATIONS || item.generation !== 8 + rotations || index > 0 && audited[index - 1]!.kind === "rotation" && Date.parse(item.entry.at) <= Date.parse(audited[index - 1]!.entry.at)) validAuditChain = false;
+    } else {
+      const before = audited[index - 1]; const after = audited[index + 1];
+      const matching = proofs.filter((proof) => proof.revision === item.revision);
+      const proof = matching[0];
+      if (!before || before.kind !== "rotation" || !after || after.kind !== "rotation" || matching.length !== 1 || !proof || item.runtimeId !== before.runtimeId || !sameParentIdentity(proof.parent, parent) || item.entry.summary !== invalidationAuditSummary(proof.parent)
+        || hashContract(proof.before) !== hashContract({ revision: before.revision, generation: before.generation, runtimeId: before.runtimeId }) || hashContract(proof.after) !== hashContract({ revision: after.revision, generation: after.generation, runtimeId: after.runtimeId })
+        || proof.parent.claimedAt !== before.entry.at || proof.parent.invalidatedAt !== item.invalidatedAt || Date.parse(item.invalidatedAt) <= Date.parse(before.entry.at) || Date.parse(item.invalidatedAt) > Date.parse(after.entry.at)) validAuditChain = false;
+    }
+  }
+  const last = audited.at(-1);
+  const penultimate = audited.at(-2);
+  const retainedHandoff = workflow.orchestration.runtimeHandoff;
+  if (validAuditChain && proofs.length > 0) {
+    const previous = retainedHandoff?.previousParent;
+    const exactCurrent = !!last && last.kind === "rotation" && retainedHandoff?.phase === "reclaimed" && retainedHandoff.selectorGeneration === last.generation && retainedHandoff.preparedAt === last.entry.at && retainedHandoff.reclaimedAt === last.entry.at && parent.claimedAt === last.entry.at;
+    const exactPrevious = penultimate?.kind === "invalidation"
+      ? !!previous && hashContract(previous) === hashContract(proofs.find((proof) => proof.revision === penultimate.revision)?.parent)
+      : penultimate?.kind === "rotation" && !!previous && previous.valid && sameParentIdentity(previous, parent) && previous.runtimeId === penultimate.runtimeId && previous.claimedAt === penultimate.entry.at;
+    if (!exactCurrent || !exactPrevious) validAuditChain = false;
+  }
+  const sameSessionReclaims = workflow.status === "paused" && workflow.revision === last?.revision && validAuditChain && last?.kind === "rotation" && last.runtimeId === parent.runtimeId;
+  if (!originalRev41 && !sameSessionReclaims) throw new Error("post-cutover recovery requires a complete bounded audited v2 rotation/invalidation revision chain after rev41");
+  if (workflow.tasks.some((task) => task.status !== "pending" || task.phase !== "pending" || task.reports.length || task.evidence.length || task.evidenceLinks.length || task.findings.length || task.clarifications.length || task.workspaceReceipt || task.integrationReceipt || task.verificationCheckpoint || task.verificationDecision || task.blockedReason || task.remediation.used !== 0 || task.verificationDriftPaths.length || task.completedAt || task.importedFrom)) throw new Error("post-cutover adoption refuses non-pristine task state or execution residue");
+  if (workflow.contract.revision !== POST_CUTOVER_CANONICAL_WORKFLOW_CONTRACT.revision || workflow.contract.hash !== POST_CUTOVER_CANONICAL_WORKFLOW_CONTRACT.hash) throw new Error("post-cutover workflow contract is not the reviewed canonical rev41 contract");
+  if (workflow.tasks.length !== POST_CUTOVER_CANONICAL_TASK_CONTRACTS.length || workflow.tasks.some((task, index) => task.id !== POST_CUTOVER_CANONICAL_TASK_CONTRACTS[index]?.[0] || task.contract.revision !== POST_CUTOVER_CANONICAL_TASK_CONTRACTS[index]?.[1] || task.contract.hash !== POST_CUTOVER_CANONICAL_TASK_CONTRACTS[index]?.[2])) throw new Error("post-cutover workflow graph or contract identities do not match canonical rev41");
+}
+
+function adoptPostCutover(workflow: Workflow, raw: Omit<PostCutoverAdoption, "adoptedAt">, now: string): WorkflowDecision {
+  assertPostCutoverRecoveryEligibility(workflow);
+  const parent = workflow.orchestration.parent;
+  const adoption = normalizePostCutoverAdoption({ ...raw, adoptedAt: now });
+  if (adoption.anchorCommit !== BOOTSTRAP_PLAN_ANCHOR) throw new Error("post-cutover adoption is not bound to the approved rollout-plan anchor");
+  if (adoption.historicalHead !== POST_CUTOVER_HISTORICAL_HEAD || adoption.repairBase !== POST_CUTOVER_HISTORICAL_HEAD) throw new Error("post-cutover adoption is not bound to the exact post-Session9 historical candidate and repair base");
+  if (adoption.snapshot.head !== adoption.descendantHead) throw new Error("post-cutover snapshot HEAD does not match descendant provenance");
+  if (adoption.authorityRevision !== workflow.revision || adoption.authorityHistoryHash !== hashContract(workflow.orchestration.history) || adoption.authorityCwd !== parent?.cwd) throw new Error("post-cutover adoption authority revision, history, or cwd changed after evidence preparation");
+  if (adoption.taskIds.length !== POST_CUTOVER_ADOPTION_TASK_IDS.length || adoption.taskIds.some((id, index) => id !== POST_CUTOVER_ADOPTION_TASK_IDS[index])) throw new Error("post-cutover adoption requires the exact ordered tasks 1-16 prefix");
+  const selected = workflow.tasks.slice(0, POST_CUTOVER_ADOPTION_TASK_IDS.length);
+  if (!sameStringSet(adoption.historicalChangedPaths, [...POST_CUTOVER_HISTORICAL_PATHS])) throw new Error("post-cutover historical candidate does not match the exact reviewed Session 1-9 path manifest");
+  if (adoption.repairChangedPaths.some((path) => !(POST_CUTOVER_REPAIR_PATHS as readonly string[]).includes(path))) throw new Error("post-cutover repair delta contains a path outside the explicitly authorized authority-repair scope");
+  const combinedPaths = [...new Set([...adoption.historicalChangedPaths, ...adoption.repairChangedPaths])].sort();
+  if (!sameStringSet(combinedPaths, adoption.snapshot.changedPaths)) throw new Error("post-cutover reviewed snapshot does not exactly combine historical and repair ranges");
+  if (adoption.taskContracts.length !== selected.length || adoption.taskContracts.some((contract, index) => contract.taskId !== selected[index]!.id || contract.revision !== selected[index]!.contract.revision || contract.hash !== selected[index]!.contract.hash)) throw new Error("post-cutover adoption task contracts are stale or incomplete");
+
+  const reviews = [adoption.planReview, adoption.generalReview, ...(adoption.concernReview ? [adoption.concernReview.report] : [])];
+  requireReport(adoption.planReview, "plan-review", "plan-reviewer", workflow.contract.hash);
+  requireReport(adoption.generalReview, "general-review", "general-reviewer", workflow.contract.hash);
+  if (adoption.planReview.outcome !== "approved" || adoption.generalReview.outcome !== "approved") throw new Error("post-cutover adoption requires approved plan and general review");
+  const requiredConcerns = [...new Set(selected.flatMap((task) => task.approaches.filter((approach) => CONCERN_APPROACHES.has(approach))))].sort();
+  if (requiredConcerns.length) {
+    if (!adoption.concernReview || !sameStringSet(adoption.concernReview.concerns, requiredConcerns)) throw new Error("post-cutover adoption requires one composed review for every selected concern");
+    requireReport(adoption.concernReview.report, "concern-review", "concern-reviewer", workflow.contract.hash);
+    if (adoption.concernReview.report.outcome !== "approved") throw new Error("post-cutover concern review must approve the cumulative delta");
+  } else if (adoption.concernReview) throw new Error("post-cutover concern review cannot substitute for an unselected concern");
+  const identities = new Set<string>();
+  for (const review of reviews) {
+    if (!review.changedPaths || !sameStringSet(review.changedPaths, adoption.snapshot.changedPaths) || review.provenance.snapshotHash !== adoption.snapshot.hash) throw new Error("post-cutover review does not cover the unchanged cumulative snapshot");
+    if (Date.parse(review.provenance.startedAt) <= Date.parse(adoption.snapshot.capturedAt) || Date.parse(review.provenance.completedAt) > Date.parse(now)) throw new Error("post-cutover review is stale or future-dated");
+    if (identities.has(review.provenance.runId) || identities.has(review.provenance.actorId)) throw new Error("post-cutover reviewers require distinct fresh run and actor provenance");
+    identities.add(review.provenance.runId); identities.add(review.provenance.actorId);
+  }
+  const findings = reviews.flatMap((review) => review.findings);
+  if (findings.some((finding) => finding.status === "accepted-risk")) throw new Error("post-cutover reviewers cannot accept risk on the operator's behalf");
+  if (new Set(findings.map((finding) => finding.id)).size !== findings.length) throw new Error("post-cutover review finding identities must be globally unique");
+  const decisions = adoption.decisions;
+  const blocking = findings.filter((finding) => finding.severity === "blocking" && finding.status === "open");
+  if (new Set(decisions.map((decision) => decision.findingId)).size !== decisions.length || decisions.length !== blocking.length || decisions.some((decision) => !blocking.some((finding) => finding.id === decision.findingId))) throw new Error("post-cutover blocking findings require one unique exact operator disposition");
+  const latestReviewAt = Math.max(...reviews.map((review) => Date.parse(review.provenance.completedAt)));
+  if (decisions.some((decision) => decision.decidedBy !== adoption.authorization.authorizedBy || Date.parse(decision.at) <= latestReviewAt || Date.parse(decision.at) > Date.parse(adoption.authorization.authorizedAt))) throw new Error("post-cutover finding dispositions require fresh authorization-actor provenance");
+
+  const expectedChecks = selected.reduce((count, task) => count + task.verification.length, 0);
+  if (adoption.checks.length !== expectedChecks) throw new Error("post-cutover adoption requires one fresh receipt for every exact verification command");
+  const checkAuthorizationIds = new Set<string>();
+  for (const task of selected) {
+    const receipts = adoption.checks.filter((check) => check.taskId === task.id);
+    if (receipts.length !== task.verification.length) throw new Error(`post-cutover verification receipts do not match ${task.id}`);
+    const unused = [...receipts];
+    for (const command of task.verification) {
+      const index = unused.findIndex((check) => commandKey(check) === commandKey(command));
+      if (index < 0) throw new Error(`missing exact post-cutover verification for ${task.id}: ${commandDisplay(command)}`);
+      const check = unused.splice(index, 1)[0]!;
+      if (checkAuthorizationIds.has(check.authorizationId) || check.executor !== "post-cutover-protected-executor" || check.ownerId !== workflow.orchestration.parent?.ownerId || check.sessionId !== workflow.orchestration.parent?.sessionId || check.runtimeId !== workflow.orchestration.parent?.runtimeId || check.exitCode !== 0 || check.contractHash !== task.contract.hash || check.snapshotHash !== adoption.snapshot.hash || check.beforeTree !== adoption.candidateTree || check.afterTree !== adoption.candidateTree || Date.parse(check.startedAt) <= Date.parse(adoption.snapshot.capturedAt) || Date.parse(check.completedAt) < Date.parse(check.startedAt) || Date.parse(check.completedAt) > Date.parse(now)) throw new Error("post-cutover verification is unprotected, replayed, failing, stale, source-changing, or superseded");
+      checkAuthorizationIds.add(check.authorizationId);
+    }
+  }
+  if (!adoption.retainedEvidence.length || !adoption.retainedEvidence.some((evidence) => evidence.commit === POST_CUTOVER_RETAINED_REPORT_COMMIT)) throw new Error("post-cutover adoption requires the retained 08a post-cutover approval report hash and commit");
+  if (adoption.authorization.ownerId !== workflow.orchestration.parent?.ownerId || adoption.authorization.sessionId !== workflow.orchestration.parent?.sessionId || adoption.authorization.runtimeId !== workflow.orchestration.parent?.runtimeId) throw new Error("post-cutover authorization is not bound to the current parent authority");
+  const evidenceCompletedAt = Math.max(...reviews.map((review) => Date.parse(review.provenance.completedAt)), ...adoption.checks.map((check) => Date.parse(check.completedAt)));
+  if (Date.parse(adoption.authorization.authorizedAt) <= evidenceCompletedAt || Date.parse(adoption.authorization.authorizedAt) > Date.parse(now)) throw new Error("post-cutover authorization must be fresh, evidence-informed, and not future-dated");
+  if (adoption.authorization.evidenceHash !== postCutoverEvidenceHash(adoption)) throw new Error("post-cutover authorization evidence hash does not match the exact reviewed bundle");
+
+  const tasks = workflow.tasks.map((task, index) => index < selected.length ? { ...task, status: "complete" as const, phase: "historical" as const, completedAt: now } : task);
+  const history = appendHistory(workflow.orchestration.history, { id: `post-cutover-adoption-${workflow.revision + 1}`, type: "post-cutover-adoption", at: now, summary: `authorized post-cutover adoption completed ${selected.length} ordered tasks on ${adoption.snapshot.hash}`, auditCritical: true });
+  return update(workflow, { tasks, planReview: adoption.planReview, postCutoverAdoption: adoption, status: "draft", orchestration: { ...workflow.orchestration, phase: "task-execution", history } }, now, `adopted ${selected.length} post-cutover tasks; ${POST_CUTOVER_TARGET_TASK} requires native start`);
+}
+
+export function postCutoverEvidenceHash(adoption: Pick<PostCutoverAdoption, "authorityRevision" | "authorityHistoryHash" | "authorityCwd" | "anchorCommit" | "historicalHead" | "historicalTree" | "historicalChangedPaths" | "repairBase" | "repairChangedPaths" | "descendantHead" | "candidateTree" | "snapshot" | "taskIds" | "taskContracts" | "planReview" | "generalReview" | "concernReview" | "checks" | "retainedEvidence" | "decisions">): string {
+  return hashContract({
+    authorityRevision: adoption.authorityRevision, authorityHistoryHash: adoption.authorityHistoryHash, authorityCwd: adoption.authorityCwd,
+    anchorCommit: adoption.anchorCommit, historicalHead: adoption.historicalHead, historicalTree: adoption.historicalTree, historicalChangedPaths: adoption.historicalChangedPaths,
+    repairBase: adoption.repairBase, repairChangedPaths: adoption.repairChangedPaths, descendantHead: adoption.descendantHead, candidateTree: adoption.candidateTree,
+    snapshot: adoption.snapshot, taskIds: adoption.taskIds, taskContracts: adoption.taskContracts,
+    planReview: adoption.planReview, generalReview: adoption.generalReview, concernReview: adoption.concernReview,
+    checks: adoption.checks, retainedEvidence: adoption.retainedEvidence, decisions: adoption.decisions,
+  });
 }
 
 function recordPlanReview(workflow: Workflow, raw: StageReport, now: string): WorkflowDecision {
@@ -1038,6 +1354,7 @@ function parseV2(value: Record<string, unknown>): Workflow {
     ...(closeout ? { closeout } : {}),
     ...(initiativeAcceptance ? { initiativeAcceptance } : {}),
     ...(value.bootstrapAdoption ? { bootstrapAdoption: normalizeBootstrapAdoption(value.bootstrapAdoption) } : {}),
+    ...(value.postCutoverAdoption ? { postCutoverAdoption: normalizePostCutoverAdoption(value.postCutoverAdoption) } : {}),
     ...(typeof value.activeTask === "string" ? { activeTask: value.activeTask } : {}), tasks, updatedAt,
     ...(normalizeMigration(value.migration) ? { migration: normalizeMigration(value.migration)! } : {}),
     ...(normalizeWorkflowImport(value.importedFrom) ? { importedFrom: normalizeWorkflowImport(value.importedFrom)! } : {}),
@@ -1120,6 +1437,31 @@ function normalizeCommit(value: unknown, label: string): string { if (typeof val
 function normalizeBootstrapDecision(value: unknown): BootstrapFindingDecision { if (!record(value)) throw new Error("invalid bootstrap finding decision"); return { findingId: boundedText(value.findingId, "bootstrap finding id", 128), disposition: boundedText(value.disposition, "bootstrap finding disposition"), decidedBy: boundedText(value.decidedBy, "bootstrap decision owner", 128), at: validTimestamp(value.at, "bootstrap finding decision timestamp") }; }
 function normalizeBootstrapAuthorization(value: unknown, capturedAt: string, now: string): BootstrapAdoption["authorization"] { if (!record(value)) throw new Error("invalid bootstrap authorization"); const authorization = { id: boundedText(value.id, "bootstrap authorization id", 128), authorizedBy: boundedText(value.authorizedBy, "bootstrap authorization actor", 128), ownerId: boundedText(value.ownerId, "bootstrap owner", 128), sessionId: boundedText(value.sessionId, "bootstrap session", 128), runtimeId: boundedText(value.runtimeId, "bootstrap runtime", 128), authorizedAt: validTimestamp(value.authorizedAt, "bootstrap authorization timestamp") }; if (Date.parse(authorization.authorizedAt) <= Date.parse(capturedAt) || Date.parse(authorization.authorizedAt) > Date.parse(now)) throw new Error("bootstrap authorization is stale or future-dated"); return authorization; }
 function normalizeBootstrapAdoption(value: unknown): BootstrapAdoption { if (!record(value) || !Array.isArray(value.taskIds) || !Array.isArray(value.checks) || !Array.isArray(value.decisions)) throw new Error("invalid bootstrap adoption provenance"); const snapshot = normalizeRepositorySnapshot(value.snapshot); const adoptedAt = validTimestamp(value.adoptedAt, "bootstrap adoption timestamp"); const concernRaw = value.concernReview; const concernReview = concernRaw === undefined ? undefined : record(concernRaw) && Array.isArray(concernRaw.concerns) ? { concerns: boundedStrings(concernRaw.concerns, "bootstrap concerns", WORKFLOW_APPROACHES.length, 64) as WorkflowApproach[], report: normalizeReport(concernRaw.report) } : (() => { throw new Error("invalid bootstrap concern review"); })(); return { anchorCommit: normalizeCommit(value.anchorCommit, "bootstrap anchor commit"), descendantHead: normalizeCommit(value.descendantHead, "bootstrap descendant HEAD"), snapshot, taskIds: boundedStrings(value.taskIds, "bootstrap task ids", MAX_TASKS, 64), planReview: normalizeReport(value.planReview), generalReview: normalizeReport(value.generalReview), ...(concernReview ? { concernReview } : {}), checks: value.checks.map((item) => { if (!record(item)) throw new Error("invalid bootstrap check"); return { taskId: boundedText(item.taskId, "bootstrap check task id", 64), evidence: normalizeEvidence(item.evidence) }; }), decisions: value.decisions.map(normalizeBootstrapDecision), authorization: normalizeBootstrapAuthorization(value.authorization, snapshot.capturedAt, adoptedAt), adoptedAt }; }
+function normalizePostCutoverAdoption(value: unknown): PostCutoverAdoption {
+  if (!record(value) || !Array.isArray(value.taskIds) || !Array.isArray(value.taskContracts) || !Array.isArray(value.checks) || !Array.isArray(value.retainedEvidence) || !Array.isArray(value.decisions) || !record(value.authorization)) throw new Error("invalid post-cutover adoption provenance");
+  const snapshot = normalizeRepositorySnapshot(value.snapshot);
+  const adoptedAt = validTimestamp(value.adoptedAt, "post-cutover adoption timestamp");
+  const concernRaw = value.concernReview;
+  const concernReview = concernRaw === undefined ? undefined : record(concernRaw) && Array.isArray(concernRaw.concerns) ? { concerns: boundedStrings(concernRaw.concerns, "post-cutover concerns", WORKFLOW_APPROACHES.length, 64) as WorkflowApproach[], report: normalizeReport(concernRaw.report) } : (() => { throw new Error("invalid post-cutover concern review"); })();
+  const checks = value.checks.map((item): PostCutoverCheckReceipt => {
+    if (!record(item) || !Number.isSafeInteger(item.exitCode)) throw new Error("invalid post-cutover check receipt");
+    if (item.executor !== "post-cutover-protected-executor") throw new Error("invalid post-cutover check executor provenance");
+    return { taskId: boundedText(item.taskId, "post-cutover check task", 64), ...normalizeCommand(item), exitCode: item.exitCode as number, contractHash: requireDigest(item.contractHash, "post-cutover check contract hash"), snapshotHash: requireDigest(item.snapshotHash, "post-cutover check snapshot hash"), beforeTree: normalizeCommit(item.beforeTree, "post-cutover before tree"), afterTree: normalizeCommit(item.afterTree, "post-cutover after tree"), outputHash: requireDigest(item.outputHash, "post-cutover output hash"), startedAt: validTimestamp(item.startedAt, "post-cutover check start"), completedAt: validTimestamp(item.completedAt, "post-cutover check completion"), authorizationId: boundedText(item.authorizationId, "post-cutover check authorization", 128), executor: "post-cutover-protected-executor", ownerId: boundedText(item.ownerId, "post-cutover check owner", 128), sessionId: boundedText(item.sessionId, "post-cutover check session", 128), runtimeId: boundedText(item.runtimeId, "post-cutover check runtime", 128) };
+  });
+  const authorizationRaw = value.authorization;
+  const authorization = { id: boundedText(authorizationRaw.id, "post-cutover authorization id", 128), authorizedBy: boundedText(authorizationRaw.authorizedBy, "post-cutover authorization actor", 128), ownerId: boundedText(authorizationRaw.ownerId, "post-cutover owner", 128), sessionId: boundedText(authorizationRaw.sessionId, "post-cutover session", 128), runtimeId: boundedText(authorizationRaw.runtimeId, "post-cutover runtime", 128), authorizedAt: validTimestamp(authorizationRaw.authorizedAt, "post-cutover authorization timestamp"), evidenceHash: requireDigest(authorizationRaw.evidenceHash, "post-cutover authorization evidence hash"), rationale: boundedText(authorizationRaw.rationale, "post-cutover authorization rationale") };
+  if (Date.parse(authorization.authorizedAt) <= Date.parse(snapshot.capturedAt) || Date.parse(authorization.authorizedAt) > Date.parse(adoptedAt)) throw new Error("post-cutover authorization is stale or future-dated");
+  return {
+    anchorCommit: normalizeCommit(value.anchorCommit, "post-cutover anchor commit"), historicalHead: normalizeCommit(value.historicalHead, "post-cutover historical HEAD"), historicalTree: normalizeCommit(value.historicalTree, "post-cutover historical tree"), historicalChangedPaths: boundedStrings(value.historicalChangedPaths, "post-cutover historical paths", 128, 512), repairBase: normalizeCommit(value.repairBase, "post-cutover repair base"), repairChangedPaths: boundedStrings(value.repairChangedPaths, "post-cutover repair paths", 128, 512), descendantHead: normalizeCommit(value.descendantHead, "post-cutover descendant HEAD"), candidateTree: normalizeCommit(value.candidateTree, "post-cutover candidate tree"), snapshot,
+    authorityRevision: validPositiveInteger(value.authorityRevision, "post-cutover authority revision"), authorityHistoryHash: requireDigest(value.authorityHistoryHash, "post-cutover authority history hash"), authorityCwd: boundedText(value.authorityCwd, "post-cutover authority cwd", 1024),
+    taskIds: boundedStrings(value.taskIds, "post-cutover task ids", MAX_TASKS, 64),
+    taskContracts: value.taskContracts.map((item) => { if (!record(item)) throw new Error("invalid post-cutover task contract"); const contract = normalizeContract(item); return { taskId: boundedText(item.taskId, "post-cutover task contract id", 64), revision: contract.revision, hash: contract.hash }; }),
+    planReview: normalizeReport(value.planReview), generalReview: normalizeReport(value.generalReview), ...(concernReview ? { concernReview } : {}), checks,
+    retainedEvidence: value.retainedEvidence.map((item) => { if (!record(item)) throw new Error("invalid retained post-cutover evidence"); const path = boundedText(item.path, "retained evidence path", 512); if (!SAFE_SCOPE.test(path) || path.includes("*")) throw new Error("retained evidence path is unsafe"); return { path, sha256: requireDigest(item.sha256, "retained evidence hash"), commit: normalizeCommit(item.commit, "retained evidence commit") }; }),
+    decisions: value.decisions.map(normalizeBootstrapDecision), authorization, adoptedAt,
+  };
+}
+function validPositiveInteger(value: unknown, label: string): number { if (!Number.isSafeInteger(value) || (value as number) < 1) throw new Error(`invalid ${label}`); return value as number; }
 function requireDigest(value: unknown, label: string): string { if (typeof value !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value)) throw new Error(`invalid ${label}`); return value; }
 function validBranchLength(value: unknown): number { if (!Number.isSafeInteger(value) || (value as number) < 0) throw new Error("invalid closeout branch length"); return value as number; }
 function deriveInitiativeVerification(tasks: Array<Partial<WorkflowTask>>): VerificationCommand[] {
@@ -1404,6 +1746,17 @@ function normalizeIntegrationReceipt(value: unknown): IntegrationReceipt {
 }
 function normalizeLease(value: unknown): RunLease { if (!record(value) || typeof value.id !== "string" || !value.id || typeof value.runId !== "string" || !value.runId || typeof value.ownerId !== "string" || !value.ownerId || !Number.isSafeInteger(value.fence) || (value.fence as number) < 1 || !['plan-review','task-execution','initiative-acceptance','complete','pending','implementation','general-review','concern-review','remediation','workspace','integration','verification','ready-to-complete','historical'].includes(value.stage as string)) throw new Error("invalid run lease"); const acquiredAt = validTimestamp(value.acquiredAt, "run lease acquiredAt"); const expiresAt = validTimestamp(value.expiresAt, "run lease expiresAt"); if (Date.parse(expiresAt) <= Date.parse(acquiredAt)) throw new Error("run lease must expire after acquisition"); return { id: boundedText(value.id, "lease id", 128), runId: boundedText(value.runId, "run id", 128), ownerId: boundedText(value.ownerId, "lease owner", 128), stage: value.stage as RunLease["stage"], ...(typeof value.taskId === "string" ? { taskId: value.taskId } : {}), fence: value.fence as number, acquiredAt, expiresAt }; }
 function normalizeParentAuthority(value: unknown): ParentAuthority { if (!record(value) || typeof value.ownerId !== "string" || !value.ownerId || typeof value.sessionId !== "string" || !value.sessionId || typeof value.runtimeId !== "string" || !value.runtimeId || typeof value.cwd !== "string" || !value.cwd || typeof value.valid !== "boolean") throw new Error("invalid parent authority"); return { ownerId: boundedText(value.ownerId, "parent owner", 128), sessionId: boundedText(value.sessionId, "parent session", 128), runtimeId: boundedText(value.runtimeId, "parent runtime", 128), cwd: boundedText(value.cwd, "parent cwd"), ...(typeof value.sessionFile === "string" && value.sessionFile ? { sessionFile: boundedText(value.sessionFile, "parent session file") } : {}), claimedAt: validTimestamp(value.claimedAt, "parent authority claimedAt"), valid: value.valid, ...(typeof value.invalidatedAt === "string" ? { invalidatedAt: validTimestamp(value.invalidatedAt, "parent authority invalidatedAt") } : {}), ...(typeof value.invalidatedReason === "string" ? { invalidatedReason: boundedText(value.invalidatedReason, "parent authority invalidation reason") } : {}) }; }
+function normalizeRuntimeInvalidationProof(value: unknown): RuntimeInvalidationProof {
+  if (!record(value) || Object.keys(value).sort().join(",") !== "after,before,parent,proofHash,revision" || !Number.isSafeInteger(value.revision) || (value.revision as number) < 1 || !record(value.before) || !record(value.after)) throw new Error("invalid runtime invalidation retained proof");
+  const normalizeRotation = (rotation: Record<string, unknown>, label: string) => {
+    if (Object.keys(rotation).sort().join(",") !== "generation,revision,runtimeId" || !Number.isSafeInteger(rotation.revision) || !Number.isSafeInteger(rotation.generation) || (rotation.revision as number) < 1 || (rotation.generation as number) < 1 || typeof rotation.runtimeId !== "string") throw new Error(`invalid runtime invalidation ${label} rotation proof`);
+    return { revision: rotation.revision as number, generation: rotation.generation as number, runtimeId: boundedText(rotation.runtimeId, `runtime invalidation ${label} runtime`, 128) };
+  };
+  const proof = { revision: value.revision as number, parent: normalizeParentAuthority(value.parent), before: normalizeRotation(value.before, "before"), after: normalizeRotation(value.after, "after") };
+  if (proof.parent.valid || proof.parent.invalidatedReason !== "session quit" || proof.revision !== proof.before.revision + 1 || proof.after.revision !== proof.revision + 1 || proof.parent.runtimeId !== proof.before.runtimeId || typeof value.proofHash !== "string" || value.proofHash !== hashContract(proof)) throw new Error("runtime invalidation retained proof does not match adjacent authority");
+  return { ...proof, proofHash: value.proofHash };
+}
+
 function normalizeRuntimeHandoff(value: unknown): RuntimeHandoff {
   if (!record(value) || (value.from !== "compatibility" && value.from !== "v2") || (value.to !== "compatibility" && value.to !== "v2") || (value.phase !== "prepared" && value.phase !== "reclaimed") || !Number.isSafeInteger(value.selectorGeneration) || (value.selectorGeneration as number) < 1) throw new Error("invalid runtime handoff");
   const reclaimedAt = typeof value.reclaimedAt === "string" ? validTimestamp(value.reclaimedAt, "runtime handoff reclaimedAt") : undefined;
@@ -1412,7 +1765,9 @@ function normalizeRuntimeHandoff(value: unknown): RuntimeHandoff {
   if (value.phase === "prepared" && !decision) throw new Error("prepared runtime handoff lacks durable Gate 2 decision attestation");
   const decisionId = boundedText(value.decisionId, "runtime handoff decision id", 128);
   if (decision && decision.decisionId !== decisionId) throw new Error("runtime handoff decision attestation identity does not match");
-  return { id: boundedText(value.id, "runtime handoff id", 128), decisionId, ...(decision ? { decision } : {}), from: value.from, to: value.to, phase: value.phase, selectorGeneration: value.selectorGeneration as number, preparedAt: validTimestamp(value.preparedAt, "runtime handoff preparedAt"), ...(reclaimedAt ? { reclaimedAt } : {}), ...(value.previousParent === undefined ? {} : { previousParent: normalizeParentAuthority(value.previousParent) }) };
+  const invalidationProofs = value.invalidationProofs === undefined ? [] : Array.isArray(value.invalidationProofs) && value.invalidationProofs.length <= 8 ? value.invalidationProofs.map(normalizeRuntimeInvalidationProof) : (() => { throw new Error("runtime invalidation retained proof bound exceeded"); })();
+  if (new Set(invalidationProofs.map((proof) => proof.revision)).size !== invalidationProofs.length) throw new Error("runtime invalidation retained proof revisions must be unique");
+  return { id: boundedText(value.id, "runtime handoff id", 128), decisionId, ...(decision ? { decision } : {}), from: value.from, to: value.to, phase: value.phase, selectorGeneration: value.selectorGeneration as number, preparedAt: validTimestamp(value.preparedAt, "runtime handoff preparedAt"), ...(reclaimedAt ? { reclaimedAt } : {}), ...(value.previousParent === undefined ? {} : { previousParent: normalizeParentAuthority(value.previousParent) }), ...(invalidationProofs.length ? { invalidationProofs } : {}) };
 }
 function normalizeGate2DecisionAttestation(value: unknown): Gate2DecisionAttestation {
   if (!record(value)) throw new Error("runtime handoff Gate 2 decision attestation is missing");
