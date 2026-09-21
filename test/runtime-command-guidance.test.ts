@@ -6,7 +6,7 @@ import { registerPiCatalog } from "../extensions/pi-catalog/src/pi/register.ts";
 import { completeScaffoldArgument } from "../extensions/pi-commands/commands/scaffold.ts";
 import { completePiContextArgument } from "../extensions/pi-context/src/pi/register.ts";
 import { completeHudArgument } from "../extensions/pi-hud/src/pi/adapter.ts";
-import { completeSweArgument } from "../extensions/pi-swe/src/command.ts";
+import { getSweCommandCompletions } from "../extensions/pi-swe/src/pi/register.ts";
 import { getTodoCommandCompletions } from "../extensions/pi-todo/src/thin-surface.ts";
 
 type Completion = { value: string; label: string; description?: string };
@@ -21,17 +21,17 @@ test("runtime command roots expose concise syntax-aware descriptions", () => {
   const scaffold = completeScaffoldArgument("");
   const context = completePiContextArgument("");
   const hud = completeHudArgument("");
-  const swe = completeSweArgument("")!;
+  const swe = getSweCommandCompletions("");
   const todo = getTodoCommandCompletions("");
 
   for (const items of [scaffold, context, hud, swe, todo]) assertDescribed(items);
-  assert.match(swe.find((item) => item.value === "work")!.description!, /\/swe work/);
+  assert.match(swe.find((item) => item.value === "status")!.description!, /\/swe status/);
   assert.match(hud.find((item) => item.value === "mode")!.description!, /<off\|widget-first>/);
 });
 
 test("nested completions preserve the full argument prefix and explain values", () => {
-  assert.deepEqual(completeSweArgument("work st")!.map((item) => item.value), ["work status", "work start", "work stop"]);
-  assertDescribed(completeSweArgument("work st")!);
+  assert.deepEqual(getSweCommandCompletions("st").map((item) => item.value), ["status", "start"]);
+  assertDescribed(getSweCommandCompletions("st"));
   assert.deepEqual(completeHudArgument("mode w").map((item) => item.value), ["mode widget-first"]);
   assert.deepEqual(completeScaffoldArgument("extension demo --l").map((item) => item.value), ["extension demo --layered"]);
   assert.ok(!completeScaffoldArgument("extension demo --minimal ").some((item) => item.label === "--layered"));

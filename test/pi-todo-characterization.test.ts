@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -146,35 +146,10 @@ test("registered tool permits at most one active todo for the session owner", as
   });
 });
 
-test("tool-call ownership blocks competing todo activation while pi-swe is active", async () => {
-  await withHarness(async ({ cwd, ctx, handlers }) => {
-    const workflowDirectory = join(cwd, ".model-artifacts/initiatives/owned");
-    await mkdir(workflowDirectory, { recursive: true });
-    await writeFile(join(workflowDirectory, "workflow.json"), JSON.stringify({
-      version: 1,
-      topic: "owned",
-      goal: "Own lifecycle",
-      revision: 1,
-      updatedAt: new Date().toISOString(),
-      status: "active",
-      activeTask: "T1",
-      tasks: [{
-        id: "T1",
-        status: "active",
-        approaches: [],
-        approachReasons: {},
-        assessmentStatus: "assessed",
-        verificationCheckpoint: { revision: 1, at: new Date().toISOString() },
-      }],
-    }));
+test("historical workflow files do not silently activate deleted SWE ownership", async () => {
+  await withHarness(async ({ ctx, handlers }) => {
     const hook = handlers.get("tool_call") as ToolCallHandler;
-
-    for (const action of ["create", "start", "finish"]) {
-      const result = await hook({ type: "tool_call", toolName: "todo", input: { action } }, ctx) as { block?: boolean; reason?: string };
-      assert.equal(result.block, true);
-      assert.match(result.reason ?? "", /pi-swe lifecycle ownership/);
-    }
-    assert.equal(await hook({ type: "tool_call", toolName: "todo", input: { action: "list" } }, ctx), undefined);
+    assert.equal(await hook({ type: "tool_call", toolName: "todo", input: { action: "create" } }, ctx), undefined);
     assert.equal(await hook({ type: "tool_call", toolName: "swe_workflow", input: { action: "status" } }, ctx), undefined);
     assert.equal(await hook({ type: "tool_call", toolName: "write" }, ctx), undefined);
   });

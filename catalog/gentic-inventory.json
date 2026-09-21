@@ -41,8 +41,7 @@
       "extensions/pi-todo/index.ts"
     ],
     "skills": [
-      "skills/add-skill/SKILL.md",
-      "skills/swe-orchestration/SKILL.md"
+      "skills/add-skill/SKILL.md"
     ],
     "prompts": [
       "extensions/pi-git/prompts/git-commit.md",
@@ -295,39 +294,32 @@
       "entrypoint": "extensions/pi-swe/index.ts",
       "sourceFiles": [
         "extensions/pi-swe/index.ts",
-        "extensions/pi-swe/src/closeout.ts",
-        "extensions/pi-swe/src/command.ts",
-        "extensions/pi-swe/src/cutover.ts",
-        "extensions/pi-swe/src/driver.ts",
-        "extensions/pi-swe/src/integrity.ts",
-        "extensions/pi-swe/src/migration.ts",
-        "extensions/pi-swe/src/orchestration.ts",
-        "extensions/pi-swe/src/post-cutover.ts",
-        "extensions/pi-swe/src/runner-child.ts",
-        "extensions/pi-swe/src/runner-protocol.ts",
-        "extensions/pi-swe/src/runner.ts",
-        "extensions/pi-swe/src/runtime.ts",
-        "extensions/pi-swe/src/service.ts",
-        "extensions/pi-swe/src/store.ts",
-        "extensions/pi-swe/src/tool.ts",
-        "extensions/pi-swe/src/ux.ts",
-        "extensions/pi-swe/src/workflow.ts",
-        "extensions/pi-swe/src/workspace.ts"
+        "extensions/pi-swe/src/app/artifacts.ts",
+        "extensions/pi-swe/src/app/service.ts",
+        "extensions/pi-swe/src/app/store.ts",
+        "extensions/pi-swe/src/app/verification.ts",
+        "extensions/pi-swe/src/domain/completion.ts",
+        "extensions/pi-swe/src/domain/initiative.ts",
+        "extensions/pi-swe/src/pi/context.ts",
+        "extensions/pi-swe/src/pi/register.ts",
+        "extensions/pi-swe/src/ui/docket.ts",
+        "extensions/pi-swe/src/ui/format.ts",
+        "extensions/pi-swe/src/ui/modal.ts",
+        "extensions/pi-swe/src/ui/theme.ts"
       ],
       "registrations": {
         "commands": [
           "swe"
         ],
         "tools": [
-          "swe_workflow"
+          "swe"
         ],
         "events": [
           "before_agent_start",
-          "session_shutdown",
+          "context",
           "session_start",
           "tool_call",
-          "tool_result",
-          "user_bash"
+          "tool_result"
         ],
         "shortcuts": [],
         "flags": [],
@@ -345,7 +337,6 @@
       "sourceFiles": [
         "extensions/pi-todo/index.ts",
         "extensions/pi-todo/src/contract.ts",
-        "extensions/pi-todo/src/pi/swe-ownership.ts",
         "extensions/pi-todo/src/state-core.ts",
         "extensions/pi-todo/src/thin-surface.ts",
         "extensions/pi-todo/src/ui/docket.ts",

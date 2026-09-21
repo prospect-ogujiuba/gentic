@@ -42,7 +42,6 @@ test("pi-todo package contains no competing legacy runtime", async () => {
   assert.deepEqual(sourceFiles, [
     "index.ts",
     "src/contract.ts",
-    "src/pi/swe-ownership.ts",
     "src/state-core.ts",
     "src/thin-surface.ts",
     "src/ui/docket.ts",
@@ -54,4 +53,8 @@ test("pi-todo package contains no competing legacy runtime", async () => {
   const entrypoint = await readFile(new URL("index.ts", root), "utf8");
   assert.doesNotMatch(entrypoint, /scheduler|lease|split|artifact|modal|turn_end|agent_settled/);
   assert.match(entrypoint, /registerLightweightTodoSurface/);
+
+  const surface = await readFile(new URL("src/thin-surface.ts", root), "utf8");
+  assert.doesNotMatch(surface, /pi-swe\/src|workflow\.json|activeWorkflowTopics/);
+  assert.match(surface, /coordinatedActiveSwe/);
 });

@@ -6,6 +6,7 @@ import type {
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 
+import { coordinatedActiveSwe } from "../../../src/lifecycle-coordination.ts";
 import {
   TODO_PUBLIC_ACTIONS,
   TODO_TEXT_LIMITS,
@@ -15,7 +16,6 @@ import {
   type TodoPublicRequest,
 } from "./contract.ts";
 import { BranchTodoCore, TodoCoreError, type TodoCoreState } from "./state-core.ts";
-import { hasActiveSweWorkflow } from "./pi/swe-ownership.ts";
 import { createTodoDocketComponent, renderTodoDocketLines } from "./ui/docket.ts";
 import { LightweightTodoModal } from "./ui/modal.ts";
 import { plainTodoTheme } from "./ui/theme.ts";
@@ -54,7 +54,7 @@ type SurfaceResult = {
 };
 
 export function registerLightweightTodoSurface(pi: ExtensionAPI, options: SurfaceOptions = {}): void {
-  const hasActiveSweTask = options.hasActiveSweTask ?? ((ctx: ExtensionContext) => hasActiveSweWorkflow(ctx.cwd));
+  const hasActiveSweTask = options.hasActiveSweTask ?? coordinatedActiveSwe;
   let queue: Promise<void> = Promise.resolve();
 
   pi.on("session_start", async (_event, ctx) => updateDisplay(coreFor(pi, ctx), ctx));
