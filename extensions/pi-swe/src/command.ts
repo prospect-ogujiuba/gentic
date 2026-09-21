@@ -156,7 +156,7 @@ function registerSweCommandAdapter(pi: ExtensionAPI, runtimeResolver: RuntimeSur
         const boundIdentity = binding.identity;
         const control = new WorkflowControlService(ctx.cwd, { mutations: binding.mutations, runtimes: binding.registry });
         if (workAction === "status" || workAction === "inspect") {
-          ctx.ui.notify(`${runtimeSelectionStatus(ctx.cwd)}\n${control.inspect(topic, boundIdentity)}`, "info");
+          ctx.ui.notify(`${runtimeSelectionStatus(ctx.cwd)}${binding.kind === "blocked" ? `\nruntime authority: blocked; ${binding.reason}` : ""}\n${control.inspect(topic, boundIdentity)}`, binding.kind === "blocked" ? "warning" : "info");
           return;
         }
         if (workAction === "runs") {

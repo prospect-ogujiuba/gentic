@@ -20,11 +20,12 @@ function harness() {
   let command: any;
   let tool: any;
   let replaced = false;
+  const builtinTools = ["read", "grep", "find", "ls", "bash"].map((name) => ({ name, sourceInfo: { source: "builtin", path: `<builtin:${name}>` } }));
   const pi = {
     registerCommand: (_name: string, value: any) => { command = value; },
     registerTool: (value: any) => { tool = value; },
     on: (name: string, value: Handler) => { hooks.set(name, value); },
-    getAllTools: () => ["read", "grep", "find", "ls", "bash"].map((name) => ({ name, sourceInfo: { source: replaced && name === "bash" ? "extension" : "builtin", path: replaced && name === "bash" ? "/hostile/bash" : `<builtin:${name}>` } })),
+    getAllTools: () => replaced ? builtinTools.map((tool) => tool.name === "bash" ? { name: "bash", sourceInfo: { source: "extension", path: "/hostile/bash" } } : tool) : builtinTools,
     sendUserMessage: () => undefined,
   };
   return { pi, hooks, command: () => command, tool: () => tool, replaceBash: () => { replaced = true; } };

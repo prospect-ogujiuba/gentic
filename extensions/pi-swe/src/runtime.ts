@@ -298,7 +298,7 @@ export class SharedRuntimeController implements RuntimeSurfaceResolver {
     const coldStart = !prior;
     if (selected.status === "blocked") {
       this.stopBinding(cwd, prior);
-      this.integrity.block(cwd);
+      this.integrity.block(cwd, `malformed runtime selector: ${selected.reason}`);
       const blocked = { kind: "blocked" as const, generation: null, identity: prior?.identity ?? this.boundIdentity(cwd, identity), mutations: new WorkflowMutationService(cwd), registry: prior?.registry ?? sweRuntimeRegistry, reason: selected.reason };
       this.slots.set(cwd, blocked);
       return blocked;
@@ -314,7 +314,7 @@ export class SharedRuntimeController implements RuntimeSurfaceResolver {
       const competing = listWorkflowTopics(cwd).map((topic) => loadWorkflow(cwd, topic, false)?.workflow.orchestration.parent).find((parent) => parent?.valid && parent.sessionId !== identity.sessionId);
       if (competing) {
         const blocked = { kind: "blocked" as const, generation: selected.generation, identity: boundIdentity, mutations: new WorkflowMutationService(cwd), registry: sweRuntimeRegistry, reason: "compatibility runtime belongs to a different live session; use explicit recovery" };
-        this.integrity.block(cwd);
+        this.integrity.block(cwd, blocked.reason);
         this.slots.set(cwd, blocked);
         return blocked;
       }
@@ -330,7 +330,7 @@ export class SharedRuntimeController implements RuntimeSurfaceResolver {
         const durableMatch = handoff?.phase === "reclaimed" && handoff.id === selected.record.handoff.id && handoff.decisionId === selected.record.decision.decisionId && handoff.selectorGeneration === selected.generation && handoff.to === "compatibility" && parent?.valid === true && parent.ownerId === receipt.ownerId && parent.sessionId === receipt.sessionId && parent.runtimeId === receipt.runtimeId && parent.cwd === cwd;
         if (!durableMatch || parent.sessionId !== identity.sessionId) {
           const blocked = { kind: "blocked" as const, generation: selected.generation, identity: boundIdentity, mutations: service, registry: sweRuntimeRegistry, reason: "selected compatibility runtime lacks matching reclaimed durable parent authority" };
-          this.integrity.block(cwd);
+          this.integrity.block(cwd, blocked.reason);
           this.slots.set(cwd, blocked);
           return blocked;
         }
@@ -350,14 +350,14 @@ export class SharedRuntimeController implements RuntimeSurfaceResolver {
     const durableMatch = handoff?.phase === "reclaimed" && handoff.id === selected.record?.handoff.id && handoff.decisionId === selected.record?.decision.decisionId && handoff.selectorGeneration === selected.generation && handoff.to === "v2" && durableParent?.valid === true && durableParent.ownerId === receiptParent?.ownerId && durableParent.sessionId === receiptParent?.sessionId && durableParent.runtimeId === receiptParent?.runtimeId && durableParent.cwd === cwd;
     if (!receiptParent || !durableMatch) {
       const blocked = { kind: "blocked" as const, generation: selected.generation, identity: boundIdentity, mutations: service, registry: sweRuntimeRegistry, reason: "selected v2 runtime lacks matching reclaimed durable workflow authority" };
-      this.integrity.block(cwd);
+      this.integrity.block(cwd, blocked.reason);
       this.slots.set(cwd, blocked);
       return blocked;
     }
     const parent = authority!.orchestration.parent!;
     if (parent.sessionId !== identity.sessionId) {
       const blocked = { kind: "blocked" as const, generation: selected.generation, identity: boundIdentity, mutations: service, registry: sweRuntimeRegistry, reason: "selected v2 runtime belongs to a different session; use the explicit recovery handoff" };
-      this.integrity.block(cwd);
+      this.integrity.block(cwd, blocked.reason);
       this.slots.set(cwd, blocked);
       return blocked;
     }
@@ -475,7 +475,7 @@ export class SharedRuntimeController implements RuntimeSurfaceResolver {
       if (provisional) this.stopBinding(cwd, provisional);
       this.slots.delete(cwd);
       this.processRuntimeIds.delete(cwd);
-      this.integrity.block(cwd);
+      this.integrity.block(cwd, `runtime handoff failed: ${message(error)}`);
       throw error;
     }
   }

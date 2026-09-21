@@ -98,6 +98,18 @@ test("managed parent capability policy is fail-closed across alternate, nested, 
     assert.equal(decision.allow, false, toolName);
   }
   assert.equal(decideManagedToolCall({ ...base, toolName: "read", input: { path: "src/a.ts" } }).allow, true);
+  assert.equal(decideManagedToolCall({ ...base, toolName: "intercom", input: { action: "reply", message: "bounded finding" }, trustedTool: true }).allow, true);
+  for (const input of [
+    { action: "send", message: "delegate" },
+    { action: "ask", message: "delegate" },
+    { action: "execute" },
+    { action: "reply", to: "other", message: "reroute" },
+    { action: "reply", replyTo: "other-thread", message: "reroute" },
+    { action: "reply", cwd: "/tmp", message: "escape" },
+    { action: "reply", attachments: [], message: "attach" },
+    { action: "reply", openProjectPaneIfMissing: true, message: "spawn" },
+  ]) assert.equal(decideManagedToolCall({ ...base, toolName: "intercom", input, trustedTool: true }).allow, false);
+  assert.match(decideManagedToolCall({ ...base, toolName: "intercom", input: { action: "reply" }, trustedTool: false }).reason!, /replaced|untrusted/);
   assert.equal(decideManagedToolCall({ ...base, toolName: "bash", input: { command: renderVerificationCommand(planned) } }).allow, false);
 
   const verification = { ...base, phase: "verification" as const };
@@ -157,11 +169,19 @@ test("registered tool-call gate denies direct writes and dynamically registered 
   mkdirSync(statePath, { recursive: true });
   writeFileSync(join(statePath, "workflow.json"), JSON.stringify({ ...workflow, orchestration: { ...workflow.orchestration, parent: undefined } }));
   const handlers = new Map<string, Function[]>();
+  const readExecute = () => undefined;
+  const bashExecute = () => undefined;
+  const intercomExecute = () => undefined;
+  const intercomPath = join(cwd, "trusted", "pi-intercom", "index.ts");
+  mkdirSync(join(cwd, "trusted", "pi-intercom"), { recursive: true });
+  writeFileSync(intercomPath, "export default 'trusted';\n");
   let tools = [
-    { name: "read", sourceInfo: { source: "builtin", path: "<builtin:read>" } },
-    { name: "bash", sourceInfo: { source: "builtin", path: "<builtin:bash>" } },
+    { name: "read", execute: readExecute, sourceInfo: { source: "builtin", path: "<builtin:read>" } },
+    { name: "bash", execute: bashExecute, sourceInfo: { source: "builtin", path: "<builtin:bash>" } },
+    { name: "intercom", execute: intercomExecute, sourceInfo: { source: "local", path: intercomPath } },
   ];
-  registerParentIntegrity({
+  const trustedIntercomTool = tools[2]!;
+  const router = registerParentIntegrity({
     on: (name: string, handler: Function) => { handlers.set(name, [...(handlers.get(name) ?? []), handler]); },
     getAllTools: () => tools,
   } as never);
@@ -173,15 +193,24 @@ test("registered tool-call gate denies direct writes and dynamically registered 
     assert.equal(blocked?.block, true, toolName);
   }
   assert.equal(await toolCall({ toolName: "read", toolCallId: "read-1", input: { path: "src/a.ts" } }, ctx), undefined);
-  tools = [{ name: "read", sourceInfo: { source: "dynamic-extension", path: "/tmp/override.ts" } }, ...tools.slice(1)];
+  assert.equal(await toolCall({ toolName: "intercom", toolCallId: "intercom-1", input: { action: "reply", message: "bounded finding" } }, ctx), undefined);
+  assert.equal((await toolCall({ toolName: "intercom", toolCallId: "intercom-send", input: { action: "send", to: "other", message: "delegate" } }, ctx))?.block, true);
+  tools = [{ name: "read", execute: () => undefined, sourceInfo: { source: "dynamic-extension", path: "/tmp/override.ts" } }, ...tools.slice(1)];
   const replaced = await toolCall({ toolName: "read", toolCallId: "read-override", input: { path: "src/a.ts" } }, ctx);
   assert.equal(replaced?.block, true);
   assert.match(replaced?.reason, /replaced|untrusted/);
 
   tools = [
-    { name: "read", sourceInfo: { source: "builtin", path: "<builtin:read>" } },
-    { name: "bash", sourceInfo: { source: "builtin", path: "<builtin:bash>" } },
+    { name: "read", execute: readExecute, sourceInfo: { source: "builtin", path: "<builtin:read>" } },
+    { name: "bash", execute: bashExecute, sourceInfo: { source: "builtin", path: "<builtin:bash>" } },
+    { name: "intercom", execute: intercomExecute, sourceInfo: { source: "local", path: intercomPath } },
   ];
+  writeFileSync(intercomPath, "export default 'replaced';\n");
+  const replacedIntercom = await toolCall({ toolName: "intercom", toolCallId: "intercom-replaced", input: { action: "reply", message: "bounded" } }, ctx);
+  assert.equal(replacedIntercom?.block, true);
+  assert.match(replacedIntercom?.reason, /replaced|untrusted/);
+  writeFileSync(intercomPath, "export default 'trusted';\n");
+  tools[2] = trustedIntercomTool;
   const second = { ...workflow, topic: "integrity-test-2" };
   const secondPath = join(cwd, ".model-artifacts", "initiatives", second.topic);
   mkdirSync(secondPath, { recursive: true });
@@ -189,6 +218,13 @@ test("registered tool-call gate denies direct writes and dynamically registered 
   const ambiguous = await toolCall({ toolName: "bash", toolCallId: "ambiguous", input: { command: renderVerificationCommand(workflow.tasks[0]!.verification[0]!) } }, ctx);
   assert.equal(ambiguous?.block, true);
   assert.match(ambiguous?.reason, /multiple managed workflows|ambiguous/i);
+
+  assert.throws(() => router.block(cwd, ""), /block reason is required/);
+  router.block(cwd, "selected v2 runtime belongs to a different session");
+  assert.equal(await toolCall({ toolName: "intercom", toolCallId: "intercom-blocked", input: { action: "reply", message: "bounded finding" } }, ctx), undefined);
+  const authorityBlocked = await toolCall({ toolName: "write", toolCallId: "write-blocked", input: {} }, ctx);
+  assert.match(authorityBlocked?.reason, /blocked by selected v2 runtime belongs to a different session/);
+  assert.doesNotMatch(authorityBlocked?.reason, /malformed runtime selector/);
 });
 
 test("protected verification authorization binds exact command, cwd, parent checkpoint, contract, snapshot, and tool provenance", () => {

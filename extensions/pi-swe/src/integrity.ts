@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
@@ -15,6 +15,8 @@ const APPROVED_READ_ONLY_TOOLS = new Set([
   "ctx_search", "ctx_stats", "ctx_doctor", "context_mode_ctx_search", "context_mode_ctx_stats", "context_mode_ctx_doctor",
   "web_search", "source_check", "fetch_content", "get_search_content",
 ]);
+const APPROVED_COORDINATION_TOOLS = new Set(["intercom"]);
+const APPROVED_COORDINATION_ACTIONS = new Set(["list", "status", "pending", "reply"]);
 
 export type ManagedToolPhase = "plan-review" | "implementation" | "general-review" | "concern-review" | "workspace" | "integration" | "verification" | "ready-to-complete" | "initiative-acceptance" | "complete" | "pending" | "remediation" | "historical";
 export type ManagedToolDecision = { allow: boolean; reason?: string; plannedCommand?: VerificationCommand };
@@ -37,6 +39,12 @@ export function decideManagedToolCall(input: {
   if (!input.managed) return { allow: true };
   if (input.trustedTool === false) return { allow: false, reason: `managed execution denies replaced or untrusted tool ${input.toolName}` };
   if (APPROVED_READ_ONLY_TOOLS.has(input.toolName)) return { allow: true };
+  if (APPROVED_COORDINATION_TOOLS.has(input.toolName)) {
+    const action = String(input.input.action ?? "");
+    if (!APPROVED_COORDINATION_ACTIONS.has(action)) return { allow: false, reason: `managed execution denies unsupported coordination action ${action}` };
+    if (action === "reply" && (input.input.to !== undefined || input.input.replyTo !== undefined || input.input.cwd !== undefined || input.input.attachments !== undefined || input.input.openProjectPaneIfMissing !== undefined)) return { allow: false, reason: "managed execution permits replies only to the active inbound coordination thread without routing, attachments, or pane creation" };
+    return { allow: true };
+  }
   if (input.toolName === "swe_workflow") {
     return input.input.action === "status" ? { allow: true } : { allow: false, reason: "managed execution permits only read-only workflow inspection; orchestration mutations must use the fenced engine" };
   }
@@ -258,7 +266,7 @@ export class ManagedVerificationAuthority {
 
 export type ParentIntegrityRouter = {
   install(cwd: string, generation: number, runtimeId: string, sessionId: string): void;
-  block(cwd: string): void;
+  block(cwd: string, reason?: string): void;
   remove(cwd: string, generation?: number): void;
   identity(cwd: string): { generation: number; runtimeId: string; sessionId: string } | undefined;
   onSessionShutdown(handler: (cwd: string) => void | Promise<void>): void;
@@ -268,7 +276,7 @@ export type ParentIntegrityRouter = {
 /** Register one hook router. Runtime generations are installed atomically by the checkout controller. */
 export function registerParentIntegrity(pi: ExtensionAPI, options: { passive?: boolean; authorityFactory?: (cwd: string) => ManagedVerificationAuthority } = {}): ParentIntegrityRouter {
   const routes = new Map<string, { generation: number; runtimeId: string; sessionId: string }>();
-  const blockedCheckouts = new Set<string>();
+  const blockedCheckouts = new Map<string, string>();
   const authorities = new Map<string, ManagedVerificationAuthority>();
   const pending = new Map<string, { key: string; topic: string; authorizationId: string; generation: number }>();
   const revoked = new Map<string, string>();
@@ -280,7 +288,7 @@ export function registerParentIntegrity(pi: ExtensionAPI, options: { passive?: b
   const revokePending = (matches: (item: { key: string }) => boolean, reason: string) => {
     for (const [callId, item] of pending) if (matches(item)) { pending.delete(callId); revoke(callId, reason); }
   };
-  const trustedTools = new Map<string, string>();
+  const trustedTools = new Map<string, { fingerprint: string; identity: unknown }>();
   let shutdownHandler: ((cwd: string) => void | Promise<void>) | undefined;
   const root = (cwd: string) => { try { return realpathSync(cwd); } catch { return cwd; } };
   const keyFor = (cwd: string, generation: number, topic: string) => `${root(cwd)}\0${generation}\0${topic}`;
@@ -308,10 +316,11 @@ export function registerParentIntegrity(pi: ExtensionAPI, options: { passive?: b
       blockedCheckouts.delete(key);
       routes.set(key, { generation, runtimeId, sessionId });
     },
-    block(cwd) {
+    block(cwd, reason = "managed runtime authority is unavailable") {
       const key = root(cwd);
+      if (!reason.trim()) throw new Error("managed runtime block reason is required");
       router.remove(key);
-      blockedCheckouts.add(key);
+      blockedCheckouts.set(key, reason);
     },
     remove(cwd, generation) {
       const key = root(cwd);
@@ -333,14 +342,14 @@ export function registerParentIntegrity(pi: ExtensionAPI, options: { passive?: b
 
   subscribe("session_start", async (_event, ctx) => {
     trustedTools.clear();
-    for (const tool of pi.getAllTools()) if (approvedRegisteredTool(tool)) trustedTools.set(tool.name, toolFingerprint(tool));
+    for (const tool of pi.getAllTools()) if (approvedRegisteredTool(tool)) trustedTools.set(tool.name, { fingerprint: toolFingerprint(tool), identity: tool });
     const sessionId = typeof ctx.sessionManager.getSessionId === "function" ? ctx.sessionManager.getSessionId() : "unbound-session";
     if (!routes.has(root(ctx.cwd))) {
       if (!options.passive) {
         router.install(ctx.cwd, 1, `parent-runtime-${randomUUID()}`, sessionId);
       } else {
         const selected = readRuntimeSelection(ctx.cwd);
-        if (selected.status === "blocked") router.block(ctx.cwd);
+        if (selected.status === "blocked") router.block(ctx.cwd, `malformed runtime selector: ${selected.reason}`);
         else if (!selected.record) router.install(ctx.cwd, 0, `parent-runtime-${randomUUID()}`, sessionId);
         // Recorded generations are installed only after the controller validates
         // and, on process restart, atomically rotates the durable parent.
@@ -350,9 +359,10 @@ export function registerParentIntegrity(pi: ExtensionAPI, options: { passive?: b
 
   subscribe("tool_call", async (event, ctx) => {
     const checkout = root(ctx.cwd);
+    const blockedReason = blockedCheckouts.get(checkout);
     if (blockedCheckouts.has(checkout)) {
       const decision = decideManagedToolCall({ managed: true, phase: "pending", planned: [], toolName: event.toolName, input: event.input as Record<string, unknown>, cwd: ctx.cwd, expectedCwd: ctx.cwd, trustedTool: trustedToolCall(pi, trustedTools, event.toolName) });
-      return decision.allow ? undefined : { block: true, reason: `managed execution blocked by malformed runtime selector: ${decision.reason}` };
+      return decision.allow ? undefined : { block: true, reason: `managed execution blocked by ${blockedReason}: ${decision.reason}` };
     }
     const route = routes.get(checkout);
     if (!route) return undefined;
@@ -515,14 +525,25 @@ function executionIdentity(ctx: { cwd: string; sessionManager: { getSessionId():
 function approvedRegisteredTool(tool: { name: string; sourceInfo?: unknown }): boolean {
   const sourceInfo = tool.sourceInfo && typeof tool.sourceInfo === "object" ? tool.sourceInfo as { source?: unknown; path?: unknown } : undefined;
   if (["read", "grep", "find", "ls", "bash"].includes(tool.name)) return sourceInfo?.source === "builtin" && typeof sourceInfo.path === "string" && sourceInfo.path === `<builtin:${tool.name}>`;
-  return false;
+  if (tool.name === "intercom") return typeof sourceInfo?.source === "string" && sourceInfo.source !== "builtin" && typeof sourceInfo.path === "string" && /(?:^|[\\/])pi-intercom[\\/]index\.ts$/.test(sourceInfo.path);
+  if (!APPROVED_READ_ONLY_TOOLS.has(tool.name) && tool.name !== "swe_workflow") return false;
+  return typeof sourceInfo?.source === "string" && sourceInfo.source !== "builtin" && typeof sourceInfo.path === "string" && sourceInfo.path.length > 0;
 }
-function trustedToolCall(pi: ExtensionAPI, trusted: Map<string, string>, name: string): boolean {
-  if (!trusted.has(name)) return false;
+function trustedToolCall(pi: ExtensionAPI, trusted: Map<string, { fingerprint: string; identity: unknown }>, name: string): boolean {
+  const captured = trusted.get(name);
+  if (!captured) return false;
   const current = pi.getAllTools().find((tool) => tool.name === name);
-  return !!current && toolFingerprint(current) === trusted.get(name);
+  return !!current && current === captured.identity && toolFingerprint(current) === captured.fingerprint;
 }
-function toolFingerprint(tool: { name: string; sourceInfo?: unknown }): string { return JSON.stringify({ name: tool.name, sourceInfo: tool.sourceInfo ?? null }); }
+function toolFingerprint(tool: { name: string; sourceInfo?: unknown }): string {
+  const sourceInfo = tool.sourceInfo && typeof tool.sourceInfo === "object" ? tool.sourceInfo as { path?: unknown } : undefined;
+  let sourceHash: string | null = null;
+  if (typeof sourceInfo?.path === "string" && !sourceInfo.path.startsWith("<builtin:")) {
+    try { sourceHash = createHash("sha256").update(readFileSync(realpathSync(sourceInfo.path))).digest("hex"); }
+    catch { sourceHash = "unreadable"; }
+  }
+  return JSON.stringify({ name: tool.name, sourceInfo: tool.sourceInfo ?? null, sourceHash });
+}
 
 function requireVerificationTask(workflow: Workflow, taskId: string): WorkflowTask {
   const task = workflow.tasks.find((candidate) => candidate.id === taskId);

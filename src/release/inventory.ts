@@ -81,7 +81,10 @@ function registrations(source: string): RegistrationInventory {
       /\bpi\.registerTool\(\s*\{[\s\S]{0,800}?\bname:\s*["']([^"']+)["']/g,
       /\bpi\.registerTool\(\s*\{[\s\S]{0,800}?\bname:\s*([A-Z][A-Z0-9_]*)/g,
     )),
-    events: unique(literals(source, /\bpi\.on\(\s*["']([^"']+)["']/g)),
+    events: unique([
+      ...literals(source, /\bpi\.on\(\s*["']([^"']+)["']/g),
+      ...literals(source, /\bsubscribe\(\s*["']([^"']+)["']/g),
+    ]),
     shortcuts: unique(literals(source, /\bpi\.registerShortcut\(\s*["']([^"']+)["']/g)),
     flags: unique(literals(source, /\bpi\.registerFlag\(\s*["']([^"']+)["']/g)),
     providers: unique(literals(source, /\bpi\.registerProvider\(\s*["']([^"']+)["']/g)),

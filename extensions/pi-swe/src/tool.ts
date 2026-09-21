@@ -110,7 +110,7 @@ function registerSweWorkflowToolAdapter(pi: ExtensionAPI, runtimeResolver: Runti
           const dismissed = binding.registry.dismiss(topic, required(params.runId, "runId"));
           return result(`${dismissed ? "dismissed exited runtime entry" : "no exited runtime entry matched"}; accepted reports remain in workflow.json\n${control.inspect(topic, boundIdentity)}`, located.workflow, located.kind);
         }
-        const text = params.action === "runs" ? renderRunTails(located.workflow, binding.registry.list(topic)) : `${runtimeSelectionStatus(ctx.cwd)}\n${control.inspect(topic, boundIdentity)}`;
+        const text = params.action === "runs" ? renderRunTails(located.workflow, binding.registry.list(topic)) : `${runtimeSelectionStatus(ctx.cwd)}${binding.kind === "blocked" ? `\nruntime authority: blocked; ${binding.reason}` : ""}\n${control.inspect(topic, boundIdentity)}`;
         return result(text, located.workflow, located.kind);
       }
       const topic = params.action === "create" ? required(params.topic, "topic") : resolveTopic(ctx.cwd, params.topic);
