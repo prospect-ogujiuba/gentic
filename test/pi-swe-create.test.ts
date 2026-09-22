@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 
 import piSwe from "../extensions/pi-swe/index.ts";
@@ -58,7 +58,7 @@ test("create resolves and verifies canonical artifact hashes", async () => {
     mkdirSync(join(root, ".model-artifacts/initiatives/mismatched-artifact/plans"), { recursive: true });
     writeFileSync(join(root, mismatchPath), "# Bootstrap plan\n");
     mismatch.artifacts = [{ path: mismatchPath, type: "plan", relatedWork: ["W-1"], summary: "Reviewed bootstrap plan.", contentHash: `sha256:${"0".repeat(64)}` }];
-    assert.throws(() => store.create("mismatched-artifact", mismatch), /artifact content hash mismatch/i);
+    await assert.rejects(() => store.create("mismatched-artifact", mismatch), /artifact content hash mismatch/i);
     assert.equal(existsSync(initiativePath(root, "mismatched-artifact")), false);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -88,6 +88,8 @@ test("create rejects malformed, mismatched, and non-initial proposals", async ()
       ["evidence", (value) => { value.evidence = [source.evidence[0]]; }, /evidence must be empty/i],
       ["work status", (value) => { value.work.find((item: any) => item.kind !== "phase").status = "active"; }, /must be pending/i],
       ["work disposition", (value) => { value.work.find((item: any) => item.kind !== "phase").disposition = { kind: "cancelled", reason: "not initial" }; }, /without a disposition/i],
+      ["empty work", (value) => { value.acceptanceCriteria = []; value.practices = []; value.obligations = []; value.work = []; }, /must contain executable work/i],
+      ["work without verification", (value) => { value.practices = []; value.obligations = []; value.work = value.work.map((item: any) => item.kind === "phase" ? item : { ...item, obligationIds: [] }); }, /must carry verification obligations/i],
     ];
     for (const [name, mutate, expected] of cases) {
       const value = proposal();
@@ -95,6 +97,44 @@ test("create rejects malformed, mismatched, and non-initial proposals", async ()
       await assert.rejects(() => service.create("new-initiative", value), expected, name);
     }
     assert.equal(existsSync(initiativePath(root, "new-initiative")), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("create rejects parent swaps during publication and cleans stable lock/temp names", async () => {
+  const { root } = fixture();
+  const outside = mkdtempSync(join(tmpdir(), "pi-swe-swap-outside-"));
+  try {
+    const path = initiativePath(root, "swapped-parent");
+    let moved = "";
+    const store = new InitiativeStore(root, { fault: (stage) => {
+      if (stage !== "before-create-link") return;
+      moved = join(root, "moved-topic");
+      renameSync(dirname(path), moved);
+      symlinkSync(outside, dirname(path), "dir");
+    } });
+    await assert.rejects(() => store.create("swapped-parent", proposal("swapped-parent")), /symlink|parent changed/i);
+    assert.equal(existsSync(join(outside, "workflow.json")), false);
+    assert.equal(existsSync(join(moved, "workflow.json.lock")), false);
+    assert.equal(existsSync(join(moved, "workflow.json")), false);
+    assert.deepEqual(readdirSync(moved), []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test("create rejects artifacts changed after hashing but before publication", async () => {
+  const { root } = fixture();
+  try {
+    const value = proposal("changing-artifact");
+    const artifactPath = ".model-artifacts/initiatives/changing-artifact/plans/2026-09-22_0337-bootstrap-plan.md";
+    const absolute = join(root, artifactPath);
+    mkdirSync(dirname(absolute), { recursive: true });
+    writeFileSync(absolute, "# Initial plan\n");
+    value.artifacts = [{ path: artifactPath, type: "plan", relatedWork: ["W-1"], summary: "Changing bootstrap plan." }];
+    const store = new InitiativeStore(root, { fault: (stage) => { if (stage === "before-create-link") writeFileSync(absolute, "# Changed plan\n"); } });
+    await assert.rejects(() => store.create("changing-artifact", value), /artifact.*(mismatch|changed)/i);
+    assert.equal(existsSync(initiativePath(root, "changing-artifact")), false);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -128,6 +168,12 @@ test("concurrent creation is exclusive and pre-publication faults leave no autho
     await assert.rejects(() => faulty.create("faulted-initiative", proposal("faulted-initiative")), /injected create crash/i);
     assert.equal(existsSync(initiativePath(root, "faulted-initiative")), false);
     assert.equal(existsSync(`${initiativePath(root, "faulted-initiative")}.lock`), false);
+
+    const lockedPath = initiativePath(root, "locked-initiative");
+    mkdirSync(dirname(lockedPath), { recursive: true });
+    writeFileSync(`${lockedPath}.lock`, "other process\n");
+    await assert.rejects(() => first.create("locked-initiative", proposal("locked-initiative")), /locked by another process/i);
+    assert.equal(readFileSync(`${lockedPath}.lock`, "utf8"), "other process\n");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -152,6 +198,8 @@ test("structured create is the bootstrap path and slash plan remains non-mutatin
     await commands.get("swe").handler("plan surface-create", ctx);
     assert.match(notices.at(-1) ?? "", /No authority was created.*action=create/is);
     assert.equal(existsSync(initiativePath(root, "surface-create")), false);
+    await commands.get("swe").handler("plan ../escape", ctx);
+    assert.match(notices.at(-1) ?? "", /canonical kebab-case/i);
 
     const result = await tools.get("swe").execute("call-1", { action: "create", initiativeId: "surface-create", proposal: proposal("surface-create") }, undefined, undefined, ctx);
     assert.equal(result.isError, undefined);

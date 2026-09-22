@@ -4,6 +4,7 @@ import { Type } from "typebox";
 
 import { registerSweActivityProbe } from "../../../../src/lifecycle-coordination.ts";
 import { SweService } from "../app/service.ts";
+import { initiativePath } from "../app/store.ts";
 import type { Initiative } from "../domain/initiative.ts";
 import { refreshSweContextMessages, restoreSweFocus, SWE_CONTEXT_TYPE, SWE_FOCUS_ENTRY_TYPE } from "./context.ts";
 import { projectSweDocket, renderSweDocketLines } from "../ui/docket.ts";
@@ -115,7 +116,11 @@ export function registerSweSurface(pi: ExtensionAPI): void {
       }
       try {
         const current = service(ctx.cwd);
-        if (action === "plan") { ctx.ui.notify(`No authority was created. Prepare a complete schema-valid draft proposal for .model-artifacts/initiatives/${initiativeId}/workflow.json, then invoke the swe tool with action=create, initiativeId=${initiativeId}, and proposal.`, "info"); return; }
+        if (action === "plan") {
+          initiativePath(ctx.cwd, initiativeId);
+          ctx.ui.notify(`No authority was created. Prepare a complete schema-valid draft proposal for .model-artifacts/initiatives/${initiativeId}/workflow.json, then invoke the swe tool with action=create, initiativeId=${initiativeId}, and proposal.`, "info");
+          return;
+        }
         if (action === "open") { await openSweDocket(current.status(initiativeId).initiative, ctx); rememberFocus(ctx.cwd, initiativeId); return; }
         if (action === "list") { ctx.ui.notify(renderDocket(current.status(initiativeId).initiative), "info"); rememberFocus(ctx.cwd, initiativeId); return; }
         if (action === "status") { ctx.ui.notify(renderStatus(current.status(initiativeId).initiative), "info"); rememberFocus(ctx.cwd, initiativeId); return; }

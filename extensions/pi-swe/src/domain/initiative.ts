@@ -101,10 +101,14 @@ export function parseInitialInitiative(input: unknown): Initiative {
   if (initiative.revision !== 1) throw new Error("initial initiative revision must be 1");
   if (initiative.status !== "draft") throw new Error("initial initiative status must be draft");
   if (initiative.evidence.length) throw new Error("initial initiative evidence must be empty");
-  for (const item of initiative.work) {
-    if (item.kind !== "phase" && (item.status !== "pending" || item.disposition !== undefined)) {
+  const executable = initiative.work.filter((item) => item.kind !== "phase");
+  if (!executable.length) throw new Error("initial initiative must contain executable work");
+  for (const item of executable) {
+    if (item.status !== "pending" || item.disposition !== undefined) {
       throw new Error(`initial executable work ${item.id} must be pending without a disposition`);
     }
+    if (!item.criterionIds?.length) throw new Error(`initial executable work ${item.id} must cover acceptance criteria`);
+    if (!item.obligationIds?.length) throw new Error(`initial executable work ${item.id} must carry verification obligations`);
   }
   return initiative;
 }
