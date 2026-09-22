@@ -4,5 +4,5 @@
   "layers": ["domain", "app", "pi", "ui"],
   "resources": [],
   "state": ".model-artifacts/initiatives/<topic>/workflow.json",
-  "tests": ["test/pi-swe-domain.test.ts", "test/pi-swe-store.test.ts", "test/pi-swe-evidence.test.ts", "test/pi-swe-runtime.test.ts", "test/pi-swe-revision-context.test.ts", "test/pi-swe-docket.test.ts"]
+  "tests": ["test/pi-swe-domain.test.ts", "test/pi-swe-store.test.ts", "test/pi-swe-create.test.ts", "test/pi-swe-evidence.test.ts", "test/pi-swe-runtime.test.ts", "test/pi-swe-revision-context.test.ts", "test/pi-swe-docket.test.ts"]
 }

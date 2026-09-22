@@ -10,7 +10,7 @@ import { projectSweDocket, renderSweDocketLines } from "../ui/docket.ts";
 import { SweDocketModal } from "../ui/modal.ts";
 import { plainSweTheme } from "../ui/theme.ts";
 
-const ACTIONS = ["status", "next", "start", "implemented", "revise", "prepare_verification", "record_review", "complete", "pause", "resume"] as const;
+const ACTIONS = ["create", "status", "next", "start", "implemented", "revise", "prepare_verification", "record_review", "complete", "pause", "resume"] as const;
 const parameters = Type.Object({
   action: StringEnum(ACTIONS),
   initiativeId: Type.String({ maxLength: 128 }),
@@ -28,7 +28,7 @@ const parameters = Type.Object({
 });
 
 const COMPLETIONS = [
-  { value: "plan", label: "plan", description: "Create or refine initiative authority · /swe plan <topic>" },
+  { value: "plan", label: "plan", description: "Show authority path and swe create handoff · /swe plan <topic>" },
   { value: "open", label: "open", description: "Open the canonical work docket · /swe open <topic>" },
   { value: "list", label: "list", description: "List canonical work · /swe list <topic>" },
   { value: "status", label: "status", description: "Inspect durable initiative state · /swe status <topic>" },
@@ -80,9 +80,10 @@ export function registerSweSurface(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "swe",
     label: "SWE",
-    description: "Inspect and mutate one durable SWE initiative. Verification preparation must be followed by the exact ordinary bash tool call so installed shell permissions apply.",
-    promptSnippet: "Use swe for durable initiative status, legal work transitions, verification preparation, review, and evidence-gated completion.",
+    description: "Create, inspect, and mutate one durable SWE initiative. Verification preparation must be followed by the exact ordinary bash tool call so installed shell permissions apply.",
+    promptSnippet: "Use swe create as the sole workflow.json bootstrap path, then use swe for durable status, legal work transitions, verification preparation, review, and evidence-gated completion.",
     promptGuidelines: [
+      "Use swe create with a complete schema-valid draft proposal to bootstrap workflow.json; /swe plan only reports the canonical path and does not create authority.",
       "Use swe prepare_verification before running the exact command through Pi's ordinary bash tool; never substitute internal pi.exec.",
       "Use swe record_review only for an explicit model self-review; label it as self-review, not independent or human review.",
     ],
@@ -91,7 +92,7 @@ export function registerSweSurface(pi: ExtensionAPI): void {
     async execute(_id, input, signal, _update, ctx) {
       signal?.throwIfAborted();
       try {
-        const result = await executeAction(service(ctx.cwd), input, ctx.sessionManager.getSessionId());
+        const result = await executeAction(service(ctx.cwd), input, ctx.sessionManager.getSessionId(), signal);
         signal?.throwIfAborted();
         rememberFocus(ctx.cwd, input.initiativeId);
         return { content: [{ type: "text", text: result.text }], details: result.details };
@@ -114,7 +115,7 @@ export function registerSweSurface(pi: ExtensionAPI): void {
       }
       try {
         const current = service(ctx.cwd);
-        if (action === "plan") { ctx.ui.notify(`Plan authority: .model-artifacts/initiatives/${initiativeId}/workflow.json. Use the swe tool for validated mutations.`, "info"); return; }
+        if (action === "plan") { ctx.ui.notify(`No authority was created. Prepare a complete schema-valid draft proposal for .model-artifacts/initiatives/${initiativeId}/workflow.json, then invoke the swe tool with action=create, initiativeId=${initiativeId}, and proposal.`, "info"); return; }
         if (action === "open") { await openSweDocket(current.status(initiativeId).initiative, ctx); rememberFocus(ctx.cwd, initiativeId); return; }
         if (action === "list") { ctx.ui.notify(renderDocket(current.status(initiativeId).initiative), "info"); rememberFocus(ctx.cwd, initiativeId); return; }
         if (action === "status") { ctx.ui.notify(renderStatus(current.status(initiativeId).initiative), "info"); rememberFocus(ctx.cwd, initiativeId); return; }
@@ -135,8 +136,12 @@ async function executeAction(service: SweService, input: {
   action: typeof ACTIONS[number]; initiativeId: string; workId?: string; obligationIds?: string[]; command?: string; relevantPaths?: string[];
   outcome?: "passed" | "failed"; dimensions?: string[]; summary?: string;
   expectedRevision?: number; expectedHash?: string; reason?: string; proposal?: unknown;
-}, sessionId: string): Promise<{ text: string; details: Record<string, unknown> }> {
+}, sessionId: string, signal?: AbortSignal): Promise<{ text: string; details: Record<string, unknown> }> {
   const workId = () => required(input.workId, "workId");
+  if (input.action === "create") {
+    const stored = await service.create(input.initiativeId, input.proposal, signal);
+    return { text: `Created ${stored.path}\n${renderStatus(stored.initiative)}`, details: { initiative: stored.initiative, hash: stored.hash, path: stored.path } };
+  }
   if (input.action === "status") { const stored = service.status(input.initiativeId); return { text: renderStatus(stored.initiative), details: { initiative: stored.initiative, hash: stored.hash } }; }
   if (input.action === "next") { const next = service.next(input.initiativeId); return { text: next ? `${next.id}: ${next.title}` : "No dependency-ready work.", details: { work: next } }; }
   if (input.action === "revise") {

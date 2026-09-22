@@ -25,6 +25,12 @@ export class SweService {
     this.collector = collector;
   }
 
+  async create(initiativeId: string, proposal: unknown, signal?: AbortSignal): Promise<StoredInitiative> {
+    const stored = await this.store.create(initiativeId, proposal, signal);
+    this.#selected = initiativeId;
+    return stored;
+  }
+
   status(initiativeId: string): StoredInitiative {
     this.#selected = initiativeId;
     return this.store.read(initiativeId);

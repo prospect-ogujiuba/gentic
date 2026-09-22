@@ -4,7 +4,9 @@ pi-swe provides one validated durable initiative at `.model-artifacts/initiative
 
 ## Lifecycle and authority
 
-The domain layer enforces a closed schema, graph/reference/coverage rules, bounded hierarchy, dependency readiness, legal transitions, and evidence-gated completion. The application layer uses revision/hash compare-and-swap, an in-process queue, an exclusive cross-process lock, atomic rename, directory sync, and immutable Markdown revision rationale.
+Bootstrap authority only through the structured `swe` tool's `create` action with a complete proposal. Creation validates the closed schema and artifact paths/hashes, requires matching canonical identity, revision `1`, `draft` status, empty evidence, and pending executable work without dispositions. It uses cooperative locking, an exclusive no-overwrite publication, file and directory sync, and never replaces an existing `workflow.json`. `/swe plan <topic>` is deliberately non-mutating: it reports the canonical path and directs the model/operator to `swe create` rather than synthesizing a weak workflow.
+
+The domain layer enforces a closed schema, graph/reference/coverage rules, bounded hierarchy, dependency readiness, legal transitions, and evidence-gated completion. Later mutations use revision/hash compare-and-swap, an in-process queue, an exclusive cross-process lock, atomic rename, directory sync, and immutable Markdown revision rationale.
 
 Pause, interruption, fork, and resume do not rewind repository state. Session entries retain only focus; every fresh context projection rereads current repository authority and revision. Startup and resume never execute work automatically. Concurrent or stale writers fail closed instead of silently overwriting current authority.
 
@@ -22,7 +24,7 @@ Small initiatives stay small. A light initiative may contain one executable task
 
 ## Surfaces and output
 
-Public surfaces are `/swe plan|open|list|status|next|resume|pause <topic>`, `/swe start|implemented|complete <topic> <work-id>`, and one `swe` structured tool. The keyboard docket is a bounded, read-only projection of the canonical graph; command and tool mutations both use `SweService`, and command completion cannot bypass evidence gates. Non-TUI `open` and `list` return bounded text. pi-swe has no pi-todo dependency; pi-todo remains a thin separate surface and cannot write SWE authority.
+Public surfaces are `/swe plan|open|list|status|next|resume|pause <topic>`, `/swe start|implemented|complete <topic> <work-id>`, and one `swe` structured tool whose actions include the sole supported `create` bootstrap. The keyboard docket is a bounded, read-only projection of the canonical graph; command and tool mutations both use `SweService`, and command completion cannot bypass evidence gates. Non-TUI `open` and `list` return bounded text. pi-swe has no pi-todo dependency; pi-todo remains a thin separate surface and cannot write SWE authority.
 
 ## Artifact boundary
 

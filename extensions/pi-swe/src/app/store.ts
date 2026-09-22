@@ -4,6 +4,7 @@ import {
   constants,
   existsSync,
   fsyncSync,
+  linkSync,
   lstatSync,
   mkdirSync,
   openSync,
@@ -16,10 +17,22 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
-import { parseInitiative, type Initiative } from "../domain/initiative.ts";
+import { parseInitialInitiative, parseInitiative, type Initiative } from "../domain/initiative.ts";
+import { hashInitiativeArtifacts } from "./artifacts.ts";
 
 export type StoredInitiative = { initiative: Initiative; hash: string; path: string };
 export type MutationStage = "locked" | "history-written" | "before-publish" | "published";
+export type InitiativeStoreErrorCode = "already-exists" | "identity-mismatch" | "invalid-proposal" | "locked";
+
+export class InitiativeStoreError extends Error {
+  readonly code: InitiativeStoreErrorCode;
+
+  constructor(code: InitiativeStoreErrorCode, message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "InitiativeStoreError";
+    this.code = code;
+  }
+}
 export type StoreOptions = { fault?: (stage: MutationStage) => void };
 export type MutationOptions = {
   expectedRevision: number;
@@ -43,6 +56,28 @@ export class InitiativeStore {
   constructor(cwd: string, options: StoreOptions = {}) {
     this.#root = resolve(cwd);
     this.#fault = options.fault;
+  }
+
+  create(initiativeId: string, proposal: unknown, signal?: AbortSignal): Promise<StoredInitiative> {
+    const path = initiativePath(this.#root, initiativeId);
+    let initiative: Initiative;
+    try {
+      const parsed = parseInitialInitiative(proposal);
+      if (parsed.id !== initiativeId) throw new InitiativeStoreError("identity-mismatch", `initiative identity mismatch: expected ${initiativeId}`);
+      initiative = hashInitiativeArtifacts(this.#root, parsed);
+    } catch (error) {
+      if (error instanceof InitiativeStoreError) throw error;
+      throw new InitiativeStoreError("invalid-proposal", error instanceof Error ? error.message : String(error), { cause: error });
+    }
+    const previous = queues.get(path) ?? Promise.resolve();
+    const run = previous.then(async () => {
+      signal?.throwIfAborted();
+      return this.#createLocked(initiativeId, initiative, signal);
+    });
+    const tail = run.then(() => undefined, () => undefined);
+    queues.set(path, tail);
+    void tail.finally(() => { if (queues.get(path) === tail) queues.delete(path); });
+    return run;
   }
 
   read(initiativeId: string): StoredInitiative {
@@ -75,6 +110,50 @@ export class InitiativeStore {
     return run;
   }
 
+  async #createLocked(initiativeId: string, initiative: Initiative, signal?: AbortSignal): Promise<StoredInitiative> {
+    const path = initiativePath(this.#root, initiativeId);
+    const lockPath = `${path}.lock`;
+    let lockHandle: number | undefined;
+    let temporary: string | undefined;
+    try {
+      assertSafeAuthorityPath(this.#root, path);
+      fsyncAuthorityDirectories(this.#root, dirname(path));
+      try { lockHandle = openSync(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new InitiativeStoreError("locked", `initiative is locked by another process: ${initiativeId}`, { cause: error });
+        throw error;
+      }
+      writeSync(lockHandle, `${JSON.stringify({ schemaVersion: 1, operation: "create", pid: process.pid, createdAt: new Date().toISOString(), token: randomUUID() })}\n`);
+      fsyncSync(lockHandle);
+      this.#fault?.("locked");
+      signal?.throwIfAborted();
+      if (existsSync(path)) throw new InitiativeStoreError("already-exists", `initiative already exists: ${initiativeId}`);
+
+      const bytes = Buffer.from(`${JSON.stringify(initiative, null, 2)}\n`);
+      const hash = sha256(bytes);
+      temporary = `${path}.tmp-${process.pid}-${randomUUID()}`;
+      const handle = openSync(temporary, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+      try { writeSync(handle, bytes); fsyncSync(handle); } finally { closeSync(handle); }
+      this.#fault?.("before-publish");
+      signal?.throwIfAborted();
+      try { linkSync(temporary, path); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new InitiativeStoreError("already-exists", `initiative already exists: ${initiativeId}`, { cause: error });
+        throw error;
+      }
+      fsyncDirectory(dirname(path));
+      rmSync(temporary);
+      temporary = undefined;
+      fsyncDirectory(dirname(path));
+      this.#fault?.("published");
+      return { initiative, hash, path };
+    } finally {
+      if (temporary) rmSync(temporary, { force: true });
+      if (lockHandle !== undefined) closeSync(lockHandle);
+      if (lockHandle !== undefined) rmSync(lockPath, { force: true });
+    }
+  }
+
   async #mutateLocked(
     initiativeId: string,
     options: MutationOptions,
@@ -88,7 +167,7 @@ export class InitiativeStore {
       assertSafeAuthorityPath(this.#root, path);
       try { lockHandle = openSync(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600); }
       catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new Error(`initiative is locked by another process: ${initiativeId}`);
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new InitiativeStoreError("locked", `initiative is locked by another process: ${initiativeId}`, { cause: error });
         throw error;
       }
       writeSync(lockHandle, `${JSON.stringify({ schemaVersion: 1, pid: process.pid, createdAt: new Date().toISOString(), token: randomUUID() })}\n`);
@@ -163,6 +242,10 @@ function assertSafeAuthorityPath(root: string, path: string): void {
 function assertDirectoryNoSymlink(root: string, directory: string): void {
   let cursor = resolve(directory); const boundary = resolve(root);
   while (cursor !== boundary) { const stat = lstatSync(cursor); if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error("initiative path contains a symlink"); cursor = dirname(cursor); }
+}
+function fsyncAuthorityDirectories(root: string, directory: string): void {
+  let cursor = resolve(directory); const boundary = resolve(root);
+  while (true) { fsyncDirectory(cursor); if (cursor === boundary) return; cursor = dirname(cursor); }
 }
 function fsyncDirectory(path: string): void { const handle = openSync(path, constants.O_RDONLY); try { fsyncSync(handle); } finally { closeSync(handle); } }
 function sha256(bytes: Buffer): string { return `sha256:${createHash("sha256").update(bytes).digest("hex")}`; }

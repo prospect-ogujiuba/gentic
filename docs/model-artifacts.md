@@ -48,7 +48,7 @@ The tool returns the canonical path, byte count, creation time, and SHA-256 cont
 
 ## Authority boundary
 
-`.model-artifacts/initiatives/<topic>/workflow.json` is stable pi-swe authority. It is not a generic model artifact and cannot be created or modified through the `artifact` tool. pi-swe may reference generated artifacts by their canonical path and verified content hash.
+`.model-artifacts/initiatives/<topic>/workflow.json` is stable pi-swe authority. It is not a generic model artifact and cannot be created or modified through the `artifact` tool. Initial authority is published exclusively through the structured `swe create` action; `/swe plan <topic>` only reports the handoff and does not write a workflow. pi-swe may reference generated artifacts by their canonical path and verified content hash.
 
 `docs/plans/` contains curated, stable, human-facing documentation only. Do not mirror generated plans there.
 

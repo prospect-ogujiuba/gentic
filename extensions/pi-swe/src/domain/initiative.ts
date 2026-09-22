@@ -96,6 +96,19 @@ const WORK_TRANSITIONS: Record<WorkStatus, readonly WorkStatus[]> = {
   complete: [],
 };
 
+export function parseInitialInitiative(input: unknown): Initiative {
+  const initiative = parseInitiative(input);
+  if (initiative.revision !== 1) throw new Error("initial initiative revision must be 1");
+  if (initiative.status !== "draft") throw new Error("initial initiative status must be draft");
+  if (initiative.evidence.length) throw new Error("initial initiative evidence must be empty");
+  for (const item of initiative.work) {
+    if (item.kind !== "phase" && (item.status !== "pending" || item.disposition !== undefined)) {
+      throw new Error(`initial executable work ${item.id} must be pending without a disposition`);
+    }
+  }
+  return initiative;
+}
+
 export function parseInitiative(input: unknown): Initiative {
   if (!record(input)) throw new Error("initiative must be an object");
   if (input.kind !== INITIATIVE_KIND || input.schemaVersion !== INITIATIVE_SCHEMA_VERSION) {
