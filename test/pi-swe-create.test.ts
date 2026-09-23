@@ -183,11 +183,13 @@ test("structured create is the bootstrap path and slash plan remains non-mutatin
     const commands = new Map<string, any>();
     const tools = new Map<string, any>();
     const notices: string[] = [];
+    const userMessages: string[] = [];
     const pi = {
       on() {},
       registerCommand(name: string, command: unknown) { commands.set(name, command); },
       registerTool(tool: { name: string }) { tools.set(tool.name, tool); },
       appendEntry() {},
+      sendUserMessage(message: string) { userMessages.push(message); },
     };
     piSwe(pi as never);
     const ctx = {
@@ -195,10 +197,12 @@ test("structured create is the bootstrap path and slash plan remains non-mutatin
       sessionManager: { getSessionId: () => "test-session" },
       ui: { notify(message: string) { notices.push(message); } },
     };
-    await commands.get("swe").handler("plan surface-create", ctx);
-    assert.match(notices.at(-1) ?? "", /No authority was created.*action=create/is);
+    await commands.get("swe").handler("plan --id surface-create Add the surface create flow", ctx);
+    assert.match(notices.at(-1) ?? "", /Planning surface-create from your request/i);
+    assert.match(userMessages.at(-1) ?? "", /action=create/i);
+    assert.match(userMessages.at(-1) ?? "", /surface-create/i);
     assert.equal(existsSync(initiativePath(root, "surface-create")), false);
-    await commands.get("swe").handler("plan ../escape", ctx);
+    await commands.get("swe").handler("plan --id ../escape Add unsafe planning", ctx);
     assert.match(notices.at(-1) ?? "", /canonical kebab-case/i);
 
     const result = await tools.get("swe").execute("call-1", { action: "create", initiativeId: "surface-create", proposal: proposal("surface-create") }, undefined, undefined, ctx);

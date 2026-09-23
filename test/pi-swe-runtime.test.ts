@@ -9,6 +9,7 @@ import { SweService } from "../extensions/pi-swe/src/app/service.ts";
 import { InitiativeStore, initiativePath } from "../extensions/pi-swe/src/app/store.ts";
 import { VerificationCollector } from "../extensions/pi-swe/src/app/verification.ts";
 import { getSweCommandCompletions } from "../extensions/pi-swe/src/pi/register.ts";
+import { deriveSweInitiativeId, prepareSwePlanRequest } from "../extensions/pi-swe/src/pi/planning.ts";
 
 const bootstrap = JSON.parse(readFileSync(new URL("./fixtures/pi-swe-foundation.json", import.meta.url), "utf8"));
 
@@ -40,11 +41,13 @@ test("minimal Pi surface registers one command/tool and never internally execute
   const commands = new Map<string, any>();
   const tools = new Map<string, any>();
   let execCalls = 0;
+  const userMessages: string[] = [];
   const pi = {
     on(name: string, handler: Function) { handlers.set(name, handler); },
     registerCommand(name: string, command: unknown) { commands.set(name, command); },
     registerTool(tool: { name: string }) { tools.set(tool.name, tool); },
     appendEntry() {},
+    sendUserMessage(message: string) { userMessages.push(message); },
     exec() { execCalls += 1; throw new Error("must not bypass ordinary bash permissions"); },
   };
   piSwe(pi as never);
@@ -62,6 +65,37 @@ test("minimal Pi surface registers one command/tool and never internally execute
   });
   assert.equal(notifications[0]?.level, "info");
   assert.match(notifications[0]?.message ?? "", /No focused SWE initiative.*Type a space after an action or topic/s);
+
+  const planRoot = mkdtempSync(join(tmpdir(), "pi-swe-plan-command-"));
+  try {
+    await commands.get("swe").handler("plan Improve authentication error handling", {
+      cwd: planRoot,
+      ui: { notify(message: string, level: string) { notifications.push({ message, level }); } },
+    });
+    assert.match(notifications.at(-1)?.message ?? "", /Planning authentication-error-handling from your request/);
+    assert.equal(userMessages.length, 1);
+    assert.match(userMessages[0], /initiativeId "authentication-error-handling"/);
+    assert.match(userMessages[0], /Initiative request:\nImprove authentication error handling/);
+  } finally { rmSync(planRoot, { recursive: true, force: true }); }
+});
+
+test("natural-language planning derives safe available ids and accepts an explicit id", () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-swe-plan-request-"));
+  try {
+    assert.equal(deriveSweInitiativeId("Improve authentication error handling and coverage"), "authentication-error-handling-coverage");
+    assert.deepEqual(prepareSwePlanRequest(root, "--id auth-hardening Improve authentication handling"), {
+      initiativeId: "auth-hardening",
+      request: "Improve authentication handling",
+      explicitId: true,
+    });
+
+    const existing = initiativePath(root, "authentication-error-handling");
+    mkdirSync(dirname(existing), { recursive: true });
+    writeFileSync(existing, "{}\n");
+    assert.equal(prepareSwePlanRequest(root, "Improve authentication error handling").initiativeId, "authentication-error-handling-2");
+    assert.throws(() => prepareSwePlanRequest(root, "--id authentication-error-handling Another request"), /already exists/i);
+    assert.throws(() => prepareSwePlanRequest(root, "--id Not_Canonical Request"), /canonical kebab-case/i);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("command completion discovers initiatives and offers action-aware work", async () => {

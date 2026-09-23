@@ -7,7 +7,7 @@ import { completionBlockers } from "../domain/completion.ts";
 import { readyWork, type Initiative, type WorkItem } from "../domain/initiative.ts";
 
 const ACTIONS = [
-  { value: "plan", description: "Prepare a new initiative · /swe plan <new-kebab-topic>" },
+  { value: "plan", description: "Plan from natural language · /swe plan [--id topic] <request>" },
   { value: "open", description: "Open the canonical work docket · /swe open <topic>" },
   { value: "list", description: "List canonical work · /swe list <topic>" },
   { value: "status", description: "Inspect durable initiative state · /swe status <topic>" },
@@ -76,6 +76,7 @@ export function renderSweQuickHelp(initiative?: Initiative): string {
   }
   lines.push(
     "",
+    "/swe plan [--id topic] <request>  Assess and create an initiative",
     "/swe status <topic>               Inspect durable state",
     "/swe open <topic>                 Open the work docket",
     "/swe start <topic> <work-id>      Start ready work",

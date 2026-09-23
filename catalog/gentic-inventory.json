@@ -297,6 +297,7 @@
         "extensions/pi-swe/src/domain/initiative.ts",
         "extensions/pi-swe/src/pi/autocomplete.ts",
         "extensions/pi-swe/src/pi/context.ts",
+        "extensions/pi-swe/src/pi/planning.ts",
         "extensions/pi-swe/src/pi/register.ts",
         "extensions/pi-swe/src/ui/docket.ts",
         "extensions/pi-swe/src/ui/format.ts",

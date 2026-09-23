@@ -4,10 +4,10 @@ import { Type } from "typebox";
 
 import { registerSweActivityProbe } from "../../../../src/lifecycle-coordination.ts";
 import { SweService } from "../app/service.ts";
-import { initiativePath } from "../app/store.ts";
 import type { Initiative } from "../domain/initiative.ts";
 import { getSweCommandCompletions, renderSweQuickHelp } from "./autocomplete.ts";
 import { refreshSweContextMessages, restoreSweFocus, SWE_CONTEXT_TYPE, SWE_FOCUS_ENTRY_TYPE } from "./context.ts";
+import { buildSwePlanningPrompt, prepareSwePlanRequest } from "./planning.ts";
 import { projectSweDocket, renderSweDocketLines } from "../ui/docket.ts";
 import { SweDocketModal } from "../ui/modal.ts";
 import { plainSweTheme } from "../ui/theme.ts";
@@ -71,7 +71,7 @@ export function registerSweSurface(pi: ExtensionAPI): void {
     description: "Create, inspect, and mutate one durable SWE initiative. Verification preparation must be followed by the exact ordinary bash tool call so installed shell permissions apply.",
     promptSnippet: "Use swe create as the sole workflow.json bootstrap path, then use swe for durable status, legal work transitions, verification preparation, review, and evidence-gated completion.",
     promptGuidelines: [
-      "Use swe create with a complete schema-valid draft proposal to bootstrap workflow.json; /swe plan only reports the canonical path and does not create authority.",
+      "Use swe create with a complete schema-valid draft proposal to bootstrap workflow.json; /swe plan turns a natural-language request into an agent planning turn and still bootstraps authority only through swe create.",
       "Use swe prepare_verification before running the exact command through Pi's ordinary bash tool; never substitute internal pi.exec.",
       "Use swe record_review only for an explicit model self-review; label it as self-review, not independent or human review.",
     ],
@@ -109,6 +109,17 @@ export function registerSweSurface(pi: ExtensionAPI): void {
         ctx.ui.notify(renderSweQuickHelp(initiative), "info");
         return;
       }
+      const actionMatch = args.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/);
+      if (actionMatch?.[1] === "plan") {
+        try {
+          const plan = prepareSwePlanRequest(ctx.cwd, actionMatch[2] ?? "");
+          ctx.ui.notify(`Planning ${plan.initiativeId} from your request.`, "info");
+          pi.sendUserMessage(buildSwePlanningPrompt(plan));
+        } catch (error) {
+          ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
+        }
+        return;
+      }
       const [action, initiativeId, workId, ...extra] = args.trim().split(/\s+/).filter(Boolean);
       const known = COMMAND_ACTIONS.has(action);
       const needsWork = WORK_COMMANDS.has(action);
@@ -117,11 +128,6 @@ export function registerSweSurface(pi: ExtensionAPI): void {
       }
       try {
         const current = service(ctx.cwd);
-        if (action === "plan") {
-          initiativePath(ctx.cwd, initiativeId);
-          ctx.ui.notify(`No authority was created. Prepare a complete schema-valid draft proposal for .model-artifacts/initiatives/${initiativeId}/workflow.json, then invoke the swe tool with action=create, initiativeId=${initiativeId}, and proposal.`, "info");
-          return;
-        }
         if (action === "open") { await openSweDocket(current.status(initiativeId).initiative, ctx); rememberFocus(ctx.cwd, initiativeId); return; }
         if (action === "list") { ctx.ui.notify(renderDocket(current.status(initiativeId).initiative), "info"); rememberFocus(ctx.cwd, initiativeId); return; }
         if (action === "status") { ctx.ui.notify(renderStatus(current.status(initiativeId).initiative), "info"); rememberFocus(ctx.cwd, initiativeId); return; }
