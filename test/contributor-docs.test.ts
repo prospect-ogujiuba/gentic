@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
@@ -15,6 +16,27 @@ test("contributor clean-checkout and release commands resolve to package scripts
   }
   assert.equal(packageJson.private, true);
   assert.doesNotMatch(read("README.md"), /pi install(?: -l)? npm:gentic/);
+});
+
+test("model artifact versioning tracks authority selectively and ignores runtime logs", () => {
+  const policy = read("docs/model-artifacts.md");
+  const ignore = read(".gitignore");
+  assert.match(policy, /workflow\.json.*Track for substantial or shared initiatives/i);
+  for (const kind of ["specs/", "plans/", "findings/", "reports/", "todo/", "logs/"]) assert.match(policy, new RegExp(kind.replace("/", "\\/")));
+  assert.match(policy, /Never use `git add \.model-artifacts`/);
+  assert.match(ignore, /^\/\.model-artifacts\/initiatives\/\*\/logs\/$/m);
+  assert.match(ignore, /^\/\.model-artifacts\/system\/logs\/$/m);
+
+  const ignored = (path: string) => spawnSync("git", ["check-ignore", "--no-index", "--quiet", path], { cwd: root }).status === 0;
+  assert.equal(ignored(".model-artifacts/initiatives/demo/logs/2026-05-01_1200-runtime.md"), true);
+  assert.equal(ignored(".model-artifacts/system/logs/runtime/2026-05-01_1200-session.md"), true);
+  for (const path of [
+    ".model-artifacts/initiatives/demo/workflow.json",
+    ".model-artifacts/initiatives/demo/specs/2026-05-01_1200-spec.md",
+    ".model-artifacts/initiatives/demo/plans/2026-05-01_1200-plan.md",
+    ".model-artifacts/initiatives/demo/findings/2026-05-01_1200-finding.md",
+    ".model-artifacts/initiatives/demo/reports/2026-05-01_1200-report.md",
+  ]) assert.equal(ignored(path), false, `${path} must remain selectively trackable`);
 });
 
 test("plugin guide documents every supported scaffold kind and truthful anatomy policy", () => {

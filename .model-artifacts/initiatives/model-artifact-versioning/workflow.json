@@ -1,0 +1,210 @@
+{
+  "kind": "gentic.swe.initiative",
+  "schemaVersion": 1,
+  "id": "model-artifact-versioning",
+  "revision": 7,
+  "status": "complete",
+  "objective": "Establish and enforce a selective Git versioning policy for durable model artifacts, tracking workflow authority and valuable durable artifacts while excluding runtime logs by default.",
+  "scope": {
+    "in": [
+      "docs/model-artifacts.md versioning policy",
+      ".gitignore runtime log exclusions",
+      "focused contributor-policy tests",
+      "tracking completed SWE workflow authority for the relevant initiative"
+    ],
+    "out": [
+      "committing unrelated pi-todo-delete authority",
+      "committing runtime revision logs",
+      "automatically staging every model artifact",
+      "changing artifact path schema or SWE lifecycle semantics"
+    ]
+  },
+  "constraints": [
+    "workflow.json remains exclusively mutated by pi-swe",
+    "runtime logs stay local by default",
+    "specs, plans, findings, and reports remain selectively reviewed rather than blanket-staged",
+    "generated workflow authority may be committed when intentionally selected"
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "text": "Repository documentation defines an explicit selective versioning matrix for workflow authority and every model-artifact kind."
+    },
+    {
+      "id": "AC-2",
+      "text": "Initiative and system runtime log directories are ignored by Git without ignoring workflow.json or selectively valuable artifacts."
+    },
+    {
+      "id": "AC-3",
+      "text": "Automated tests protect the documented tracking policy and ignore rules."
+    },
+    {
+      "id": "AC-4",
+      "text": "The completed swe-lifecycle-autonomy workflow authority is included in the implementation commit while its revision logs and unrelated initiative artifacts are excluded."
+    }
+  ],
+  "assessment": {
+    "depth": "light",
+    "reason": "This is a bounded repository policy and documentation change with a small Git-ignore and regression-test surface.",
+    "surfaces": [
+      "documentation",
+      "Git ignore policy",
+      "contributor tests",
+      "selected workflow authority"
+    ],
+    "unknowns": []
+  },
+  "practices": [
+    {
+      "id": "P-1",
+      "practice": "Explicit repository policy with regression coverage",
+      "appliesTo": [
+        "W-1"
+      ],
+      "reason": "Selective tracking must remain understandable and resist accidental drift."
+    }
+  ],
+  "obligations": [
+    {
+      "id": "O-1",
+      "practiceId": "P-1",
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-3",
+        "AC-4"
+      ],
+      "text": "Verify documentation and ignore-policy tests pass and inspect the final staged scope for only intended authority and source files.",
+      "verification": {
+        "kind": "tests-and-scope-review",
+        "requiredEvidence": [
+          "machine-command",
+          "model-review"
+        ]
+      }
+    }
+  ],
+  "work": [
+    {
+      "id": "W-1",
+      "kind": "task",
+      "title": "Document and enforce selective model-artifact versioning",
+      "status": "complete",
+      "dependsOn": [],
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-3",
+        "AC-4"
+      ],
+      "obligationIds": [
+        "O-1"
+      ],
+      "testing": {
+        "approach": "Add focused assertions for the documented matrix and Git ignore patterns, then run typecheck and repository tests.",
+        "reason": "The behavior is policy-driven and should fail visibly if documentation or ignore rules regress."
+      }
+    }
+  ],
+  "artifacts": [],
+  "evidence": [
+    {
+      "id": "E-0ccdb186-2ac3-42f6-8330-4d31931340b2",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && node --experimental-strip-types --test test/contributor-docs.test.ts && npm run check:model-artifacts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-23T16:16:34.857Z",
+      "completedAt": "2026-09-23T16:17:04.369Z",
+      "durationMs": 29512,
+      "contractFingerprint": "sha256:f9d81c0e8d538ba820d446e63db0c26840834103e51d7b6da5b12dce64f3fc77",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            ".gitignore",
+            "docs/model-artifacts.md",
+            "test/contributor-docs.test.ts"
+          ],
+          "hash": "sha256:6bb144357edd561b1b84b6de796260e8f288cae667ca2f1591474e606ec82239"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            ".gitignore",
+            "docs/model-artifacts.md",
+            "test/contributor-docs.test.ts"
+          ],
+          "hash": "sha256:6bb144357edd561b1b84b6de796260e8f288cae667ca2f1591474e606ec82239"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_n1EF1fsodyMgw9Q8qBa5QAeN|fc_0f6923935d7e5c7f016ab3fb61b7bc87d28285ecf891f6d2b3",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:a289065407cdad4e854a3b240b12686e6f75f212af40dd10516e287a4f44ec88"
+    },
+    {
+      "id": "E-bae238eb-2a69-445d-a9b2-e2f22e3d1016",
+      "kind": "model-review",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "passed",
+      "reviewedAt": "2026-09-23T16:18:11.937Z",
+      "contractFingerprint": "sha256:f9d81c0e8d538ba820d446e63db0c26840834103e51d7b6da5b12dce64f3fc77",
+      "source": {
+        "kind": "bounded-paths",
+        "paths": [
+          ".gitignore",
+          ".model-artifacts/initiatives/swe-lifecycle-autonomy/workflow.json",
+          "docs/model-artifacts.md",
+          "test/contributor-docs.test.ts"
+        ],
+        "hash": "sha256:12022551bde187212273c6b491defd5cb7cba8ebd3488b1be77faff5037f127e"
+      },
+      "dimensions": [
+        "policy-clarity",
+        "git-ignore-boundaries",
+        "staged-scope",
+        "cross-clone-durability"
+      ],
+      "summary": "Model self-review found no blocking issues. The documented matrix covers workflow authority and every artifact kind; ignore rules target only canonical initiative and system logs; focused tests prove workflows, specs, plans, findings, and reports remain visible; the staged scope contains only the three policy/test files and completed swe-lifecycle-autonomy authority. Runtime logs and unrelated pi-todo-delete authority are excluded.",
+      "provenance": {
+        "kind": "pi-model-self-review",
+        "sessionId": "01a0c9ca-d914-7039-b90c-1466e30c889c"
+      }
+    }
+  ],
+  "decisions": [
+    {
+      "id": "D-1",
+      "text": "Track workflow.json by default for substantial or shared initiatives, including final completed authority.",
+      "basis": "Repository durability across clones, branches, sessions, and reviewers outweighs manageable branch-local merge churn."
+    },
+    {
+      "id": "D-2",
+      "text": "Ignore runtime logs by default and review other generated Markdown artifacts individually.",
+      "basis": "Logs are high-volume operational noise while specs, plans, findings, and reports have variable durable value."
+    }
+  ],
+  "risks": [
+    {
+      "id": "R-1",
+      "text": "Broad ignore patterns could hide valuable reports or workflow authority.",
+      "mitigation": "Ignore only directories named logs beneath canonical initiative and system scopes, with tests proving workflow and other kinds remain visible."
+    }
+  ]
+}

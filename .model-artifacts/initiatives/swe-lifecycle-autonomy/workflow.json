@@ -1,0 +1,407 @@
+{
+  "kind": "gentic.swe.initiative",
+  "schemaVersion": 1,
+  "id": "swe-lifecycle-autonomy",
+  "revision": 9,
+  "status": "complete",
+  "objective": "Allow durable SWE initiatives to finalize at initiative level, continue authorized active workflows without babysitting, and recover cleanly from stale verification observations.",
+  "scope": {
+    "in": [
+      "extensions/pi-swe lifecycle, context projection, command/tool surfaces, verification collector",
+      "focused tests and pi-swe documentation"
+    ],
+    "out": [
+      "unbounded autonomous execution",
+      "bypassing evidence gates or shell permission boundaries",
+      "automatic commit or push authorization"
+    ]
+  },
+  "constraints": [
+    "workflow.json remains the sole planning authority",
+    "ordinary bash permission boundaries remain enforced",
+    "automatic continuation applies only to a focused active initiative",
+    "terminal or paused initiatives must not auto-run"
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "text": "The SWE complete action can finalize an initiative without workId once every executable work item is complete or intentionally disposed, and rejects premature finalization."
+    },
+    {
+      "id": "AC-2",
+      "text": "A focused active initiative explicitly instructs and triggers the agent to continue approved workflow work across startup/resume and command activation without asking for routine confirmation, while retaining clear stop conditions."
+    },
+    {
+      "id": "AC-3",
+      "text": "A new verification preparation can supersede a stale pending observation so failed or interrupted commands do not require runtime reload."
+    },
+    {
+      "id": "AC-4",
+      "text": "Tests and documentation describe and verify the lifecycle, continuation, and recovery behavior."
+    }
+  ],
+  "assessment": {
+    "depth": "standard",
+    "reason": "This changes persisted lifecycle semantics and Pi runtime turn triggering, requiring focused safety and regression coverage.",
+    "surfaces": [
+      "domain lifecycle",
+      "service API",
+      "structured tool and slash command",
+      "context injection",
+      "verification collector",
+      "tests and docs"
+    ],
+    "unknowns": [
+      "Exact Pi timing of triggerTurn during session_start; behavior will be constrained to active focused authority and covered at handler boundary."
+    ]
+  },
+  "practices": [
+    {
+      "id": "P-1",
+      "practice": "Evidence-gated lifecycle invariants",
+      "appliesTo": [
+        "W-1"
+      ],
+      "reason": "Initiative finalization must not bypass work completion or dispositions."
+    },
+    {
+      "id": "P-2",
+      "practice": "Bounded autonomy with explicit safety stops",
+      "appliesTo": [
+        "W-1"
+      ],
+      "reason": "Continuation should reduce babysitting without inventing scope or bypassing permissions."
+    },
+    {
+      "id": "P-3",
+      "practice": "Focused regression verification",
+      "appliesTo": [
+        "W-1"
+      ],
+      "reason": "Lifecycle, event, and collector behavior need executable regression coverage."
+    }
+  ],
+  "obligations": [
+    {
+      "id": "O-1",
+      "practiceId": "P-1",
+      "criterionIds": [
+        "AC-1"
+      ],
+      "text": "Verify initiative-level completion succeeds only when all executable work is terminal.",
+      "verification": {
+        "kind": "focused-tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-2",
+      "practiceId": "P-2",
+      "criterionIds": [
+        "AC-2"
+      ],
+      "text": "Review continuation wording and triggers for bounded authorization and stop conditions.",
+      "verification": {
+        "kind": "tests-and-self-review",
+        "requiredEvidence": [
+          "machine-command",
+          "model-review"
+        ]
+      }
+    },
+    {
+      "id": "O-3",
+      "practiceId": "P-3",
+      "criterionIds": [
+        "AC-3",
+        "AC-4"
+      ],
+      "text": "Run focused and repository qualification covering stale observation recovery and documented surfaces.",
+      "verification": {
+        "kind": "repository-tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    }
+  ],
+  "work": [
+    {
+      "id": "W-1",
+      "kind": "task",
+      "title": "Implement initiative finalization, bounded automatic continuation, and verification recovery",
+      "status": "complete",
+      "dependsOn": [],
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-3",
+        "AC-4"
+      ],
+      "obligationIds": [
+        "O-1",
+        "O-2",
+        "O-3"
+      ],
+      "testing": {
+        "approach": "Add focused domain/service/extension/collector tests, then run repository typecheck and test gates.",
+        "reason": "The change crosses lifecycle and runtime integration boundaries."
+      }
+    }
+  ],
+  "artifacts": [],
+  "evidence": [
+    {
+      "id": "E-ccdfe99b-7135-4491-a129-c423261416ac",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1",
+        "O-2",
+        "O-3"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && npm run test:swe"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-23T13:44:02.529Z",
+      "completedAt": "2026-09-23T13:44:14.833Z",
+      "durationMs": 12304,
+      "contractFingerprint": "sha256:4819d43ea7bd9579232719c9a9c52ac3720b6869dee93bd3f674c1525a84d1bf",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/src/app/service.ts",
+            "extensions/pi-swe/src/app/verification.ts",
+            "extensions/pi-swe/src/domain/completion.ts",
+            "extensions/pi-swe/src/pi/context.ts",
+            "extensions/pi-swe/src/pi/register.ts",
+            "test/pi-swe-evidence.test.ts",
+            "test/pi-swe-revision-context.test.ts",
+            "test/pi-swe-runtime.test.ts"
+          ],
+          "hash": "sha256:12874539c0a9a3465f7015cf35d8775a19c9b037dc62b4e07c350868fd35ae8f"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/src/app/service.ts",
+            "extensions/pi-swe/src/app/verification.ts",
+            "extensions/pi-swe/src/domain/completion.ts",
+            "extensions/pi-swe/src/pi/context.ts",
+            "extensions/pi-swe/src/pi/register.ts",
+            "test/pi-swe-evidence.test.ts",
+            "test/pi-swe-revision-context.test.ts",
+            "test/pi-swe-runtime.test.ts"
+          ],
+          "hash": "sha256:12874539c0a9a3465f7015cf35d8775a19c9b037dc62b4e07c350868fd35ae8f"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_cszKgOmCA50oslLM3MnMDRFr|fc_0f6923935d7e5c7f016ab3d7a248c887d28b732fd3ef072a8b",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:c871411e3dcb9ac5d32b14ac8d910a70f6a832c403e696dd4d58f8695332f5b5"
+    },
+    {
+      "id": "E-5673198f-1c98-48d0-82dd-1c8fe0832f24",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1",
+        "O-2",
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && npm run test:swe"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-23T13:44:38.365Z",
+      "completedAt": "2026-09-23T13:44:48.295Z",
+      "durationMs": 9930,
+      "contractFingerprint": "sha256:4819d43ea7bd9579232719c9a9c52ac3720b6869dee93bd3f674c1525a84d1bf",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/src/app/service.ts",
+            "extensions/pi-swe/src/app/verification.ts",
+            "extensions/pi-swe/src/domain/completion.ts",
+            "extensions/pi-swe/src/pi/context.ts",
+            "extensions/pi-swe/src/pi/register.ts",
+            "test/pi-swe-docket.test.ts",
+            "test/pi-swe-evidence.test.ts",
+            "test/pi-swe-revision-context.test.ts",
+            "test/pi-swe-runtime.test.ts"
+          ],
+          "hash": "sha256:fdd01c22ee898a1a711738f8ee79fb3cc0678a46bbd7b76ba918681379db527a"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/src/app/service.ts",
+            "extensions/pi-swe/src/app/verification.ts",
+            "extensions/pi-swe/src/domain/completion.ts",
+            "extensions/pi-swe/src/pi/context.ts",
+            "extensions/pi-swe/src/pi/register.ts",
+            "test/pi-swe-docket.test.ts",
+            "test/pi-swe-evidence.test.ts",
+            "test/pi-swe-revision-context.test.ts",
+            "test/pi-swe-runtime.test.ts"
+          ],
+          "hash": "sha256:fdd01c22ee898a1a711738f8ee79fb3cc0678a46bbd7b76ba918681379db527a"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_1gMXgbFXAbIFbfOrOnJXSjxX|fc_0f6923935d7e5c7f016ab3d7c6303487d28988da4b8426d2c4",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:dbc34d254bbe69903b80ee8222244e915451587d17d572b83a67e5a9e44a22ce"
+    },
+    {
+      "id": "E-8b6ef3ce-29d7-40c4-af15-4686a1b07dec",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1",
+        "O-2",
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && npm run check && npm run check:commands && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-23T13:45:50.874Z",
+      "completedAt": "2026-09-23T13:46:31.656Z",
+      "durationMs": 40782,
+      "contractFingerprint": "sha256:4819d43ea7bd9579232719c9a9c52ac3720b6869dee93bd3f674c1525a84d1bf",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/src/app/service.ts",
+            "extensions/pi-swe/src/app/verification.ts",
+            "extensions/pi-swe/src/domain/completion.ts",
+            "extensions/pi-swe/src/pi/context.ts",
+            "extensions/pi-swe/src/pi/register.ts",
+            "test/pi-swe-docket.test.ts",
+            "test/pi-swe-evidence.test.ts",
+            "test/pi-swe-revision-context.test.ts",
+            "test/pi-swe-runtime.test.ts"
+          ],
+          "hash": "sha256:8ea68e3cb6038c02ccbda44936a164becc06e8e15de88d7a085ecf48dfc2be15"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/src/app/service.ts",
+            "extensions/pi-swe/src/app/verification.ts",
+            "extensions/pi-swe/src/domain/completion.ts",
+            "extensions/pi-swe/src/pi/context.ts",
+            "extensions/pi-swe/src/pi/register.ts",
+            "test/pi-swe-docket.test.ts",
+            "test/pi-swe-evidence.test.ts",
+            "test/pi-swe-revision-context.test.ts",
+            "test/pi-swe-runtime.test.ts"
+          ],
+          "hash": "sha256:8ea68e3cb6038c02ccbda44936a164becc06e8e15de88d7a085ecf48dfc2be15"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_ZEuyUdaB084pQLL9VqoqhG3l|fc_0f6923935d7e5c7f016ab3d80e136c87d2bf62141486557c47",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:33409350ac599506c723b002dc9b858ce10722e22c9be5d2afb2f6923bd21783"
+    },
+    {
+      "id": "E-2f08512f-1dca-4a27-b9b2-823a088f2bf8",
+      "kind": "model-review",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-2"
+      ],
+      "outcome": "passed",
+      "reviewedAt": "2026-09-23T13:46:45.159Z",
+      "contractFingerprint": "sha256:4819d43ea7bd9579232719c9a9c52ac3720b6869dee93bd3f674c1525a84d1bf",
+      "source": {
+        "kind": "bounded-paths",
+        "paths": [
+          "extensions/pi-swe/README.md",
+          "extensions/pi-swe/src/app/service.ts",
+          "extensions/pi-swe/src/app/verification.ts",
+          "extensions/pi-swe/src/domain/completion.ts",
+          "extensions/pi-swe/src/pi/context.ts",
+          "extensions/pi-swe/src/pi/register.ts",
+          "test/pi-swe-docket.test.ts",
+          "test/pi-swe-evidence.test.ts",
+          "test/pi-swe-revision-context.test.ts",
+          "test/pi-swe-runtime.test.ts"
+        ],
+        "hash": "sha256:8ea68e3cb6038c02ccbda44936a164becc06e8e15de88d7a085ecf48dfc2be15"
+      },
+      "dimensions": [
+        "correctness",
+        "bounded-autonomy",
+        "permission-boundaries",
+        "lifecycle-integrity",
+        "regression-coverage"
+      ],
+      "summary": "Model self-review found no blocking issues. Initiative finalization is explicit, active-only, and rejects unfinished work; continuation is limited to focused active unfinished authority and names credentials, destructive/irreversible operations, contract revision, blockers, and missing authorization as stop conditions; verification replacement retains exact tool-call binding; tests cover positive and negative lifecycle, inactive continuation, and stale observation recovery.",
+      "provenance": {
+        "kind": "pi-model-self-review",
+        "sessionId": "01a0c9ca-d914-7039-b90c-1466e30c889c"
+      }
+    }
+  ],
+  "decisions": [
+    {
+      "id": "D-1",
+      "text": "Treat active workflow authority as standing authorization for routine reversible work, verification, and fixes.",
+      "basis": "The user explicitly requested reduced babysitting while preserving safety boundaries."
+    },
+    {
+      "id": "D-2",
+      "text": "Initiative completion remains a distinct explicit transition after all work reaches terminal state.",
+      "basis": "This preserves auditable initiative lifecycle state rather than inferring completion silently."
+    }
+  ],
+  "risks": [
+    {
+      "id": "R-1",
+      "text": "Automatic continuation could trigger unexpectedly on inactive or historical initiatives.",
+      "mitigation": "Restrict turn triggering to focused initiatives whose persisted status is active and which still have unfinished work."
+    },
+    {
+      "id": "R-2",
+      "text": "Superseding pending verification could discard a still-running observation.",
+      "mitigation": "Tool execution is sequential; permit replacement only through a new explicit prepare request and retain exact tool-call binding."
+    }
+  ]
+}

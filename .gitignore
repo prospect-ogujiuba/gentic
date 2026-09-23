@@ -2,3 +2,7 @@
 /node_modules
 /catalog/gentic-legacy
 .docs
+
+# Model-generated runtime history is local noise; durable authority and reviewed artifacts remain trackable.
+/.model-artifacts/initiatives/*/logs/
+/.model-artifacts/system/logs/
