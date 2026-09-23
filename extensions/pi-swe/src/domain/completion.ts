@@ -51,6 +51,13 @@ export function completeWork(initiative: Initiative, workId: string, cwd: string
   return transitionWork(parseInitiative(initiative), workId, "complete");
 }
 
+export function completeInitiative(initiative: Initiative): Initiative {
+  if (initiative.status !== "active") throw new Error(`initiative must be active before completion, not ${initiative.status}`);
+  const unfinished = initiative.work.filter((item) => item.kind !== "phase" && item.status !== "complete" && !item.disposition);
+  if (unfinished.length) throw new Error(`initiative completion blocked by unfinished work: ${unfinished.map((item) => item.id).join(", ")}`);
+  return parseInitiative({ ...initiative, status: "complete" });
+}
+
 function latestEvidence(evidence: VerificationEvidence[], workId: string, obligationId: string, kind: EvidenceKind): VerificationEvidence | undefined {
   return evidence.toReversed().find((item) => item.kind === kind && item.workId === workId && item.obligationIds.includes(obligationId));
 }

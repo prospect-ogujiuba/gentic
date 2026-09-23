@@ -30,7 +30,8 @@ const parameters = Type.Object({
 });
 
 const COMMAND_ACTIONS = new Set(["plan", "open", "list", "status", "next", "start", "implemented", "complete", "resume", "pause"]);
-const WORK_COMMANDS = new Set(["start", "implemented", "complete"]);
+const REQUIRED_WORK_COMMANDS = new Set(["start", "implemented"]);
+const OPTIONAL_WORK_COMMANDS = new Set(["complete"]);
 
 export { getSweCommandCompletions } from "./autocomplete.ts";
 
@@ -45,11 +46,22 @@ export function registerSweSurface(pi: ExtensionAPI): void {
   };
   registerSweActivityProbe((ctx) => service(ctx.cwd).hasActiveWork());
 
+  const triggerContinuation = (cwd: string, initiativeId: string) => {
+    const initiative = service(cwd).status(initiativeId).initiative;
+    const unfinished = initiative.work.some((item) => item.kind !== "phase" && item.status !== "complete" && !item.disposition);
+    if (initiative.status !== "active" || !unfinished) return;
+    pi.sendMessage({
+      customType: SWE_CONTEXT_TYPE,
+      content: continuationInstruction(initiativeId),
+      display: false,
+    }, { triggerTurn: true, deliverAs: "followUp" });
+  };
   pi.on("session_start", (_event, ctx) => {
     completionCwd = ctx.cwd;
     const initiativeId = restoreSweFocus(ctx.sessionManager.getEntries());
-    if (initiativeId) focused.set(ctx.cwd, initiativeId);
-    else focused.delete(ctx.cwd);
+    if (!initiativeId) { focused.delete(ctx.cwd); return; }
+    focused.set(ctx.cwd, initiativeId);
+    triggerContinuation(ctx.cwd, initiativeId);
   });
   pi.on("before_agent_start", (_event, ctx) => {
     const initiativeId = focused.get(ctx.cwd);
@@ -68,12 +80,15 @@ export function registerSweSurface(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "swe",
     label: "SWE",
-    description: "Create, inspect, and mutate one durable SWE initiative. Verification preparation must be followed by the exact ordinary bash tool call so installed shell permissions apply.",
+    description: "Create, inspect, and mutate one durable SWE initiative. Complete without workId finalizes an all-terminal initiative. Verification preparation must be followed by the exact ordinary bash tool call so installed shell permissions apply.",
     promptSnippet: "Use swe create as the sole workflow.json bootstrap path, then use swe for durable status, legal work transitions, verification preparation, review, and evidence-gated completion.",
     promptGuidelines: [
       "Use swe create with a complete schema-valid draft proposal to bootstrap workflow.json; /swe plan turns a natural-language request into an agent planning turn and still bootstraps authority only through swe create.",
+      "An active focused initiative is standing authorization to continue its workflow through routine reversible implementation, verification, fixes, and cleanup without asking for confirmation between steps.",
+      "Stop for credentials, destructive or irreversible operations, a contract/scope revision, a genuine blocker, or authorization not already granted by the user or repository policy.",
       "Use swe prepare_verification before running the exact command through Pi's ordinary bash tool; never substitute internal pi.exec.",
       "Use swe record_review only for an explicit model self-review; label it as self-review, not independent or human review.",
+      "After every executable work item is complete or disposed, call swe complete without workId to finalize the initiative.",
     ],
     parameters,
     executionMode: "sequential",
@@ -122,9 +137,10 @@ export function registerSweSurface(pi: ExtensionAPI): void {
       }
       const [action, initiativeId, workId, ...extra] = args.trim().split(/\s+/).filter(Boolean);
       const known = COMMAND_ACTIONS.has(action);
-      const needsWork = WORK_COMMANDS.has(action);
-      if (!known || !initiativeId || extra.length || needsWork !== Boolean(workId)) {
-        ctx.ui.notify("Usage: /swe [plan|open|list|status|next|resume|pause] <topic> or /swe [start|implemented|complete] <topic> <work-id>", "warning"); return;
+      const requiresWork = REQUIRED_WORK_COMMANDS.has(action);
+      const allowsWork = requiresWork || OPTIONAL_WORK_COMMANDS.has(action);
+      if (!known || !initiativeId || extra.length || (requiresWork && !workId) || (!allowsWork && Boolean(workId))) {
+        ctx.ui.notify("Usage: /swe [plan|open|list|status|next|complete|resume|pause] <topic> or /swe [start|implemented|complete] <topic> <work-id>", "warning"); return;
       }
       try {
         const current = service(ctx.cwd);
@@ -136,9 +152,10 @@ export function registerSweSurface(pi: ExtensionAPI): void {
           : action === "resume" ? await current.resume(initiativeId)
           : action === "start" ? await current.start(initiativeId, workId!)
           : action === "implemented" ? await current.markImplemented(initiativeId, workId!)
-          : await current.complete(initiativeId, workId!);
+          : await current.complete(initiativeId, workId);
         ctx.ui.notify(renderStatus(stored.initiative), "info");
         rememberFocus(ctx.cwd, initiativeId);
+        if (action === "start" || action === "resume") triggerContinuation(ctx.cwd, initiativeId);
       } catch (error) { ctx.ui.notify(error instanceof Error ? error.message : String(error), "error"); }
     },
   });
@@ -178,7 +195,7 @@ async function executeAction(service: SweService, input: {
   }
   const stored = input.action === "start" ? await service.start(input.initiativeId, workId())
     : input.action === "implemented" ? await service.markImplemented(input.initiativeId, workId())
-    : input.action === "complete" ? await service.complete(input.initiativeId, workId())
+    : input.action === "complete" ? await service.complete(input.initiativeId, input.workId?.trim() || undefined)
     : input.action === "pause" ? await service.pause(input.initiativeId)
     : await service.resume(input.initiativeId);
   return { text: renderStatus(stored.initiative), details: { initiative: stored.initiative, hash: stored.hash } };
@@ -203,6 +220,10 @@ async function openSweDocket(initiative: Initiative, ctx: ExtensionCommandContex
     close: () => done(undefined),
     terminalRows: () => (tui as unknown as { terminal?: { rows?: number } }).terminal?.rows ?? 40,
   }), { overlay: true, overlayOptions: { width: "80%", minWidth: 44, maxHeight: "85%", anchor: "center", margin: 1 } });
+}
+
+function continuationInstruction(initiativeId: string): string {
+  return `[SWE continuation: ${initiativeId}] Continue the active workflow from repository authority now. Treat its approved scope as standing authorization for routine reversible implementation, verification, corrective fixes, and cleanup; do not ask for confirmation between those steps. Preserve normal permission gates. Stop only for credentials, destructive or irreversible operations, a required contract/scope revision, a genuine blocker, or authorization not already granted by the user or repository policy. When all executable work is terminal, explicitly finalize the initiative.`;
 }
 
 function required(value: string | undefined, name: string): string { if (!value?.trim()) throw new Error(`${name} is required`); return value.trim(); }

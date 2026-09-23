@@ -61,6 +61,20 @@ test("collector ignores mismatched calls and cannot turn missing or aborted resu
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test("a new preparation supersedes a stale pending observation without reload", () => {
+  const { root, initiative, collector } = fixture();
+  try {
+    const stale = collector.prepare(initiative, { workId: "W-1", obligationIds: ["O-1"], command: "npm test", relevantPaths: ["src/bug.ts"] });
+    collector.observeToolCall({ toolCallId: "stale-call", toolName: "bash", input: { command: stale.command } }, root);
+    const replacement = collector.prepare(initiative, { workId: "W-1", obligationIds: ["O-1"], command: "npm run typecheck", relevantPaths: ["src/bug.ts"] });
+    assert.equal(collector.observeToolResult({ toolCallId: "stale-call", toolName: "bash", isError: true, content: [] }), undefined);
+    assert.equal(collector.observeToolCall({ toolCallId: "replacement-call", toolName: "bash", input: { command: replacement.command } }, root), true);
+    const evidence = collector.observeToolResult({ toolCallId: "replacement-call", toolName: "bash", isError: false, content: [{ type: "text", text: "pass" }] });
+    assert.equal(evidence?.execution.args[1], "npm run typecheck");
+    assert.equal(evidence?.outcome, "passed");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test("relevant snapshots include missing/new files and reject unsafe, symlinked, or unbounded paths", () => {
   const { root, initiative, collector } = fixture();
   try {

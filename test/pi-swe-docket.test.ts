@@ -36,6 +36,7 @@ function runtime() {
     registerCommand(name: string, command: unknown) { commands.set(name, command); },
     registerTool(tool: { name: string }) { tools.set(tool.name, tool); },
     appendEntry() {},
+    sendMessage() {},
   };
   piSwe(pi as never);
   return { commands, tools };

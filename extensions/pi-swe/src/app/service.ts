@@ -1,4 +1,4 @@
-import { completionBlockers, completeWork } from "../domain/completion.ts";
+import { completionBlockers, completeInitiative, completeWork } from "../domain/completion.ts";
 import { parseInitiative, readyWork, transitionWork, type Initiative, type WorkItem } from "../domain/initiative.ts";
 import { buildSweContextProjection } from "../pi/context.ts";
 import { hashInitiativeArtifacts } from "./artifacts.ts";
@@ -107,8 +107,10 @@ export class SweService {
     });
   }
 
-  async complete(initiativeId: string, workId: string): Promise<StoredInitiative> {
-    return this.#mutate(initiativeId, `complete ${workId} with current evidence`, (initiative) => completeWork(initiative, workId, this.cwd));
+  async complete(initiativeId: string, workId?: string): Promise<StoredInitiative> {
+    return workId
+      ? this.#mutate(initiativeId, `complete ${workId} with current evidence`, (initiative) => completeWork(initiative, workId, this.cwd))
+      : this.#mutate(initiativeId, "complete initiative", completeInitiative);
   }
 
   completionBlockers(initiativeId: string, workId: string): string[] {

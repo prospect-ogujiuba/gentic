@@ -37,7 +37,6 @@ export class VerificationCollector {
   }
 
   prepare(initiative: Initiative, request: VerificationRequest): PreparedVerification {
-    if (this.#pending) throw new Error("a verification observation is already pending");
     const work = initiative.work.find((item) => item.id === request.workId && item.kind !== "phase");
     if (!work) throw new Error(`unknown executable work ${request.workId}`);
     if (!request.obligationIds.length || request.obligationIds.some((id) => !work.obligationIds?.includes(id))) throw new Error("verification obligationIds must belong to work");

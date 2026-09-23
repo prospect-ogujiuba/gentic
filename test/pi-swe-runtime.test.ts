@@ -41,12 +41,14 @@ test("minimal Pi surface registers one command/tool and never internally execute
   const commands = new Map<string, any>();
   const tools = new Map<string, any>();
   let execCalls = 0;
+  const sent: unknown[] = [];
   const userMessages: string[] = [];
   const pi = {
     on(name: string, handler: Function) { handlers.set(name, handler); },
     registerCommand(name: string, command: unknown) { commands.set(name, command); },
     registerTool(tool: { name: string }) { tools.set(tool.name, tool); },
     appendEntry() {},
+    sendMessage(message: unknown) { sent.push(message); },
     sendUserMessage(message: string) { userMessages.push(message); },
     exec() { execCalls += 1; throw new Error("must not bypass ordinary bash permissions"); },
   };
@@ -56,7 +58,10 @@ test("minimal Pi surface registers one command/tool and never internally execute
   assert.deepEqual([...handlers.keys()].sort(), ["before_agent_start", "context", "session_start", "tool_call", "tool_result"]);
   assert.match(tools.get("swe").promptGuidelines.join(" "), /ordinary bash/i);
   assert.match(tools.get("swe").promptGuidelines.join(" "), /self-review.*not independent/i);
+  assert.match(tools.get("swe").promptGuidelines.join(" "), /standing authorization.*without asking for confirmation/i);
+  assert.match(tools.get("swe").description, /without workId finalizes/i);
   assert.equal(execCalls, 0);
+  assert.deepEqual(sent, []);
   assert.deepEqual(getSweCommandCompletions("").map((item) => item.value), ["plan", "open", "list", "status", "next", "start", "implemented", "complete", "resume", "pause"]);
   const notifications: Array<{ message: string; level: string }> = [];
   await commands.get("swe").handler("", {
@@ -156,8 +161,11 @@ test("one-task flow records RED then GREEN through ordinary bash hooks and compl
     const restarted = new SweService(root, new InitiativeStore(root), new VerificationCollector(root));
     const completed = await restarted.complete("one-task", "W-1");
     assert.equal(completed.initiative.work[0].status, "complete");
+    assert.equal(completed.initiative.status, "active");
     assert.equal(completed.initiative.evidence.map((item) => `${item.kind}:${item.outcome}`).join(","), "machine-command:failed,machine-command:passed,model-review:passed");
-    assert.equal(new InitiativeStore(root).read("one-task").initiative.work[0].status, "complete");
+    const finalized = await restarted.complete("one-task");
+    assert.equal(finalized.initiative.status, "complete");
+    assert.equal(new InitiativeStore(root).read("one-task").initiative.status, "complete");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -178,6 +186,40 @@ test("verification evidence remains bound to the prepared initiative when select
 
     assert.equal(service.status("one-task").initiative.evidence.length, 1);
     assert.equal(service.status("other-task").initiative.evidence.length, 0);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("initiative finalization rejects unfinished work", async () => {
+  const { root, service } = fixture();
+  try {
+    await service.start("one-task", "W-1");
+    await assert.rejects(() => service.complete("one-task"), /unfinished work: W-1/i);
+    assert.equal(service.status("one-task").initiative.status, "active");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("focused active authority triggers bounded continuation on session startup", async () => {
+  const { root, service } = fixture();
+  try {
+    await service.start("one-task", "W-1");
+    const handlers = new Map<string, Function>();
+    const sent: Array<{ message: any; options: any }> = [];
+    piSwe({
+      on(name: string, handler: Function) { handlers.set(name, handler); },
+      registerCommand() {}, registerTool() {}, appendEntry() {},
+      sendMessage(message: unknown, options: unknown) { sent.push({ message, options }); },
+    } as never);
+    const ctx = {
+      cwd: root,
+      sessionManager: { getEntries: () => [{ type: "custom", customType: "gentic.swe.focus", data: { initiativeId: "one-task" } }] },
+    };
+    handlers.get("session_start")!({ reason: "resume" }, ctx);
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].message.content, /standing authorization.*do not ask for confirmation/i);
+    assert.deepEqual(sent[0].options, { triggerTurn: true, deliverAs: "followUp" });
+    await service.pause("one-task");
+    handlers.get("session_start")!({ reason: "resume" }, ctx);
+    assert.equal(sent.length, 1, "paused authority must not trigger work");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

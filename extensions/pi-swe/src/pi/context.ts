@@ -44,7 +44,11 @@ export function buildSweContextProjection(initiative: Initiative, options: Conte
   if (initiative.decisions.length) lines.push(`Critical decisions: ${initiative.decisions.slice(-4).map((item) => `${item.id} ${item.text}`).join(" | ")}`);
   if (initiative.risks.length) lines.push(`Critical risks: ${initiative.risks.slice(-4).map((item) => `${item.id} ${item.text}`).join(" | ")}`);
   if (initiative.artifacts.length) lines.push(`Artifacts: ${initiative.artifacts.slice(-8).map((item) => `${item.path} — ${item.summary}`).join(" | ")}`);
-  lines.push("Repository workflow.json is authoritative. Re-read current revision; session focus never rewinds it. Do not execute automatically on startup/resume.");
+  if (initiative.status === "active") {
+    lines.push("Repository workflow.json is authoritative. Re-read current revision; session focus never rewinds it. Continue approved routine reversible workflow work without waiting for another prompt. Preserve permission gates and stop for credentials, destructive or irreversible operations, required contract/scope revision, genuine blockers, or authorization not already granted by the user or repository policy.");
+  } else {
+    lines.push("Repository workflow.json is authoritative. Re-read current revision; session focus never rewinds it. Do not execute paused, draft, complete, or abandoned initiatives.");
+  }
   return boundLines(lines, maxChars);
 }
 

@@ -169,6 +169,7 @@ test("fork, resume, and tree context rebuild from repository authority instead o
       registerCommand() {},
       registerTool() {},
       appendEntry(type: string, data: unknown) { appended.push({ type, data }); },
+      sendMessage() {},
     } as never);
     const staleEntries = [{
       type: "custom", customType: SWE_FOCUS_ENTRY_TYPE,
