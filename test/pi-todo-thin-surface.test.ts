@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { getTodoCommandCompletions, registerLightweightTodoSurface } from "../extensions/pi-todo/src/thin-surface.ts";
+import { getTodoCommandCompletions, registerLightweightTodoSurface } from "../extensions/pi-swe/src/todo/thin-surface.ts";
 
 type RegisteredTool = {
   parameters: { properties: {
@@ -26,20 +26,16 @@ type RegisteredTool = {
   }>;
 };
 
-type ToolCallHandler = (event: { toolName: string; toolCallId?: string; input?: Record<string, unknown> }, ctx: unknown) => Promise<unknown>;
-
 test("thin surface exposes essential tool, command, and status behavior through the branch core", async () => {
   const tools = new Map<string, RegisteredTool>();
   const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
-  const handlers = new Map<string, Function>();
   const branch: unknown[] = [];
   const statuses: unknown[] = [];
   const widgets: unknown[] = [];
   const notifications: string[] = [];
   let modalOutput = "";
-  let sweActive = false;
   const pi = {
-    on(name: string, handler: Function) { handlers.set(name, handler); },
+    on() {},
     registerTool(tool: RegisteredTool & { name: string }) { tools.set(tool.name, tool); },
     registerCommand(name: string, command: { handler: (args: string, ctx: unknown) => Promise<void> }) { commands.set(name, command); },
     appendEntry(customType: string, data: unknown) { branch.push({ type: "custom", customType, data }); },
@@ -63,7 +59,7 @@ test("thin surface exposes essential tool, command, and status behavior through 
       },
     },
   };
-  registerLightweightTodoSurface(pi as never, { hasActiveSweTask: () => sweActive });
+  registerLightweightTodoSurface(pi as never);
 
   const tool = tools.get("todo");
   assert.ok(tool);
@@ -129,44 +125,14 @@ test("thin surface exposes essential tool, command, and status behavior through 
   const afterDelete = await execute("list");
   assert.equal(afterDelete.details.state?.todos[parentId], undefined);
   assert.equal(afterDelete.details.state?.todos[childId], undefined);
-
-  sweActive = true;
-  const hook = handlers.get("tool_call") as ToolCallHandler;
-  const blocked = await hook({ toolName: "todo", input: { action: "delete" } }, ctx) as { block?: boolean; reason?: string };
-  assert.equal(blocked.block, true);
-  assert.match(blocked.reason ?? "", /pi-swe lifecycle ownership/);
-  assert.equal(await hook({ toolName: "todo", input: { action: "list" } }, ctx), undefined);
 });
 
-test("matching execution rechecks ownership after the tool-call hook", async () => {
-  const tools = new Map<string, RegisteredTool>();
-  let hook!: ToolCallHandler;
-  let probes = 0;
-  let active = false;
-  const branch: unknown[] = [];
-  const pi = {
-    on(name: string, handler: ToolCallHandler) { if (name === "tool_call") hook = handler; },
-    registerCommand() {},
-    registerTool(tool: RegisteredTool & { name: string }) { tools.set(tool.name, tool); },
-    appendEntry(customType: string, data: unknown) { branch.push({ type: "custom", customType, data }); },
-  };
-  const ctx = { cwd: "/repo", hasUI: false, mode: "json", sessionManager: { getBranch: () => branch }, ui: {} };
-  registerLightweightTodoSurface(pi as never, { hasActiveSweTask: () => { probes += 1; return active; } });
-  assert.equal(await hook({ toolName: "todo", toolCallId: "shared-call", input: { action: "create" } }, ctx), undefined);
-  active = true;
-  const result = await tools.get("todo")!.execute("shared-call", { action: "create", title: "must be blocked" }, new AbortController().signal, () => {}, ctx);
-  assert.equal(result.isError, true);
-  assert.equal(result.details.error?.code, "PI_SWE_OWNS_LIFECYCLE");
-  assert.equal(branch.length, 0);
-  assert.equal(probes, 2);
-});
-
-test("queued abort and ownership probe failure cannot mutate todo state", async () => {
+test("queued abort and backend resolution failure cannot mutate todo state", async () => {
   const tools = new Map<string, RegisteredTool>();
   const branch: unknown[] = [];
-  let releaseFirst!: (value: boolean) => void;
-  let probes = 0;
-  const firstProbe = new Promise<boolean>((resolve) => { releaseFirst = resolve; });
+  let releaseFirst!: () => void;
+  let resolutions = 0;
+  const firstResolution = new Promise<void>((resolve) => { releaseFirst = resolve; });
   const pi = {
     on() {},
     registerCommand() {},
@@ -181,14 +147,14 @@ test("queued abort and ownership probe failure cannot mutate todo state", async 
     ui: {},
   };
   registerLightweightTodoSurface(pi as never, {
-    hasActiveSweTask: () => ++probes === 1 ? firstProbe : false,
+    resolveWorkflowBackend: async () => { if (++resolutions === 1) await firstResolution; return undefined; },
   });
   const tool = tools.get("todo")!;
   const first = tool.execute("first", { action: "create", title: "first" }, new AbortController().signal, () => {}, ctx);
   const controller = new AbortController();
   const second = tool.execute("second", { action: "create", title: "second" }, controller.signal, () => {}, ctx);
   controller.abort(new Error("cancel queued call"));
-  releaseFirst(false);
+  releaseFirst();
   assert.equal((await first).isError, undefined);
   await assert.rejects(second, /cancel queued call|abort/i);
   assert.equal(branch.length, 1);
@@ -197,7 +163,7 @@ test("queued abort and ownership probe failure cannot mutate todo state", async 
   registerLightweightTodoSurface({
     ...pi,
     registerTool(tool: RegisteredTool & { name: string }) { failedTools.set(tool.name, tool); },
-  } as never, { hasActiveSweTask: () => { throw new Error("ownership scan incomplete"); } });
+  } as never, { resolveWorkflowBackend: () => { throw new Error("backend unavailable"); } });
   const failed = await failedTools.get("todo")!.execute(
     "failed",
     { action: "create", title: "must not append" },
@@ -206,7 +172,7 @@ test("queued abort and ownership probe failure cannot mutate todo state", async 
     ctx,
   );
   assert.equal(failed.isError, true);
-  assert.match(failed.content[0]!.text, /ownership scan/i);
+  assert.match(failed.content[0]!.text, /backend unavailable/i);
   assert.equal(branch.length, 1);
 });
 

@@ -10,7 +10,6 @@ import piGit from "../extensions/pi-git/index.ts";
 import piHud from "../extensions/pi-hud/index.ts";
 import piPrimitives from "../extensions/pi-primitives/index.ts";
 import piSwe from "../extensions/pi-swe/index.ts";
-import piTodo from "../extensions/pi-todo/index.ts";
 import { generateGenticInventory } from "../src/release/inventory.ts";
 
 const root = new URL("..", import.meta.url).pathname;
@@ -35,7 +34,7 @@ test("generated source/manifest inventory matches runtime registration smoke out
       return () => undefined;
     },
   });
-  for (const extension of [piArtifacts, piCatalog, piCommands, piContext, piGit, piHud, piPrimitives, piSwe, piTodo]) {
+  for (const extension of [piArtifacts, piCatalog, piCommands, piContext, piGit, piHud, piPrimitives, piSwe]) {
     await extension(pi as never);
   }
 

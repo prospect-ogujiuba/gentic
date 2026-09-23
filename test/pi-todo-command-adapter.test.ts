@@ -4,8 +4,8 @@ import test from "node:test";
 import {
   getTodoCommandCompletions,
   renderTodoQuickHelp,
-} from "../extensions/pi-todo/src/command-adapter.ts";
-import type { TodoCoreState } from "../extensions/pi-todo/src/state-core.ts";
+} from "../extensions/pi-swe/src/todo/command-adapter.ts";
+import type { TodoCoreState } from "../extensions/pi-swe/src/todo/state-core.ts";
 
 function state(activeTodoId?: string): TodoCoreState {
   return {

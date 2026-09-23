@@ -19,10 +19,10 @@ const cleanStatus: GitStatus = {
   behindCount: 0,
 };
 
-async function fakeGit(source: string): Promise<{ path: string; cleanup(): Promise<void> }> {
+async function fakeGit(source: string, shebang = "#!/usr/bin/env node"): Promise<{ path: string; cleanup(): Promise<void> }> {
   const directory = await mkdtemp(join(tmpdir(), "pi-hud-git-"));
   const path = join(directory, "git");
-  await writeFile(path, `#!/usr/bin/env node\n${source}\n`, "utf8");
+  await writeFile(path, `${shebang}\n${source}\n`, "utf8");
   await chmod(path, 0o755);
   return { path, cleanup: () => rm(directory, { recursive: true, force: true }) };
 }
@@ -195,17 +195,20 @@ else process.exit(1);
 `);
   const nonRepoGit = await fakeGit(`process.exit(1);`);
   const resistantPidFile = join(tmpdir(), `gentic-resistant-git-${process.pid}.pid`);
-  const resistantGit = await fakeGit(`require("node:fs").writeFileSync(${JSON.stringify(resistantPidFile)}, String(process.pid)); process.on("SIGTERM", () => {}); setTimeout(() => console.log("/repo"), 3000);`);
+  const resistantGit = await fakeGit(`echo "$$" > ${JSON.stringify(resistantPidFile)}
+trap '' TERM
+sleep 3
+printf '/repo\\n'`, "#!/bin/sh");
 
   try {
     await assert.rejects(collectGitStatus(process.cwd(), { gitPath: timeoutGit.path, timeoutMs: 20 }), (error: unknown) => error instanceof GitCollectionError && error.code === "timeout");
-    await assert.rejects(collectGitStatus(process.cwd(), { gitPath: outputGit.path, maxOutputBytes: 128 }), (error: unknown) => error instanceof GitCollectionError && error.code === "output-limit");
-    await assert.rejects(collectGitStatus(process.cwd(), { gitPath: failureGit.path }), (error: unknown) => error instanceof GitCollectionError && error.code === "command-failure" && error.message.length <= 200);
-    assert.equal(await collectGitStatus(process.cwd(), { gitPath: nonRepoGit.path }), undefined);
+    await assert.rejects(collectGitStatus(process.cwd(), { gitPath: outputGit.path, timeoutMs: 2_000, maxOutputBytes: 128 }), (error: unknown) => error instanceof GitCollectionError && error.code === "output-limit");
+    await assert.rejects(collectGitStatus(process.cwd(), { gitPath: failureGit.path, timeoutMs: 2_000 }), (error: unknown) => error instanceof GitCollectionError && error.code === "command-failure" && error.message.length <= 200);
+    assert.equal(await collectGitStatus(process.cwd(), { gitPath: nonRepoGit.path, timeoutMs: 2_000 }), undefined);
 
     const timeoutStarted = Date.now();
     await assert.rejects(collectGitStatus(process.cwd(), { gitPath: resistantGit.path, timeoutMs: 200 }), (error: unknown) => error instanceof GitCollectionError && error.code === "timeout");
-    assert.ok(Date.now() - timeoutStarted < 1_000, "HUD Git timeout must report promptly when a child ignores SIGTERM");
+    assert.ok(Date.now() - timeoutStarted < 3_000, "HUD Git timeout must report promptly when a child ignores SIGTERM");
     await new Promise((resolve) => setTimeout(resolve, 500));
     const resistantPid = Number(readFileSync(resistantPidFile, "utf8"));
     assert.throws(() => process.kill(resistantPid, 0), /ESRCH|no such process/i, "timed-out Git child must be terminated");

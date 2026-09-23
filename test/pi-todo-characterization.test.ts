@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import piTodo from "../extensions/pi-todo/index.ts";
+import piSwe from "../extensions/pi-swe/index.ts";
 
 type TodoState = {
   todos: Record<string, {
@@ -64,7 +64,7 @@ function createHarness(cwd: string) {
     sessionManager: { getBranch: () => branch },
     ui: { setStatus() {}, setWidget() {}, setTitle() {}, notify() {} },
   };
-  piTodo(pi as never);
+  piSwe(pi as never);
   const todo = tools.get("todo");
   assert.ok(todo);
   const execute = (action: string, params: Record<string, unknown> = {}) =>

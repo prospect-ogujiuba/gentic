@@ -11,7 +11,6 @@ import piGit from "../extensions/pi-git/index.ts";
 import piHud from "../extensions/pi-hud/index.ts";
 import piPrimitives from "../extensions/pi-primitives/index.ts";
 import piSwe from "../extensions/pi-swe/index.ts";
-import piTodo from "../extensions/pi-todo/index.ts";
 
 const root = new URL("..", import.meta.url).pathname;
 
@@ -115,16 +114,7 @@ function createPiHarness() {
         handlers.set(event, [...(handlers.get(event) || []), handler]);
       },
     },
-    capabilities: new Map([
-      [
-        "pi-todo",
-        {
-          getActiveTodo: () => ({ id: "todo-demo", title: "Demo active task", acceptanceCriteria: ["all extensions"], definitionOfDone: ["tests pass"] }),
-          getTodoScope: () => ({ files: ["test/gentic-demo.test.ts"] }),
-          getTodoEvidence: () => [{ type: "command", command: "npm test", exitCode: 0 }],
-        },
-      ],
-    ]),
+    capabilities: new Map(),
     on(event: string, handler: Handler) {
       handlers.set(event, [...(handlers.get(event) || []), handler]);
     },
@@ -245,7 +235,6 @@ test("demo activates every Gentic-owned extension and exercises shared runtime p
   await harness.activate("pi-hud", piHud as never);
   await harness.activate("pi-primitives", piPrimitives as never);
   await harness.activate("pi-swe", piSwe as never);
-  await harness.activate("pi-todo", piTodo as never);
 
   for (const command of ["catalog", "clear", "scaffold", "pi-git", "pi-hud", "swe", "todo"]) {
     assert.equal(harness.commands.has(command), true, `missing /${command}`);

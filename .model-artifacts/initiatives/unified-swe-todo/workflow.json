@@ -2,8 +2,8 @@
   "kind": "gentic.swe.initiative",
   "schemaVersion": 1,
   "id": "unified-swe-todo",
-  "revision": 1,
-  "status": "draft",
+  "revision": 29,
+  "status": "complete",
   "objective": "Consolidate standalone todo functionality and workflow-backed work projection into the pi-swe extension so one reliable todo surface operates standalone or delegates active workflow mutations to SweService without duplicate task authority.",
   "scope": {
     "in": [
@@ -212,7 +212,7 @@
       "id": "W-1",
       "kind": "task",
       "title": "Characterize compatibility and define the provider-neutral todo contract",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [],
       "criterionIds": [
         "AC-1",
@@ -230,7 +230,7 @@
       "id": "W-2",
       "kind": "task",
       "title": "Move standalone todo implementation and registration capability under pi-swe",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "W-1"
       ],
@@ -249,7 +249,7 @@
       "id": "W-3",
       "kind": "task",
       "title": "Implement workflow-backed todo provider and deterministic backend selection",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "W-2"
       ],
@@ -269,7 +269,7 @@
       "id": "W-4",
       "kind": "task",
       "title": "Consolidate standalone and SWE docket and modal presentation",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "W-3"
       ],
@@ -288,7 +288,7 @@
       "id": "W-5",
       "kind": "task",
       "title": "Retire independent pi-todo registration and lifecycle bridge and update metadata",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "W-4"
       ],
@@ -307,7 +307,7 @@
       "id": "W-6",
       "kind": "task",
       "title": "Qualify the unified extension and perform final self-review",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "W-5"
       ],
@@ -324,7 +324,754 @@
     }
   ],
   "artifacts": [],
-  "evidence": [],
+  "evidence": [
+    {
+      "id": "E-665997a1-89d8-4e83-91dd-7f05bf5d1436",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run test:todo"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-23T19:56:22.250Z",
+      "completedAt": "2026-09-23T19:56:32.741Z",
+      "durationMs": 10491,
+      "contractFingerprint": "sha256:b22cca6fc63872bbbec450495b60cff64889cad48c4837fd47fce6f5c9be8f84",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/src/todo/contract.ts",
+            "extensions/pi-swe/src/todo/provider.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-contract.test.ts",
+            "test/pi-todo-state-core.test.ts",
+            "test/pi-todo-thin-surface.test.ts"
+          ],
+          "hash": "sha256:f9af71a0613d1b7201cb75366247962c9957be3e820769ea5912fc914b9719bb"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/src/todo/contract.ts",
+            "extensions/pi-swe/src/todo/provider.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-contract.test.ts",
+            "test/pi-todo-state-core.test.ts",
+            "test/pi-todo-thin-surface.test.ts"
+          ],
+          "hash": "sha256:f9af71a0613d1b7201cb75366247962c9957be3e820769ea5912fc914b9719bb"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_fozYEl7SqH0srBuLpQr5KlcI|fc_0bed98b525257fc5016ab42ee6561887d292fe1541aae9a293",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:c1ed0d74c862bc7535b20833fb0790e23b0cf698b2ee64de05a191c8c582a6ca"
+    },
+    {
+      "id": "E-27581e43-f29f-4cc7-9b5e-c6a7e403c0b8",
+      "kind": "machine-command",
+      "workId": "W-2",
+      "obligationIds": [
+        "O-2"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run test:todo"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-23T19:59:16.642Z",
+      "completedAt": "2026-09-23T19:59:23.459Z",
+      "durationMs": 6817,
+      "contractFingerprint": "sha256:b22cca6fc63872bbbec450495b60cff64889cad48c4837fd47fce6f5c9be8f84",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/src/todo/command-adapter.ts",
+            "extensions/pi-swe/src/todo/contract.ts",
+            "extensions/pi-swe/src/todo/state-core.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/ui/docket.ts",
+            "extensions/pi-swe/src/todo/ui/format.ts",
+            "extensions/pi-swe/src/todo/ui/modal.ts",
+            "extensions/pi-swe/src/todo/ui/theme.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-command-adapter.test.ts",
+            "test/pi-todo-contract.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/pi-todo-state-core.test.ts",
+            "test/pi-todo-thin-surface.test.ts",
+            "test/pi-todo-tui.test.ts"
+          ],
+          "hash": "sha256:4e52533f2558291c36bd18fe8f3b827b629ac9f290afd1f7e91ca732bc076db7"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/src/todo/command-adapter.ts",
+            "extensions/pi-swe/src/todo/contract.ts",
+            "extensions/pi-swe/src/todo/state-core.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/ui/docket.ts",
+            "extensions/pi-swe/src/todo/ui/format.ts",
+            "extensions/pi-swe/src/todo/ui/modal.ts",
+            "extensions/pi-swe/src/todo/ui/theme.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-command-adapter.test.ts",
+            "test/pi-todo-contract.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/pi-todo-state-core.test.ts",
+            "test/pi-todo-thin-surface.test.ts",
+            "test/pi-todo-tui.test.ts"
+          ],
+          "hash": "sha256:4e52533f2558291c36bd18fe8f3b827b629ac9f290afd1f7e91ca732bc076db7"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_CuOUpoASwtXIbiWhIsgWXby7|fc_0bed98b525257fc5016ab42f94b96487d2808b71a7145b385c",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:8efc64ae6f5070c407c10cdac38916502a9447ac5b991486b03396b13ebc941b"
+    },
+    {
+      "id": "E-07d98947-8485-4a1f-b60a-a7aaadb1d81a",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-todo-workflow-backend.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-23T20:05:35.243Z",
+      "completedAt": "2026-09-23T20:05:38.794Z",
+      "durationMs": 3551,
+      "contractFingerprint": "sha256:b22cca6fc63872bbbec450495b60cff64889cad48c4837fd47fce6f5c9be8f84",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/src/pi/register.ts",
+            "extensions/pi-swe/src/todo/provider.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/workflow-backend.ts",
+            "test/pi-todo-workflow-backend.test.ts"
+          ],
+          "hash": "sha256:00473e8473b8b05701caefa340f53cbdab986b1bea14be9ae7324d93e0e876bd"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/src/pi/register.ts",
+            "extensions/pi-swe/src/todo/provider.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/workflow-backend.ts",
+            "test/pi-todo-workflow-backend.test.ts"
+          ],
+          "hash": "sha256:00473e8473b8b05701caefa340f53cbdab986b1bea14be9ae7324d93e0e876bd"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_p9wSagdgrEsnoizNvu6pKX2w|fc_0bed98b525257fc5016ab4310ec52887d2a0614e2753c6c7df",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:6c36eb434f52c89b920abce6b1d702c25c986a7832057500c732479223482951"
+    },
+    {
+      "id": "E-c4861eaa-1cd4-4d7b-982a-64dfaa6d8ffd",
+      "kind": "machine-command",
+      "workId": "W-4",
+      "obligationIds": [
+        "O-4"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-todo-tui.test.ts test/pi-swe-docket.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-23T20:12:55.195Z",
+      "completedAt": "2026-09-23T20:12:59.090Z",
+      "durationMs": 3895,
+      "contractFingerprint": "sha256:b22cca6fc63872bbbec450495b60cff64889cad48c4837fd47fce6f5c9be8f84",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/src/todo/provider.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/ui/docket.ts",
+            "extensions/pi-swe/src/todo/ui/modal.ts",
+            "extensions/pi-swe/src/todo/ui/shared-docket.ts",
+            "extensions/pi-swe/src/todo/ui/shared-modal.ts",
+            "extensions/pi-swe/src/todo/workflow-backend.ts",
+            "extensions/pi-swe/src/ui/docket.ts",
+            "extensions/pi-swe/src/ui/modal.ts",
+            "test/pi-swe-docket.test.ts",
+            "test/pi-todo-tui.test.ts"
+          ],
+          "hash": "sha256:e4191efbd4f9cd367833d7ad907652f0a2ececd47cfcfb851c7ca8de3f27cba3"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/src/todo/provider.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/ui/docket.ts",
+            "extensions/pi-swe/src/todo/ui/modal.ts",
+            "extensions/pi-swe/src/todo/ui/shared-docket.ts",
+            "extensions/pi-swe/src/todo/ui/shared-modal.ts",
+            "extensions/pi-swe/src/todo/workflow-backend.ts",
+            "extensions/pi-swe/src/ui/docket.ts",
+            "extensions/pi-swe/src/ui/modal.ts",
+            "test/pi-swe-docket.test.ts",
+            "test/pi-todo-tui.test.ts"
+          ],
+          "hash": "sha256:e4191efbd4f9cd367833d7ad907652f0a2ececd47cfcfb851c7ca8de3f27cba3"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_1z2EFNkxVHjUIThiEgRBRwZP|fc_0bed98b525257fc5016ab432c6e37c87d29b6f939c08fa8e95",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:2688f014ff609b0b40f822be106b62f6d0214fbcb7bcef0bb9961c0f80c9532c"
+    },
+    {
+      "id": "E-bac8a6ee-3591-49e3-85ba-d5d3f16b5a09",
+      "kind": "machine-command",
+      "workId": "W-5",
+      "obligationIds": [
+        "O-5"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-todo-qualification.test.ts test/pi-swe-runtime.test.ts test/release-inventory.test.ts && npm run check:inventory && npm run check:anatomy && npm run check:commands"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-23T20:26:02.204Z",
+      "completedAt": "2026-09-23T20:26:29.130Z",
+      "durationMs": 26926,
+      "contractFingerprint": "sha256:b22cca6fc63872bbbec450495b60cff64889cad48c4837fd47fce6f5c9be8f84",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "CONTRIBUTING.md",
+            "catalog/gentic-inventory.json",
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/extension.anatomy.json",
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/src/pi/register.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "profiles/full.json",
+            "scripts/check-performance-budgets.ts",
+            "test/gentic-demo.test.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/release-inventory.test.ts",
+            "test/runtime-command-guidance.test.ts"
+          ],
+          "hash": "sha256:97b4801af331b1b71f39fb5e9c92a41f83776ea6ab87e104ce54b38d1ca9ba51"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "CONTRIBUTING.md",
+            "catalog/gentic-inventory.json",
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/extension.anatomy.json",
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/src/pi/register.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "profiles/full.json",
+            "scripts/check-performance-budgets.ts",
+            "test/gentic-demo.test.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/release-inventory.test.ts",
+            "test/runtime-command-guidance.test.ts"
+          ],
+          "hash": "sha256:97b4801af331b1b71f39fb5e9c92a41f83776ea6ab87e104ce54b38d1ca9ba51"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_qYUuNDmpBEut0nk3khUDwS0Q|fc_0bed98b525257fc5016ab435d8f1bc87d29976b2761691427b",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:25b0c87428b52a94ccf7971c4106bbf7ef57b43d95aae85b89c7b1667f7c0a51"
+    },
+    {
+      "id": "E-9d68dd05-75d9-4483-857c-264d4d8b347b",
+      "kind": "machine-command",
+      "workId": "W-6",
+      "obligationIds": [
+        "O-6"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && npm run test:todo && npm run test:swe && npm test && npm run check && npm run check:commands && npm run release:verify"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-23T20:35:47.603Z",
+      "completedAt": "2026-09-23T20:38:20.826Z",
+      "durationMs": 153223,
+      "contractFingerprint": "sha256:b22cca6fc63872bbbec450495b60cff64889cad48c4837fd47fce6f5c9be8f84",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "CONTRIBUTING.md",
+            "catalog/gentic-inventory.json",
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-catalog/IDEA_BANK.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/extension.anatomy.json",
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/src/pi/register.ts",
+            "extensions/pi-swe/src/todo/command-adapter.ts",
+            "extensions/pi-swe/src/todo/contract.ts",
+            "extensions/pi-swe/src/todo/provider.ts",
+            "extensions/pi-swe/src/todo/state-core.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/ui/docket.ts",
+            "extensions/pi-swe/src/todo/ui/format.ts",
+            "extensions/pi-swe/src/todo/ui/modal.ts",
+            "extensions/pi-swe/src/todo/ui/shared-docket.ts",
+            "extensions/pi-swe/src/todo/ui/shared-modal.ts",
+            "extensions/pi-swe/src/todo/ui/theme.ts",
+            "extensions/pi-swe/src/todo/workflow-backend.ts",
+            "extensions/pi-swe/src/ui/docket.ts",
+            "extensions/pi-swe/src/ui/modal.ts",
+            "profiles/full.json",
+            "scripts/check-performance-budgets.ts",
+            "test/gentic-demo.test.ts",
+            "test/pi-swe-docket.test.ts",
+            "test/pi-swe-revision-context.test.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-command-adapter.test.ts",
+            "test/pi-todo-contract.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/pi-todo-state-core.test.ts",
+            "test/pi-todo-thin-surface.test.ts",
+            "test/pi-todo-tui.test.ts",
+            "test/pi-todo-workflow-backend.test.ts",
+            "test/release-inventory.test.ts",
+            "test/runtime-command-guidance.test.ts"
+          ],
+          "hash": "sha256:4416c077523fd22014d7fa593798b8ebc81c4056ca2ec8659d48b3176a3b5579"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "CONTRIBUTING.md",
+            "catalog/gentic-inventory.json",
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-catalog/IDEA_BANK.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/extension.anatomy.json",
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/src/pi/register.ts",
+            "extensions/pi-swe/src/todo/command-adapter.ts",
+            "extensions/pi-swe/src/todo/contract.ts",
+            "extensions/pi-swe/src/todo/provider.ts",
+            "extensions/pi-swe/src/todo/state-core.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/ui/docket.ts",
+            "extensions/pi-swe/src/todo/ui/format.ts",
+            "extensions/pi-swe/src/todo/ui/modal.ts",
+            "extensions/pi-swe/src/todo/ui/shared-docket.ts",
+            "extensions/pi-swe/src/todo/ui/shared-modal.ts",
+            "extensions/pi-swe/src/todo/ui/theme.ts",
+            "extensions/pi-swe/src/todo/workflow-backend.ts",
+            "extensions/pi-swe/src/ui/docket.ts",
+            "extensions/pi-swe/src/ui/modal.ts",
+            "profiles/full.json",
+            "scripts/check-performance-budgets.ts",
+            "test/gentic-demo.test.ts",
+            "test/pi-swe-docket.test.ts",
+            "test/pi-swe-revision-context.test.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-command-adapter.test.ts",
+            "test/pi-todo-contract.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/pi-todo-state-core.test.ts",
+            "test/pi-todo-thin-surface.test.ts",
+            "test/pi-todo-tui.test.ts",
+            "test/pi-todo-workflow-backend.test.ts",
+            "test/release-inventory.test.ts",
+            "test/runtime-command-guidance.test.ts"
+          ],
+          "hash": "sha256:4416c077523fd22014d7fa593798b8ebc81c4056ca2ec8659d48b3176a3b5579"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_xyzV2gIkZJxrBa05XPPxOdC9|fc_0bed98b525257fc5016ab43822dc2487d29e98d8a0d47df4e6",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:c4a7d606e2536abd703ef002c736fae58bce69840ea7ec47c7d773ffcf335c6d"
+    },
+    {
+      "id": "E-8852df34-1b04-41ad-9cc1-fe2389b5b283",
+      "kind": "machine-command",
+      "workId": "W-6",
+      "obligationIds": [
+        "O-6"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && npm run test:todo && npm run test:swe && npm test && npm run check && npm run check:commands && npm run release:verify"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-23T20:39:55.998Z",
+      "completedAt": "2026-09-23T20:42:29.407Z",
+      "durationMs": 153409,
+      "contractFingerprint": "sha256:b22cca6fc63872bbbec450495b60cff64889cad48c4837fd47fce6f5c9be8f84",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "CONTRIBUTING.md",
+            "catalog/gentic-inventory.json",
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-catalog/IDEA_BANK.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/extension.anatomy.json",
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/src/pi/register.ts",
+            "extensions/pi-swe/src/todo/command-adapter.ts",
+            "extensions/pi-swe/src/todo/contract.ts",
+            "extensions/pi-swe/src/todo/provider.ts",
+            "extensions/pi-swe/src/todo/state-core.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/ui/docket.ts",
+            "extensions/pi-swe/src/todo/ui/format.ts",
+            "extensions/pi-swe/src/todo/ui/modal.ts",
+            "extensions/pi-swe/src/todo/ui/shared-docket.ts",
+            "extensions/pi-swe/src/todo/ui/shared-modal.ts",
+            "extensions/pi-swe/src/todo/ui/theme.ts",
+            "extensions/pi-swe/src/todo/workflow-backend.ts",
+            "extensions/pi-swe/src/ui/docket.ts",
+            "extensions/pi-swe/src/ui/modal.ts",
+            "profiles/full.json",
+            "scripts/check-performance-budgets.ts",
+            "test/gentic-demo.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-swe-docket.test.ts",
+            "test/pi-swe-revision-context.test.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-command-adapter.test.ts",
+            "test/pi-todo-contract.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/pi-todo-state-core.test.ts",
+            "test/pi-todo-thin-surface.test.ts",
+            "test/pi-todo-tui.test.ts",
+            "test/pi-todo-workflow-backend.test.ts",
+            "test/release-inventory.test.ts",
+            "test/runtime-command-guidance.test.ts"
+          ],
+          "hash": "sha256:0034bc9d3a6c3b91fb2b97d2ea3dc3c66f5d0a0503579c0bf990d42f94406f90"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "CONTRIBUTING.md",
+            "catalog/gentic-inventory.json",
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-catalog/IDEA_BANK.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/extension.anatomy.json",
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/src/pi/register.ts",
+            "extensions/pi-swe/src/todo/command-adapter.ts",
+            "extensions/pi-swe/src/todo/contract.ts",
+            "extensions/pi-swe/src/todo/provider.ts",
+            "extensions/pi-swe/src/todo/state-core.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/ui/docket.ts",
+            "extensions/pi-swe/src/todo/ui/format.ts",
+            "extensions/pi-swe/src/todo/ui/modal.ts",
+            "extensions/pi-swe/src/todo/ui/shared-docket.ts",
+            "extensions/pi-swe/src/todo/ui/shared-modal.ts",
+            "extensions/pi-swe/src/todo/ui/theme.ts",
+            "extensions/pi-swe/src/todo/workflow-backend.ts",
+            "extensions/pi-swe/src/ui/docket.ts",
+            "extensions/pi-swe/src/ui/modal.ts",
+            "profiles/full.json",
+            "scripts/check-performance-budgets.ts",
+            "test/gentic-demo.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-swe-docket.test.ts",
+            "test/pi-swe-revision-context.test.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-command-adapter.test.ts",
+            "test/pi-todo-contract.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/pi-todo-state-core.test.ts",
+            "test/pi-todo-thin-surface.test.ts",
+            "test/pi-todo-tui.test.ts",
+            "test/pi-todo-workflow-backend.test.ts",
+            "test/release-inventory.test.ts",
+            "test/runtime-command-guidance.test.ts"
+          ],
+          "hash": "sha256:0034bc9d3a6c3b91fb2b97d2ea3dc3c66f5d0a0503579c0bf990d42f94406f90"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_uRV0RF2RLICSbVBkjGmE0s3V|fc_0bed98b525257fc5016ab4391b1be087d2a86ac521184e42c9",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:9bf4645b61d371b28d8c0f5f0f199700fbbe318e828fb3efca53a7a592bc78c7"
+    },
+    {
+      "id": "E-b1d6630c-e09d-4eba-96dc-22d92f0badf1",
+      "kind": "machine-command",
+      "workId": "W-6",
+      "obligationIds": [
+        "O-6"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && npm run test:todo && npm run test:swe && npm test && npm run check && npm run check:commands && npm run release:verify"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-23T20:44:10.840Z",
+      "completedAt": "2026-09-23T20:49:48.990Z",
+      "durationMs": 338150,
+      "contractFingerprint": "sha256:b22cca6fc63872bbbec450495b60cff64889cad48c4837fd47fce6f5c9be8f84",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "CONTRIBUTING.md",
+            "catalog/gentic-inventory.json",
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-catalog/IDEA_BANK.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/extension.anatomy.json",
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/src/pi/register.ts",
+            "extensions/pi-swe/src/todo/command-adapter.ts",
+            "extensions/pi-swe/src/todo/contract.ts",
+            "extensions/pi-swe/src/todo/provider.ts",
+            "extensions/pi-swe/src/todo/state-core.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/ui/docket.ts",
+            "extensions/pi-swe/src/todo/ui/format.ts",
+            "extensions/pi-swe/src/todo/ui/modal.ts",
+            "extensions/pi-swe/src/todo/ui/shared-docket.ts",
+            "extensions/pi-swe/src/todo/ui/shared-modal.ts",
+            "extensions/pi-swe/src/todo/ui/theme.ts",
+            "extensions/pi-swe/src/todo/workflow-backend.ts",
+            "extensions/pi-swe/src/ui/docket.ts",
+            "extensions/pi-swe/src/ui/modal.ts",
+            "profiles/full.json",
+            "scripts/check-performance-budgets.ts",
+            "test/gentic-demo.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-swe-docket.test.ts",
+            "test/pi-swe-revision-context.test.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-command-adapter.test.ts",
+            "test/pi-todo-contract.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/pi-todo-state-core.test.ts",
+            "test/pi-todo-thin-surface.test.ts",
+            "test/pi-todo-tui.test.ts",
+            "test/pi-todo-workflow-backend.test.ts",
+            "test/release-inventory.test.ts",
+            "test/runtime-command-guidance.test.ts"
+          ],
+          "hash": "sha256:2ab15eaea4778da10ec91b9a6c3a4f508e32c1e146329640f5f67b8ae80863fb"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "CONTRIBUTING.md",
+            "catalog/gentic-inventory.json",
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-catalog/IDEA_BANK.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/extension.anatomy.json",
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/src/pi/register.ts",
+            "extensions/pi-swe/src/todo/command-adapter.ts",
+            "extensions/pi-swe/src/todo/contract.ts",
+            "extensions/pi-swe/src/todo/provider.ts",
+            "extensions/pi-swe/src/todo/state-core.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/ui/docket.ts",
+            "extensions/pi-swe/src/todo/ui/format.ts",
+            "extensions/pi-swe/src/todo/ui/modal.ts",
+            "extensions/pi-swe/src/todo/ui/shared-docket.ts",
+            "extensions/pi-swe/src/todo/ui/shared-modal.ts",
+            "extensions/pi-swe/src/todo/ui/theme.ts",
+            "extensions/pi-swe/src/todo/workflow-backend.ts",
+            "extensions/pi-swe/src/ui/docket.ts",
+            "extensions/pi-swe/src/ui/modal.ts",
+            "profiles/full.json",
+            "scripts/check-performance-budgets.ts",
+            "test/gentic-demo.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-swe-docket.test.ts",
+            "test/pi-swe-revision-context.test.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-command-adapter.test.ts",
+            "test/pi-todo-contract.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/pi-todo-state-core.test.ts",
+            "test/pi-todo-thin-surface.test.ts",
+            "test/pi-todo-tui.test.ts",
+            "test/pi-todo-workflow-backend.test.ts",
+            "test/release-inventory.test.ts",
+            "test/runtime-command-guidance.test.ts"
+          ],
+          "hash": "sha256:2ab15eaea4778da10ec91b9a6c3a4f508e32c1e146329640f5f67b8ae80863fb"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_NVpZIeTdD7cl01kVip5f1981|fc_0bed98b525257fc5016ab43a1987bc87d2ae07ea98cf5d4cec",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:6a64b017da93ace64777c04a5bea56a0efa01173129e20a0255b358334e50d2b"
+    },
+    {
+      "id": "E-777dc7e4-b7b8-4db2-be6d-a6be660a6cec",
+      "kind": "model-review",
+      "workId": "W-6",
+      "obligationIds": [
+        "O-6"
+      ],
+      "outcome": "passed",
+      "reviewedAt": "2026-09-23T20:51:27.201Z",
+      "contractFingerprint": "sha256:b22cca6fc63872bbbec450495b60cff64889cad48c4837fd47fce6f5c9be8f84",
+      "source": {
+        "kind": "bounded-paths",
+        "paths": [
+          "CONTRIBUTING.md",
+          "catalog/gentic-inventory.json",
+          "docs/pi-package-resources.md",
+          "extensions/README.md",
+          "extensions/pi-catalog/IDEA_BANK.md",
+          "extensions/pi-swe/README.md",
+          "extensions/pi-swe/extension.anatomy.json",
+          "extensions/pi-swe/index.ts",
+          "extensions/pi-swe/src/pi/register.ts",
+          "extensions/pi-swe/src/todo/command-adapter.ts",
+          "extensions/pi-swe/src/todo/contract.ts",
+          "extensions/pi-swe/src/todo/provider.ts",
+          "extensions/pi-swe/src/todo/state-core.ts",
+          "extensions/pi-swe/src/todo/thin-surface.ts",
+          "extensions/pi-swe/src/todo/ui/docket.ts",
+          "extensions/pi-swe/src/todo/ui/format.ts",
+          "extensions/pi-swe/src/todo/ui/modal.ts",
+          "extensions/pi-swe/src/todo/ui/shared-docket.ts",
+          "extensions/pi-swe/src/todo/ui/shared-modal.ts",
+          "extensions/pi-swe/src/todo/ui/theme.ts",
+          "extensions/pi-swe/src/todo/workflow-backend.ts",
+          "extensions/pi-swe/src/ui/docket.ts",
+          "extensions/pi-swe/src/ui/modal.ts",
+          "profiles/full.json",
+          "scripts/check-performance-budgets.ts",
+          "test/gentic-demo.test.ts",
+          "test/pi-hud-snapshot-service.test.ts",
+          "test/pi-swe-docket.test.ts",
+          "test/pi-swe-revision-context.test.ts",
+          "test/pi-swe-runtime.test.ts",
+          "test/pi-todo-characterization.test.ts",
+          "test/pi-todo-command-adapter.test.ts",
+          "test/pi-todo-contract.test.ts",
+          "test/pi-todo-qualification.test.ts",
+          "test/pi-todo-state-core.test.ts",
+          "test/pi-todo-thin-surface.test.ts",
+          "test/pi-todo-tui.test.ts",
+          "test/pi-todo-workflow-backend.test.ts",
+          "test/release-inventory.test.ts",
+          "test/runtime-command-guidance.test.ts"
+        ],
+        "hash": "sha256:2ab15eaea4778da10ec91b9a6c3a4f508e32c1e146329640f5f67b8ae80863fb"
+      },
+      "dimensions": [
+        "correctness",
+        "authority-isolation",
+        "lifecycle-gates",
+        "provider-switching",
+        "ui-capabilities",
+        "registration-retirement",
+        "compatibility",
+        "verification"
+      ],
+      "summary": "Model self-review (not independent or human): no blocking findings. The final source resolves the backend on every operation, fails closed for unreadable focused authority, preserves standalone branch events without synchronization, routes workflow start and finish only through SweService with finish stopping at implemented, retains implemented versus complete in the shared capability-driven docket/modal, and registers swe/todo exactly once from pi-swe after deleting pi-todo and the lifecycle bridge. Characterization, workflow adapter, UI, inventory, full-suite, checks, performance, and release verification evidence all pass; the unrelated HUD process-timing assertions were made load-tolerant without weakening their timeout/output/cancellation expectations.",
+      "provenance": {
+        "kind": "pi-model-self-review",
+        "sessionId": "01a0cfd1-5883-725c-980d-138152cef05c"
+      }
+    }
+  ],
   "decisions": [
     {
       "id": "D-1",

@@ -83,7 +83,7 @@ extensions/foo/
     ui/        # widgets, modal/rendering/theme output
 ```
 
-`pi-todo` is the minimal stateful example: `index.ts` wires a thin tool/command/status surface to a branch-reconstructed event core.
+`pi-swe` is the layered stateful example: its entrypoint owns both durable SWE workflow surfaces and the unified todo capability, which selects either workflow authority or the branch-reconstructed standalone core.
 
 ## README orientation fields
 

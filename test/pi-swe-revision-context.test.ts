@@ -162,10 +162,10 @@ test("fresh SWE context is bounded, collapses completed work, and replaces only 
 test("fork, resume, and tree context rebuild from repository authority instead of stale session state", async () => {
   const { root, store } = fixture();
   try {
-    const handlers = new Map<string, Function>();
+    const handlers = new Map<string, Function[]>();
     const appended: Array<{ type: string; data: unknown }> = [];
     piSwe({
-      on(name: string, handler: Function) { handlers.set(name, handler); },
+      on(name: string, handler: Function) { handlers.set(name, [...(handlers.get(name) ?? []), handler]); },
       registerCommand() {},
       registerTool() {},
       appendEntry(type: string, data: unknown) { appended.push({ type, data }); },
@@ -178,8 +178,8 @@ test("fork, resume, and tree context rebuild from repository authority instead o
     const ctx = { cwd: root, sessionManager: { getEntries: () => staleEntries } };
 
     for (const reason of ["fork", "resume"]) {
-      await handlers.get("session_start")!({ reason }, ctx);
-      const initial = await handlers.get("before_agent_start")!({ prompt: "continue" }, ctx);
+      for (const handler of handlers.get("session_start") ?? []) await handler({ reason }, ctx);
+      const initial = await handlers.get("before_agent_start")![0]!({ prompt: "continue" }, ctx);
       assert.match(initial.message.content, new RegExp(`revision ${store.read("pi-swe-foundation").initiative.revision}`));
       assert.doesNotMatch(initial.message.content, /revision 1\b/);
     }
@@ -193,7 +193,7 @@ test("fork, resume, and tree context rebuild from repository authority instead o
       proposal: { ...structuredClone(before.initiative), objective: `${before.initiative.objective} Fresh repository authority.` },
     });
     const other = { role: "custom", customType: "other-extension", content: "preserve" };
-    const result = await handlers.get("context")!({ messages: [other, { role: "custom", customType: SWE_CONTEXT_TYPE, content: "stale" }] }, ctx);
+    const result = await handlers.get("context")![0]!({ messages: [other, { role: "custom", customType: SWE_CONTEXT_TYPE, content: "stale" }] }, ctx);
     assert.match(result.messages.at(-1).content, new RegExp(`revision ${revised.initiative.revision}`));
     assert.match(result.messages.at(-1).content, /Fresh repository authority/);
     assert.ok(result.messages.includes(other));

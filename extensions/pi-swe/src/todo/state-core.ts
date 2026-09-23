@@ -3,9 +3,6 @@ import { randomUUID } from "node:crypto";
 import {
   TODO_MAX_ITEMS,
   TODO_TEXT_LIMITS,
-  decideTodoOwnership,
-  type TodoOwnershipDecision,
-  type TodoPublicAction,
   type TodoPublicItem,
 } from "./contract.ts";
 
@@ -80,10 +77,6 @@ export class BranchTodoCore {
   list(): TodoPublicItem[] {
     const state = this.state();
     return state.order.map((id) => state.todos[id]).filter((todo): todo is TodoPublicItem => Boolean(todo));
-  }
-
-  ownership(action: TodoPublicAction, hasActiveSweTask: boolean): TodoOwnershipDecision {
-    return decideTodoOwnership(action, hasActiveSweTask);
   }
 
   create(title: string, parentTodoId?: string): TodoPublicItem {

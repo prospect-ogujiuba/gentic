@@ -37,7 +37,7 @@ function fixture() {
   return { root, store, collector, service: new SweService(root, store, collector) };
 }
 
-test("minimal Pi surface registers one command/tool and never internally executes verification", async () => {
+test("unified Pi surface registers swe and todo once and never internally executes verification", async () => {
   const handlers = new Map<string, Function>();
   const commands = new Map<string, any>();
   const tools = new Map<string, any>();
@@ -54,9 +54,9 @@ test("minimal Pi surface registers one command/tool and never internally execute
     exec() { execCalls += 1; throw new Error("must not bypass ordinary bash permissions"); },
   };
   piSwe(pi as never);
-  assert.deepEqual([...commands.keys()], ["swe"]);
-  assert.deepEqual([...tools.keys()], ["swe"]);
-  assert.deepEqual([...handlers.keys()].sort(), ["before_agent_start", "context", "session_start", "tool_call", "tool_result"]);
+  assert.deepEqual([...commands.keys()], ["swe", "todo"]);
+  assert.deepEqual([...tools.keys()], ["swe", "todo"]);
+  assert.deepEqual([...handlers.keys()].sort(), ["before_agent_start", "context", "session_start", "session_tree", "tool_call", "tool_result"]);
   assert.match(tools.get("swe").promptGuidelines.join(" "), /ordinary bash/i);
   assert.match(tools.get("swe").promptGuidelines.join(" "), /self-review.*not independent/i);
   assert.match(tools.get("swe").promptGuidelines.join(" "), /standing authorization.*without asking for confirmation/i);
@@ -206,10 +206,10 @@ test("focused active authority triggers bounded continuation on session startup"
   const { root, service } = fixture();
   try {
     await service.start("one-task", "W-1");
-    const handlers = new Map<string, Function>();
+    const handlers = new Map<string, Function[]>();
     const sent: Array<{ message: any; options: any }> = [];
     piSwe({
-      on(name: string, handler: Function) { handlers.set(name, handler); },
+      on(name: string, handler: Function) { handlers.set(name, [...(handlers.get(name) ?? []), handler]); },
       registerCommand() {}, registerTool() {}, appendEntry() {},
       sendMessage(message: unknown, options: unknown) { sent.push({ message, options }); },
     } as never);
@@ -217,12 +217,12 @@ test("focused active authority triggers bounded continuation on session startup"
       cwd: root,
       sessionManager: { getEntries: () => [{ type: "custom", customType: "gentic.swe.focus", data: { initiativeId: "one-task" } }] },
     };
-    handlers.get("session_start")!({ reason: "resume" }, ctx);
+    for (const handler of handlers.get("session_start") ?? []) await handler({ reason: "resume" }, ctx);
     assert.equal(sent.length, 1);
     assert.match(sent[0].message.content, /standing authorization.*do not ask for confirmation/i);
     assert.deepEqual(sent[0].options, { triggerTurn: true, deliverAs: "followUp" });
     await service.pause("one-task");
-    handlers.get("session_start")!({ reason: "resume" }, ctx);
+    for (const handler of handlers.get("session_start") ?? []) await handler({ reason: "resume" }, ctx);
     assert.equal(sent.length, 1, "paused authority must not trigger work");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

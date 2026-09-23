@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { visibleWidth } from "@earendil-works/pi-tui";
 
-import type { TodoCoreState } from "../extensions/pi-todo/src/state-core.ts";
-import { renderTodoDocketLines, renderTodoProgress } from "../extensions/pi-todo/src/ui/docket.ts";
-import { LightweightTodoModal } from "../extensions/pi-todo/src/ui/modal.ts";
-import { plainTodoTheme } from "../extensions/pi-todo/src/ui/theme.ts";
+import type { TodoCoreState } from "../extensions/pi-swe/src/todo/state-core.ts";
+import { renderTodoDocketLines, renderTodoProgress } from "../extensions/pi-swe/src/todo/ui/docket.ts";
+import { LightweightTodoModal } from "../extensions/pi-swe/src/todo/ui/modal.ts";
+import { plainTodoTheme } from "../extensions/pi-swe/src/todo/ui/theme.ts";
 
 const state: TodoCoreState = {
   order: ["ready", "active", "blocked", "done"],

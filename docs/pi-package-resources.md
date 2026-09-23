@@ -17,7 +17,7 @@ Gentic uses Pi's package manifest as the only resource loader. Resource director
 
 ## SWE canonical surface
 
-`pi-swe` owns runtime `/swe` and the `swe` tool. It has no prompt or skill resources. Durable multi-step work uses one `.model-artifacts/initiatives/<topic>/workflow.json`; ordinary work uses Pi directly.
+`pi-swe` owns runtime `/swe` and `/todo` plus the `swe` and `todo` tools. It has no prompt or skill resources. Durable multi-step work uses one `.model-artifacts/initiatives/<topic>/workflow.json`; standalone todo work remains branch-backed. The unified todo surface projects a focused active workflow directly and never creates a second ledger.
 
 ## Validation
 

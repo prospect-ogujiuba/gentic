@@ -63,8 +63,7 @@ These are useful for conditional injections, takeover behavior, and low-context 
 - `pi-permission-system`: `session_start`, `resources_discover`, `session_shutdown`, `before_agent_start`, `input`, `tool_call`
 - `pi-hud`: `session_start`, `model_select`, `thinking_level_select`, `agent_start`, `agent_end`, `turn_start`, `tool_execution_start`, `tool_execution_end`, `tool_result`, `message_end`, `session_shutdown`
 - `pi-primitives/implementation-file-completion`: `before_agent_start`
-- `pi-swe`: no event hooks; `/swe` and `swe_workflow` are explicit
-- `pi-todo`: `session_start`, `turn_end`, `tool_call`
+- `pi-swe`: `before_agent_start`, `context`, `session_start`, `session_tree`, `tool_call`, `tool_result`; owns both `swe` and unified `todo` surfaces
 
 ---
 

@@ -3,7 +3,6 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 
 import { renderUsage } from "../../../../src/command-guidance.ts";
-import { registerSweActivityProbe } from "../../../../src/lifecycle-coordination.ts";
 import { SweService, type CompletionResult } from "../app/service.ts";
 import type { PreparedCompletionCommit } from "../app/completion-commit.ts";
 import type { Initiative } from "../domain/initiative.ts";
@@ -13,6 +12,8 @@ import { buildSwePlanningPrompt, prepareSwePlanRequest } from "./planning.ts";
 import { projectSweDocket, renderSweDocketLines } from "../ui/docket.ts";
 import { SweDocketModal } from "../ui/modal.ts";
 import { plainSweTheme } from "../ui/theme.ts";
+import { registerLightweightTodoSurface } from "../todo/thin-surface.ts";
+import { WorkflowTodoBackend } from "../todo/workflow-backend.ts";
 
 const ACTIONS = ["create", "status", "next", "start", "implemented", "revise", "prepare_verification", "record_review", "complete", "pause", "resume"] as const;
 const parameters = Type.Object({
@@ -41,13 +42,20 @@ export function registerSweSurface(pi: ExtensionAPI): void {
   const services = new Map<string, SweService>();
   const focused = new Map<string, string>();
   let completionCwd = process.cwd();
+  let refreshTodoSurface: ((ctx: ExtensionContext) => Promise<void>) | undefined;
   const service = (cwd: string) => { let value = services.get(cwd); if (!value) { value = new SweService(cwd); services.set(cwd, value); } return value; };
-  const rememberFocus = (cwd: string, initiativeId: string) => {
-    focused.set(cwd, initiativeId);
+  const rememberFocus = async (ctx: ExtensionContext, initiativeId: string): Promise<void> => {
+    focused.set(ctx.cwd, initiativeId);
     pi.appendEntry(SWE_FOCUS_ENTRY_TYPE, { initiativeId });
+    try {
+      await refreshTodoSurface?.(ctx);
+    } catch {
+      // Presentation refresh must never turn a successful durable SWE mutation
+      // into an apparent failure; todo execution still resolves authority afresh.
+      try { ctx.ui.notify("Todo presentation refresh failed; use todo list to retry.", "warning"); }
+      catch { /* UI failure is non-authoritative. */ }
+    }
   };
-  registerSweActivityProbe((ctx) => service(ctx.cwd).hasActiveWork());
-
   const triggerContinuation = (cwd: string, initiativeId: string) => {
     const initiative = service(cwd).status(initiativeId).initiative;
     const unfinished = initiative.work.some((item) => item.kind !== "phase" && item.status !== "complete" && !item.disposition);
@@ -100,7 +108,7 @@ export function registerSweSurface(pi: ExtensionAPI): void {
       try {
         const result = await executeAction(service(ctx.cwd), input, ctx.sessionManager.getSessionId(), signal);
         signal?.throwIfAborted();
-        rememberFocus(ctx.cwd, input.initiativeId);
+        await rememberFocus(ctx, input.initiativeId);
         return { content: [{ type: "text", text: result.text }], details: result.details };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -147,10 +155,10 @@ export function registerSweSurface(pi: ExtensionAPI): void {
       }
       try {
         const current = service(ctx.cwd);
-        if (action === "open") { await openSweDocket(current.status(initiativeId).initiative, ctx); rememberFocus(ctx.cwd, initiativeId); return; }
-        if (action === "list") { ctx.ui.notify(renderDocket(current.status(initiativeId).initiative), "info"); rememberFocus(ctx.cwd, initiativeId); return; }
-        if (action === "status") { ctx.ui.notify(renderStatus(current.status(initiativeId).initiative), "info"); rememberFocus(ctx.cwd, initiativeId); return; }
-        if (action === "next") { const next = current.next(initiativeId); ctx.ui.notify(next ? `${next.id}: ${next.title}` : "No dependency-ready work.", "info"); rememberFocus(ctx.cwd, initiativeId); return; }
+        if (action === "open") { await openSweDocket(current.status(initiativeId).initiative, ctx); await rememberFocus(ctx, initiativeId); return; }
+        if (action === "list") { ctx.ui.notify(renderDocket(current.status(initiativeId).initiative), "info"); await rememberFocus(ctx, initiativeId); return; }
+        if (action === "status") { ctx.ui.notify(renderStatus(current.status(initiativeId).initiative), "info"); await rememberFocus(ctx, initiativeId); return; }
+        if (action === "next") { const next = current.next(initiativeId); ctx.ui.notify(next ? `${next.id}: ${next.title}` : "No dependency-ready work.", "info"); await rememberFocus(ctx, initiativeId); return; }
         const stored = action === "pause" ? await current.pause(initiativeId)
           : action === "resume" ? await current.resume(initiativeId)
           : action === "start" ? await current.start(initiativeId, workId!)
@@ -160,7 +168,7 @@ export function registerSweSurface(pi: ExtensionAPI): void {
         const completionCommit = completionResult?.completionCommit;
         const commitMessage = completionCommit ? renderCommitInstruction(completionCommit) : completionResult?.completionCommitError;
         ctx.ui.notify(`${renderStatus(stored.initiative)}${commitMessage ? `\n${commitMessage}` : ""}`, completionResult?.completionCommitError ? "warning" : "info");
-        rememberFocus(ctx.cwd, initiativeId);
+        await rememberFocus(ctx, initiativeId);
         if (completionCommit) {
           pi.sendMessage({ customType: "gentic.swe.completion-commit", content: renderCommitInstruction(completionCommit), display: false }, { triggerTurn: true, deliverAs: "followUp" });
         }
@@ -168,6 +176,16 @@ export function registerSweSurface(pi: ExtensionAPI): void {
       } catch (error) { ctx.ui.notify(error instanceof Error ? error.message : String(error), "error"); }
     },
   });
+
+  refreshTodoSurface = registerLightweightTodoSurface(pi, {
+    resolveWorkflowBackend: (ctx) => {
+      const initiativeId = focused.get(ctx.cwd);
+      if (!initiativeId) return undefined;
+      const current = service(ctx.cwd);
+      if (current.status(initiativeId).initiative.status !== "active") return undefined;
+      return new WorkflowTodoBackend(current, initiativeId);
+    },
+  }).refresh;
 }
 
 async function executeAction(service: SweService, input: {

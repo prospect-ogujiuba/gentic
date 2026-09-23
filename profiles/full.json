@@ -10,8 +10,7 @@
       "+extensions/pi-git/index.ts",
       "+extensions/pi-hud/index.ts",
       "+extensions/pi-primitives/index.ts",
-      "+extensions/pi-swe/index.ts",
-      "+extensions/pi-todo/index.ts"
+      "+extensions/pi-swe/index.ts"
     ]
   }
 }

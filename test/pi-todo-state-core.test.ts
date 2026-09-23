@@ -6,7 +6,7 @@ import {
   BranchTodoCore,
   TodoCoreError,
   type TodoBranchEntry,
-} from "../extensions/pi-todo/src/state-core.ts";
+} from "../extensions/pi-swe/src/todo/state-core.ts";
 
 function harness(initial: TodoBranchEntry[] = []) {
   const branch = structuredClone(initial);
@@ -276,7 +276,7 @@ test("branch reconstruction is a single bounded pass and ignores unrelated entri
 });
 
 test("state core has no filesystem scan or autonomous follow-up mechanism", async () => {
-  const source = await readFile(new URL("../extensions/pi-todo/src/state-core.ts", import.meta.url), "utf8");
+  const source = await readFile(new URL("../extensions/pi-swe/src/todo/state-core.ts", import.meta.url), "utf8");
   assert.doesNotMatch(source, /node:fs|readdir|glob|walk\s*\(/);
   assert.doesNotMatch(source, /setTimeout|setInterval|sendMessage|agent_settled|turn_end/);
 });

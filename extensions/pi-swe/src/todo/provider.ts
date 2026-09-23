@@ -1,0 +1,64 @@
+import type { TodoPublicAction, TodoPublicRequest } from "./contract.ts";
+
+/** Provider-neutral status. rawStatus retains authority-specific lifecycle detail. */
+export type TodoViewStatus = "ready" | "active" | "blocked" | "implemented" | "complete" | "group";
+
+export type TodoCapabilities = Readonly<{
+  create: boolean;
+  move: boolean;
+  delete: boolean;
+  start: boolean;
+  finish: boolean;
+  block: boolean;
+  unblock: boolean;
+}>;
+
+export type TodoViewItem = {
+  id: string;
+  title: string;
+  status: TodoViewStatus;
+  rawStatus: string;
+  parentId?: string;
+  depth: number;
+  blockedReason?: string;
+  waitingOn?: string[];
+  ready: boolean;
+  executable: boolean;
+  capabilities: TodoCapabilities;
+};
+
+export type TodoView = {
+  provider: "standalone" | "workflow";
+  authorityId: string;
+  authorityStatus?: string;
+  revision?: number;
+  items: TodoViewItem[];
+};
+
+export type TodoMutationResult = {
+  item?: TodoViewItem;
+  deletedCount?: number;
+  view: TodoView;
+};
+
+/**
+ * A backend owns exactly one authority. Selection is external and must be
+ * repeated before each operation; callers must not cache a backend across
+ * workflow focus or status changes.
+ */
+export interface TodoBackend {
+  readonly kind: TodoView["provider"];
+  view(): TodoView | Promise<TodoView>;
+  execute(request: TodoPublicRequest): TodoMutationResult | Promise<TodoMutationResult>;
+  supports(action: TodoPublicAction, itemId?: string): boolean | Promise<boolean>;
+}
+
+export const NO_TODO_CAPABILITIES: TodoCapabilities = Object.freeze({
+  create: false,
+  move: false,
+  delete: false,
+  start: false,
+  finish: false,
+  block: false,
+  unblock: false,
+});

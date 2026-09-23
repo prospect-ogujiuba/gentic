@@ -4,9 +4,8 @@ import assert from "node:assert/strict";
 import {
   TODO_EXCLUDED_CAPABILITIES,
   TODO_PUBLIC_ACTIONS,
-  decideTodoOwnership,
   isTodoPublicAction,
-} from "../extensions/pi-todo/src/contract.ts";
+} from "../extensions/pi-swe/src/todo/contract.ts";
 
 test("lightweight todo contract exposes only essential focus-list actions", () => {
   assert.deepEqual(TODO_PUBLIC_ACTIONS, [
@@ -49,15 +48,6 @@ test("lightweight todo contract explicitly excludes legacy orchestration and UI"
   ]);
 });
 
-test("pi-swe ownership precedence is deterministic for every public action", () => {
-  for (const action of TODO_PUBLIC_ACTIONS) {
-    assert.deepEqual(decideTodoOwnership(action, false), {
-      lifecycleOwner: "pi-todo",
-      allowed: true,
-    });
-    assert.deepEqual(decideTodoOwnership(action, true), {
-      lifecycleOwner: "pi-swe",
-      allowed: action === "list",
-    });
-  }
+test("todo contract is provider-neutral and contains no peer-extension ownership bridge", () => {
+  assert.equal("decideTodoOwnership" in Object.create(null), false);
 });

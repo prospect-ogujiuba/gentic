@@ -8,13 +8,12 @@ import piGit from "../extensions/pi-git/index.ts";
 import piHud from "../extensions/pi-hud/index.ts";
 import piPrimitives from "../extensions/pi-primitives/index.ts";
 import piSwe from "../extensions/pi-swe/index.ts";
-import piTodo from "../extensions/pi-todo/index.ts";
 import { createPiContextHudSnapshot } from "../extensions/pi-context/src/app/hud-adapter.ts";
 import { createSnapshot } from "../extensions/pi-hud/src/app/snapshot.ts";
 import { HudRuntimeOwner } from "../extensions/pi-hud/src/pi/runtime.ts";
 import { renderHudWidgetLines } from "../extensions/pi-hud/src/ui/surfaces/widget.ts";
 import type { HudSnapshot, Theme } from "../extensions/pi-hud/types.ts";
-import { lightweightTodoParameters } from "../extensions/pi-todo/src/thin-surface.ts";
+import { lightweightTodoParameters } from "../extensions/pi-swe/src/todo/thin-surface.ts";
 import { generateGenticInventory } from "../src/release/inventory.ts";
 
 const root = new URL("..", import.meta.url).pathname;
@@ -101,7 +100,7 @@ const pi = new Proxy({ capabilities }, {
     return () => undefined;
   },
 });
-const extensions = [piCatalog, piCommands, piContext, piGit, piHud, piPrimitives, piSwe, piTodo];
+const extensions = [piCatalog, piCommands, piContext, piGit, piHud, piPrimitives, piSwe];
 const startupStarted = performance.now();
 for (const extension of extensions) await extension(pi as never);
 const startupMs = performance.now() - startupStarted;

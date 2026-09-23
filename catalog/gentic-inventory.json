@@ -37,8 +37,7 @@
       "extensions/pi-git/index.ts",
       "extensions/pi-hud/index.ts",
       "extensions/pi-primitives/index.ts",
-      "extensions/pi-swe/index.ts",
-      "extensions/pi-todo/index.ts"
+      "extensions/pi-swe/index.ts"
     ],
     "skills": [
       "skills/add-skill/SKILL.md"
@@ -300,6 +299,18 @@
         "extensions/pi-swe/src/pi/context.ts",
         "extensions/pi-swe/src/pi/planning.ts",
         "extensions/pi-swe/src/pi/register.ts",
+        "extensions/pi-swe/src/todo/command-adapter.ts",
+        "extensions/pi-swe/src/todo/contract.ts",
+        "extensions/pi-swe/src/todo/provider.ts",
+        "extensions/pi-swe/src/todo/state-core.ts",
+        "extensions/pi-swe/src/todo/thin-surface.ts",
+        "extensions/pi-swe/src/todo/ui/docket.ts",
+        "extensions/pi-swe/src/todo/ui/format.ts",
+        "extensions/pi-swe/src/todo/ui/modal.ts",
+        "extensions/pi-swe/src/todo/ui/shared-docket.ts",
+        "extensions/pi-swe/src/todo/ui/shared-modal.ts",
+        "extensions/pi-swe/src/todo/ui/theme.ts",
+        "extensions/pi-swe/src/todo/workflow-backend.ts",
         "extensions/pi-swe/src/ui/docket.ts",
         "extensions/pi-swe/src/ui/format.ts",
         "extensions/pi-swe/src/ui/modal.ts",
@@ -307,53 +318,20 @@
       ],
       "registrations": {
         "commands": [
-          "swe"
+          "swe",
+          "todo"
         ],
         "tools": [
-          "swe"
+          "swe",
+          "todo"
         ],
         "events": [
           "before_agent_start",
           "context",
           "session_start",
+          "session_tree",
           "tool_call",
           "tool_result"
-        ],
-        "shortcuts": [],
-        "flags": [],
-        "providers": [],
-        "renderers": [],
-        "markdownTransformers": 0,
-        "uiSurfaces": [
-          "notify"
-        ]
-      }
-    },
-    {
-      "owner": "pi-todo",
-      "entrypoint": "extensions/pi-todo/index.ts",
-      "sourceFiles": [
-        "extensions/pi-todo/index.ts",
-        "extensions/pi-todo/src/command-adapter.ts",
-        "extensions/pi-todo/src/contract.ts",
-        "extensions/pi-todo/src/state-core.ts",
-        "extensions/pi-todo/src/thin-surface.ts",
-        "extensions/pi-todo/src/ui/docket.ts",
-        "extensions/pi-todo/src/ui/format.ts",
-        "extensions/pi-todo/src/ui/modal.ts",
-        "extensions/pi-todo/src/ui/theme.ts"
-      ],
-      "registrations": {
-        "commands": [
-          "todo"
-        ],
-        "tools": [
-          "todo"
-        ],
-        "events": [
-          "session_start",
-          "session_tree",
-          "tool_call"
         ],
         "shortcuts": [],
         "flags": [],
@@ -389,8 +367,7 @@
         "+extensions/pi-git/index.ts",
         "+extensions/pi-hud/index.ts",
         "+extensions/pi-primitives/index.ts",
-        "+extensions/pi-swe/index.ts",
-        "+extensions/pi-todo/index.ts"
+        "+extensions/pi-swe/index.ts"
       ]
     }
   ]
