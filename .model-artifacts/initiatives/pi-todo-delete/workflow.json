@@ -1,0 +1,343 @@
+{
+  "kind": "gentic.swe.initiative",
+  "schemaVersion": 1,
+  "id": "pi-todo-delete",
+  "revision": 8,
+  "status": "complete",
+  "objective": "Add explicit pi-todo deletion with deterministic recursive subtree semantics for parent todos.",
+  "scope": {
+    "in": [
+      "pi-todo public contract, structured tool, and /todo command",
+      "event-sourced state reconstruction and subtree deletion semantics",
+      "focused tests and pi-todo documentation"
+    ],
+    "out": [
+      "bulk deletion by status or query",
+      "deleting or rewriting historical session entries",
+      "changes to pi-swe lifecycle ownership"
+    ]
+  },
+  "constraints": [
+    "workflow.json remains the sole planning authority",
+    "Deletion must remain branch-local and event-sourced through gentic.todo.event",
+    "pi-swe lifecycle ownership must continue to block todo mutations while assessed SWE work is active",
+    "Existing session history and legacy todo events must remain readable"
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "text": "pi-todo exposes a delete action through both the structured todo tool and /todo delete <id>, with validation and user-facing completion/error output consistent with existing actions."
+    },
+    {
+      "id": "AC-2",
+      "text": "Deleting a todo removes that todo and every descendant from reconstructed state atomically; deleting a leaf removes only that leaf, and deleting a subtree containing the active todo clears activeTodoId."
+    },
+    {
+      "id": "AC-3",
+      "text": "Deletion is represented by a version-1 gentic.todo.event rather than rewriting session history, and replay deterministically ignores later lifecycle events for removed todos unless a distinct create event recreates an ID."
+    },
+    {
+      "id": "AC-4",
+      "text": "Focused contract, core, surface, command, ownership, and parent/child cascade tests pass, and README documentation explicitly states recursive parent deletion behavior."
+    }
+  ],
+  "assessment": {
+    "depth": "standard",
+    "reason": "The change is localized but alters persisted event replay and destructive parent/child semantics, requiring explicit contracts and regression coverage.",
+    "surfaces": [
+      "public tool contract",
+      "slash command surface",
+      "event-sourced state reconstruction",
+      "parent-child lifecycle invariants",
+      "documentation and tests"
+    ],
+    "unknowns": [
+      "Whether a UI confirmation is appropriate for slash-command deletion; the structured tool cannot depend on interactive confirmation, so the initial contract uses explicit todoId as authorization."
+    ]
+  },
+  "practices": [
+    {
+      "id": "P-1",
+      "practice": "Event-sourced lifecycle invariants",
+      "appliesTo": [
+        "W-1"
+      ],
+      "reason": "Deletion must reconstruct deterministically without mutating historical branch entries."
+    },
+    {
+      "id": "P-2",
+      "practice": "Destructive subtree behavior coverage",
+      "appliesTo": [
+        "W-1"
+      ],
+      "reason": "Recursive parent deletion and active descendant cleanup require explicit focused regression tests."
+    },
+    {
+      "id": "P-3",
+      "practice": "Public surface consistency",
+      "appliesTo": [
+        "W-1"
+      ],
+      "reason": "Tool schema, command parsing/completions, output, README, and ownership gating must expose the same behavior."
+    }
+  ],
+  "obligations": [
+    {
+      "id": "O-1",
+      "practiceId": "P-1",
+      "criterionIds": [
+        "AC-2",
+        "AC-3"
+      ],
+      "text": "Verify leaf and recursive subtree deletion reconstruct correctly from version-1 events and do not rewrite history.",
+      "verification": {
+        "kind": "focused-tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-2",
+      "practiceId": "P-2",
+      "criterionIds": [
+        "AC-2"
+      ],
+      "text": "Verify deletion clears activeTodoId when the active item is the target or any descendant, while unrelated todos remain ordered and unchanged.",
+      "verification": {
+        "kind": "focused-tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-3",
+      "practiceId": "P-3",
+      "criterionIds": [
+        "AC-1",
+        "AC-4"
+      ],
+      "text": "Verify structured tool and /todo command expose delete consistently, preserve pi-swe ownership gating, and document recursive semantics.",
+      "verification": {
+        "kind": "focused-tests",
+        "requiredEvidence": [
+          "machine-command",
+          "model-review"
+        ]
+      }
+    }
+  ],
+  "work": [
+    {
+      "id": "W-1",
+      "kind": "task",
+      "title": "Implement recursive pi-todo deletion across core, public surfaces, tests, and documentation",
+      "status": "complete",
+      "dependsOn": [],
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-3",
+        "AC-4"
+      ],
+      "obligationIds": [
+        "O-1",
+        "O-2",
+        "O-3"
+      ],
+      "testing": {
+        "approach": "Add focused unit and surface tests for contract exposure, command parsing, event replay, leaf deletion, recursive parent deletion, active descendant cleanup, missing IDs, and ownership gating; run repository typecheck and relevant/full test gates.",
+        "reason": "Deletion spans a public API and persisted replay semantics, so both focused behavioral checks and repository regression gates are required."
+      }
+    }
+  ],
+  "artifacts": [],
+  "evidence": [
+    {
+      "id": "E-23891a10-addb-432d-96ab-28edb16045aa",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1",
+        "O-2",
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && npm run test:todo && npm run check"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-23T15:17:51.597Z",
+      "completedAt": "2026-09-23T15:18:32.128Z",
+      "durationMs": 40531,
+      "contractFingerprint": "sha256:b59dacfd858b4584f88ebfc96b31f2e25257185ea1c69babb82fa3714a08df16",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-todo/README.md",
+            "extensions/pi-todo/src/contract.ts",
+            "extensions/pi-todo/src/state-core.ts",
+            "extensions/pi-todo/src/thin-surface.ts",
+            "test/pi-todo-contract.test.ts",
+            "test/pi-todo-state-core.test.ts",
+            "test/pi-todo-thin-surface.test.ts"
+          ],
+          "hash": "sha256:66e86f847d41b58b58f5ccb51fdd01c61d89f204565ba51a0b38d86c5b976021"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-todo/README.md",
+            "extensions/pi-todo/src/contract.ts",
+            "extensions/pi-todo/src/state-core.ts",
+            "extensions/pi-todo/src/thin-surface.ts",
+            "test/pi-todo-contract.test.ts",
+            "test/pi-todo-state-core.test.ts",
+            "test/pi-todo-thin-surface.test.ts"
+          ],
+          "hash": "sha256:66e86f847d41b58b58f5ccb51fdd01c61d89f204565ba51a0b38d86c5b976021"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_mXufR5ei1Z9NRv0KybjPfAUo|fc_0fb2361c6b95ee8a016ab3ed9ed72487d2a4cd7b7fa53c5a07",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:405af610e524fd449f1242eba3344212984d331a70f7fbf2790d10bf862f65d3"
+    },
+    {
+      "id": "E-a7988c94-ef78-4a36-87bd-5cb0c8e983fb",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1",
+        "O-2",
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && npm run test:todo && npm run check"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-23T15:19:11.975Z",
+      "completedAt": "2026-09-23T15:19:50.843Z",
+      "durationMs": 38868,
+      "contractFingerprint": "sha256:b59dacfd858b4584f88ebfc96b31f2e25257185ea1c69babb82fa3714a08df16",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-todo/README.md",
+            "extensions/pi-todo/src/contract.ts",
+            "extensions/pi-todo/src/state-core.ts",
+            "extensions/pi-todo/src/thin-surface.ts",
+            "test/pi-todo-contract.test.ts",
+            "test/pi-todo-state-core.test.ts",
+            "test/pi-todo-thin-surface.test.ts"
+          ],
+          "hash": "sha256:217022963782c6c04130a21fb7cc9a1ca88dc6ef94924ec92e87b808878e5e59"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-todo/README.md",
+            "extensions/pi-todo/src/contract.ts",
+            "extensions/pi-todo/src/state-core.ts",
+            "extensions/pi-todo/src/thin-surface.ts",
+            "test/pi-todo-contract.test.ts",
+            "test/pi-todo-state-core.test.ts",
+            "test/pi-todo-thin-surface.test.ts"
+          ],
+          "hash": "sha256:217022963782c6c04130a21fb7cc9a1ca88dc6ef94924ec92e87b808878e5e59"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_E6iqvuNHWhRX7KNNzJr36EL7|fc_0fb2361c6b95ee8a016ab3edef85e887d2b85b7b5f8741121a",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:4a76e06357c88ae36646ef1026f889cab89e298e14ed238b99ff8d672168adb8"
+    },
+    {
+      "id": "E-5aafd42b-d4ff-4756-bc4f-d919fe92ab52",
+      "kind": "model-review",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "reviewedAt": "2026-09-23T15:20:39.515Z",
+      "contractFingerprint": "sha256:b59dacfd858b4584f88ebfc96b31f2e25257185ea1c69babb82fa3714a08df16",
+      "source": {
+        "kind": "bounded-paths",
+        "paths": [
+          "extensions/pi-todo/README.md",
+          "extensions/pi-todo/src/contract.ts",
+          "extensions/pi-todo/src/state-core.ts",
+          "extensions/pi-todo/src/thin-surface.ts",
+          "test/pi-todo-contract.test.ts",
+          "test/pi-todo-state-core.test.ts",
+          "test/pi-todo-thin-surface.test.ts"
+        ],
+        "hash": "sha256:217022963782c6c04130a21fb7cc9a1ca88dc6ef94924ec92e87b808878e5e59"
+      },
+      "dimensions": [
+        "correctness",
+        "event replay semantics",
+        "destructive subtree behavior",
+        "public surface consistency",
+        "documentation",
+        "test coverage"
+      ],
+      "summary": "Model self-review (not independent or human approval): no blocking findings. The public contract, structured tool, command parser/completions, ownership gate, and README consistently expose delete. One append-only todo.deleted event removes the selected todo plus all reconstructed descendants, preserves unrelated ordering, and clears activeTodoId for deleted active descendants. Later lifecycle events for absent todos remain ignored, while an explicit create can recreate an ID. Focused tests cover leaf deletion, nested cascade, active cleanup, replay, missing IDs, command output, and pi-swe ownership. git diff --check passes.",
+      "provenance": {
+        "kind": "pi-model-self-review",
+        "sessionId": "01a0ceb1-4a2c-73cf-a63b-d6fe110ea84f"
+      }
+    }
+  ],
+  "decisions": [
+    {
+      "id": "D-1",
+      "text": "Deleting a parent recursively deletes its complete descendant subtree in one logical event.",
+      "basis": "Leaving children orphaned would violate the visible hierarchy, while explicit recursive semantics make the destructive effect predictable and testable."
+    },
+    {
+      "id": "D-2",
+      "text": "Use an append-only todo.deleted event and preserve historical branch entries.",
+      "basis": "pi-todo state is event-sourced and must not rewrite session history."
+    },
+    {
+      "id": "D-3",
+      "text": "An explicit delete request containing todoId is sufficient authorization; no interactive confirmation is required in the initial contract.",
+      "basis": "The structured tool must behave consistently in TUI, RPC, and headless modes."
+    }
+  ],
+  "risks": [
+    {
+      "id": "R-1",
+      "text": "A parent deletion could unexpectedly remove hidden descendants.",
+      "mitigation": "Name and document recursive behavior explicitly, return the deletion count, and cover nested descendants in tests."
+    },
+    {
+      "id": "R-2",
+      "text": "Deleting a subtree containing active work could leave stale active state.",
+      "mitigation": "Compute the subtree before removal and clear activeTodoId whenever it belongs to that subtree."
+    },
+    {
+      "id": "R-3",
+      "text": "Replay ordering could allow removed items to affect state after deletion.",
+      "mitigation": "Ignore lifecycle events for absent todos and add replay regression tests."
+    }
+  ]
+}
