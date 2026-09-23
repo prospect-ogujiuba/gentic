@@ -1,0 +1,385 @@
+{
+  "kind": "gentic.swe.initiative",
+  "schemaVersion": 1,
+  "id": "pi-swe-completed-initiative-retention",
+  "revision": 1,
+  "status": "draft",
+  "objective": "Add conservative project/user-level retention and pruning for completed pi-swe initiatives, with durable completion timestamps, preview-first commands, safe treatment of tracked authority and durable artifacts, and less clutter in normal initiative discovery.",
+  "scope": {
+    "in": [
+      "A versioned pi-swe config at the established global and project Pi config locations, with project overrides and disabled-by-default completed-initiative retention",
+      "A canonical completedAt lifecycle timestamp persisted when initiative finalization succeeds, with backward-compatible handling for existing completed authorities",
+      "A read-only prune planner that validates completed authorities, applies retention age, inventories directory contents, classifies tracked versus ignored/untracked material, and explains every eligible or skipped initiative",
+      "Explicit /swe prune --dry-run and /swe prune --apply surfaces plus equivalent structured-tool support, with dry-run as the default",
+      "A conservative deletion executor using store-grade path, symlink, lock, race, and durability safeguards",
+      "Default discovery/list behavior that hides completed initiatives from routine choices while preserving an explicit completed/history view",
+      "Focused destructive-boundary tests, documentation, and full repository qualification"
+    ],
+    "out": [
+      "Per-initiative retention settings",
+      "Automatic deletion of tracked workflow authority or durable specs/plans/findings/reports",
+      "Automatic Git commits or pushes for prune deletions",
+      "Using filesystem mtime or ignored revision-log filenames as the durable completion clock",
+      "Pruning active, draft, paused, malformed, locked, symlinked, or concurrently changed initiatives",
+      "A parallel archive registry or second task ledger"
+    ]
+  },
+  "constraints": [
+    "Pi-swe remains the owner because it understands initiative validation, terminal status, locks, and authority paths; do not create a separate pruning extension or ledger.",
+    "Follow the existing pi-context configuration convention: safe bounded regular non-symlink global and project JSON files, project field overrides, bounded diagnostics, and fail-closed defaults.",
+    "Retention is disabled by default. Configuration is project/user-level, never stored in individual workflow authority.",
+    "Persist a canonical completedAt timestamp through finalization; existing completed schemaVersion 1 authorities without completedAt remain readable but are ineligible for age-based automatic pruning until an explicit compatibility rule is applied.",
+    "Dry-run is the default and must have no filesystem or Git side effects. Apply requires an explicit action and reports a bounded itemized result.",
+    "Automatic/background cleanup, if included after implementation review, is limited to ignored runtime logs; whole-initiative directory removal always requires explicit apply.",
+    "By default skip any initiative containing Git-tracked workflow authority or tracked/reviewable durable artifacts. includeTracked may make such entries visible as deletion candidates only after explicit apply, never silently remove or commit them.",
+    "Never delete noncanonical files, symlinks, active lock/temp files, or directories whose validated inventory changed between planning and apply.",
+    "Use stable parent-relative filesystem operations, cooperative locking, compare-and-swap inventory fingerprints, and directory sync analogous to InitiativeStore publication safeguards.",
+    "Prune output and autocomplete must remain bounded for repositories with many initiatives.",
+    "Normal initiative discovery hides complete authorities by default but status/open/history and explicit completed filters remain available.",
+    "Do not modify repository ignore policy as part of this feature."
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "text": "Pi-swe loads a bounded versioned global/project configuration with retention disabled by default, project-over-global merging, clear diagnostics, and no per-initiative policy fields."
+    },
+    {
+      "id": "AC-2",
+      "text": "Successful initiative finalization persists a canonical completedAt timestamp; active and nonterminal authorities cannot carry it, and existing completed schemaVersion 1 files without it remain readable under an explicit backward-compatibility rule."
+    },
+    {
+      "id": "AC-3",
+      "text": "The prune planner discovers only validated canonical complete initiatives, computes age from completedAt, inventories all initiative files, classifies Git-tracked and ignored/untracked content, and returns deterministic eligible/skipped reasons without mutation."
+    },
+    {
+      "id": "AC-4",
+      "text": "Prune apply removes only entries authorized by the current project/user retention policy and explicit apply request, revalidates lock, symlink, status, timestamp, inventory fingerprint, and tracked-content constraints immediately before deletion, and fails closed on races or ambiguity."
+    },
+    {
+      "id": "AC-5",
+      "text": "Tracked workflow authority and durable reviewed artifacts are skipped by default; optional includeTracked only exposes them to explicit apply, leaves Git-visible deletions uncommitted, and never pushes."
+    },
+    {
+      "id": "AC-6",
+      "text": "Routine completions and initiative suggestions omit completed initiatives by default while explicit status/open/completed-history access remains available and bounded."
+    },
+    {
+      "id": "AC-7",
+      "text": "Documentation states configuration, completion-clock compatibility, dry-run/apply semantics, tracked-content behavior, irreversibility, recovery expectations, and the distinction between ignored log cleanup and whole-initiative pruning."
+    },
+    {
+      "id": "AC-8",
+      "text": "Focused config, lifecycle, discovery, Git-classification, symlink, lock, race, dry-run, apply, and negative tests pass together with typecheck, repository checks, command inventory, and the full test suite."
+    }
+  ],
+  "assessment": {
+    "depth": "deep",
+    "reason": "The feature introduces project/user configuration, a lifecycle schema addition, destructive filesystem operations, Git-aware retention decisions, concurrent-state checks, and public command/tool behavior. Preview-first delivery and strict fail-closed boundaries are required.",
+    "surfaces": [
+      "pi-swe initiative schema and completion transition",
+      "global/project pi-swe configuration",
+      "initiative discovery and autocomplete",
+      "prune planning and Git classification",
+      "store-grade locking and deletion",
+      "slash command and structured tool",
+      "model-artifact documentation and tests"
+    ],
+    "unknowns": [
+      "The exact schemaVersion 1 compatibility representation for missing completedAt must avoid rewriting historical authorities merely to make them pruneable.",
+      "Git classification should use the narrowest permission-preserving read path while remaining deterministic for unusual filenames and repositories without Git.",
+      "The best explicit completed-history syntax should reuse the existing action grammar without overloading the current per-topic list action.",
+      "Whether ignored logs-only automatic cleanup provides enough value to justify a background/session-start path should be decided after planner performance and safety tests."
+    ]
+  },
+  "practices": [
+    {
+      "id": "P-1",
+      "practice": "Compatibility-first lifecycle schema evolution",
+      "appliesTo": [
+        "W-1"
+      ],
+      "reason": "A durable completion clock is necessary, but existing tracked completed authorities must remain readable and immutable unless deliberately migrated."
+    },
+    {
+      "id": "P-2",
+      "practice": "Bounded precedence-aware configuration",
+      "appliesTo": [
+        "W-1"
+      ],
+      "reason": "Retention belongs at user/project scope and should follow an already-qualified Gentic configuration model rather than inventing initiative-local settings."
+    },
+    {
+      "id": "P-3",
+      "practice": "Preview-first fail-closed destructive operations",
+      "appliesTo": [
+        "W-2"
+      ],
+      "reason": "Pruning can irreversibly remove ignored local history and create tracked Git deletions, so candidate planning and apply must be separate and race-safe."
+    },
+    {
+      "id": "P-4",
+      "practice": "Git-aware durable-artifact preservation",
+      "appliesTo": [
+        "W-2"
+      ],
+      "reason": "Tracked workflow authority and reviewed artifacts have different retention value from ignored runtime logs and must be skipped by default."
+    },
+    {
+      "id": "P-5",
+      "practice": "Progressive discoverability without filesystem mutation",
+      "appliesTo": [
+        "W-3"
+      ],
+      "reason": "Hiding completed initiatives from routine suggestions solves common clutter while explicit history access preserves inspection."
+    },
+    {
+      "id": "P-6",
+      "practice": "Source-bound review and full qualification",
+      "appliesTo": [
+        "W-3"
+      ],
+      "reason": "Schema, configuration, destructive boundaries, command guidance, and documentation require integrated review and regression evidence."
+    }
+  ],
+  "obligations": [
+    {
+      "id": "O-1",
+      "practiceId": "P-1",
+      "criterionIds": [
+        "AC-2"
+      ],
+      "text": "Test canonical completedAt creation, terminal-state invariants, intentional revision behavior, old completed-authority readability, and rejection of malformed or contradictory timestamps.",
+      "verification": {
+        "kind": "schema-and-lifecycle-tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-2",
+      "practiceId": "P-2",
+      "criterionIds": [
+        "AC-1"
+      ],
+      "text": "Test safe bounded global/project config precedence, disabled defaults, unknown/malformed fields, oversized files, symlinks, and bounded diagnostics.",
+      "verification": {
+        "kind": "config-and-negative-tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-3",
+      "practiceId": "P-3",
+      "criterionIds": [
+        "AC-3",
+        "AC-4"
+      ],
+      "text": "Exercise deterministic dry-run planning and explicit apply across complete, nonterminal, malformed, locked, symlinked, changed-after-plan, and large bounded initiative sets, proving no mutation during preview and fail-closed deletion under races.",
+      "verification": {
+        "kind": "destructive-boundary-integration-tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-4",
+      "practiceId": "P-4",
+      "criterionIds": [
+        "AC-5"
+      ],
+      "text": "Use isolated Git repositories to verify tracked/ignored/untracked classification, default tracked skips, explicit includeTracked candidate behavior, preservation of unrelated files, uncommitted Git-visible deletions, and absence of push behavior.",
+      "verification": {
+        "kind": "git-integration-and-negative-tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-5",
+      "practiceId": "P-5",
+      "criterionIds": [
+        "AC-6"
+      ],
+      "text": "Test root/action/topic completions and list/history output so completed initiatives are hidden from routine flows but remain explicitly inspectable, bounded, and tolerant of malformed state.",
+      "verification": {
+        "kind": "command-and-discovery-tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-6",
+      "practiceId": "P-6",
+      "criterionIds": [
+        "AC-7",
+        "AC-8"
+      ],
+      "text": "Run typecheck, repository checks, command inventory, focused pi-swe suites, and the full suite after documentation and generated inventory are current.",
+      "verification": {
+        "kind": "repository-checks",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-7",
+      "practiceId": "P-6",
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-3",
+        "AC-4",
+        "AC-5",
+        "AC-6",
+        "AC-7",
+        "AC-8"
+      ],
+      "text": "Perform a source-bound model self-review of configuration precedence, schema compatibility, deletion containment, race handling, Git semantics, command clarity, boundedness, and documentation accuracy.",
+      "verification": {
+        "kind": "review-and-tests",
+        "requiredEvidence": [
+          "model-review"
+        ]
+      }
+    }
+  ],
+  "work": [
+    {
+      "id": "W-1",
+      "kind": "task",
+      "title": "Add completedAt lifecycle semantics and project/user retention configuration",
+      "status": "pending",
+      "dependsOn": [],
+      "criterionIds": [
+        "AC-1",
+        "AC-2"
+      ],
+      "obligationIds": [
+        "O-1",
+        "O-2"
+      ],
+      "testing": {
+        "approach": "Characterize current completed authorities and configuration conventions, add backward-compatible schema/lifecycle tests and config negative fixtures first, then implement canonical finalization timestamps and bounded global/project merging.",
+        "reason": "Reliable age-based retention needs durable lifecycle time and safe opt-in configuration before any pruning logic exists."
+      }
+    },
+    {
+      "id": "W-2",
+      "kind": "task",
+      "title": "Build the preview-first Git-aware prune planner and race-safe explicit executor",
+      "status": "pending",
+      "dependsOn": [
+        "W-1"
+      ],
+      "criterionIds": [
+        "AC-3",
+        "AC-4",
+        "AC-5"
+      ],
+      "obligationIds": [
+        "O-3",
+        "O-4"
+      ],
+      "testing": {
+        "approach": "Construct isolated filesystem and Git fixtures for every eligibility and skip reason, lock/symlink/race condition, unusual filename, tracked-content mode, and bounded-set limit; prove dry-run byte stability before implementing apply.",
+        "reason": "Candidate selection and destructive execution must be independently testable, deterministic, and fail closed immediately before deletion."
+      }
+    },
+    {
+      "id": "W-3",
+      "kind": "task",
+      "title": "Integrate prune and completed-history surfaces, documentation, review, and qualification",
+      "status": "pending",
+      "dependsOn": [
+        "W-2"
+      ],
+      "criterionIds": [
+        "AC-6",
+        "AC-7",
+        "AC-8"
+      ],
+      "obligationIds": [
+        "O-5",
+        "O-6",
+        "O-7"
+      ],
+      "testing": {
+        "approach": "Add command/tool and autocomplete characterization for routine-hidden versus explicit completed views, update documentation and inventory, perform source-bound review, then run focused and full repository gates.",
+        "reason": "The retention engine is useful only when safely discoverable, accurately explained, and qualified across existing pi-swe behavior."
+      }
+    }
+  ],
+  "artifacts": [],
+  "evidence": [],
+  "decisions": [
+    {
+      "id": "D-1",
+      "text": "Completed-initiative retention is a pi-swe-owned project/user policy, not an initiative-level policy or separate extension.",
+      "basis": "User preference and pi-swe's existing ownership of initiative schema, status, paths, and locks."
+    },
+    {
+      "id": "D-2",
+      "text": "Dry-run is the default; whole-initiative deletion always requires explicit apply.",
+      "basis": "Whole-directory pruning can delete ignored local history and create tracked Git deletions."
+    },
+    {
+      "id": "D-3",
+      "text": "Tracked workflow authority and reviewed artifacts are skipped by default; includeTracked only affects explicit apply and never commits or pushes.",
+      "basis": "Repository artifact policy treats completed tracked authority as durable review history."
+    },
+    {
+      "id": "D-4",
+      "text": "Age-based retention uses canonical completedAt, never filesystem mtime or ignored revision-log names.",
+      "basis": "Portable deterministic pruning requires a timestamp in durable authority."
+    },
+    {
+      "id": "D-5",
+      "text": "Routine discovery hides completed initiatives without deleting them; explicit history access remains available.",
+      "basis": "Most day-to-day clutter can be reduced without destructive action."
+    },
+    {
+      "id": "D-6",
+      "text": "Any automatic behavior considered during implementation is limited to ignored logs-only cleanup; whole-initiative pruning remains explicit.",
+      "basis": "Preserve normal destructive-operation authorization and avoid silent loss of untracked durable material."
+    }
+  ],
+  "risks": [
+    {
+      "id": "R-1",
+      "text": "Deleting an initiative directory can lose ignored revision history or untracked artifacts that Git cannot restore.",
+      "mitigation": "Preview every file classification, require explicit apply, skip ambiguity, and document irreversibility."
+    },
+    {
+      "id": "R-2",
+      "text": "Tracked authority deletion can silently become part of a later unrelated commit.",
+      "mitigation": "Skip tracked content by default; when explicitly included, report Git-visible deletions prominently and never commit automatically."
+    },
+    {
+      "id": "R-3",
+      "text": "A concurrent writer or symlink swap can redirect or invalidate pruning after preview.",
+      "mitigation": "Use stable directory handles, exclusive locks, inventory fingerprints, immediate revalidation, parent-relative deletion, and directory sync."
+    },
+    {
+      "id": "R-4",
+      "text": "Adding completedAt could invalidate or reject historical schemaVersion 1 authorities.",
+      "mitigation": "Define and test an explicit read-compatible missing-field rule while enforcing timestamp invariants for new finalizations."
+    },
+    {
+      "id": "R-5",
+      "text": "Large initiative sets or Git classification can slow completion and command UX.",
+      "mitigation": "Bound discovery and output, avoid background whole-tree deletion, and measure planner performance with maximum-size fixtures."
+    },
+    {
+      "id": "R-6",
+      "text": "Hiding completed initiatives could make history appear lost.",
+      "mitigation": "Provide explicit completed/history filters and keep direct status/open access by canonical topic."
+    }
+  ]
+}
