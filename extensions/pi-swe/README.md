@@ -18,6 +18,16 @@ Each obligation declares its required evidence kinds. `model-review` is a runtim
 
 Qualification may use the declared `test-after` approach: combine incremental evidence with integrated user-scenario and repository checks after implementation. The stored testing approach and reason remain explicit.
 
+### Opt-in work-item commits
+
+An initiative opts in with `"policies": { "commitOnWorkCompletion": true }`. Omitting the policy or setting it to `false` preserves current behavior. No per-work path or message mapping is required. The matching work item must first pass the normal evidence-backed `complete` transition.
+
+Successful completion derives literal scoped paths from that work item's current-contract passing verification evidence, excludes `.gitignore`, Git metadata, artifact `logs/`, traversal, and wildcard pathspecs, adds the initiative's `workflow.json`, and derives a bounded conventional message from the work title. Verification `relevantPaths` therefore define commit attribution and should enumerate every task-owned source, test, documentation, and generated file.
+
+Pi-swe prepares an exact Git command for Pi's ordinary `bash` tool instead of calling `pi.exec` or a hidden subprocess. Structured-tool output carries it as `details.completionCommit`; command-driven completion schedules a bounded follow-up turn. The command uses a temporary index, commits only the derived paths, preserves unrelated staged and unstaged paths, and never pushes.
+
+Workflow completion and Git are not one atomic transaction. If passing evidence has no safe attributable paths, pi-swe reports `completionCommitError` and leaves the work item complete. If the repository is not a Git worktree, the scoped diff is empty, identity or hooks reject the commit, or Git otherwise fails, the ordinary bash failure is reported for manual recovery. A commit must not be claimed until that command succeeds.
+
 ## Proportional initiatives
 
 Small initiatives stay small. A light initiative may contain one executable task without a phase, one justified practice, and one concrete obligation. No universal phase hierarchy, exhaustive discipline checklist, or irrelevant review ceremony is required. Deeper assessment and additional practices are selected only when observed engineering surfaces justify them; completion integrity is unchanged at every depth.
@@ -34,4 +44,4 @@ Referenced artifacts use safe canonical paths beneath `.model-artifacts/initiati
 
 Repository qualification runs the exact gates `npm run typecheck`, `npm run check`, `npm run check:commands`, and `npm test`. Failures are reported rather than converted into completion evidence. Focused suites cover persistence interruption, permissions, negative completion, shared mutation authority, bounded context/session branching, artifact and schema compatibility, keyboard/bounded/non-TUI rendering, and proportional light initiatives.
 
-There are no separate autonomous agents, worktrees, leases, runtime selectors, releases, commits, or deployments. Bounded continuation only advances the focused active workflow through the existing Pi agent and normal permission gates.
+There are no separate autonomous agents, worktrees, leases, runtime selectors, releases, pushes, or deployments. Opt-in work-item commits are delegated to the existing Pi agent through the ordinary bash permission boundary; bounded continuation otherwise advances the focused active workflow through that same agent and normal permission gates.

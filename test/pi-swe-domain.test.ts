@@ -24,6 +24,19 @@ test("schema accepts the approved bootstrap and is closed at every modeled bound
   assert.throws(() => parseInitiative(nested), /unknown field.*surprise/i);
 });
 
+test("work-item completion commit policy is a closed opt-in boolean", () => {
+  const enabled = clone(bootstrap);
+  enabled.policies = { commitOnWorkCompletion: true };
+  assert.equal(parseInitiative(enabled).policies?.commitOnWorkCompletion, true);
+  assert.equal(parseInitiative(bootstrap).policies, undefined, "omitted policy remains disabled");
+  assert.equal(parseInitiative({ ...clone(bootstrap), policies: { commitOnWorkCompletion: false } }).policies?.commitOnWorkCompletion, false);
+
+  const unknown = clone(enabled); unknown.policies.surprise = true;
+  assert.throws(() => parseInitiative(unknown), /policies has unknown field surprise/i);
+  const verbose = clone(enabled); verbose.policies.commitOnWorkCompletion = { enabled: true, workItems: [] };
+  assert.throws(() => parseInitiative(verbose), /commitOnWorkCompletion must be boolean/i);
+});
+
 test("schema rejects broken references, duplicate IDs, hierarchy overflow, parent dependencies, and cycles", () => {
   const cases: Array<[string, (value: any) => void, RegExp]> = [
     ["duplicate", (value) => { value.work[2].id = "W-1"; }, /duplicate id W-1/i],

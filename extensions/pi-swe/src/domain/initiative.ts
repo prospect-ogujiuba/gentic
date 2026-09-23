@@ -29,6 +29,7 @@ export type Initiative = {
   status: InitiativeStatus;
   objective: string;
   bootstrap?: { mode: string; runtimeValidated: boolean; approval: string; adoptionRequirement: string };
+  policies?: { commitOnWorkCompletion: boolean };
   scope: { in: string[]; out: string[] };
   constraints: string[];
   acceptanceCriteria: Array<{ id: string; text: string }>;
@@ -118,7 +119,7 @@ export function parseInitiative(input: unknown): Initiative {
   if (input.kind !== INITIATIVE_KIND || input.schemaVersion !== INITIATIVE_SCHEMA_VERSION) {
     throw new Error("unsupported initiative schema");
   }
-  exact(input, ["kind", "schemaVersion", "id", "revision", "status", "objective", "bootstrap", "scope", "constraints", "acceptanceCriteria", "assessment", "practices", "obligations", "work", "artifacts", "evidence", "decisions", "risks"], "initiative", ["bootstrap"]);
+  exact(input, ["kind", "schemaVersion", "id", "revision", "status", "objective", "bootstrap", "policies", "scope", "constraints", "acceptanceCriteria", "assessment", "practices", "obligations", "work", "artifacts", "evidence", "decisions", "risks"], "initiative", ["bootstrap", "policies"]);
   topic(input.id, "initiative id");
   integer(input.revision, "revision", 1);
   enumValue(input.status, ["draft", "active", "paused", "complete", "abandoned"], "initiative status");
@@ -131,6 +132,11 @@ export function parseInitiative(input: unknown): Initiative {
     bool(input.bootstrap.runtimeValidated, "bootstrap runtimeValidated");
     text(input.bootstrap.approval, "bootstrap approval");
     text(input.bootstrap.adoptionRequirement, "bootstrap adoptionRequirement");
+  }
+  if (input.policies !== undefined) {
+    object(input.policies, "policies");
+    exact(input.policies, ["commitOnWorkCompletion"], "policies");
+    bool(input.policies.commitOnWorkCompletion, "commitOnWorkCompletion");
   }
 
   object(input.scope, "scope");
@@ -283,7 +289,7 @@ export function contractFingerprint(initiative: Initiative): string {
   const contract = {
     objective: initiative.objective, scope: initiative.scope, constraints: initiative.constraints,
     acceptanceCriteria: initiative.acceptanceCriteria, assessment: initiative.assessment,
-    practices: initiative.practices, obligations: initiative.obligations,
+    practices: initiative.practices, obligations: initiative.obligations, policies: initiative.policies,
     work: initiative.work.map(({ status: _status, disposition: _disposition, ...item }) => item),
   };
   return `sha256:${createHash("sha256").update(stable(contract)).digest("hex")}`;

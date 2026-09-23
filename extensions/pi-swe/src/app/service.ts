@@ -3,7 +3,10 @@ import { parseInitiative, readyWork, transitionWork, type Initiative, type WorkI
 import { buildSweContextProjection } from "../pi/context.ts";
 import { hashInitiativeArtifacts } from "./artifacts.ts";
 import { InitiativeStore, type StoredInitiative } from "./store.ts";
+import { prepareCompletionCommit, type CompletionCommitPreparation } from "./completion-commit.ts";
 import { createModelReviewEvidence, VerificationCollector, type PreparedVerification, type ReviewRequest, type VerificationRequest } from "./verification.ts";
+
+export type CompletionResult = StoredInitiative & CompletionCommitPreparation;
 
 export type IntentionalRevisionRequest = {
   expectedRevision: number;
@@ -107,10 +110,12 @@ export class SweService {
     });
   }
 
-  async complete(initiativeId: string, workId?: string): Promise<StoredInitiative> {
-    return workId
-      ? this.#mutate(initiativeId, `complete ${workId} with current evidence`, (initiative) => completeWork(initiative, workId, this.cwd))
-      : this.#mutate(initiativeId, "complete initiative", completeInitiative);
+  async complete(initiativeId: string, workId?: string): Promise<CompletionResult> {
+    const stored = workId
+      ? await this.#mutate(initiativeId, `complete ${workId} with current evidence`, (initiative) => completeWork(initiative, workId, this.cwd))
+      : await this.#mutate(initiativeId, "complete initiative", completeInitiative);
+    const preparation = workId ? prepareCompletionCommit(stored.initiative, workId) : {};
+    return { ...stored, ...preparation };
   }
 
   completionBlockers(initiativeId: string, workId: string): string[] {

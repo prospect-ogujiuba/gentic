@@ -290,6 +290,7 @@
       "sourceFiles": [
         "extensions/pi-swe/index.ts",
         "extensions/pi-swe/src/app/artifacts.ts",
+        "extensions/pi-swe/src/app/completion-commit.ts",
         "extensions/pi-swe/src/app/service.ts",
         "extensions/pi-swe/src/app/store.ts",
         "extensions/pi-swe/src/app/verification.ts",

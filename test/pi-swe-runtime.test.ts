@@ -26,6 +26,7 @@ function fixture() {
   value.work = [{ ...value.work[1], parentId: undefined, status: "pending" }];
   value.artifacts = [];
   value.evidence = [];
+  value.policies = { commitOnWorkCompletion: true };
   value.decisions = [];
   value.risks = [];
   const path = initiativePath(root, "one-task");
@@ -162,6 +163,9 @@ test("one-task flow records RED then GREEN through ordinary bash hooks and compl
     const completed = await restarted.complete("one-task", "W-1");
     assert.equal(completed.initiative.work[0].status, "complete");
     assert.equal(completed.initiative.status, "active");
+    assert.deepEqual(completed.completionCommit?.paths, ["src/bug.ts", ".model-artifacts/initiatives/one-task/workflow.json"]);
+    assert.equal(completed.completionCommit?.message, "feat: characterize and repair dangling post deletion integration");
+    assert.match(completed.completionCommit?.command ?? "", /GIT_INDEX_FILE=.*git commit -m 'feat: characterize and repair dangling post deletion integration'/);
     assert.equal(completed.initiative.evidence.map((item) => `${item.kind}:${item.outcome}`).join(","), "machine-command:failed,machine-command:passed,model-review:passed");
     const finalized = await restarted.complete("one-task");
     assert.equal(finalized.initiative.status, "complete");

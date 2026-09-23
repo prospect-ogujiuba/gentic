@@ -4,7 +4,8 @@ import { Type } from "typebox";
 
 import { renderUsage } from "../../../../src/command-guidance.ts";
 import { registerSweActivityProbe } from "../../../../src/lifecycle-coordination.ts";
-import { SweService } from "../app/service.ts";
+import { SweService, type CompletionResult } from "../app/service.ts";
+import type { PreparedCompletionCommit } from "../app/completion-commit.ts";
 import type { Initiative } from "../domain/initiative.ts";
 import { getSweCommandCompletions, renderSweQuickHelp, SWE_COMMAND_ACTIONS } from "./autocomplete.ts";
 import { refreshSweContextMessages, restoreSweFocus, SWE_CONTEXT_TYPE, SWE_FOCUS_ENTRY_TYPE } from "./context.ts";
@@ -89,6 +90,7 @@ export function registerSweSurface(pi: ExtensionAPI): void {
       "Stop for credentials, destructive or irreversible operations, a contract/scope revision, a genuine blocker, or authorization not already granted by the user or repository policy.",
       "Use swe prepare_verification before running the exact command through Pi's ordinary bash tool; never substitute internal pi.exec.",
       "Use swe record_review only for an explicit model self-review; label it as self-review, not independent or human review.",
+      "When successful work-item completion returns an opt-in completionCommit, invoke its exact command through Pi's ordinary bash tool, report any failure without reverting completion, and never claim a commit before that command succeeds.",
       "After every executable work item is complete or disposed, call swe complete without workId to finalize the initiative.",
     ],
     parameters,
@@ -154,8 +156,14 @@ export function registerSweSurface(pi: ExtensionAPI): void {
           : action === "start" ? await current.start(initiativeId, workId!)
           : action === "implemented" ? await current.markImplemented(initiativeId, workId!)
           : await current.complete(initiativeId, workId);
-        ctx.ui.notify(renderStatus(stored.initiative), "info");
+        const completionResult = action === "complete" && workId ? stored as CompletionResult : undefined;
+        const completionCommit = completionResult?.completionCommit;
+        const commitMessage = completionCommit ? renderCommitInstruction(completionCommit) : completionResult?.completionCommitError;
+        ctx.ui.notify(`${renderStatus(stored.initiative)}${commitMessage ? `\n${commitMessage}` : ""}`, completionResult?.completionCommitError ? "warning" : "info");
         rememberFocus(ctx.cwd, initiativeId);
+        if (completionCommit) {
+          pi.sendMessage({ customType: "gentic.swe.completion-commit", content: renderCommitInstruction(completionCommit), display: false }, { triggerTurn: true, deliverAs: "followUp" });
+        }
         if (action === "start" || action === "resume") triggerContinuation(ctx.cwd, initiativeId);
       } catch (error) { ctx.ui.notify(error instanceof Error ? error.message : String(error), "error"); }
     },
@@ -199,7 +207,18 @@ async function executeAction(service: SweService, input: {
     : input.action === "complete" ? await service.complete(input.initiativeId, input.workId?.trim() || undefined)
     : input.action === "pause" ? await service.pause(input.initiativeId)
     : await service.resume(input.initiativeId);
-  return { text: renderStatus(stored.initiative), details: { initiative: stored.initiative, hash: stored.hash } };
+  const completionResult = input.action === "complete" && input.workId?.trim() ? stored as CompletionResult : undefined;
+  const completionCommit = completionResult?.completionCommit;
+  const commitMessage = completionCommit ? renderCommitInstruction(completionCommit) : completionResult?.completionCommitError;
+  return {
+    text: `${renderStatus(stored.initiative)}${commitMessage ? `\n${commitMessage}` : ""}`,
+    details: {
+      initiative: stored.initiative,
+      hash: stored.hash,
+      ...(completionCommit ? { completionCommit } : {}),
+      ...(completionResult?.completionCommitError ? { completionCommitError: completionResult.completionCommitError } : {}),
+    },
+  };
 }
 
 function renderStatus(initiative: Initiative): string {
@@ -221,6 +240,10 @@ async function openSweDocket(initiative: Initiative, ctx: ExtensionCommandContex
     close: () => done(undefined),
     terminalRows: () => (tui as unknown as { terminal?: { rows?: number } }).terminal?.rows ?? 40,
   }), { overlay: true, overlayOptions: { width: "80%", minWidth: 44, maxHeight: "85%", anchor: "center", margin: 1 } });
+}
+
+function renderCommitInstruction(commit: PreparedCompletionCommit): string {
+  return `Opt-in work-item commit prepared for ${commit.workId}. Invoke Pi's ordinary bash tool with exactly the completionCommit command. The work item remains complete if it fails; report the failure and recovery state without claiming a commit.\n${commit.command}`;
 }
 
 function continuationInstruction(initiativeId: string): string {
