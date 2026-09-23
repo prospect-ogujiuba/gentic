@@ -24,7 +24,7 @@ Small initiatives stay small. A light initiative may contain one executable task
 
 ## Surfaces and output
 
-Public surfaces are `/swe plan|open|list|status|next|resume|pause <topic>`, `/swe start|implemented|complete <topic> <work-id>`, and one `swe` structured tool whose actions include the sole supported `create` bootstrap. The keyboard docket is a bounded, read-only projection of the canonical graph; command and tool mutations both use `SweService`, and command completion cannot bypass evidence gates. Non-TUI `open` and `list` return bounded text. pi-swe has no pi-todo dependency; pi-todo remains a thin separate surface and cannot write SWE authority.
+Public surfaces are `/swe plan|open|list|status|next|resume|pause <topic>`, `/swe start|implemented|complete <topic> <work-id>`, and one `swe` structured tool whose actions include the sole supported `create` bootstrap. Bare `/swe` shows focused quick help. Argument completion discovers validated `workflow.json` authorities, shows compact status/revision/progress context, filters initiatives by action, and offers only relevant ready or active work IDs; completion remains advisory and cannot bypass lifecycle or evidence gates. The keyboard docket is a bounded, read-only projection of the canonical graph; command and tool mutations both use `SweService`. Non-TUI `open` and `list` return bounded text. pi-swe has no pi-todo dependency; pi-todo remains a thin separate surface and cannot write SWE authority.
 
 ## Artifact boundary
 

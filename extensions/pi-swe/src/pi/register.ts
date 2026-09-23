@@ -6,6 +6,7 @@ import { registerSweActivityProbe } from "../../../../src/lifecycle-coordination
 import { SweService } from "../app/service.ts";
 import { initiativePath } from "../app/store.ts";
 import type { Initiative } from "../domain/initiative.ts";
+import { getSweCommandCompletions, renderSweQuickHelp } from "./autocomplete.ts";
 import { refreshSweContextMessages, restoreSweFocus, SWE_CONTEXT_TYPE, SWE_FOCUS_ENTRY_TYPE } from "./context.ts";
 import { projectSweDocket, renderSweDocketLines } from "../ui/docket.ts";
 import { SweDocketModal } from "../ui/modal.ts";
@@ -28,30 +29,15 @@ const parameters = Type.Object({
   proposal: Type.Optional(Type.Unknown()),
 });
 
-const COMPLETIONS = [
-  { value: "plan", label: "plan", description: "Show authority path and swe create handoff · /swe plan <topic>" },
-  { value: "open", label: "open", description: "Open the canonical work docket · /swe open <topic>" },
-  { value: "list", label: "list", description: "List canonical work · /swe list <topic>" },
-  { value: "status", label: "status", description: "Inspect durable initiative state · /swe status <topic>" },
-  { value: "next", label: "next", description: "Show the next dependency-ready leaf · /swe next <topic>" },
-  { value: "start", label: "start", description: "Start dependency-ready work · /swe start <topic> <work-id>" },
-  { value: "implemented", label: "implemented", description: "Mark work implemented, not complete · /swe implemented <topic> <work-id>" },
-  { value: "complete", label: "complete", description: "Complete through evidence gates · /swe complete <topic> <work-id>" },
-  { value: "resume", label: "resume", description: "Resume a paused initiative · /swe resume <topic>" },
-  { value: "pause", label: "pause", description: "Pause without losing durable state · /swe pause <topic>" },
-] as const;
-
+const COMMAND_ACTIONS = new Set(["plan", "open", "list", "status", "next", "start", "implemented", "complete", "resume", "pause"]);
 const WORK_COMMANDS = new Set(["start", "implemented", "complete"]);
 
-export function getSweCommandCompletions(prefix: string) {
-  const normalized = prefix.trimStart();
-  if (/\s/.test(normalized)) return [];
-  return COMPLETIONS.filter((item) => item.value.startsWith(normalized)).map((item) => ({ ...item }));
-}
+export { getSweCommandCompletions } from "./autocomplete.ts";
 
 export function registerSweSurface(pi: ExtensionAPI): void {
   const services = new Map<string, SweService>();
   const focused = new Map<string, string>();
+  let completionCwd = process.cwd();
   const service = (cwd: string) => { let value = services.get(cwd); if (!value) { value = new SweService(cwd); services.set(cwd, value); } return value; };
   const rememberFocus = (cwd: string, initiativeId: string) => {
     focused.set(cwd, initiativeId);
@@ -60,6 +46,7 @@ export function registerSweSurface(pi: ExtensionAPI): void {
   registerSweActivityProbe((ctx) => service(ctx.cwd).hasActiveWork());
 
   pi.on("session_start", (_event, ctx) => {
+    completionCwd = ctx.cwd;
     const initiativeId = restoreSweFocus(ctx.sessionManager.getEntries());
     if (initiativeId) focused.set(ctx.cwd, initiativeId);
     else focused.delete(ctx.cwd);
@@ -105,11 +92,25 @@ export function registerSweSurface(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("swe", {
-    description: "/swe [plan|open|list|status|next|start|implemented|complete|resume|pause] <topic> [work-id]",
-    getArgumentCompletions: getSweCommandCompletions,
+    description: "Manage durable initiatives · /swe <action> <topic> [work-id]",
+    getArgumentCompletions: (prefix) => getSweCommandCompletions(prefix, {
+      cwd: completionCwd,
+      focusedInitiativeId: focused.get(completionCwd),
+    }),
     handler: async (args, ctx) => {
-      const [action = "status", initiativeId, workId, ...extra] = args.trim().split(/\s+/).filter(Boolean);
-      const known = COMPLETIONS.some((item) => item.value === action);
+      completionCwd = ctx.cwd;
+      if (!args.trim()) {
+        const initiativeId = focused.get(ctx.cwd);
+        let initiative: Initiative | undefined;
+        if (initiativeId) {
+          try { initiative = service(ctx.cwd).status(initiativeId).initiative; }
+          catch { focused.delete(ctx.cwd); }
+        }
+        ctx.ui.notify(renderSweQuickHelp(initiative), "info");
+        return;
+      }
+      const [action, initiativeId, workId, ...extra] = args.trim().split(/\s+/).filter(Boolean);
+      const known = COMMAND_ACTIONS.has(action);
       const needsWork = WORK_COMMANDS.has(action);
       if (!known || !initiativeId || extra.length || needsWork !== Boolean(workId)) {
         ctx.ui.notify("Usage: /swe [plan|open|list|status|next|resume|pause] <topic> or /swe [start|implemented|complete] <topic> <work-id>", "warning"); return;

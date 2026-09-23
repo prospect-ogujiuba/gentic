@@ -55,6 +55,51 @@ test("minimal Pi surface registers one command/tool and never internally execute
   assert.match(tools.get("swe").promptGuidelines.join(" "), /self-review.*not independent/i);
   assert.equal(execCalls, 0);
   assert.deepEqual(getSweCommandCompletions("").map((item) => item.value), ["plan", "open", "list", "status", "next", "start", "implemented", "complete", "resume", "pause"]);
+  const notifications: Array<{ message: string; level: string }> = [];
+  await commands.get("swe").handler("", {
+    cwd: process.cwd(),
+    ui: { notify(message: string, level: string) { notifications.push({ message, level }); } },
+  });
+  assert.equal(notifications[0]?.level, "info");
+  assert.match(notifications[0]?.message ?? "", /No focused SWE initiative.*Type a space after an action or topic/s);
+});
+
+test("command completion discovers initiatives and offers action-aware work", async () => {
+  const { root, service } = fixture();
+  try {
+    const status = getSweCommandCompletions("status ", { cwd: root, focusedInitiativeId: "one-task" });
+    assert.equal(status.length, 1);
+    assert.deepEqual({ value: status[0].value, label: status[0].label }, { value: "status one-task", label: "one-task" });
+    assert.match(status[0].description ?? "", /focused · draft · r\d+ · 0\/1 complete · W-1:/);
+    assert.deepEqual(getSweCommandCompletions("resume ", { cwd: root }).map((item) => item.value), ["resume one-task"]);
+    assert.deepEqual(getSweCommandCompletions("pause ", { cwd: root }), []);
+
+    const ready = getSweCommandCompletions("start one-task ", { cwd: root });
+    assert.deepEqual(ready.map((item) => item.value), ["start one-task W-1"]);
+    assert.match(ready[0].description ?? "", /^ready ·/);
+
+    await service.start("one-task", "W-1");
+    assert.deepEqual(getSweCommandCompletions("pause ", { cwd: root }).map((item) => item.value), ["pause one-task"]);
+    assert.deepEqual(getSweCommandCompletions("implemented one-task ", { cwd: root }).map((item) => item.value), ["implemented one-task W-1"]);
+
+    await service.markImplemented("one-task", "W-1");
+    const completable = getSweCommandCompletions("complete one-task ", { cwd: root });
+    assert.deepEqual(completable.map((item) => item.value), ["complete one-task W-1"]);
+    assert.match(completable[0].description ?? "", /blocked: missing machine-command evidence/i);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("command completion ignores malformed and non-canonical initiative directories", () => {
+  const { root } = fixture();
+  try {
+    const malformed = join(root, ".model-artifacts", "initiatives", "broken-work");
+    mkdirSync(malformed, { recursive: true });
+    writeFileSync(join(malformed, "workflow.json"), "{not-json\n");
+    const nonCanonical = join(root, ".model-artifacts", "initiatives", "Not-Canonical");
+    mkdirSync(nonCanonical, { recursive: true });
+    writeFileSync(join(nonCanonical, "workflow.json"), "{}\n");
+    assert.deepEqual(getSweCommandCompletions("status ", { cwd: root }).map((item) => item.value), ["status one-task"]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("one-task flow records RED then GREEN through ordinary bash hooks and completes after restart", async () => {
