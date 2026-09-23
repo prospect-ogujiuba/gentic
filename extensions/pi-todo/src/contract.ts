@@ -11,6 +11,7 @@ export const TODO_MAX_ITEMS = 1_000;
 export const TODO_PUBLIC_ACTIONS = Object.freeze([
   "create",
   "move",
+  "delete",
   "start",
   "finish",
   "block",
@@ -40,6 +41,7 @@ export type TodoPublicItem = {
 export type TodoPublicRequest =
   | { action: "create"; title: string; parentTodoId?: string }
   | { action: "move"; todoId: string; beforeTodoId?: string; afterTodoId?: string }
+  | { action: "delete"; todoId: string }
   | { action: "start"; todoId: string }
   | { action: "finish"; todoId?: string; summary?: string }
   | { action: "block"; todoId?: string; reason: string }

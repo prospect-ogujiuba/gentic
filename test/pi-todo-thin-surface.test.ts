@@ -18,6 +18,7 @@ type RegisteredTool = {
     content: Array<{ text: string }>;
     details: {
       todo?: { id: string; status: string; parentTodoId?: string };
+      deletedCount?: number;
       state?: { todos: Record<string, { status: string; parentTodoId?: string }>; order: string[] };
       error?: { code: string };
     };
@@ -66,7 +67,7 @@ test("thin surface exposes essential tool, command, and status behavior through 
 
   const tool = tools.get("todo");
   assert.ok(tool);
-  assert.deepEqual(tool.parameters.properties.action.enum, ["create", "move", "start", "finish", "block", "unblock", "list"]);
+  assert.deepEqual(tool.parameters.properties.action.enum, ["create", "move", "delete", "start", "finish", "block", "unblock", "list"]);
   assert.deepEqual({
     title: tool.parameters.properties.title?.maxLength,
     todoId: tool.parameters.properties.todoId?.maxLength,
@@ -120,9 +121,18 @@ test("thin surface exposes essential tool, command, and status behavior through 
   assert.match(notifications.at(-1) ?? "", /Created Manual child/);
   assert.match((await execute("list")).content[0]!.text, /  Manual child \[ready\]/);
 
+  const childId = childA.details.todo?.id;
+  assert.ok(childId);
+  assert.equal((await execute("start", { todoId: childId })).details.todo?.status, "in_progress");
+  await commands.get("todo")?.handler(`delete ${parentId}`, ctx);
+  assert.match(notifications.at(-1) ?? "", /Deleted Parent \(4 todos\)/);
+  const afterDelete = await execute("list");
+  assert.equal(afterDelete.details.state?.todos[parentId], undefined);
+  assert.equal(afterDelete.details.state?.todos[childId], undefined);
+
   sweActive = true;
   const hook = handlers.get("tool_call") as ToolCallHandler;
-  const blocked = await hook({ toolName: "todo", input: { action: "create" } }, ctx) as { block?: boolean; reason?: string };
+  const blocked = await hook({ toolName: "todo", input: { action: "delete" } }, ctx) as { block?: boolean; reason?: string };
   assert.equal(blocked.block, true);
   assert.match(blocked.reason ?? "", /pi-swe lifecycle ownership/);
   assert.equal(await hook({ toolName: "todo", input: { action: "list" } }, ctx), undefined);
@@ -202,7 +212,7 @@ test("queued abort and ownership probe failure cannot mutate todo state", async 
 
 test("todo command completions expose the lightweight visual and lifecycle surface", () => {
   const completions = getTodoCommandCompletions("");
-  assert.deepEqual(completions.map((item) => item.value), ["open", "list", "create", "move", "start", "finish", "block", "unblock"]);
+  assert.deepEqual(completions.map((item) => item.value), ["open", "list", "create", "move", "delete", "start", "finish", "block", "unblock"]);
   assert.ok(completions.every((item) => item.description.includes(`/todo ${item.value}`)));
   assert.deepEqual(getTodoCommandCompletions("st").map((item) => item.value), ["start"]);
   assert.deepEqual(getTodoCommandCompletions("start "), []);

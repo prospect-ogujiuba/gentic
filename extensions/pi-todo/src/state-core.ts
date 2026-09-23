@@ -28,6 +28,7 @@ type TodoCoreEvent =
   | { id: string; type: "todo.created"; at: string; todo: TodoPublicItem }
   | { id: string; type: "todo.started"; at: string; todoId: string }
   | { id: string; type: "todo.moved"; at: string; todoId: string; beforeTodoId?: string; afterTodoId?: string }
+  | { id: string; type: "todo.deleted"; at: string; todoId: string }
   | { id: string; type: "todo.completed" | "todo.cancelled" | "todo.failed" | "todo.superseded" | "todo.verified"; at: string; todoId: string; summary?: string; evidence?: readonly unknown[] }
   | { id: string; type: "todo.blocked" | "todo.external_blocked"; at: string; todoId: string; reason: string }
   | { id: string; type: "todo.unblocked"; at: string; todoId: string };
@@ -125,6 +126,15 @@ export class BranchTodoCore {
     return todo;
   }
 
+  delete(todoId: string): { todo: TodoPublicItem; deletedCount: number } {
+    const state = this.state();
+    const normalizedId = requireTodoId(todoId);
+    const todo = requireTodo(state, normalizedId);
+    const deletedCount = 1 + descendantIds(state, normalizedId).length;
+    this.append({ type: "todo.deleted", todoId: normalizedId });
+    return { todo, deletedCount };
+  }
+
   start(todoId: string): TodoPublicItem {
     const state = this.state();
     const normalizedId = requireTodoId(todoId);
@@ -200,7 +210,7 @@ function decodeEvent(entry: TodoBranchEntry): TodoCoreEvent | undefined {
   if (typeof candidate.todoId !== "string") return undefined;
   const todoId = decodeTodoId(candidate.todoId);
   if (!todoId) return undefined;
-  if (candidate.type === "todo.started" || candidate.type === "todo.unblocked") {
+  if (candidate.type === "todo.started" || candidate.type === "todo.unblocked" || candidate.type === "todo.deleted") {
     return { id: candidate.id, type: candidate.type, at: candidate.at, todoId };
   }
   if (candidate.type === "todo.moved") {
@@ -251,6 +261,13 @@ function applyEvent(state: TodoCoreState, event: TodoCoreEvent): void {
   }
   if (event.type === "todo.moved") {
     moveTodo(state, event.todoId, event.beforeTodoId, event.afterTodoId);
+    return;
+  }
+  if (event.type === "todo.deleted") {
+    const deletedIds = new Set([event.todoId, ...descendantIds(state, event.todoId)]);
+    for (const id of deletedIds) delete state.todos[id];
+    state.order = state.order.filter((id) => !deletedIds.has(id));
+    if (state.activeTodoId && deletedIds.has(state.activeTodoId)) state.activeTodoId = undefined;
     return;
   }
   if (["todo.completed", "todo.cancelled", "todo.failed", "todo.superseded", "todo.verified"].includes(event.type)) {

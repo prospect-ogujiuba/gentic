@@ -26,6 +26,7 @@ const TODO_COMMAND_COMPLETIONS = [
   { value: "list", label: "list", description: "List every todo · /todo list" },
   { value: "create", label: "create", description: "Create work or a subtask · /todo create <title> [--parent <id>]" },
   { value: "move", label: "move", description: "Reorder siblings · /todo move <id> before|after <id>" },
+  { value: "delete", label: "delete", description: "Delete a todo subtree · /todo delete <id>" },
   { value: "start", label: "start", description: "Start one todo · /todo start <id>" },
   { value: "finish", label: "finish", description: "Finish active work · /todo finish [id]" },
   { value: "block", label: "block", description: "Record an external blocker · /todo block <id> <reason>" },
@@ -52,6 +53,7 @@ type SurfaceResult = {
   isError?: boolean;
   details: {
     todo?: TodoPublicItem;
+    deletedCount?: number;
     state?: TodoCoreState;
     error?: { code: string; message: string };
   };
@@ -100,7 +102,7 @@ export function registerLightweightTodoSurface(pi: ExtensionAPI, options: Surfac
   pi.registerTool({
     name: "todo",
     label: "Todo",
-    description: "Small branch-aware focus list with subtasks and sibling reordering: create, move, start, finish, block, unblock, and list.",
+    description: "Small branch-aware focus list with subtasks and sibling reordering: create, move, delete, start, finish, block, unblock, and list.",
     promptSnippet: "Use todo to keep one active task. pi-swe owns lifecycle while an assessed workflow task is active.",
     parameters: lightweightTodoParameters,
     executionMode: "sequential",
@@ -123,7 +125,7 @@ export function registerLightweightTodoSurface(pi: ExtensionAPI, options: Surfac
   });
 
   pi.registerCommand("todo", {
-    description: "/todo [open|list|create <title> [--parent <id>]|move <id> before|after <id>|start <id>|finish [id]|block <id> <reason>|unblock <id>]",
+    description: "/todo [open|list|create <title> [--parent <id>]|move <id> before|after <id>|delete <id>|start <id>|finish [id]|block <id> <reason>|unblock <id>]",
     getArgumentCompletions: getTodoCommandCompletions,
     handler: async (args, ctx) => {
       if (args.trim() === "open") {
@@ -132,7 +134,7 @@ export function registerLightweightTodoSurface(pi: ExtensionAPI, options: Surfac
       }
       const request = commandRequest(args);
       if (!request) {
-        ctx.ui.notify("Usage: /todo [open|list|create <title> [--parent <id>]|move <id> before|after <id>|start <id>|finish [id]|block <id> <reason>|unblock <id>]", "warning");
+        ctx.ui.notify("Usage: /todo [open|list|create <title> [--parent <id>]|move <id> before|after <id>|delete <id>|start <id>|finish [id]|block <id> <reason>|unblock <id>]", "warning");
         return;
       }
       const result = await execute(request, ctx);
@@ -164,6 +166,13 @@ function dispatch(core: BranchTodoCore, request: TodoPublicRequest): SurfaceResu
       details: { state },
     };
   }
+  if (request.action === "delete") {
+    const { todo, deletedCount } = core.delete(request.todoId);
+    return {
+      content: [{ type: "text", text: `Deleted ${todo.title} (${deletedCount} todo${deletedCount === 1 ? "" : "s"})` }],
+      details: { todo, deletedCount },
+    };
+  }
   const todo = request.action === "create" ? core.create(request.title, request.parentTodoId)
     : request.action === "move" ? core.move(request.todoId, request.beforeTodoId, request.afterTodoId)
     : request.action === "start" ? core.start(request.todoId)
@@ -184,7 +193,7 @@ function requestFrom(action: TodoPublicAction, params: Record<string, unknown>):
     beforeTodoId: optionalString(params.beforeTodoId),
     afterTodoId: optionalString(params.afterTodoId),
   };
-  if (action === "start" || action === "unblock") return { action, todoId: stringParam(params.todoId, "todoId") };
+  if (action === "delete" || action === "start" || action === "unblock") return { action, todoId: stringParam(params.todoId, "todoId") };
   if (action === "finish") return { action, todoId: optionalString(params.todoId), summary: optionalString(params.summary) };
   if (action === "block") return { action, todoId: optionalString(params.todoId), reason: stringParam(params.reason, "reason") };
   return { action };
@@ -212,7 +221,7 @@ function commandRequest(args: string): TodoPublicRequest | undefined {
       ? { action, todoId: match[1]!, beforeTodoId: match[3]! }
       : { action, todoId: match[1]!, afterTodoId: match[3]! };
   }
-  if (action === "start" && rest) return { action, todoId: rest };
+  if ((action === "delete" || action === "start") && rest && !/\s/.test(rest)) return { action, todoId: rest };
   if (action === "finish") return { action, todoId: rest || undefined };
   if (action === "unblock" && rest) return { action, todoId: rest };
   if (action === "block") {
@@ -271,7 +280,7 @@ function renderList(state: TodoCoreState): string {
   return rows.length ? rows.map(({ todo, depth }) => `${"  ".repeat(depth)}${todo.title} [${todo.status}] (${todo.id})${todo.blockedReason ? ` — ${todo.blockedReason}` : ""}`).join("\n") : "No todos.";
 }
 
-function verb(action: Exclude<TodoPublicAction, "list">): string {
+function verb(action: Exclude<TodoPublicAction, "list" | "delete">): string {
   return action === "create" ? "Created" : action === "move" ? "Moved" : action === "start" ? "Started" : action === "finish" ? "Finished" : action === "block" ? "Blocked" : "Unblocked";
 }
 

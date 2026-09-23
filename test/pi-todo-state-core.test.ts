@@ -91,6 +91,55 @@ test("subtasks reconstruct as a tree, reorder among siblings, and gate parent co
   assert.ok(moved);
 });
 
+test("delete removes a leaf or complete parent subtree and clears active descendants", () => {
+  const h = harness();
+  const unrelated = h.core.create("Unrelated");
+  const parent = h.core.create("Parent");
+  const first = h.core.create("First child", parent.id);
+  const second = h.core.create("Second child", parent.id);
+  const grandchild = h.core.create("Grandchild", first.id);
+
+  const leafDeletion = h.core.delete(second.id);
+  assert.equal(leafDeletion.todo.id, second.id);
+  assert.equal(leafDeletion.deletedCount, 1);
+  let state = h.core.state();
+  assert.equal(state.todos[second.id], undefined);
+  assert.deepEqual(state.order, [unrelated.id, parent.id, first.id, grandchild.id]);
+
+  h.core.start(grandchild.id);
+  const branchLength = h.branch.length;
+  const subtreeDeletion = h.core.delete(parent.id);
+  assert.equal(subtreeDeletion.todo.id, parent.id);
+  assert.equal(subtreeDeletion.deletedCount, 3);
+  assert.equal(h.branch.length, branchLength + 1);
+  assert.equal((h.branch.at(-1)?.data as { event?: { type?: string } })?.event?.type, "todo.deleted");
+
+  state = h.core.state();
+  assert.deepEqual(state.order, [unrelated.id]);
+  assert.deepEqual(Object.keys(state.todos), [unrelated.id]);
+  assert.equal(state.activeTodoId, undefined);
+});
+
+test("delete replay ignores later lifecycle events and permits explicit recreation", () => {
+  const at = "2026-01-01T00:00:00.000Z";
+  const event = (id: string, value: Record<string, unknown>): TodoBranchEntry => ({
+    type: "custom",
+    customType: "gentic.todo.event",
+    data: { version: 1, event: { id, at, ...value } },
+  });
+  const h = harness([
+    event("create", { type: "todo.created", todo: { id: "target", title: "Target", status: "ready" } }),
+    event("delete", { type: "todo.deleted", todoId: "target" }),
+    event("late-start", { type: "todo.started", todoId: "target" }),
+  ]);
+  assert.deepEqual(h.core.state(), { todos: {}, order: [], activeTodoId: undefined });
+
+  h.branch.push(event("recreate", { type: "todo.created", todo: { id: "target", title: "Recreated", status: "ready" } }));
+  assert.equal(h.core.state().todos.target.title, "Recreated");
+  assert.throws(() => h.core.delete("missing"), (error) =>
+    error instanceof TodoCoreError && error.code === "TODO_NOT_FOUND");
+});
+
 test("replay preserves the parent completion invariant across rollback-era events", () => {
   const at = "2026-01-01T00:00:00.000Z";
   const event = (id: string, value: Record<string, unknown>): TodoBranchEntry => ({
