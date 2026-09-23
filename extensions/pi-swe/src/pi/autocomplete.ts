@@ -2,24 +2,32 @@ import { readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { AutocompleteItem } from "@earendil-works/pi-tui";
 
+import {
+  prefixedCompletions,
+  renderActionHelp,
+  rootActionCompletions,
+  type CommandActionSpec,
+  type CommandCompletion,
+} from "../../../../src/command-guidance.ts";
 import { InitiativeStore } from "../app/store.ts";
 import { completionBlockers } from "../domain/completion.ts";
 import { readyWork, type Initiative, type WorkItem } from "../domain/initiative.ts";
 
-const ACTIONS = [
-  { value: "plan", description: "Plan from natural language · /swe plan [--id topic] <request>" },
-  { value: "open", description: "Open the canonical work docket · /swe open <topic>" },
-  { value: "list", description: "List canonical work · /swe list <topic>" },
-  { value: "status", description: "Inspect durable initiative state · /swe status <topic>" },
-  { value: "next", description: "Show the next dependency-ready leaf · /swe next <topic>" },
-  { value: "start", description: "Start dependency-ready work · /swe start <topic> <work-id>" },
-  { value: "implemented", description: "Mark active work implemented · /swe implemented <topic> <work-id>" },
-  { value: "complete", description: "Complete work through evidence gates · /swe complete <topic> <work-id>" },
-  { value: "resume", description: "Resume a paused or draft initiative · /swe resume <topic>" },
-  { value: "pause", description: "Pause an active initiative · /swe pause <topic>" },
-] as const;
+export const SWE_COMMAND_ACTIONS = [
+  { action: "plan", syntax: "/swe plan [--id topic] <request>", description: "Plan from natural language", help: "Assess and create an initiative" },
+  { action: "open", syntax: "/swe open <topic>", description: "Open the canonical work docket" },
+  { action: "list", syntax: "/swe list <topic>", description: "List canonical work" },
+  { action: "status", syntax: "/swe status <topic>", description: "Inspect durable initiative state" },
+  { action: "next", syntax: "/swe next <topic>", description: "Show the next dependency-ready leaf" },
+  { action: "start", syntax: "/swe start <topic> <work-id>", description: "Start dependency-ready work", help: "Start ready work" },
+  { action: "implemented", syntax: "/swe implemented <topic> <work-id>", description: "Mark active work implemented", help: "Mark work implemented" },
+  { action: "complete", syntax: "/swe complete <topic> [work-id]", description: "Complete work through evidence gates" },
+  { action: "resume", syntax: "/swe resume <topic>", description: "Resume a paused or draft initiative" },
+  { action: "pause", syntax: "/swe pause <topic>", description: "Pause an active initiative" },
+] as const satisfies readonly CommandActionSpec[];
 
-const KNOWN_ACTIONS = new Set(ACTIONS.map((item) => item.value));
+export type SweCommandAction = typeof SWE_COMMAND_ACTIONS[number]["action"];
+const KNOWN_ACTIONS = new Set<string>(SWE_COMMAND_ACTIONS.map((item) => item.action));
 const WORK_ACTIONS = new Set(["start", "implemented", "complete"]);
 const TOPIC = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_INITIATIVES = 250;
@@ -29,16 +37,10 @@ type DiscoveredInitiative = { initiative: Initiative };
 
 export function getSweCommandCompletions(prefix: string, options: CompletionOptions = {}): AutocompleteItem[] {
   const normalized = prefix.trimStart();
-  if (!/\s/.test(normalized)) {
-    return ACTIONS.filter((item) => item.value.startsWith(normalized)).map((item) => ({
-      value: item.value,
-      label: item.value,
-      description: item.description,
-    }));
-  }
+  if (!/\s/.test(normalized)) return rootActionCompletions(normalized, SWE_COMMAND_ACTIONS);
 
   const actionMatch = normalized.match(/^(\S+)\s+(.*)$/s);
-  if (!actionMatch || !KNOWN_ACTIONS.has(actionMatch[1] as typeof ACTIONS[number]["value"]) || actionMatch[1] === "plan" || !options.cwd) return [];
+  if (!actionMatch || !KNOWN_ACTIONS.has(actionMatch[1]!) || actionMatch[1] === "plan" || !options.cwd) return [];
   const action = actionMatch[1];
   const remainder = actionMatch[2];
   const workMatch = remainder.match(/^(\S+)\s+(.*)$/s);
@@ -49,13 +51,13 @@ export function getSweCommandCompletions(prefix: string, options: CompletionOpti
 
   if (!workMatch || !WORK_ACTIONS.has(action)) {
     if (/\s/.test(remainder)) return [];
-    return initiatives
+    return prefixedCompletions(`${action} `, initiatives
       .filter(({ initiative }) => initiative.id.startsWith(remainder))
       .map(({ initiative }) => ({
-        value: `${action} ${initiative.id}`,
+        value: initiative.id,
         label: initiative.id,
         description: describeInitiative(initiative, options.focusedInitiativeId === initiative.id),
-      }));
+      })));
   }
 
   const initiativeId = workMatch[1];
@@ -63,7 +65,7 @@ export function getSweCommandCompletions(prefix: string, options: CompletionOpti
   if (/\s/.test(workPrefix)) return [];
   const found = initiatives.find(({ initiative }) => initiative.id === initiativeId);
   if (!found) return [];
-  return workCompletions(action, found.initiative, options.cwd, workPrefix);
+  return prefixedCompletions(`${action} ${initiativeId} `, workCompletions(action, found.initiative, options.cwd, workPrefix));
 }
 
 export function renderSweQuickHelp(initiative?: Initiative): string {
@@ -76,13 +78,7 @@ export function renderSweQuickHelp(initiative?: Initiative): string {
   }
   lines.push(
     "",
-    "/swe plan [--id topic] <request>  Assess and create an initiative",
-    "/swe status <topic>               Inspect durable state",
-    "/swe open <topic>                 Open the work docket",
-    "/swe start <topic> <work-id>      Start ready work",
-    "/swe implemented <topic> <work-id> Mark work implemented",
-    "/swe complete <topic> <work-id>   Complete work through evidence gates",
-    "/swe pause|resume <topic>         Control execution",
+    ...renderActionHelp(SWE_COMMAND_ACTIONS, ["plan", "status", "open", "start", "implemented", "complete", "pause", "resume"]),
     "Type a space after an action or topic to see contextual completions.",
   );
   return lines.join("\n");
@@ -135,7 +131,7 @@ function describeInitiative(initiative: Initiative, focused: boolean): string {
   return `${focused ? "focused · " : ""}${initiative.status} · r${initiative.revision} · ${complete}/${executable.length} complete · ${detail}`;
 }
 
-function workCompletions(action: string, initiative: Initiative, cwd: string, prefix: string): AutocompleteItem[] {
+function workCompletions(action: string, initiative: Initiative, cwd: string, prefix: string): CommandCompletion[] {
   let work: WorkItem[] = [];
   if (action === "start") work = readyWork(initiative);
   else if (action === "implemented") work = initiative.work.filter((item) => item.kind !== "phase" && item.status === "active" && !item.disposition);
@@ -143,7 +139,7 @@ function workCompletions(action: string, initiative: Initiative, cwd: string, pr
 
   const items = work
     .filter((item) => item.id.toLowerCase().startsWith(prefix.toLowerCase()))
-    .map((item): AutocompleteItem => {
+    .map((item): CommandCompletion => {
       let state = item.status ?? "unknown";
       if (action === "start") state = "ready";
       if (action === "complete") {
@@ -151,7 +147,7 @@ function workCompletions(action: string, initiative: Initiative, cwd: string, pr
         state = blockers.length ? `blocked: ${clip(blockers[0], 70)}` : "ready to complete";
       }
       return {
-        value: `${action} ${initiative.id} ${item.id}`,
+        value: item.id,
         label: item.id,
         description: `${state} · ${clip(item.title, 72)}`,
       };

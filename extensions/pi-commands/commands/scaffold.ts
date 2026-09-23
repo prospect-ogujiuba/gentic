@@ -3,6 +3,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { rootActionCompletions, type CommandActionSpec } from "../../../src/command-guidance.ts";
 import type { PiCommandModule } from "../types.ts";
 
 type ScaffoldKind =
@@ -43,9 +44,23 @@ type ParseResult =
 
 const selfHostRoot = resolve(fileURLToPath(new URL("../../../", import.meta.url)));
 const templateRoot = fileURLToPath(new URL("../../pi-catalog/templates/", import.meta.url));
-const validKinds = [
-  "extension", "tool", "command", "event", "shortcut", "flag", "provider", "widget", "footer", "overlay", "skill", "prompt", "theme", "primitive",
-] as const;
+const SCAFFOLD_COMMAND_ACTIONS = [
+  { action: "extension", syntax: "/scaffold extension <name> [--minimal|--layered]", description: "Create a minimal or layered Pi extension" },
+  { action: "tool", syntax: "/scaffold tool <name>", description: "Create an extension-backed model-callable tool" },
+  { action: "command", syntax: "/scaffold command <name>", description: "Create a runtime slash command" },
+  { action: "event", syntax: "/scaffold event <name>", description: "Create an extension lifecycle event handler" },
+  { action: "shortcut", syntax: "/scaffold shortcut <name>", description: "Create a keyboard shortcut extension" },
+  { action: "flag", syntax: "/scaffold flag <name>", description: "Create a CLI flag extension" },
+  { action: "provider", syntax: "/scaffold provider <name>", description: "Create a custom provider extension" },
+  { action: "widget", syntax: "/scaffold widget <name>", description: "Create a widget extension" },
+  { action: "footer", syntax: "/scaffold footer <name>", description: "Create a custom footer extension" },
+  { action: "overlay", syntax: "/scaffold overlay <name>", description: "Create an overlay UI extension" },
+  { action: "skill", syntax: "/scaffold skill <name> [--simple|--directory]", description: "Create a simple or directory skill" },
+  { action: "prompt", syntax: "/scaffold prompt <name>", description: "Create a prompt template" },
+  { action: "theme", syntax: "/scaffold theme <name>", description: "Create a Pi theme" },
+  { action: "primitive", syntax: "/scaffold primitive <name>", description: "Create a Gentic primitive" },
+] as const satisfies readonly CommandActionSpec<ScaffoldKind>[];
+const validKinds: readonly ScaffoldKind[] = SCAFFOLD_COMMAND_ACTIONS.map((item) => item.action);
 const extensionBackedKinds = new Set<ScaffoldKind>(["tool", "command", "event", "shortcut", "flag", "provider", "widget", "footer", "overlay"]);
 const usage = [
   "Usage: /scaffold <kind> <name> [variant] [--dry-run|--apply]",
@@ -298,23 +313,6 @@ export function formatScaffoldApplyResult(result: ScaffoldApplyResult): string {
   return [`Applied scaffold: ${heading}`, `Project root: ${result.projectRoot}`, ...result.createdPaths.map((path) => `- created ${path}`), ...nextSteps].join("\n");
 }
 
-const KIND_DESCRIPTIONS: Record<ScaffoldKind, string> = {
-  extension: "Create a minimal or layered Pi extension · /scaffold extension <name> [--minimal|--layered]",
-  tool: "Create an extension-backed model-callable tool · /scaffold tool <name>",
-  command: "Create a runtime slash command · /scaffold command <name>",
-  event: "Create an extension lifecycle event handler · /scaffold event <name>",
-  shortcut: "Create a keyboard shortcut extension · /scaffold shortcut <name>",
-  flag: "Create a CLI flag extension · /scaffold flag <name>",
-  provider: "Create a custom provider extension · /scaffold provider <name>",
-  widget: "Create a widget extension · /scaffold widget <name>",
-  footer: "Create a custom footer extension · /scaffold footer <name>",
-  overlay: "Create an overlay UI extension · /scaffold overlay <name>",
-  skill: "Create a simple or directory skill · /scaffold skill <name> [--simple|--directory]",
-  prompt: "Create a prompt template · /scaffold prompt <name>",
-  theme: "Create a Pi theme · /scaffold theme <name>",
-  primitive: "Create a Gentic primitive · /scaffold primitive <name>",
-};
-
 const OPTION_DESCRIPTIONS: Record<string, string> = {
   "--minimal": "Generate the minimal extension variant",
   "--layered": "Generate domain/app/Pi layered extension files",
@@ -330,11 +328,7 @@ export function completeScaffoldArgument(prefix: string): Array<{ value: string;
   const tokens = normalized.trim().split(/\s+/).filter(Boolean);
   if (tokens.length === 0 || (tokens.length === 1 && !trailingSpace)) {
     const query = tokens[0] ?? "";
-    return validKinds.filter((value) => value.startsWith(query)).map((value) => ({
-      value,
-      label: value,
-      description: KIND_DESCRIPTIONS[value],
-    }));
+    return rootActionCompletions(query, SCAFFOLD_COMMAND_ACTIONS);
   }
   if (tokens.length < 2 || (tokens.length === 2 && !trailingSpace)) return [];
   const kind = tokens[0];

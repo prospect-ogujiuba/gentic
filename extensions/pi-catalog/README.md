@@ -12,7 +12,7 @@
 
 ## Orientation block
 
-- **Command:** `/catalog [status|search <term>]`.
+- **Command:** `/catalog status` or `/catalog search <term>`; root completions and invalid-input usage are generated from the same local action metadata.
 - **Tool:** `gentic_catalog` with `status` and `search` operations.
 - **Runtime source:** `pi.getCommands()`, `pi.getAllTools()`, and canonical `sourceInfo`.
 - **Direct invocation:** search results show `/<command>` syntax; the catalog never proxies commands.

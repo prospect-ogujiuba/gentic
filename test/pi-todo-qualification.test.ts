@@ -41,6 +41,7 @@ test("pi-todo package contains no competing legacy runtime", async () => {
   ].sort();
   assert.deepEqual(sourceFiles, [
     "index.ts",
+    "src/command-adapter.ts",
     "src/contract.ts",
     "src/state-core.ts",
     "src/thin-surface.ts",

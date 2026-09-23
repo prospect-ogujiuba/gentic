@@ -3,9 +3,10 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { fileURLToPath } from "node:url";
 
+import { renderUsage, rootActionCompletions } from "../../../../src/command-guidance.ts";
 import { packageSummary } from "../app/package-summary.ts";
 import {
-  DISCOVERY_COMMAND_COMPLETIONS,
+  DISCOVERY_COMMAND_ACTIONS,
   DISCOVERY_COMMAND_NAME,
   DISCOVERY_COMMAND_USAGE,
   DISCOVERY_OPERATIONS,
@@ -46,7 +47,7 @@ function normalizeQuery(query: string | undefined): string {
 }
 
 function invalidQuery(query: string): string | undefined {
-  if (!query) return "Usage: /catalog search <term>";
+  if (!query) return renderUsage(DISCOVERY_COMMAND_ACTIONS, ["search"]);
   if (query.length > MAX_DISCOVERY_QUERY_LENGTH) {
     return `Search term must be ${MAX_DISCOVERY_QUERY_LENGTH} characters or fewer.`;
   }
@@ -103,15 +104,11 @@ export function registerPiCatalog(pi: ExtensionAPI): void {
 
   pi.registerCommand(DISCOVERY_COMMAND_NAME, {
     description: `${DISCOVERY_COMMAND_USAGE} — inspect registered commands and tools`,
-    getArgumentCompletions: (prefix) => {
-      const normalized = prefix.trimStart();
-      if (/\s/.test(normalized)) return [];
-      return DISCOVERY_COMMAND_COMPLETIONS.filter(({ value }) => value.startsWith(normalized)).map((item) => ({ ...item }));
-    },
+    getArgumentCompletions: (prefix) => rootActionCompletions(prefix, DISCOVERY_COMMAND_ACTIONS),
     handler: async (args, ctx) => {
       const [rawOperation = "status", ...rest] = args.trim().split(/\s+/).filter(Boolean);
       if (!DISCOVERY_OPERATIONS.includes(rawOperation as DiscoveryOperation)) {
-        ctx.ui.notify(`Unknown catalog operation: ${rawOperation}\n\n${DISCOVERY_COMMAND_USAGE}`, "warning");
+        ctx.ui.notify(`Unknown catalog operation: ${rawOperation}\n\n${renderUsage(DISCOVERY_COMMAND_ACTIONS)}`, "warning");
         return;
       }
       const operation = rawOperation as DiscoveryOperation;

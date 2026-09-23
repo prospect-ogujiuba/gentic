@@ -20,6 +20,8 @@ Color is supplementary. Medium and wide layouts retain the 16-cell context bar, 
 - `/pi-hud reset` — restore `widget-first`
 - `/pi-hud mode off|widget-first`
 
+Root and mode completions preserve the full argument prefix, and invalid-input usage is rendered from the same local action metadata. Legacy migration parsing and display-mode execution remain owned by pi-hud.
+
 The widget is registered only under id `pi-hud`. JSON and print modes make no UI calls; RPC receives width-bounded string lines.
 
 ## Migration

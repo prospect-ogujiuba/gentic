@@ -15,6 +15,7 @@ The extension has four stable lifecycle subscriptions: `session_start`, `turn_en
 - `/pi-context json` explicitly writes the same allowlisted snapshot as JSON.
 - Exports use canonical `YYYY-MM-DD_HHMM-<short-name>` artifact filenames, exclusive creation, and reject symlinked or escaping report paths.
 - Summary/default mode never writes an artifact.
+- Completion remains a local order-independent adapter because mode and compatibility-filter tokens may be combined; forcing this grammar through action-only navigation would remove valid combinations without improving guidance.
 
 Contributor names are fixed categories. Source text is measured within hard character, node, depth, property, content-block, and collection limits, then discarded. Truncation produces bounded fixed diagnostic codes.
 

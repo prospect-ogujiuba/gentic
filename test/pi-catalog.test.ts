@@ -27,7 +27,7 @@ test("consolidated discovery contract has one direct, runtime-backed surface", (
   assert.deepEqual(DISCOVERY_CONTRACT.runtimeSources, ["pi.getCommands()", "pi.getAllTools()", "sourceInfo"]);
   assert.equal(DISCOVERY_CONTRACT.proxiesCommands, false);
   assert.equal(DISCOVERY_CONTRACT.readsGeneratedFixtures, false);
-  assert.equal(DISCOVERY_COMMAND_USAGE, "/catalog [status|search <term>]");
+  assert.equal(DISCOVERY_COMMAND_USAGE, "Usage: /catalog status or /catalog search <term>");
   assert.deepEqual(DISCOVERY_COMMAND_COMPLETIONS.map(({ value }) => value), ["status", "search"]);
 });
 

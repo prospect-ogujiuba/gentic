@@ -6,7 +6,14 @@ import type {
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 
+import { renderUsage } from "../../../src/command-guidance.ts";
 import { coordinatedActiveSwe } from "../../../src/lifecycle-coordination.ts";
+import {
+  getTodoCommandCompletions,
+  renderTodoQuickHelp,
+  TODO_COMMAND_ACTIONS,
+  todoRecoveryHint,
+} from "./command-adapter.ts";
 import {
   TODO_PUBLIC_ACTIONS,
   TODO_TEXT_LIMITS,
@@ -21,17 +28,8 @@ import { LightweightTodoModal } from "./ui/modal.ts";
 import { plainTodoTheme } from "./ui/theme.ts";
 
 const STATUS_KEY = "todo";
-const TODO_COMMAND_COMPLETIONS = [
-  { value: "open", label: "open", description: "Open the visual docket · /todo open" },
-  { value: "list", label: "list", description: "List every todo · /todo list" },
-  { value: "create", label: "create", description: "Create work or a subtask · /todo create <title> [--parent <id>]" },
-  { value: "move", label: "move", description: "Reorder siblings · /todo move <id> before|after <id>" },
-  { value: "delete", label: "delete", description: "Delete a todo subtree · /todo delete <id>" },
-  { value: "start", label: "start", description: "Start one todo · /todo start <id>" },
-  { value: "finish", label: "finish", description: "Finish active work · /todo finish [id]" },
-  { value: "block", label: "block", description: "Record an external blocker · /todo block <id> <reason>" },
-  { value: "unblock", label: "unblock", description: "Return blocked work to ready · /todo unblock <id>" },
-] as const;
+
+export { getTodoCommandCompletions } from "./command-adapter.ts";
 
 export const lightweightTodoParameters = Type.Object({
   action: StringEnum(TODO_PUBLIC_ACTIONS),
@@ -62,13 +60,24 @@ type SurfaceResult = {
 export function registerLightweightTodoSurface(pi: ExtensionAPI, options: SurfaceOptions = {}): void {
   const hasActiveSweTask = options.hasActiveSweTask ?? coordinatedActiveSwe;
   let queue: Promise<void> = Promise.resolve();
+  let completionCore: BranchTodoCore | undefined;
+  let completionMutationsAllowed = false;
 
-  pi.on("session_start", async (_event, ctx) => updateDisplay(coreFor(pi, ctx), ctx));
-  pi.on("session_tree", async (_event, ctx) => updateDisplay(coreFor(pi, ctx), ctx));
+  const bindCore = (ctx: ExtensionContext): BranchTodoCore => {
+    completionCore = coreFor(pi, ctx);
+    return completionCore;
+  };
   const readOwnership = async (ctx: ExtensionContext): Promise<boolean | undefined> => {
     try { return await hasActiveSweTask(ctx); }
     catch { return undefined; }
   };
+  const refreshSession = async (ctx: ExtensionContext): Promise<void> => {
+    const core = bindCore(ctx);
+    completionMutationsAllowed = await readOwnership(ctx) === false;
+    updateDisplay(core, ctx);
+  };
+  pi.on("session_start", async (_event, ctx) => refreshSession(ctx));
+  pi.on("session_tree", async (_event, ctx) => refreshSession(ctx));
 
   pi.on("tool_call", async (event, ctx) => {
     if (event.toolName !== "todo" || !isTodoPublicAction(event.input?.action)) return;
@@ -85,17 +94,26 @@ export function registerLightweightTodoSurface(pi: ExtensionAPI, options: Surfac
   });
 
   const execute = async (request: TodoPublicRequest, ctx: ExtensionContext): Promise<SurfaceResult> => {
-    const core = coreFor(pi, ctx);
+    const core = bindCore(ctx);
     const active = await readOwnership(ctx);
-    if (active === undefined && request.action !== "list") return errorResult("PI_SWE_OWNERSHIP_UNKNOWN", "pi-swe ownership scan is incomplete; mutation is blocked");
+    completionMutationsAllowed = active === false;
+    if (active === undefined && request.action !== "list") {
+      return errorResult("PI_SWE_OWNERSHIP_UNKNOWN", "pi-swe ownership scan is incomplete; mutation is blocked", "Retry after lifecycle state is available, or inspect with todo list.");
+    }
     const decision = core.ownership(request.action, active === true);
-    if (!decision.allowed) return errorResult("PI_SWE_OWNS_LIFECYCLE", "pi-swe lifecycle ownership is active");
+    if (!decision.allowed) {
+      return errorResult("PI_SWE_OWNS_LIFECYCLE", "pi-swe lifecycle ownership is active", "Complete or pause active SWE work before mutating pi-todo; todo list remains available.");
+    }
     try {
       const result = dispatch(core, request);
       updateDisplay(core, ctx);
       return result;
     } catch (error) {
-      return errorResult(error instanceof TodoCoreError ? error.code : "INVALID_REQUEST", error instanceof Error ? error.message : String(error));
+      return errorResult(
+        error instanceof TodoCoreError ? error.code : "INVALID_REQUEST",
+        error instanceof Error ? error.message : String(error),
+        todoRecoveryHint(core.state(), request.action),
+      );
     }
   };
 
@@ -108,13 +126,13 @@ export function registerLightweightTodoSurface(pi: ExtensionAPI, options: Surfac
     executionMode: "sequential",
     async execute(_id, params, signal, _onUpdate, ctx) {
       signal?.throwIfAborted();
-      if (!isTodoPublicAction(params.action)) return errorResult("INVALID_REQUEST", "unsupported todo action");
+      if (!isTodoPublicAction(params.action)) return errorResult("INVALID_REQUEST", "unsupported todo action", "Inspect current state with todo list and retry with a supported action.");
       const run = queue.then(async () => {
         signal?.throwIfAborted();
         try {
           return await execute(requestFrom(params.action, params), ctx);
         } catch (error) {
-          return errorResult("INVALID_REQUEST", error instanceof Error ? error.message : String(error));
+          return errorResult("INVALID_REQUEST", error instanceof Error ? error.message : String(error), "Inspect current state with todo list and retry with the required fields.");
         }
       });
       queue = run.then(() => undefined, () => undefined);
@@ -125,30 +143,32 @@ export function registerLightweightTodoSurface(pi: ExtensionAPI, options: Surfac
   });
 
   pi.registerCommand("todo", {
-    description: "/todo [open|list|create <title> [--parent <id>]|move <id> before|after <id>|delete <id>|start <id>|finish [id]|block <id> <reason>|unblock <id>]",
-    getArgumentCompletions: getTodoCommandCompletions,
+    description: "Manage the branch-aware focus list · /todo <action> [arguments]",
+    getArgumentCompletions: (prefix) => getTodoCommandCompletions(prefix, safeState(completionCore), completionMutationsAllowed),
     handler: async (args, ctx) => {
+      const core = bindCore(ctx as ExtensionContext);
+      if (!args.trim()) {
+        const active = await readOwnership(ctx as ExtensionContext);
+        completionMutationsAllowed = active === false;
+        const ownershipMessage = active === undefined
+          ? "Lifecycle ownership is unavailable; todo mutations are blocked until it can be determined."
+          : undefined;
+        ctx.ui.notify(renderTodoQuickHelp(core.state(), completionMutationsAllowed, ownershipMessage), "info");
+        return;
+      }
       if (args.trim() === "open") {
         await openTodoDocket(pi, ctx);
         return;
       }
       const request = commandRequest(args);
       if (!request) {
-        ctx.ui.notify("Usage: /todo [open|list|create <title> [--parent <id>]|move <id> before|after <id>|delete <id>|start <id>|finish [id]|block <id> <reason>|unblock <id>]", "warning");
+        ctx.ui.notify(`${renderUsage(TODO_COMMAND_ACTIONS)}\n${todoRecoveryHint(core.state(), args.trim().split(/\s+/, 1)[0])}`, "warning");
         return;
       }
       const result = await execute(request, ctx);
       ctx.ui.notify(result.content[0]?.text ?? "", result.details.error ? "error" : "info");
     },
   });
-}
-
-export function getTodoCommandCompletions(prefix: string): Array<{ value: string; label: string; description: string }> {
-  const normalized = prefix.trimStart();
-  if (/\s/.test(normalized)) return [];
-  return TODO_COMMAND_COMPLETIONS
-    .filter((item) => item.value.startsWith(normalized))
-    .map((item) => ({ ...item }));
 }
 
 function coreFor(pi: ExtensionAPI, ctx: ExtensionContext): BranchTodoCore {
@@ -168,8 +188,9 @@ function dispatch(core: BranchTodoCore, request: TodoPublicRequest): SurfaceResu
   }
   if (request.action === "delete") {
     const { todo, deletedCount } = core.delete(request.todoId);
+    const next = nextCommand(core.state());
     return {
-      content: [{ type: "text", text: `Deleted ${todo.title} (${deletedCount} todo${deletedCount === 1 ? "" : "s"})` }],
+      content: [{ type: "text", text: `Deleted ${todo.title} (${deletedCount} todo${deletedCount === 1 ? "" : "s"}) [${todo.id}].${next ? ` Next: ${next}` : ""}` }],
       details: { todo, deletedCount },
     };
   }
@@ -180,7 +201,7 @@ function dispatch(core: BranchTodoCore, request: TodoPublicRequest): SurfaceResu
     : request.action === "block" ? core.block(request.todoId, request.reason)
     : core.unblock(request.todoId);
   return {
-    content: [{ type: "text", text: `${verb(request.action)} ${todo.title} [${todo.status}]` }],
+    content: [{ type: "text", text: `${verb(request.action)} ${todo.title} [${todo.status}] (${todo.id}). ${followUp(request.action, todo.id, core.state())}` }],
     details: { todo },
   };
 }
@@ -284,6 +305,29 @@ function verb(action: Exclude<TodoPublicAction, "list" | "delete">): string {
   return action === "create" ? "Created" : action === "move" ? "Moved" : action === "start" ? "Started" : action === "finish" ? "Finished" : action === "block" ? "Blocked" : "Unblocked";
 }
 
+function followUp(action: Exclude<TodoPublicAction, "list" | "delete">, todoId: string, state: TodoCoreState): string {
+  if (action === "start") return `Next: /todo finish ${todoId} or /todo block ${todoId} <reason>`;
+  if (action === "block") return `Next: /todo unblock ${todoId}`;
+  if (action === "unblock" || action === "create") return state.activeTodoId
+    ? `Active todo remains ${state.activeTodoId}.`
+    : `Next: /todo start ${todoId}`;
+  return nextCommand(state) ? `Next: ${nextCommand(state)}` : "No ready todo remains; create one with /todo create <title>.";
+}
+
+function nextCommand(state: TodoCoreState): string | undefined {
+  if (state.activeTodoId) return `/todo finish ${state.activeTodoId}`;
+  const ready = state.order.map((id) => state.todos[id]).find((todo) => todo?.status === "ready");
+  if (ready) return `/todo start ${ready.id}`;
+  const blocked = state.order.map((id) => state.todos[id]).find((todo) => todo?.status === "external_blocked");
+  return blocked ? `/todo unblock ${blocked.id}` : undefined;
+}
+
+function safeState(core: BranchTodoCore | undefined): TodoCoreState | undefined {
+  if (!core) return undefined;
+  try { return core.state(); }
+  catch { return undefined; }
+}
+
 function stringParam(value: unknown, name: string): string {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${name} is required`);
   return value.trim();
@@ -293,10 +337,11 @@ function optionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function errorResult(code: string, message: string): SurfaceResult {
+function errorResult(code: string, message: string, recovery?: string): SurfaceResult {
   const bounded = message.replace(/[\r\n\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 240) || "todo operation failed";
+  const boundedRecovery = recovery?.replace(/[\r\n\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 240);
   return {
-    content: [{ type: "text", text: `Error: ${bounded}` }],
+    content: [{ type: "text", text: `Error: ${bounded}${boundedRecovery ? ` Next: ${boundedRecovery}` : ""}` }],
     isError: true,
     details: { error: { code, message: bounded } },
   };

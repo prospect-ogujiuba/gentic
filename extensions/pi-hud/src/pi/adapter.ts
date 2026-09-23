@@ -1,15 +1,21 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import {
+  prefixedCompletions,
+  renderUsage,
+  rootActionCompletions,
+  type CommandActionSpec,
+} from "../../../../src/command-guidance.ts";
 import { isDisplayMode, resetConfig, setDisplayMode, state } from "../app/state.ts";
 import { hudRuntime, type HudUiContext } from "./runtime.ts";
 
 const TEST_COMMAND_RE = /(^|\s)(npm|pnpm|yarn|bun)\s+(run\s+)?(test|check|lint|typecheck|build)(\s|$)|\b(vitest|jest|pytest|ruff|eslint|tsc)\b/i;
-const HUD_USAGE = "Usage: /pi-hud [show|hide|reset|mode off|widget-first]";
-const HUD_COMMAND_COMPLETIONS = [
-  { value: "show", label: "show", description: "Show the optional HUD widget" },
-  { value: "hide", label: "hide", description: "Hide the optional HUD widget" },
-  { value: "reset", label: "reset", description: "Restore the default widget mode" },
-  { value: "mode", label: "mode", description: "Set /pi-hud mode <off|widget-first>" },
-] as const;
+const HUD_COMMAND_ACTIONS = [
+  { action: "show", syntax: "/pi-hud show", description: "Show the optional HUD widget" },
+  { action: "hide", syntax: "/pi-hud hide", description: "Hide the optional HUD widget" },
+  { action: "reset", syntax: "/pi-hud reset", description: "Restore the default widget mode" },
+  { action: "mode", syntax: "/pi-hud mode <off|widget-first>", description: "Set the widget mode" },
+] as const satisfies readonly CommandActionSpec[];
+const HUD_USAGE = renderUsage(HUD_COMMAND_ACTIONS);
 
 type HudCommandContext = ExtensionCommandContext & HudUiContext;
 
@@ -20,18 +26,14 @@ function notify(ctx: HudCommandContext, message: string): void {
 export function completeHudArgument(prefix: string): Array<{ value: string; label: string; description: string }> {
   const normalized = prefix.trimStart();
   const firstSpace = normalized.indexOf(" ");
-  if (firstSpace < 0) return HUD_COMMAND_COMPLETIONS.filter((item) => item.value.startsWith(normalized)).map((item) => ({ ...item }));
+  if (firstSpace < 0) return rootActionCompletions(normalized, HUD_COMMAND_ACTIONS);
   const command = normalized.slice(0, firstSpace);
   const query = normalized.slice(firstSpace + 1).trim();
   if (command !== "mode") return [];
-  return [
-    { value: "off", description: "Hide the HUD widget" },
-    { value: "widget-first", description: "Show the widget and keep Pi's native footer" },
-  ].filter((item) => item.value.startsWith(query)).map((item) => ({
-    value: `mode ${item.value}`,
-    label: item.value,
-    description: item.description,
-  }));
+  return prefixedCompletions("mode ", [
+    { value: "off", label: "off", description: "Hide the HUD widget" },
+    { value: "widget-first", label: "widget-first", description: "Show the widget and keep Pi's native footer" },
+  ].filter((item) => item.value.startsWith(query)));
 }
 
 export function cleanupHud(ctx: HudUiContext): void { hudRuntime.shutdown(ctx); }

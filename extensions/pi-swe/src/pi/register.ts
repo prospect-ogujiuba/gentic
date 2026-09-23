@@ -2,10 +2,11 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@e
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 
+import { renderUsage } from "../../../../src/command-guidance.ts";
 import { registerSweActivityProbe } from "../../../../src/lifecycle-coordination.ts";
 import { SweService } from "../app/service.ts";
 import type { Initiative } from "../domain/initiative.ts";
-import { getSweCommandCompletions, renderSweQuickHelp } from "./autocomplete.ts";
+import { getSweCommandCompletions, renderSweQuickHelp, SWE_COMMAND_ACTIONS } from "./autocomplete.ts";
 import { refreshSweContextMessages, restoreSweFocus, SWE_CONTEXT_TYPE, SWE_FOCUS_ENTRY_TYPE } from "./context.ts";
 import { buildSwePlanningPrompt, prepareSwePlanRequest } from "./planning.ts";
 import { projectSweDocket, renderSweDocketLines } from "../ui/docket.ts";
@@ -29,7 +30,7 @@ const parameters = Type.Object({
   proposal: Type.Optional(Type.Unknown()),
 });
 
-const COMMAND_ACTIONS = new Set(["plan", "open", "list", "status", "next", "start", "implemented", "complete", "resume", "pause"]);
+const COMMAND_ACTIONS = new Set<string>(SWE_COMMAND_ACTIONS.map((item) => item.action));
 const REQUIRED_WORK_COMMANDS = new Set(["start", "implemented"]);
 const OPTIONAL_WORK_COMMANDS = new Set(["complete"]);
 
@@ -140,7 +141,7 @@ export function registerSweSurface(pi: ExtensionAPI): void {
       const requiresWork = REQUIRED_WORK_COMMANDS.has(action);
       const allowsWork = requiresWork || OPTIONAL_WORK_COMMANDS.has(action);
       if (!known || !initiativeId || extra.length || (requiresWork && !workId) || (!allowsWork && Boolean(workId))) {
-        ctx.ui.notify("Usage: /swe [plan|open|list|status|next|complete|resume|pause] <topic> or /swe [start|implemented|complete] <topic> <work-id>", "warning"); return;
+        ctx.ui.notify(renderUsage(SWE_COMMAND_ACTIONS), "warning"); return;
       }
       try {
         const current = service(ctx.cwd);

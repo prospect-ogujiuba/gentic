@@ -88,7 +88,7 @@ First-class Gentic surfaces are only things Pi discovers directly from package m
 | `prompt-template` | `prompts/`, `extensions/**/prompts` | `pi.prompts` |
 | `theme` | `themes/`, `extensions/**/themes` | `pi.themes` |
 
-Everything else is Pi extension API behavior. `/catalog [status|search <term>]` discovers the current command and tool registrations from Pi's native metadata. The generated native-capability fixture remains release evidence and does not become a runtime registry or manifest resource.
+Everything else is Pi extension API behavior. `/catalog status` and `/catalog search <term>` discover the current command and tool registrations from Pi's native metadata. Multi-action commands may share Gentic's narrow presentation/navigation helpers for syntax, root filtering, prefix assembly, help, and usage, but each extension continues to own parsing, state, legal transitions, execution, and domain messages. The generated native-capability fixture remains release evidence and does not become a runtime registry or manifest resource.
 
 ## Filtering
 
@@ -99,7 +99,7 @@ Use the checked native filter fragments in [`profiles/core.json`](profiles/core.
 ## Repository shape
 
 ```txt
-src/              # Shared Gentic source, including Pi contract constants
+src/              # Shared Gentic source, including Pi contracts and command presentation helpers
 extensions/       # Pi extensions plus extension-owned skills/prompts/themes
 skills/           # Package-level Pi skills
 prompts/          # Package-level Pi prompt templates

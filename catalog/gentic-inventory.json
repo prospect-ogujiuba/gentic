@@ -333,6 +333,7 @@
       "entrypoint": "extensions/pi-todo/index.ts",
       "sourceFiles": [
         "extensions/pi-todo/index.ts",
+        "extensions/pi-todo/src/command-adapter.ts",
         "extensions/pi-todo/src/contract.ts",
         "extensions/pi-todo/src/state-core.ts",
         "extensions/pi-todo/src/thin-surface.ts",
