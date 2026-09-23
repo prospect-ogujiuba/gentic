@@ -1,0 +1,377 @@
+{
+  "kind": "gentic.swe.initiative",
+  "schemaVersion": 1,
+  "id": "unified-swe-todo",
+  "revision": 1,
+  "status": "draft",
+  "objective": "Consolidate standalone todo functionality and workflow-backed work projection into the pi-swe extension so one reliable todo surface operates standalone or delegates active workflow mutations to SweService without duplicate task authority.",
+  "scope": {
+    "in": [
+      "Move the existing branch-backed todo core and public todo surface under pi-swe",
+      "Introduce a provider-neutral todo view/backend contract",
+      "Add a workflow-backed provider that projects workflow.json and routes legal mutations through SweService",
+      "Replace duplicate todo/SWE docket and modal implementations with one capability-driven UI",
+      "Make pi-swe the sole registration point for both swe and todo commands/tools",
+      "Remove obsolete optional lifecycle bridging and independent pi-todo extension discovery",
+      "Preserve existing branch todo entries and public todo behavior in standalone mode",
+      "Update tests, documentation, anatomy, catalog, and inventory"
+    ],
+    "out": [
+      "Changing workflow.json schema version or weakening its validation and evidence gates",
+      "Copying workflow work into standalone todo session state",
+      "Allowing todo finish to bypass implemented, verification, review, or completion gates",
+      "Committing or pushing changes without separate authorization"
+    ]
+  },
+  "constraints": [
+    "workflow.json remains the sole planning authority whenever a focused active initiative owns the todo surface",
+    "Standalone branch entries remain the sole authority outside active workflow mode",
+    "Backend selection must be deterministic and reread current workflow authority before mutation",
+    "Existing todo session entries must remain readable without migration",
+    "Unsupported workflow structural mutations must fail with guidance to use intentional swe revision",
+    "Exactly one todo command and tool may be registered"
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "text": "Loading pi-swe alone exposes the existing standalone todo command, structured tool, persistence behavior, and modal functionality without requiring pi-todo."
+    },
+    {
+      "id": "AC-2",
+      "text": "A focused active initiative is rendered directly from workflow.json through the todo surface, and legal lifecycle actions mutate only through SweService."
+    },
+    {
+      "id": "AC-3",
+      "text": "Standalone and workflow state are never synchronized or duplicated, and deterministic switching preserves inactive standalone state."
+    },
+    {
+      "id": "AC-4",
+      "text": "One shared capability-driven docket and modal represent standalone and workflow states including hierarchy, readiness, phases, and distinct implemented versus complete states."
+    },
+    {
+      "id": "AC-5",
+      "text": "The independent pi-todo registration and optional lifecycle bridge are removed without duplicate registrations or regressions in supported command and tool behavior."
+    },
+    {
+      "id": "AC-6",
+      "text": "Typecheck, todo tests, SWE tests, full tests, repository checks, and release verification pass with current evidence."
+    }
+  ],
+  "assessment": {
+    "depth": "deep",
+    "reason": "This consolidation changes extension discovery, state authority selection, persistence compatibility, lifecycle routing, public tool behavior, and two interactive UI implementations.",
+    "surfaces": [
+      "extensions/pi-swe",
+      "extensions/pi-todo",
+      "src/lifecycle-coordination.ts",
+      "test/pi-todo*.test.ts",
+      "test/pi-swe*.test.ts",
+      "catalog and extension anatomy metadata",
+      "package-level extension discovery"
+    ],
+    "unknowns": [
+      "Whether all existing todo public result shapes can remain byte-compatible while exposing workflow-specific statuses",
+      "Which paused and draft workflow states should be visible versus actionable through todo",
+      "Whether lifecycle coordination has consumers outside pi-swe and pi-todo"
+    ]
+  },
+  "practices": [
+    {
+      "id": "P-1",
+      "practice": "characterization-first compatibility",
+      "appliesTo": [
+        "W-1",
+        "W-2"
+      ],
+      "reason": "Existing standalone todo branch persistence and public behavior must survive relocation unchanged."
+    },
+    {
+      "id": "P-2",
+      "practice": "authority-bound adapter design",
+      "appliesTo": [
+        "W-3"
+      ],
+      "reason": "Workflow projection must avoid a second ledger and preserve SweService mutation and evidence boundaries."
+    },
+    {
+      "id": "P-3",
+      "practice": "shared presentation refactor",
+      "appliesTo": [
+        "W-4"
+      ],
+      "reason": "The duplicate modals and dockets should converge behind a provider-neutral view without losing domain distinctions."
+    },
+    {
+      "id": "P-4",
+      "practice": "integration and retirement verification",
+      "appliesTo": [
+        "W-5"
+      ],
+      "reason": "Single registration, metadata consistency, compatibility, and removal of the old extension require repository-wide checks."
+    },
+    {
+      "id": "P-5",
+      "practice": "evidence-backed qualification",
+      "appliesTo": [
+        "W-6"
+      ],
+      "reason": "Completion requires current machine evidence across focused and repository-wide verification surfaces."
+    }
+  ],
+  "obligations": [
+    {
+      "id": "O-1",
+      "practiceId": "P-1",
+      "criterionIds": [
+        "AC-1",
+        "AC-3"
+      ],
+      "text": "Characterize existing branch entry hydration, standalone mutations, public outputs, and ownership behavior before relocating implementation.",
+      "verification": {
+        "kind": "targeted automated tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-2",
+      "practiceId": "P-1",
+      "criterionIds": [
+        "AC-1"
+      ],
+      "text": "Relocate standalone todo code under pi-swe while preserving event formats and supported command/tool semantics.",
+      "verification": {
+        "kind": "todo compatibility tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-3",
+      "practiceId": "P-2",
+      "criterionIds": [
+        "AC-2",
+        "AC-3"
+      ],
+      "text": "Verify active workflow projection reads workflow.json and routes start and finish-as-implemented through SweService without standalone writes.",
+      "verification": {
+        "kind": "workflow adapter tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-4",
+      "practiceId": "P-3",
+      "criterionIds": [
+        "AC-4"
+      ],
+      "text": "Verify one shared modal and renderer cover standalone and workflow hierarchy, capabilities, readiness, and statuses.",
+      "verification": {
+        "kind": "UI unit and integration tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-5",
+      "practiceId": "P-4",
+      "criterionIds": [
+        "AC-5"
+      ],
+      "text": "Verify pi-swe registers todo exactly once and obsolete extension bridging and discovery are removed with regenerated metadata.",
+      "verification": {
+        "kind": "registration and repository checks",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-6",
+      "practiceId": "P-5",
+      "criterionIds": [
+        "AC-6"
+      ],
+      "text": "Run typecheck, focused suites, full tests, checks, and release verification against the final bounded source set.",
+      "verification": {
+        "kind": "full qualification command",
+        "requiredEvidence": [
+          "machine-command",
+          "model-review"
+        ]
+      }
+    }
+  ],
+  "work": [
+    {
+      "id": "W-1",
+      "kind": "task",
+      "title": "Characterize compatibility and define the provider-neutral todo contract",
+      "status": "pending",
+      "dependsOn": [],
+      "criterionIds": [
+        "AC-1",
+        "AC-3"
+      ],
+      "obligationIds": [
+        "O-1"
+      ],
+      "testing": {
+        "approach": "characterization-first",
+        "reason": "Lock down existing persisted branch entries and public behavior before moving implementation."
+      }
+    },
+    {
+      "id": "W-2",
+      "kind": "task",
+      "title": "Move standalone todo implementation and registration capability under pi-swe",
+      "status": "pending",
+      "dependsOn": [
+        "W-1"
+      ],
+      "criterionIds": [
+        "AC-1"
+      ],
+      "obligationIds": [
+        "O-2"
+      ],
+      "testing": {
+        "approach": "test-preserving refactor",
+        "reason": "Relocation should remain behaviorally neutral before workflow delegation is introduced."
+      }
+    },
+    {
+      "id": "W-3",
+      "kind": "task",
+      "title": "Implement workflow-backed todo provider and deterministic backend selection",
+      "status": "pending",
+      "dependsOn": [
+        "W-2"
+      ],
+      "criterionIds": [
+        "AC-2",
+        "AC-3"
+      ],
+      "obligationIds": [
+        "O-3"
+      ],
+      "testing": {
+        "approach": "tdd",
+        "reason": "Authority routing and forbidden cross-writes need explicit tests before adapter implementation."
+      }
+    },
+    {
+      "id": "W-4",
+      "kind": "task",
+      "title": "Consolidate standalone and SWE docket and modal presentation",
+      "status": "pending",
+      "dependsOn": [
+        "W-3"
+      ],
+      "criterionIds": [
+        "AC-4"
+      ],
+      "obligationIds": [
+        "O-4"
+      ],
+      "testing": {
+        "approach": "characterization-and-adapter tests",
+        "reason": "Retain keyboard and rendering behavior while making capabilities and statuses provider-driven."
+      }
+    },
+    {
+      "id": "W-5",
+      "kind": "task",
+      "title": "Retire independent pi-todo registration and lifecycle bridge and update metadata",
+      "status": "pending",
+      "dependsOn": [
+        "W-4"
+      ],
+      "criterionIds": [
+        "AC-5"
+      ],
+      "obligationIds": [
+        "O-5"
+      ],
+      "testing": {
+        "approach": "integration tests",
+        "reason": "Extension discovery and single registration must be checked after old entrypoint removal."
+      }
+    },
+    {
+      "id": "W-6",
+      "kind": "task",
+      "title": "Qualify the unified extension and perform final self-review",
+      "status": "pending",
+      "dependsOn": [
+        "W-5"
+      ],
+      "criterionIds": [
+        "AC-6"
+      ],
+      "obligationIds": [
+        "O-6"
+      ],
+      "testing": {
+        "approach": "test-after integration qualification",
+        "reason": "Run focused and repository-wide checks only after all structural consolidation is complete."
+      }
+    }
+  ],
+  "artifacts": [],
+  "evidence": [],
+  "decisions": [
+    {
+      "id": "D-1",
+      "text": "Todo is a capability owned and registered by pi-swe rather than a peer extension.",
+      "basis": "This removes optional extension ordering and duplicated interactive surfaces while preserving standalone functionality."
+    },
+    {
+      "id": "D-2",
+      "text": "Workflow mode projects current workflow authority and never mirrors work into branch todo entries.",
+      "basis": "workflow.json must remain the only workflow task ledger."
+    },
+    {
+      "id": "D-3",
+      "text": "Todo finish maps to implemented in workflow mode, never complete.",
+      "basis": "SWE completion remains verification, review, and evidence gated."
+    },
+    {
+      "id": "D-4",
+      "text": "Workflow structural actions unsupported by an exact legal service operation remain disabled and direct users to swe revise.",
+      "basis": "Generic todo CRUD must not bypass intentional revision rationale or compare-and-swap integrity."
+    }
+  ],
+  "risks": [
+    {
+      "id": "R-1",
+      "text": "Moving the standalone core could make historic branch todo entries unreadable.",
+      "mitigation": "Preserve entry discriminants and payloads and add fixture-based compatibility tests before relocation."
+    },
+    {
+      "id": "R-2",
+      "text": "A cached backend could mutate stale or incorrect authority after initiative transitions.",
+      "mitigation": "Resolve backend and reread workflow status for each operation and modal opening."
+    },
+    {
+      "id": "R-3",
+      "text": "A generic status model could erase the difference between implemented and complete.",
+      "mitigation": "Carry provider-specific raw status and capability metadata through the view model."
+    },
+    {
+      "id": "R-4",
+      "text": "Both old and new extension entrypoints could register duplicate todo commands or tools.",
+      "mitigation": "Add registration-count tests and remove independent discovery atomically."
+    },
+    {
+      "id": "R-5",
+      "text": "Broad UI refactoring could regress terminal keyboard, scrolling, and rendering behavior.",
+      "mitigation": "Retain existing characterization tests and add provider-specific shared UI coverage."
+    }
+  ]
+}
