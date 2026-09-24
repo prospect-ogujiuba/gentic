@@ -105,8 +105,23 @@ test("SWE command views and mutations use the canonical service and completion g
       },
     };
     const command = commands.get("swe");
+    await command.handler("list", ctx);
+    const initiativeList = notices.at(-1)?.message ?? "";
+    assert.match(initiativeList, /SWE INITIATIVES · 1 total/);
+    const initiativeLines = initiativeList.split("\n");
+    assert.equal(initiativeLines[2], "pi-swe-foundation");
+    assert.match(initiativeLines[3] ?? "", /^  ○ r1 · 4\/7 done · active · next W-5: Adapt TODO presentation and commands to the canonical graph$/);
+    assert.equal(initiativeLines.length, 4);
+    assert.doesNotMatch(initiativeList, /Objective:|Work:/);
+    await command.handler("", ctx);
+    assert.match(notices.at(-1)?.message ?? "", /No focused SWE initiative/);
+
     await command.handler("list pi-swe-foundation", ctx);
     assert.match(notices.at(-1)?.message ?? "", /W-5.*pending/);
+    await command.handler("", ctx);
+    assert.match(notices.at(-1)?.message ?? "", /Focused: pi-swe-foundation/);
+    await command.handler("list", ctx);
+    assert.match(notices.at(-1)?.message ?? "", /pi-swe-foundation\n  ● r1 · 4\/7 done · active/);
     await command.handler("open pi-swe-foundation", ctx);
     assert.match(notices.at(-1)?.message ?? "", /SWE WORK/);
 
@@ -121,6 +136,38 @@ test("SWE command views and mutations use the canonical service and completion g
     const status = await tools.get("swe").execute("status", { action: "status", initiativeId: "pi-swe-foundation" }, new AbortController().signal, () => {}, ctx);
     assert.equal(status.details.initiative.work.find((item: any) => item.id === "W-5").status, "implemented");
     assert.equal(modalOutput, "");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("responsive initiative list preserves full terminal names in two-line rows", async () => {
+  const { root, initiative } = fixture();
+  try {
+    initiative.status = "complete";
+    initiative.work = initiative.work.map((item: { kind: string }) => item.kind === "phase" ? item : { ...item, status: "complete" });
+    writeFileSync(initiativePath(root, initiative.id), `${JSON.stringify(initiative, null, 2)}\n`);
+    const longInitiative = {
+      ...structuredClone(initiative),
+      id: "initiative-with-an-extremely-long-canonical-name-for-width-testing",
+      artifacts: [],
+    };
+    const longPath = initiativePath(root, longInitiative.id);
+    mkdirSync(dirname(longPath), { recursive: true });
+    writeFileSync(longPath, `${JSON.stringify(longInitiative, null, 2)}\n`);
+    const { commands } = runtime();
+    const notices: string[] = [];
+    await commands.get("swe").handler("list", {
+      cwd: root,
+      ui: { notify(message: string) { notices.push(message); } },
+    });
+    const output = notices.at(-1) ?? "";
+    const lines = output.split("\n");
+    const longName = "initiative-with-an-extremely-long-canonical-name-for-width-testing";
+    const longNameIndex = lines.indexOf(longName);
+    assert.ok(longNameIndex >= 2);
+    assert.match(lines[longNameIndex + 1] ?? "", /^  ○ r1 · 7\/7 done · complete$/);
+    assert.match(output, /pi-swe-foundation\n  ○ r1 · 7\/7 done · complete/);
+    assert.equal(lines.slice(2).length, 4);
+    assert.doesNotMatch(output, /…|Objective:|Work:/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

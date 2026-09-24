@@ -1,0 +1,305 @@
+{
+  "kind": "gentic.swe.initiative",
+  "schemaVersion": 1,
+  "id": "swe-initiative-list-column-order",
+  "revision": 10,
+  "status": "complete",
+  "objective": "Reorder compact /swe list columns to initiative, revision, done, then status.",
+  "scope": {
+    "in": [
+      "bare /swe list column ordering",
+      "initiative list rendering tests"
+    ],
+    "out": [
+      "initiative discovery or ranking changes",
+      "topic-specific docket changes",
+      "additional display fields"
+    ]
+  },
+  "constraints": [
+    "Preserve the 78-column bound.",
+    "Keep focus markers and conditional current/next work rows.",
+    "Long initiative identifiers must not hide revision, progress, or status columns."
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "text": "The compact list header and rows display initiative first, followed by revision, done, and status."
+    },
+    {
+      "id": "AC-2",
+      "text": "Long initiative identifiers are truncated within a fixed first column so later columns remain visible."
+    },
+    {
+      "id": "AC-3",
+      "text": "Targeted regression tests pass and every rendered line remains within 78 visible columns."
+    }
+  ],
+  "assessment": {
+    "depth": "light",
+    "reason": "A narrow presentation-order change with localized tests.",
+    "surfaces": [
+      "initiative list renderer",
+      "docket command tests"
+    ],
+    "unknowns": []
+  },
+  "practices": [
+    {
+      "id": "P-1",
+      "practice": "Targeted rendering regression testing",
+      "appliesTo": [
+        "W-1"
+      ],
+      "reason": "Column order and width preservation are directly testable."
+    },
+    {
+      "id": "P-2",
+      "practice": "Source-bound model self-review",
+      "appliesTo": [
+        "W-1"
+      ],
+      "reason": "Review alignment, truncation, and compatibility."
+    }
+  ],
+  "obligations": [
+    {
+      "id": "O-1",
+      "practiceId": "P-1",
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-3"
+      ],
+      "text": "Run type checking and targeted pi-swe runtime/docket tests.",
+      "verification": {
+        "kind": "automated-tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-2",
+      "practiceId": "P-2",
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-3"
+      ],
+      "text": "Review the final renderer and tests for ordering and width regressions.",
+      "verification": {
+        "kind": "model-review",
+        "requiredEvidence": [
+          "model-review"
+        ]
+      }
+    }
+  ],
+  "work": [
+    {
+      "id": "W-1",
+      "kind": "task",
+      "title": "Reorder compact initiative list columns",
+      "status": "complete",
+      "dependsOn": [],
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-3"
+      ],
+      "obligationIds": [
+        "O-1",
+        "O-2"
+      ],
+      "testing": {
+        "approach": "Update exact row/header assertions and retain visible-width checks.",
+        "reason": "Directly verifies the requested order and bounded output."
+      }
+    }
+  ],
+  "artifacts": [],
+  "evidence": [
+    {
+      "id": "E-027a3fd0-c5dc-4c0c-b05f-8af864c45e8a",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && node --experimental-strip-types --test test/pi-swe-runtime.test.ts test/pi-swe-docket.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-24T14:47:59.484Z",
+      "completedAt": "2026-09-24T14:48:25.509Z",
+      "durationMs": 26025,
+      "contractFingerprint": "sha256:d99cf13bd215a2ba70689dd9f16c78732a1564da111127b18163d625a1c28952",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/src/pi/autocomplete.ts",
+            "test/pi-swe-docket.test.ts"
+          ],
+          "hash": "sha256:1ff77b276167e7f780ecdb2b2d7c0a2393fb7500938629775bd4172e9823fdfd"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/src/pi/autocomplete.ts",
+            "test/pi-swe-docket.test.ts"
+          ],
+          "hash": "sha256:1ff77b276167e7f780ecdb2b2d7c0a2393fb7500938629775bd4172e9823fdfd"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_Rxqeo9IlXdjJrUnSGDclCLLI|fc_0a7126a57cd36033016ab53820815c87d2bea3c09a51238a05",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:fb86f35eaa254aa76cc1bc4110612997f8840bb31a0cbf9159d62c6c9d5acef1"
+    },
+    {
+      "id": "E-feca4025-e797-4962-96cc-9b99c6fe70fe",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && node --experimental-strip-types --test test/pi-swe-runtime.test.ts test/pi-swe-docket.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-24T14:49:05.222Z",
+      "completedAt": "2026-09-24T14:49:31.321Z",
+      "durationMs": 26099,
+      "contractFingerprint": "sha256:d99cf13bd215a2ba70689dd9f16c78732a1564da111127b18163d625a1c28952",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/src/pi/autocomplete.ts",
+            "test/pi-swe-docket.test.ts"
+          ],
+          "hash": "sha256:40565e9879db42cda0b32954b34db93a52383864000253727a209314b164b2e0"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/src/pi/autocomplete.ts",
+            "test/pi-swe-docket.test.ts"
+          ],
+          "hash": "sha256:40565e9879db42cda0b32954b34db93a52383864000253727a209314b164b2e0"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_WFcMFiUfgLE0CL1aBI3KkRfn|fc_0a7126a57cd36033016ab5385ccdf087d2b68fc4c9dba69480",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:d44c1a6d92ce5df2eb3520d6da6747014c85379821dcaa4b740b2b787ed5e0d3"
+    },
+    {
+      "id": "E-5968c1d6-83a3-4a9e-bb1e-69057a1cdcac",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && node --experimental-strip-types --test test/pi-swe-runtime.test.ts test/pi-swe-docket.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-24T14:49:47.611Z",
+      "completedAt": "2026-09-24T14:50:13.499Z",
+      "durationMs": 25888,
+      "contractFingerprint": "sha256:d99cf13bd215a2ba70689dd9f16c78732a1564da111127b18163d625a1c28952",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/src/pi/autocomplete.ts",
+            "test/pi-swe-docket.test.ts"
+          ],
+          "hash": "sha256:c812b61c028e0e19f5b06bc291734d24d75c9724ff091ca1027ae9a1ebafd1bb"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/src/pi/autocomplete.ts",
+            "test/pi-swe-docket.test.ts"
+          ],
+          "hash": "sha256:c812b61c028e0e19f5b06bc291734d24d75c9724ff091ca1027ae9a1ebafd1bb"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_hFW0V4VvKwPYk5B3KLgwpxfm|fc_0a7126a57cd36033016ab5388ba0dc87d285877c255f2aed48",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:0f84a82f2b79fe6b3afe5274753e250697d73e50d051780bca7cbb1dc6134739"
+    },
+    {
+      "id": "E-447b7523-17db-47e8-b9e1-7b017c8cbf62",
+      "kind": "model-review",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-2"
+      ],
+      "outcome": "passed",
+      "reviewedAt": "2026-09-24T14:50:39.110Z",
+      "contractFingerprint": "sha256:d99cf13bd215a2ba70689dd9f16c78732a1564da111127b18163d625a1c28952",
+      "source": {
+        "kind": "bounded-paths",
+        "paths": [
+          "extensions/pi-swe/src/pi/autocomplete.ts",
+          "test/pi-swe-docket.test.ts"
+        ],
+        "hash": "sha256:c812b61c028e0e19f5b06bc291734d24d75c9724ff091ca1027ae9a1ebafd1bb"
+      },
+      "dimensions": [
+        "column-order",
+        "alignment",
+        "long-identifier-truncation",
+        "visible-width-bounds",
+        "focus-semantics",
+        "test-coverage"
+      ],
+      "summary": "Model self-review (not independent or human review): confirmed header and row order is initiative, revision, done, status. Initiative identifiers use a fixed 43-column visible-width field so long names truncate before metadata; focus and work-detail behavior remain unchanged. Tests cover normal, focused, terminal, and long-name rows and enforce the 78-column bound. No blocking findings.",
+      "provenance": {
+        "kind": "pi-model-self-review",
+        "sessionId": "01a0d37b-31d6-74cb-9306-ff7f434e3a52"
+      }
+    }
+  ],
+  "decisions": [
+    {
+      "id": "D-1",
+      "text": "Use a fixed-width truncated initiative column before revision, done, and status.",
+      "basis": "Keeps metadata visible even for long canonical identifiers."
+    }
+  ],
+  "risks": [
+    {
+      "id": "R-1",
+      "text": "A long identifier may consume the row and clip later columns.",
+      "mitigation": "Clip the identifier before padding its fixed-width column."
+    }
+  ]
+}

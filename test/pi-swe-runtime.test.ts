@@ -64,13 +64,14 @@ test("unified Pi surface registers swe and todo once and never internally execut
   assert.equal(execCalls, 0);
   assert.deepEqual(sent, []);
   assert.deepEqual(getSweCommandCompletions("").map((item) => item.value), ["plan", "open", "list", "status", "next", "start", "implemented", "complete", "resume", "pause"]);
+  assert.match(getSweCommandCompletions("li")[0]?.description ?? "", /\/swe list \[topic\]/);
   const notifications: Array<{ message: string; level: string }> = [];
   await commands.get("swe").handler("", {
     cwd: process.cwd(),
     ui: { notify(message: string, level: string) { notifications.push({ message, level }); } },
   });
   assert.equal(notifications[0]?.level, "info");
-  assert.match(notifications[0]?.message ?? "", /No focused SWE initiative.*Type a space after an action or topic/s);
+  assert.match(notifications[0]?.message ?? "", /No focused SWE initiative.*\/swe list \[topic\].*Type a space after an action or topic/s);
 
   const planRoot = mkdtempSync(join(tmpdir(), "pi-swe-plan-command-"));
   try {

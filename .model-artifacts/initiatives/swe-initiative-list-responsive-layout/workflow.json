@@ -1,0 +1,229 @@
+{
+  "kind": "gentic.swe.initiative",
+  "schemaVersion": 1,
+  "id": "swe-initiative-list-responsive-layout",
+  "revision": 8,
+  "status": "complete",
+  "objective": "Make bare /swe list responsive by rendering every full, copyable initiative name on its own line and placing metadata/work detail on a second line without fixed-width table truncation.",
+  "scope": {
+    "in": [
+      "bare /swe list responsive two-line layout",
+      "initiative list rendering tests",
+      "pi-swe output documentation"
+    ],
+    "out": [
+      "initiative discovery or ranking changes",
+      "topic-specific docket changes",
+      "interactive selection or copy controls"
+    ]
+  },
+  "constraints": [
+    "Initiative identifiers must never be truncated.",
+    "Remove fixed-width table columns and static 78-column clipping from initiative overview rows.",
+    "Keep status, revision, progress, focus, and current/next work visible.",
+    "Keep output bounded by the existing 25-initiative limit and bounded work-title summary."
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "text": "Every listed initiative renders its complete canonical identifier on a dedicated first line suitable for direct copying."
+    },
+    {
+      "id": "AC-2",
+      "text": "A second line renders revision, done progress, status, and current/next work when present without fixed terminal-width padding or clipping."
+    },
+    {
+      "id": "AC-3",
+      "text": "Focused and terminal initiatives retain correct markers and metadata, and targeted regression tests pass."
+    }
+  ],
+  "assessment": {
+    "depth": "light",
+    "reason": "A localized presentation redesign responding to direct usability feedback.",
+    "surfaces": [
+      "initiative list renderer",
+      "docket command tests",
+      "README"
+    ],
+    "unknowns": [
+      "The command notification API does not expose chat-pane width, so responsiveness should delegate wrapping to the host renderer."
+    ]
+  },
+  "practices": [
+    {
+      "id": "P-1",
+      "practice": "Targeted rendering regression tests",
+      "appliesTo": [
+        "W-1"
+      ],
+      "reason": "Full-name preservation and two-line structure are directly testable."
+    },
+    {
+      "id": "P-2",
+      "practice": "Source-bound model self-review",
+      "appliesTo": [
+        "W-1"
+      ],
+      "reason": "Review copyability, responsive behavior, and compatibility."
+    }
+  ],
+  "obligations": [
+    {
+      "id": "O-1",
+      "practiceId": "P-1",
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-3"
+      ],
+      "text": "Run type checking and targeted pi-swe runtime/docket tests.",
+      "verification": {
+        "kind": "automated-tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-2",
+      "practiceId": "P-2",
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-3"
+      ],
+      "text": "Review the renderer and tests for untruncated identifiers, two-line layout, and bounded output.",
+      "verification": {
+        "kind": "model-review",
+        "requiredEvidence": [
+          "model-review"
+        ]
+      }
+    }
+  ],
+  "work": [
+    {
+      "id": "W-1",
+      "kind": "task",
+      "title": "Implement responsive two-line initiative overview",
+      "status": "complete",
+      "dependsOn": [],
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-3"
+      ],
+      "obligationIds": [
+        "O-1",
+        "O-2"
+      ],
+      "testing": {
+        "approach": "Assert exact two-line row structure, full long identifiers, metadata ordering, focus markers, and absence of fixed-width truncation.",
+        "reason": "Directly guards the reported copyability and unused-width problems."
+      }
+    }
+  ],
+  "artifacts": [],
+  "evidence": [
+    {
+      "id": "E-396789bb-83be-409d-84e5-db66eb05d900",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && node --experimental-strip-types --test test/pi-swe-runtime.test.ts test/pi-swe-docket.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-24T14:56:10.431Z",
+      "completedAt": "2026-09-24T14:56:35.804Z",
+      "durationMs": 25373,
+      "contractFingerprint": "sha256:ac8fbb46e891a3e64f23161198ca1cb45523670bb06da1ce2fe6ca3b9bb8f819",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/src/pi/autocomplete.ts",
+            "test/pi-swe-docket.test.ts"
+          ],
+          "hash": "sha256:27dc204d2295490fa0c38f6168297c11379cedb099df4f36b1781f5fef99a04e"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/src/pi/autocomplete.ts",
+            "test/pi-swe-docket.test.ts"
+          ],
+          "hash": "sha256:27dc204d2295490fa0c38f6168297c11379cedb099df4f36b1781f5fef99a04e"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_faB2tBOAfsxydXPOnZzRDm5v|fc_0a7126a57cd36033016ab53a0ada2087d290012fd681a2aa55",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:42d6e90834be801abca022a1754b001b2f80bd7074c5c7021f4e5dc061704a2e"
+    },
+    {
+      "id": "E-7d132c4f-5441-4454-ade3-eae0a44852c8",
+      "kind": "model-review",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-2"
+      ],
+      "outcome": "passed",
+      "reviewedAt": "2026-09-24T14:57:10.883Z",
+      "contractFingerprint": "sha256:ac8fbb46e891a3e64f23161198ca1cb45523670bb06da1ce2fe6ca3b9bb8f819",
+      "source": {
+        "kind": "bounded-paths",
+        "paths": [
+          "extensions/pi-swe/README.md",
+          "extensions/pi-swe/src/pi/autocomplete.ts",
+          "test/pi-swe-docket.test.ts"
+        ],
+        "hash": "sha256:27dc204d2295490fa0c38f6168297c11379cedb099df4f36b1781f5fef99a04e"
+      },
+      "dimensions": [
+        "copyability",
+        "responsive-layout",
+        "two-line-structure",
+        "metadata-order",
+        "focus-semantics",
+        "bounded-output",
+        "test-coverage"
+      ],
+      "summary": "Model self-review (not independent or human review): confirmed each initiative ID is emitted unchanged as its own logical line, with focus, revision, done progress, status, and optional current/next work on the following line. Fixed-width padding, 78-column clipping, and identifier truncation were removed so the host pane controls wrapping. Discovery remains capped at 25 and work-title detail remains bounded at 140 characters. Tests cover exact long-name preservation, two-line actionable and terminal rows, focus markers, and metadata order. No blocking findings.",
+      "provenance": {
+        "kind": "pi-model-self-review",
+        "sessionId": "01a0d37b-31d6-74cb-9306-ff7f434e3a52"
+      }
+    }
+  ],
+  "decisions": [
+    {
+      "id": "D-1",
+      "text": "Render the full identifier alone on line one and compact metadata plus actionable work on line two, allowing the host UI to wrap naturally.",
+      "basis": "The notification API has no pane-width parameter; avoiding fixed-width clipping is the reliable responsive behavior."
+    }
+  ],
+  "risks": [
+    {
+      "id": "R-1",
+      "text": "Very narrow panes may wrap long identifiers.",
+      "mitigation": "Never truncate the identifier; let the host wrap it while preserving the exact copyable text."
+    },
+    {
+      "id": "R-2",
+      "text": "Two lines per initiative increase vertical output.",
+      "mitigation": "Retain the existing 25-initiative bound and keep each initiative to exactly two logical lines."
+    }
+  ]
+}

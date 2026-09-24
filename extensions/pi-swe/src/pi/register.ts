@@ -6,7 +6,7 @@ import { renderUsage } from "../../../../src/command-guidance.ts";
 import { SweService, type CompletionResult } from "../app/service.ts";
 import type { PreparedCompletionCommit } from "../app/completion-commit.ts";
 import type { Initiative } from "../domain/initiative.ts";
-import { getSweCommandCompletions, renderSweQuickHelp, SWE_COMMAND_ACTIONS } from "./autocomplete.ts";
+import { getSweCommandCompletions, renderSweInitiativeList, renderSweQuickHelp, SWE_COMMAND_ACTIONS } from "./autocomplete.ts";
 import { refreshSweContextMessages, restoreSweFocus, SWE_CONTEXT_TYPE, SWE_FOCUS_ENTRY_TYPE } from "./context.ts";
 import { buildSwePlanningPrompt, prepareSwePlanRequest } from "./planning.ts";
 import { projectSweDocket, renderSweDocketLines } from "../ui/docket.ts";
@@ -118,7 +118,7 @@ export function registerSweSurface(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("swe", {
-    description: "Manage durable initiatives · /swe <action> <topic> [work-id]",
+    description: "Manage durable initiatives · /swe list [topic] · /swe <action> <topic> [work-id]",
     getArgumentCompletions: (prefix) => getSweCommandCompletions(prefix, {
       cwd: completionCwd,
       focusedInitiativeId: focused.get(completionCwd),
@@ -150,13 +150,17 @@ export function registerSweSurface(pi: ExtensionAPI): void {
       const known = COMMAND_ACTIONS.has(action);
       const requiresWork = REQUIRED_WORK_COMMANDS.has(action);
       const allowsWork = requiresWork || OPTIONAL_WORK_COMMANDS.has(action);
-      if (!known || !initiativeId || extra.length || (requiresWork && !workId) || (!allowsWork && Boolean(workId))) {
+      const allowsMissingInitiative = action === "list";
+      if (!known || (!initiativeId && !allowsMissingInitiative) || extra.length || (requiresWork && !workId) || (!allowsWork && Boolean(workId))) {
         ctx.ui.notify(renderUsage(SWE_COMMAND_ACTIONS), "warning"); return;
       }
       try {
         const current = service(ctx.cwd);
         if (action === "open") { await openSweDocket(current.status(initiativeId).initiative, ctx); await rememberFocus(ctx, initiativeId); return; }
-        if (action === "list") { ctx.ui.notify(renderDocket(current.status(initiativeId).initiative), "info"); await rememberFocus(ctx, initiativeId); return; }
+        if (action === "list") {
+          if (!initiativeId) { ctx.ui.notify(renderSweInitiativeList(ctx.cwd, focused.get(ctx.cwd)), "info"); return; }
+          ctx.ui.notify(renderDocket(current.status(initiativeId).initiative), "info"); await rememberFocus(ctx, initiativeId); return;
+        }
         if (action === "status") { ctx.ui.notify(renderStatus(current.status(initiativeId).initiative), "info"); await rememberFocus(ctx, initiativeId); return; }
         if (action === "next") { const next = current.next(initiativeId); ctx.ui.notify(next ? `${next.id}: ${next.title}` : "No dependency-ready work.", "info"); await rememberFocus(ctx, initiativeId); return; }
         const stored = action === "pause" ? await current.pause(initiativeId)

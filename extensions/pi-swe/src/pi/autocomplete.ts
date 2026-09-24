@@ -16,7 +16,7 @@ import { readyWork, type Initiative, type WorkItem } from "../domain/initiative.
 export const SWE_COMMAND_ACTIONS = [
   { action: "plan", syntax: "/swe plan [--id topic] <request>", description: "Plan from natural language", help: "Assess and create an initiative" },
   { action: "open", syntax: "/swe open <topic>", description: "Open the canonical work docket" },
-  { action: "list", syntax: "/swe list <topic>", description: "List canonical work" },
+  { action: "list", syntax: "/swe list [topic]", description: "List initiatives or canonical topic work" },
   { action: "status", syntax: "/swe status <topic>", description: "Inspect durable initiative state" },
   { action: "next", syntax: "/swe next <topic>", description: "Show the next dependency-ready leaf" },
   { action: "start", syntax: "/swe start <topic> <work-id>", description: "Start dependency-ready work", help: "Start ready work" },
@@ -31,9 +31,15 @@ const KNOWN_ACTIONS = new Set<string>(SWE_COMMAND_ACTIONS.map((item) => item.act
 const WORK_ACTIONS = new Set(["start", "implemented", "complete"]);
 const TOPIC = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_INITIATIVES = 250;
+const MAX_LISTED_INITIATIVES = 25;
 
 type CompletionOptions = { cwd?: string; focusedInitiativeId?: string };
 type DiscoveredInitiative = { initiative: Initiative };
+type InitiativeSummary = {
+  complete: number;
+  total: number;
+  work: string;
+};
 
 export function getSweCommandCompletions(prefix: string, options: CompletionOptions = {}): AutocompleteItem[] {
   const normalized = prefix.trimStart();
@@ -44,10 +50,8 @@ export function getSweCommandCompletions(prefix: string, options: CompletionOpti
   const action = actionMatch[1];
   const remainder = actionMatch[2];
   const workMatch = remainder.match(/^(\S+)\s+(.*)$/s);
-  const initiatives = discoverInitiatives(options.cwd)
-    .filter(({ initiative }) => supportsAction(action, initiative))
-    .sort((left, right) => initiativeRank(left.initiative, options.focusedInitiativeId) - initiativeRank(right.initiative, options.focusedInitiativeId)
-      || left.initiative.id.localeCompare(right.initiative.id));
+  const initiatives = rankedInitiatives(options.cwd, options.focusedInitiativeId)
+    .filter(({ initiative }) => supportsAction(action, initiative));
 
   if (!workMatch || !WORK_ACTIONS.has(action)) {
     if (/\s/.test(remainder)) return [];
@@ -68,6 +72,26 @@ export function getSweCommandCompletions(prefix: string, options: CompletionOpti
   return prefixedCompletions(`${action} ${initiativeId} `, workCompletions(action, found.initiative, options.cwd, workPrefix));
 }
 
+export function renderSweInitiativeList(cwd: string, focusedInitiativeId?: string): string {
+  const initiatives = rankedInitiatives(cwd, focusedInitiativeId);
+  if (!initiatives.length) return "SWE INITIATIVES — 0 total\n\nNo initiatives found.";
+
+  const shown = initiatives.slice(0, MAX_LISTED_INITIATIVES);
+  const heading = `SWE INITIATIVES · ${initiatives.length} total${shown.length < initiatives.length ? ` · showing ${shown.length}` : ""}`;
+  const lines = [heading, ""];
+  for (const { initiative } of shown) {
+    const summary = summarizeInitiative(initiative, 140);
+    const focused = initiative.id === focusedInitiativeId;
+    const work = summary.work === "no ready work" ? "" : ` · ${summary.work}`;
+    lines.push(
+      initiative.id,
+      `  ${focused ? "●" : "○"} r${initiative.revision} · ${summary.complete}/${summary.total} done · ${initiative.status}${work}`,
+    );
+  }
+  if (shown.length < initiatives.length) lines.push(`… ${initiatives.length - shown.length} more initiatives`);
+  return lines.join("\n");
+}
+
 export function renderSweQuickHelp(initiative?: Initiative): string {
   const lines = initiative
     ? [`Focused: ${initiative.id} · ${describeInitiative(initiative, false)}`]
@@ -78,7 +102,7 @@ export function renderSweQuickHelp(initiative?: Initiative): string {
   }
   lines.push(
     "",
-    ...renderActionHelp(SWE_COMMAND_ACTIONS, ["plan", "status", "open", "start", "implemented", "complete", "pause", "resume"]),
+    ...renderActionHelp(SWE_COMMAND_ACTIONS, ["plan", "list", "status", "open", "start", "implemented", "complete", "pause", "resume"]),
     "Type a space after an action or topic to see contextual completions.",
   );
   return lines.join("\n");
@@ -106,6 +130,12 @@ function discoverInitiatives(cwd: string): DiscoveredInitiative[] {
   });
 }
 
+function rankedInitiatives(cwd: string, focusedInitiativeId?: string): DiscoveredInitiative[] {
+  return discoverInitiatives(cwd)
+    .sort((left, right) => initiativeRank(left.initiative, focusedInitiativeId) - initiativeRank(right.initiative, focusedInitiativeId)
+      || left.initiative.id.localeCompare(right.initiative.id));
+}
+
 function supportsAction(action: string, initiative: Initiative): boolean {
   if (action === "pause") return initiative.status === "active";
   if (action === "resume") return initiative.status === "paused" || initiative.status === "draft";
@@ -123,12 +153,20 @@ function initiativeRank(initiative: Initiative, focusedInitiativeId?: string): n
 }
 
 function describeInitiative(initiative: Initiative, focused: boolean): string {
+  const summary = summarizeInitiative(initiative);
+  const work = summary.work.replace(/^(?:current|next) /, "");
+  return `${focused ? "focused · " : ""}${initiative.status} · r${initiative.revision} · ${summary.complete}/${summary.total} complete · ${work}`;
+}
+
+function summarizeInitiative(initiative: Initiative, titleMax = 60): InitiativeSummary {
   const executable = initiative.work.filter((item) => item.kind !== "phase");
   const complete = executable.filter((item) => item.status === "complete").length;
+  const current = executable.find((item) => item.status === "active")
+    ?? executable.find((item) => item.status === "implemented");
+  if (current) return { complete, total: executable.length, work: `current ${current.id}: ${clip(current.title, titleMax)}` };
   const next = readyWork(initiative)[0];
-  const current = executable.find((item) => item.status === "active") ?? executable.find((item) => item.status === "implemented") ?? next;
-  const detail = current ? `${current.id}: ${clip(current.title, 44)}` : "no ready work";
-  return `${focused ? "focused · " : ""}${initiative.status} · r${initiative.revision} · ${complete}/${executable.length} complete · ${detail}`;
+  if (next) return { complete, total: executable.length, work: `next ${next.id}: ${clip(next.title, titleMax)}` };
+  return { complete, total: executable.length, work: "no ready work" };
 }
 
 function workCompletions(action: string, initiative: Initiative, cwd: string, prefix: string): CommandCompletion[] {
@@ -160,3 +198,4 @@ function clip(value: string, max: number): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   return normalized.length <= max ? normalized : `${normalized.slice(0, Math.max(1, max - 1)).trimEnd()}…`;
 }
+
