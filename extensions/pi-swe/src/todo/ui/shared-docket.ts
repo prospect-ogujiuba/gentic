@@ -35,18 +35,19 @@ export function renderSharedDocketLines(view: TodoView, theme: TodoTheme, option
   const blocked = executable.filter((item) => item.status === "blocked").length;
   const implemented = executable.filter((item) => item.status === "implemented").length;
   const ready = executable.filter((item) => item.status === "ready" && item.ready).length;
-  const label = view.provider === "workflow" ? "SWE WORK" : "TASKS";
+  const label = view.provider === "workflow" ? "SWE WORK"
+    : view.provider === "project" ? "PROJECT TASKS"
+    : view.provider === "combined" ? "ALL TASKS"
+    : "SESSION TASKS";
   const subtaskCount = view.items.filter((item) => item.parentId).length;
-  const authority = view.provider === "workflow"
-    ? view.authorityId
-    : `Total ${view.items.length}${subtaskCount ? ` · ${subtaskCount} subtask${subtaskCount === 1 ? "" : "s"}` : ""}`;
+  const authority = `${view.authorityId} · Total ${view.items.length}${subtaskCount ? ` · ${subtaskCount} subtask${subtaskCount === 1 ? "" : "s"}` : ""}`;
   const heading = `${theme.fg("accent", theme.bold ? theme.bold(label) : label)}${theme.fg("dim", " — ")}${theme.fg("accent", authority)}`;
-  const stats = view.provider === "standalone"
+  const stats = view.provider !== "workflow"
     ? [`Open ${executable.length - done}`, active ? `Active ${active}` : "", blocked ? `Blocked ${blocked}` : "", done ? `Done ${done}` : "", ready ? `Ready ${ready}` : ""].filter(Boolean).join(" | ")
     : [`${done}/${executable.length} complete`, active ? `${active} active` : "", implemented ? `${implemented} implemented` : "", blocked ? `${blocked} blocked` : "", ready ? `${ready} ready` : ""].filter(Boolean).join(" · ");
   const revision = view.revision ? `r${view.revision} · ` : "";
   const lines = [...leftRight(width, heading, theme.fg("dim", `${revision}${stats}`))];
-  if (view.provider === "standalone") lines.push(...leftRight(width, focusPath(view), renderProgress(view, theme)));
+  if (view.provider === "standalone" || view.provider === "project") lines.push(...leftRight(width, focusPath(view), renderProgress(view, theme)));
 
   const rows = visibleTodoViewItems(view, options.includeDone).slice(0, Math.max(0, options.limit ?? 8));
   for (const item of rows) {
@@ -55,13 +56,15 @@ export function renderSharedDocketLines(view: TodoView, theme: TodoTheme, option
     const indent = item.depth ? `${"  ".repeat(item.depth - 1)}${theme.fg("dim", "└─")} ` : "";
     const rail = `${selected ? "  " : ""}  ${"  ".repeat(item.depth)}  `;
     const wait = waitingLabel(item);
-    const identity = view.provider === "workflow" ? `${theme.fg("accent", item.id)} ` : "";
-    const row = `${pointer}${indent}${theme.fg(statusColor(item.status), statusChip(item.status, item.ready))} ${identity}${theme.fg(item.status === "complete" ? "muted" : "text", item.title)}${view.provider === "workflow" && wait ? theme.fg("dim", ` — ${wait}`) : ""}`;
+    const scopedId = item.id.startsWith(`${item.scope}:`) ? item.id : `${item.scope}:${item.id}`;
+    const prefixIdentity = view.provider === "workflow" ? `${theme.fg("accent", item.id)} ` : "";
+    const suffixIdentity = view.provider === "workflow" ? "" : theme.fg("dim", ` (${scopedId})`);
+    const row = `${pointer}${indent}${theme.fg(statusColor(item.status), statusChip(item.status, item.ready))} ${prefixIdentity}${theme.fg(item.status === "complete" ? "muted" : "text", item.title)}${suffixIdentity}${view.provider === "workflow" && wait ? theme.fg("dim", ` — ${wait}`) : ""}`;
     lines.push(truncateToWidth(row, width, "…"));
     if (item.status === "blocked" && item.blockedReason) lines.push(truncateToWidth(`${rail}${theme.fg("warning", "└─")} ${theme.fg("muted", item.blockedReason)}`, width, "…"));
     if (options.expandedIds?.has(item.id)) {
       const allowed = Object.entries(item.capabilities).filter(([, value]) => value).map(([key]) => key).join(", ") || "inspect only";
-      for (const detail of [`id: ${item.id}`, `status: ${item.rawStatus}`, `capabilities: ${allowed}`]) {
+      for (const detail of [`authority: ${item.scope} · ${item.authorityId}`, `id: ${item.id}`, `scoped id: ${item.scope}:${item.id}`, `status: ${item.rawStatus}`, `capabilities: ${allowed}`]) {
         lines.push(truncateToWidth(`${rail}${theme.fg("dim", "│")} ${detail}`, width, "…"));
       }
     }

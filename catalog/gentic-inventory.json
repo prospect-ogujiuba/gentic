@@ -301,6 +301,8 @@
         "extensions/pi-swe/src/pi/register.ts",
         "extensions/pi-swe/src/todo/command-adapter.ts",
         "extensions/pi-swe/src/todo/contract.ts",
+        "extensions/pi-swe/src/todo/project-backend.ts",
+        "extensions/pi-swe/src/todo/project-store.ts",
         "extensions/pi-swe/src/todo/provider.ts",
         "extensions/pi-swe/src/todo/state-core.ts",
         "extensions/pi-swe/src/todo/thin-surface.ts",

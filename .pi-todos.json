@@ -1,0 +1,13 @@
+{
+  "kind": "gentic.project-todos",
+  "schemaVersion": 1,
+  "revision": 1,
+  "updatedAt": "2026-09-24T19:56:33.648Z",
+  "todos": [
+    {
+      "id": "ptodo_9c746dd7-496d-4579-8117-5bbe90b64582",
+      "title": "Ask about pi checkup script that updates catalog, versions, capabilities etc",
+      "status": "ready"
+    }
+  ]
+}

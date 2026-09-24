@@ -83,7 +83,7 @@ extensions/foo/
     ui/        # widgets, modal/rendering/theme output
 ```
 
-`pi-swe` is the layered stateful example: its entrypoint owns both durable SWE workflow surfaces and the unified todo capability, which selects either workflow authority or the branch-reconstructed standalone core.
+`pi-swe` is the layered stateful example: its entrypoint owns durable SWE workflow surfaces and the unified todo capability, which exposes separate branch-reconstructed session, tracked `.pi-todos.json` project, and directly projected initiative authorities.
 
 ## README orientation fields
 

@@ -95,8 +95,12 @@ test("focused active workflow is projected and todo mutations route only through
     assert.equal(projected.details.view.authorityId, initiativeId);
     assert.match(projected.content[0].text, /W-5/);
     assert.doesNotMatch(projected.content[0].text, /Preserved standalone task/);
-    assert.deepEqual(commands.get("todo").getArgumentCompletions("").map((item: any) => item.value), ["open", "list", "start"]);
+    assert.deepEqual(commands.get("todo").getArgumentCompletions("").map((item: any) => item.value), ["session", "project", "initiative", "all", "open", "list", "start"]);
     assert.deepEqual(commands.get("todo").getArgumentCompletions("start W-").map((item: any) => item.value), ["start W-5"]);
+    assert.deepEqual(commands.get("todo").getArgumentCompletions("session st").map((item: any) => item.value), ["session start"]);
+    const explicitSession = await execute("list", { scope: "session" });
+    assert.equal(explicitSession.details.state.todos.standalone.title, "Preserved standalone task");
+    assert.equal(appendCount, 0);
 
     const swe = tools.get("swe");
     const started = await swe.execute(
@@ -108,7 +112,7 @@ test("focused active workflow is projected and todo mutations route only through
     );
     const startedWork = started.details.initiative.work.find((item: any) => item.id === "W-5");
     assert.equal(startedWork.status, "active");
-    assert.deepEqual(commands.get("todo").getArgumentCompletions("").map((item: any) => item.value), ["open", "list", "finish"]);
+    assert.deepEqual(commands.get("todo").getArgumentCompletions("").map((item: any) => item.value), ["session", "project", "initiative", "all", "open", "list", "finish"]);
     assert.equal(statuses.at(-1), `todo: ${startedWork.title}`);
     assert.ok(Array.isArray(widgets.at(-1)), "SWE mutation must refresh the RPC todo widget");
     assert.deepEqual(commands.get("todo").getArgumentCompletions("finish W-").map((item: any) => item.value), ["finish W-5"]);

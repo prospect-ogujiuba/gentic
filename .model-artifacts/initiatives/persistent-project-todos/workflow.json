@@ -1,0 +1,756 @@
+{
+  "kind": "gentic.swe.initiative",
+  "schemaVersion": 1,
+  "id": "persistent-project-todos",
+  "revision": 18,
+  "status": "complete",
+  "objective": "Add a lightweight repository-persistent project todo authority alongside existing fork-aware session todos and initiative work, exposed through one explicit scope-aware todo surface without introducing backlog promotion or duplicate initiative state.",
+  "scope": {
+    "in": [
+      "Preserve current Pi session-branch todos and their fork/rewind semantics",
+      "Add a tracked repository-level .pi-todos.json authority for lightweight project todos",
+      "Add explicit session, project, initiative, and all todo scopes to the structured tool, slash command, completions, and docket",
+      "Keep active initiative work as a direct projection of pi-swe authority and route its mutations only through SweService",
+      "Provide atomic, locked, revision-checked, schema-validated project todo persistence",
+      "Add compatibility, concurrency, routing, UI, and documentation coverage"
+    ],
+    "out": [
+      "A backlog or promotion lifecycle between todo authorities",
+      "Automatic conversion or synchronization between session, project, and initiative todos",
+      "A database or event-sourced project todo store",
+      "Replacing existing session todo persistence",
+      "Copying initiative work into project todo state",
+      "Automatic commits or pushes for project todo mutations",
+      "Changing initiative workflow.json layout or naming"
+    ]
+  },
+  "constraints": [
+    "Every todo item has exactly one canonical authority: Pi session entries, .pi-todos.json, or initiative workflow authority.",
+    "Existing unscoped standalone todo behavior remains session-scoped and backward compatible.",
+    "Project todos require explicit project scope; models must not create durable project todos merely as routine execution decomposition.",
+    "A focused active initiative remains the automatic execution view, while explicit session and project scopes remain accessible.",
+    "Project persistence must fail closed on malformed state, stale revisions, symlinks, lock conflicts, or ambiguous paths and must never silently reset data.",
+    "The tracked .pi-todos.json file contains only lightweight todo state and no initiative verification, evidence, or lifecycle data.",
+    "No database, second initiative ledger, implicit promotion, automatic commit, or push is introduced."
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "text": "Existing session todos continue to reconstruct exclusively from the active Pi session branch and retain fork, rewind, hierarchy, ordering, blocking, and single-active-item behavior."
+    },
+    {
+      "id": "AC-2",
+      "text": "Project todos persist in a closed-schema tracked .pi-todos.json file across distinct Pi sessions and support lightweight create, move, delete, start, finish, block, unblock, and list operations."
+    },
+    {
+      "id": "AC-3",
+      "text": "Project todo writes use bounded validation, cooperative locking, revision/hash compare-and-swap, atomic replacement, and fail-closed recovery semantics under malformed, stale, symlinked, interrupted, and concurrent access."
+    },
+    {
+      "id": "AC-4",
+      "text": "The todo tool, slash command, completions, and docket expose explicit session, project, initiative, and all scopes with unambiguous authority labels, IDs, and per-item capabilities."
+    },
+    {
+      "id": "AC-5",
+      "text": "Automatic routing preserves current behavior: a focused active initiative projects initiative work; otherwise unscoped operations use session todos; project mutations always require explicit project scope."
+    },
+    {
+      "id": "AC-6",
+      "text": "Initiative todo operations continue to reread canonical workflow authority and route only through SweService, with no project-file copy or structural mutation bypass."
+    },
+    {
+      "id": "AC-7",
+      "text": "Documentation clearly distinguishes session, project, and initiative authority, persistence, Git behavior, routing defaults, and the absence of synchronization or promotion."
+    },
+    {
+      "id": "AC-8",
+      "text": "Focused tests, typecheck, repository checks, and the full test suite pass without regressions."
+    }
+  ],
+  "assessment": {
+    "depth": "deep",
+    "reason": "The feature adds a new durable tracked authority and concurrent file mutation path while changing a shared command/tool/UI surface that already switches between session and initiative providers.",
+    "surfaces": [
+      "todo domain and provider contract",
+      "Pi session persistence",
+      "tracked repository state",
+      "concurrent file access",
+      "slash command and structured tool",
+      "autocomplete and terminal docket",
+      "initiative projection compatibility",
+      "documentation and tests"
+    ],
+    "unknowns": [
+      "The cleanest internal extraction for sharing lightweight todo rules between branch-event and snapshot persistence must preserve current characterization behavior.",
+      "The all-scope docket needs bounded rendering and deterministic mutation targeting without making implicit provider selection ambiguous."
+    ]
+  },
+  "practices": [
+    {
+      "id": "P-1",
+      "practice": "compatibility-first characterization",
+      "appliesTo": [
+        "W-1",
+        "W-3"
+      ],
+      "reason": "Current session and initiative todo behavior must remain stable while scope-aware routing is introduced."
+    },
+    {
+      "id": "P-2",
+      "practice": "persistence reliability and concurrency testing",
+      "appliesTo": [
+        "W-2"
+      ],
+      "reason": "A tracked mutable JSON authority must resist stale writers, crashes, malformed input, symlinks, and concurrent Pi processes."
+    },
+    {
+      "id": "P-3",
+      "practice": "single-authority domain design",
+      "appliesTo": [
+        "W-1",
+        "W-2",
+        "W-3"
+      ],
+      "reason": "Session, project, and initiative items must share presentation without copying or synchronizing canonical state."
+    },
+    {
+      "id": "P-4",
+      "practice": "terminal UX and bounded output",
+      "appliesTo": [
+        "W-3"
+      ],
+      "reason": "Explicit scopes, completions, labels, and the combined view must remain understandable and bounded."
+    },
+    {
+      "id": "P-5",
+      "practice": "source-bound qualification",
+      "appliesTo": [
+        "W-3"
+      ],
+      "reason": "Persistence, routing, and documentation require integrated regression evidence and explicit self-review."
+    }
+  ],
+  "obligations": [
+    {
+      "id": "O-1",
+      "practiceId": "P-1",
+      "criterionIds": [
+        "AC-1",
+        "AC-5",
+        "AC-6"
+      ],
+      "text": "Characterize and preserve session branch reconstruction, automatic provider routing, initiative projection, and unsupported workflow mutation behavior.",
+      "verification": {
+        "kind": "compatibility-tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-2",
+      "practiceId": "P-2",
+      "criterionIds": [
+        "AC-2",
+        "AC-3"
+      ],
+      "text": "Test project todo schema, lifecycle, cross-session reload, atomic publication, stale revision rejection, lock contention, malformed files, symlinks, and injected interruption recovery.",
+      "verification": {
+        "kind": "persistence-and-concurrency-tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-3",
+      "practiceId": "P-3",
+      "criterionIds": [
+        "AC-2",
+        "AC-4",
+        "AC-5",
+        "AC-6"
+      ],
+      "text": "Prove each item is read and mutated only through its owning backend, scope/ID mismatches fail closed, and no authority is copied or synchronized.",
+      "verification": {
+        "kind": "routing-and-negative-tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-4",
+      "practiceId": "P-4",
+      "criterionIds": [
+        "AC-4",
+        "AC-7"
+      ],
+      "text": "Test scope-aware command parsing, tool inputs, completions, authority labels, per-item capabilities, bounded all-scope rendering, and document the resulting contract.",
+      "verification": {
+        "kind": "surface-and-documentation-tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-5",
+      "practiceId": "P-5",
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-3",
+        "AC-4",
+        "AC-5",
+        "AC-6",
+        "AC-7",
+        "AC-8"
+      ],
+      "text": "Run focused todo and pi-swe tests, typecheck, repository checks, the full suite, and a source-bound model self-review of authority isolation, persistence safety, compatibility, and UX clarity.",
+      "verification": {
+        "kind": "qualification-and-review",
+        "requiredEvidence": [
+          "machine-command",
+          "model-review"
+        ]
+      }
+    }
+  ],
+  "work": [
+    {
+      "id": "W-1",
+      "kind": "task",
+      "title": "Refactor todo authority contracts and add explicit scope-aware routing",
+      "status": "complete",
+      "dependsOn": [],
+      "criterionIds": [
+        "AC-1",
+        "AC-4",
+        "AC-5",
+        "AC-6"
+      ],
+      "obligationIds": [
+        "O-1"
+      ],
+      "testing": {
+        "approach": "Extend existing characterization and workflow-backend tests first for explicit session, project, initiative, and all routing while retaining current unscoped defaults, then refactor provider selection and contracts behind those tests.",
+        "reason": "The routing contract must be fixed before adding a third durable provider so compatibility failures are detected at the boundary."
+      }
+    },
+    {
+      "id": "W-2",
+      "kind": "task",
+      "title": "Implement safe tracked project todo persistence and backend",
+      "status": "complete",
+      "dependsOn": [
+        "W-1"
+      ],
+      "criterionIds": [
+        "AC-2",
+        "AC-3"
+      ],
+      "obligationIds": [
+        "O-2",
+        "O-3"
+      ],
+      "testing": {
+        "approach": "Add schema, lifecycle, reload, fault-injection, stale-writer, concurrent-process, symlink, and malformed-state tests before implementing the .pi-todos.json snapshot store and project backend.",
+        "reason": "The new file is durable project authority and must fail closed rather than trade simplicity for silent loss or corruption."
+      }
+    },
+    {
+      "id": "W-3",
+      "kind": "task",
+      "title": "Complete unified surfaces, documentation, review, and qualification",
+      "status": "complete",
+      "dependsOn": [
+        "W-2"
+      ],
+      "criterionIds": [
+        "AC-4",
+        "AC-5",
+        "AC-6",
+        "AC-7",
+        "AC-8"
+      ],
+      "obligationIds": [
+        "O-4",
+        "O-5"
+      ],
+      "testing": {
+        "approach": "Add end-to-end tool, command, completion, and docket coverage for every scope and combined view; update documentation; perform source-bound self-review; then run focused and full repository verification.",
+        "reason": "The feature is complete only when all authorities are clearly accessible without ambiguous mutations and the existing pi-swe suite remains qualified."
+      }
+    }
+  ],
+  "artifacts": [],
+  "evidence": [
+    {
+      "id": "E-5441e518-b702-48f8-8957-2c24d728b163",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run test:todo"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-24T17:50:06.417Z",
+      "completedAt": "2026-09-24T17:50:15.528Z",
+      "durationMs": 9111,
+      "contractFingerprint": "sha256:d73df827c659a54d50203b5f83e090c16d5ef294e1c61deadeac7358dbe077f2",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/src/todo/contract.ts",
+            "extensions/pi-swe/src/todo/project-backend.ts",
+            "extensions/pi-swe/src/todo/project-store.ts",
+            "extensions/pi-swe/src/todo/provider.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/workflow-backend.ts",
+            "test/pi-todo-workflow-backend.test.ts"
+          ],
+          "hash": "sha256:d7fb8a68adcf63dad0b20f365dd62756fc9d4c62de7df656e811213a900e7db6"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/src/todo/contract.ts",
+            "extensions/pi-swe/src/todo/project-backend.ts",
+            "extensions/pi-swe/src/todo/project-store.ts",
+            "extensions/pi-swe/src/todo/provider.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/workflow-backend.ts",
+            "test/pi-todo-workflow-backend.test.ts"
+          ],
+          "hash": "sha256:d7fb8a68adcf63dad0b20f365dd62756fc9d4c62de7df656e811213a900e7db6"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_eDw11hwMUCzOs8Y9QvMiDm9J|fc_0b0d3a3543e3bb73016ab562cfdda887d2aa3caa08d0018783",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:f651dd1bb4e97ce1f7019fa802e497df1516174d9cb3b18415f4479ebbf7f574"
+    },
+    {
+      "id": "E-15baed45-2b82-4b0c-af88-3822b2a15ee2",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run test:todo"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-24T17:52:35.435Z",
+      "completedAt": "2026-09-24T17:52:43.877Z",
+      "durationMs": 8442,
+      "contractFingerprint": "sha256:d73df827c659a54d50203b5f83e090c16d5ef294e1c61deadeac7358dbe077f2",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/src/todo/contract.ts",
+            "extensions/pi-swe/src/todo/provider.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/workflow-backend.ts",
+            "test/pi-todo-contract.test.ts",
+            "test/pi-todo-workflow-backend.test.ts"
+          ],
+          "hash": "sha256:1165db5e119285795d517851b5ce8b05f6be9ca4f2fa4ad344904e8f8c18b2b3"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/src/todo/contract.ts",
+            "extensions/pi-swe/src/todo/provider.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/workflow-backend.ts",
+            "test/pi-todo-contract.test.ts",
+            "test/pi-todo-workflow-backend.test.ts"
+          ],
+          "hash": "sha256:1165db5e119285795d517851b5ce8b05f6be9ca4f2fa4ad344904e8f8c18b2b3"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_W6s0LwB5dqM8pHvEuFfBNt9a|fc_0b0d3a3543e3bb73016ab56364574487d289b74d971d742fa0",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:288eb9e3dd9cdf2325858b8d3b48da53f6f9bf58efbf8bc742b92e016fbdafdc"
+    },
+    {
+      "id": "E-861b0894-a8d5-49a0-873f-97009b62ae89",
+      "kind": "machine-command",
+      "workId": "W-2",
+      "obligationIds": [
+        "O-2",
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-todo-project-store.test.ts test/pi-todo-workflow-backend.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-24T17:54:55.302Z",
+      "completedAt": "2026-09-24T17:54:58.552Z",
+      "durationMs": 3250,
+      "contractFingerprint": "sha256:d73df827c659a54d50203b5f83e090c16d5ef294e1c61deadeac7358dbe077f2",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/src/todo/project-backend.ts",
+            "extensions/pi-swe/src/todo/project-store.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "test/pi-todo-project-store.test.ts",
+            "test/pi-todo-workflow-backend.test.ts"
+          ],
+          "hash": "sha256:7b77b4fadae75addf0c64ed0ab15b7dd5bf9f9059f8b16d9eeb4f2cdb85c46f1"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/src/todo/project-backend.ts",
+            "extensions/pi-swe/src/todo/project-store.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "test/pi-todo-project-store.test.ts",
+            "test/pi-todo-workflow-backend.test.ts"
+          ],
+          "hash": "sha256:7b77b4fadae75addf0c64ed0ab15b7dd5bf9f9059f8b16d9eeb4f2cdb85c46f1"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_W3r1xXc4rDcCrkFdPzxYtVqI|fc_0b0d3a3543e3bb73016ab563efe81087d284b75ca18ea41dcd",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:eb3e45935b92eda2f9bc906f7d03edb3e0247c1b18f926613fbdc4edd328a635"
+    },
+    {
+      "id": "E-13553f0d-82cb-4ad4-987d-0a8ab1dee980",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-4",
+        "O-5"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run test:todo && npm run test:swe && npm run typecheck && npm run check && npm run check:commands && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-24T18:01:16.245Z",
+      "completedAt": "2026-09-24T18:01:32.755Z",
+      "durationMs": 16510,
+      "contractFingerprint": "sha256:d73df827c659a54d50203b5f83e090c16d5ef294e1c61deadeac7358dbe077f2",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/extension.anatomy.json",
+            "extensions/pi-swe/src/todo/contract.ts",
+            "extensions/pi-swe/src/todo/project-backend.ts",
+            "extensions/pi-swe/src/todo/project-store.ts",
+            "extensions/pi-swe/src/todo/provider.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/ui/docket.ts",
+            "extensions/pi-swe/src/todo/ui/shared-docket.ts",
+            "extensions/pi-swe/src/todo/workflow-backend.ts",
+            "test/pi-todo-contract.test.ts",
+            "test/pi-todo-project-store.test.ts",
+            "test/pi-todo-tui.test.ts",
+            "test/pi-todo-workflow-backend.test.ts"
+          ],
+          "hash": "sha256:9a7adc6ba9770c1c8ec7beac57b8c80a951a0fd9e73e44717dd481dc5f62f574"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/extension.anatomy.json",
+            "extensions/pi-swe/src/todo/contract.ts",
+            "extensions/pi-swe/src/todo/project-backend.ts",
+            "extensions/pi-swe/src/todo/project-store.ts",
+            "extensions/pi-swe/src/todo/provider.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/ui/docket.ts",
+            "extensions/pi-swe/src/todo/ui/shared-docket.ts",
+            "extensions/pi-swe/src/todo/workflow-backend.ts",
+            "test/pi-todo-contract.test.ts",
+            "test/pi-todo-project-store.test.ts",
+            "test/pi-todo-tui.test.ts",
+            "test/pi-todo-workflow-backend.test.ts"
+          ],
+          "hash": "sha256:9a7adc6ba9770c1c8ec7beac57b8c80a951a0fd9e73e44717dd481dc5f62f574"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_hXuwFOXtcgwtjAKaMqAjdJvO|fc_0b0d3a3543e3bb73016ab5656d2bc887d287bffc0f3ddddc61",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:a1464cf9f82b5aee44957eeab6c3013cfb7de627e2464961bac2c75627077107"
+    },
+    {
+      "id": "E-db7fc8ff-fa92-4c82-9cc8-2a96a16aa5ae",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-4",
+        "O-5"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run test:todo && npm run test:swe && npm run typecheck && npm run check && npm run check:commands && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-24T18:03:06.078Z",
+      "completedAt": "2026-09-24T18:03:55.222Z",
+      "durationMs": 49144,
+      "contractFingerprint": "sha256:d73df827c659a54d50203b5f83e090c16d5ef294e1c61deadeac7358dbe077f2",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/extension.anatomy.json",
+            "extensions/pi-swe/src/todo/contract.ts",
+            "extensions/pi-swe/src/todo/project-backend.ts",
+            "extensions/pi-swe/src/todo/project-store.ts",
+            "extensions/pi-swe/src/todo/provider.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/ui/docket.ts",
+            "extensions/pi-swe/src/todo/ui/shared-docket.ts",
+            "extensions/pi-swe/src/todo/workflow-backend.ts",
+            "test/pi-todo-contract.test.ts",
+            "test/pi-todo-project-store.test.ts",
+            "test/pi-todo-tui.test.ts",
+            "test/pi-todo-workflow-backend.test.ts"
+          ],
+          "hash": "sha256:48208d17b2c19e4b5f88f225fcf83fd590cfb6a09e91c1516a4918ca065d30df"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/extension.anatomy.json",
+            "extensions/pi-swe/src/todo/contract.ts",
+            "extensions/pi-swe/src/todo/project-backend.ts",
+            "extensions/pi-swe/src/todo/project-store.ts",
+            "extensions/pi-swe/src/todo/provider.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/ui/docket.ts",
+            "extensions/pi-swe/src/todo/ui/shared-docket.ts",
+            "extensions/pi-swe/src/todo/workflow-backend.ts",
+            "test/pi-todo-contract.test.ts",
+            "test/pi-todo-project-store.test.ts",
+            "test/pi-todo-tui.test.ts",
+            "test/pi-todo-workflow-backend.test.ts"
+          ],
+          "hash": "sha256:48208d17b2c19e4b5f88f225fcf83fd590cfb6a09e91c1516a4918ca065d30df"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_aKHXstJE9n7PRJqXDyZWr7Ss|fc_0b0d3a3543e3bb73016ab565dadcd887d2a2b947ce75255fb5",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:7bc6965cc11d6267691fd8d796841e0096ae1634f997d2eb116c3ff069b1a3f6"
+    },
+    {
+      "id": "E-d465bcb5-f1f8-45fa-86cd-d2f5e0f573d3",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-4",
+        "O-5"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run test:todo && npm run test:swe && npm run typecheck && npm run check && npm run check:commands && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-24T18:04:50.276Z",
+      "completedAt": "2026-09-24T18:06:58.565Z",
+      "durationMs": 128289,
+      "contractFingerprint": "sha256:d73df827c659a54d50203b5f83e090c16d5ef294e1c61deadeac7358dbe077f2",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "catalog/gentic-inventory.json",
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/src/todo/project-backend.ts",
+            "extensions/pi-swe/src/todo/project-store.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/ui/shared-docket.ts",
+            "test/pi-todo-project-store.test.ts",
+            "test/pi-todo-tui.test.ts",
+            "test/pi-todo-workflow-backend.test.ts"
+          ],
+          "hash": "sha256:6d7cb620f0da7449a9adc3955579d92012c02ba7bbffa2cb99c69eac27ae7003"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "catalog/gentic-inventory.json",
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/src/todo/project-backend.ts",
+            "extensions/pi-swe/src/todo/project-store.ts",
+            "extensions/pi-swe/src/todo/thin-surface.ts",
+            "extensions/pi-swe/src/todo/ui/shared-docket.ts",
+            "test/pi-todo-project-store.test.ts",
+            "test/pi-todo-tui.test.ts",
+            "test/pi-todo-workflow-backend.test.ts"
+          ],
+          "hash": "sha256:6d7cb620f0da7449a9adc3955579d92012c02ba7bbffa2cb99c69eac27ae7003"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_3hkorlUJLUgL2Zm8v4q71qEf|fc_0b0d3a3543e3bb73016ab56642652087d29f6a42fe0f1a7402",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:84685c992651e18f1c8a4441a57f657953a69c808b61de1f8d3bf7cfbd00bea0"
+    },
+    {
+      "id": "E-0e2eef80-89f3-4ffe-9e63-f02b4fd6c6f9",
+      "kind": "model-review",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-5"
+      ],
+      "outcome": "passed",
+      "reviewedAt": "2026-09-24T18:07:33.694Z",
+      "contractFingerprint": "sha256:d73df827c659a54d50203b5f83e090c16d5ef294e1c61deadeac7358dbe077f2",
+      "source": {
+        "kind": "bounded-paths",
+        "paths": [
+          "extensions/pi-swe/README.md",
+          "extensions/pi-swe/src/todo/contract.ts",
+          "extensions/pi-swe/src/todo/project-backend.ts",
+          "extensions/pi-swe/src/todo/project-store.ts",
+          "extensions/pi-swe/src/todo/provider.ts",
+          "extensions/pi-swe/src/todo/thin-surface.ts",
+          "extensions/pi-swe/src/todo/ui/shared-docket.ts",
+          "extensions/pi-swe/src/todo/workflow-backend.ts",
+          "test/pi-todo-project-store.test.ts",
+          "test/pi-todo-tui.test.ts",
+          "test/pi-todo-workflow-backend.test.ts"
+        ],
+        "hash": "sha256:5f357f3c66d8ea4a4957eb0aa9bd47693676819ee88290cba15c4ade749f9866"
+      },
+      "dimensions": [
+        "authority isolation",
+        "persistence safety",
+        "backward compatibility",
+        "scope-aware UX",
+        "test completeness"
+      ],
+      "summary": "Source-bound model self-review of the current todo contract, scope router, project snapshot store/backend, workflow adapter, shared docket, tests, generated inventory, and operator documentation found no unresolved defects. Session operations remain branch-only; project operations are explicit and file-only; initiative mutations still reread authority and use SweService. Project persistence validates a closed bounded schema, rejects symlinks, malformed state, stale writers, and lock conflicts, and uses fsynced atomic replacement with interrupted-write cleanup. Unscoped compatibility, explicit scopes, qualified IDs, bounded combined rendering, per-item capabilities, and Git/no-promotion documentation are covered. This is a model self-review, not independent or human review.",
+      "provenance": {
+        "kind": "pi-model-self-review",
+        "sessionId": "01a0d483-0d85-74cb-9306-ff8790d1977b"
+      }
+    }
+  ],
+  "decisions": [
+    {
+      "id": "D-1",
+      "text": "Retain both session todos and repository-persistent project todos as separate lightweight authorities.",
+      "basis": "The user explicitly requires both fork-aware temporary work and lightweight work that persists across Pi sessions."
+    },
+    {
+      "id": "D-2",
+      "text": "Name the durable lightweight scope project rather than personal or backlog.",
+      "basis": "The state represents project work but intentionally does not introduce a backlog or promotion lifecycle."
+    },
+    {
+      "id": "D-3",
+      "text": "Store project todos in a single tracked root .pi-todos.json snapshot.",
+      "basis": "A single structured file provides clone portability and Git review without a database, ignored .pi directory changes, or per-item file clutter."
+    },
+    {
+      "id": "D-4",
+      "text": "Keep unscoped behavior session-oriented except when an active focused initiative owns the automatic execution view; require explicit project scope for durable mutations.",
+      "basis": "This preserves compatibility and prevents incidental model decomposition from silently becoming durable repository state."
+    },
+    {
+      "id": "D-5",
+      "text": "Do not synchronize, promote, or duplicate items across authorities.",
+      "basis": "Authority isolation avoids partial cross-store transactions and duplicate lifecycle state."
+    }
+  ],
+  "risks": [
+    {
+      "id": "R-1",
+      "text": "Concurrent Pi sessions could overwrite project todo changes.",
+      "mitigation": "Use cooperative locking, revision/hash compare-and-swap, atomic rename, directory sync, and concurrency tests."
+    },
+    {
+      "id": "R-2",
+      "text": "Adding a third provider could make default routing or mutation targets ambiguous.",
+      "mitigation": "Require explicit project scope, use authority-specific IDs and labels, recompute provider selection per operation, and reject scope/ID mismatches."
+    },
+    {
+      "id": "R-3",
+      "text": "A malformed or replaced .pi-todos.json file could be silently reset or followed through a symlink.",
+      "mitigation": "Use a closed bounded schema, stable path checks, regular non-symlink validation, and fail-closed diagnostics without fallback writes."
+    },
+    {
+      "id": "R-4",
+      "text": "A tracked todo file can create Git conflicts or unrelated commit noise.",
+      "mitigation": "Use collision-resistant IDs and deterministic serialization, never auto-commit, and document that normal scoped Git practices apply."
+    },
+    {
+      "id": "R-5",
+      "text": "Refactoring shared todo rules could regress session fork behavior or initiative gates.",
+      "mitigation": "Preserve current characterization tests, add authority-isolation tests, and run focused plus full qualification."
+    }
+  ]
+}

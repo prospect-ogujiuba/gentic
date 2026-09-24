@@ -78,14 +78,15 @@ export function projectWorkflowTodoView(initiative: Initiative): TodoView {
   };
   return {
     provider: "workflow",
+    scope: "initiative",
     authorityId: initiative.id,
     authorityStatus: initiative.status,
     revision: initiative.revision,
-    items: initiative.work.slice(0, 1_000).map((item) => projectItem(item, initiative.status === "active", parents.has(item.id), ready.has(item.id), depthOf(item))),
+    items: initiative.work.slice(0, 1_000).map((item) => projectItem(item, initiative.id, initiative.status === "active", parents.has(item.id), ready.has(item.id), depthOf(item))),
   };
 }
 
-function projectItem(item: WorkItem, authorityActive: boolean, isParent: boolean, isReady: boolean, depth: number): TodoViewItem {
+function projectItem(item: WorkItem, authorityId: string, authorityActive: boolean, isParent: boolean, isReady: boolean, depth: number): TodoViewItem {
   const executable = item.kind !== "phase" && !isParent;
   const status = viewStatus(item);
   const capabilities: TodoCapabilities = {
@@ -95,6 +96,8 @@ function projectItem(item: WorkItem, authorityActive: boolean, isParent: boolean
   };
   return {
     id: item.id,
+    scope: "initiative",
+    authorityId,
     title: item.title,
     status,
     rawStatus: item.status ?? item.kind,

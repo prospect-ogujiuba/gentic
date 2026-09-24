@@ -1,4 +1,4 @@
-import type { TodoPublicAction, TodoPublicRequest } from "./contract.ts";
+import type { TodoPublicAction, TodoPublicRequest, TodoScope } from "./contract.ts";
 
 /** Provider-neutral status. rawStatus retains authority-specific lifecycle detail. */
 export type TodoViewStatus = "ready" | "active" | "blocked" | "implemented" | "complete" | "group";
@@ -15,6 +15,8 @@ export type TodoCapabilities = Readonly<{
 
 export type TodoViewItem = {
   id: string;
+  scope: Exclude<TodoScope, "all">;
+  authorityId: string;
   title: string;
   status: TodoViewStatus;
   rawStatus: string;
@@ -28,7 +30,8 @@ export type TodoViewItem = {
 };
 
 export type TodoView = {
-  provider: "standalone" | "workflow";
+  provider: "standalone" | "project" | "workflow" | "combined";
+  scope: TodoScope;
   authorityId: string;
   authorityStatus?: string;
   revision?: number;

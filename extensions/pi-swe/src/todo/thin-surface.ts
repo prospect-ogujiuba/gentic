@@ -15,14 +15,19 @@ import {
 } from "./command-adapter.ts";
 import {
   TODO_PUBLIC_ACTIONS,
+  TODO_SCOPES,
   TODO_TEXT_LIMITS,
   isTodoPublicAction,
+  isTodoScope,
   type TodoPublicAction,
   type TodoPublicItem,
   type TodoPublicRequest,
+  type TodoScope,
 } from "./contract.ts";
 import { BranchTodoCore, TodoCoreError, type TodoCoreState } from "./state-core.ts";
-import type { TodoBackend, TodoView, TodoViewItem } from "./provider.ts";
+import { NO_TODO_CAPABILITIES, type TodoBackend, type TodoMutationResult, type TodoView, type TodoViewItem } from "./provider.ts";
+import { ProjectTodoBackend, projectSessionTodoView } from "./project-backend.ts";
+import { ProjectTodoStoreError } from "./project-store.ts";
 import { WorkflowTodoError } from "./workflow-backend.ts";
 import { createTodoDocketComponent, orderedTodoRows, renderTodoDocketLines } from "./ui/docket.ts";
 import { createSharedDocketComponent, renderSharedDocketLines } from "./ui/shared-docket.ts";
@@ -35,6 +40,7 @@ export { getTodoCommandCompletions } from "./command-adapter.ts";
 
 export const lightweightTodoParameters = Type.Object({
   action: StringEnum(TODO_PUBLIC_ACTIONS),
+  scope: Type.Optional(StringEnum(TODO_SCOPES)),
   title: Type.Optional(Type.String({ maxLength: TODO_TEXT_LIMITS.title })),
   todoId: Type.Optional(Type.String({ maxLength: TODO_TEXT_LIMITS.todoId })),
   parentTodoId: Type.Optional(Type.String({ maxLength: TODO_TEXT_LIMITS.todoId })),
@@ -45,8 +51,9 @@ export const lightweightTodoParameters = Type.Object({
 });
 
 type SurfaceOptions = {
-  /** Resolve afresh for every operation. Undefined selects branch authority. */
+  /** Resolve afresh for every operation. Undefined means no active initiative authority. */
   resolveWorkflowBackend?: (ctx: ExtensionContext) => TodoBackend | undefined | Promise<TodoBackend | undefined>;
+  resolveProjectBackend?: (ctx: ExtensionContext) => TodoBackend | Promise<TodoBackend>;
 };
 
 export type TodoSurfaceController = {
@@ -67,56 +74,59 @@ type SurfaceResult = {
 
 export function registerLightweightTodoSurface(pi: ExtensionAPI, options: SurfaceOptions = {}): TodoSurfaceController {
   const resolveWorkflowBackend = options.resolveWorkflowBackend ?? (() => undefined);
+  const resolveProjectBackend = options.resolveProjectBackend ?? ((ctx: ExtensionContext) => new ProjectTodoBackend(ctx.cwd));
   let queue: Promise<void> = Promise.resolve();
   let completionCore: BranchTodoCore | undefined;
-  let completionView: TodoView | undefined;
-  let completionMutationsAllowed = false;
+  let completionWorkflowView: TodoView | undefined;
+  let completionProjectView: TodoView | undefined;
 
-  const bindCore = (ctx: ExtensionContext): BranchTodoCore => {
-    completionCore = coreFor(pi, ctx);
-    return completionCore;
-  };
-  const readWorkflowBackend = async (ctx: ExtensionContext): Promise<TodoBackend | undefined> => resolveWorkflowBackend(ctx);
+  const bindCore = (ctx: ExtensionContext): BranchTodoCore => (completionCore = coreFor(pi, ctx));
+  const readWorkflowBackend = async (ctx: ExtensionContext) => resolveWorkflowBackend(ctx);
+  const readProjectBackend = async (ctx: ExtensionContext) => resolveProjectBackend(ctx);
   const refreshSession = async (ctx: ExtensionContext): Promise<void> => {
-    const workflow = await readWorkflowBackend(ctx);
-    if (workflow) {
-      completionMutationsAllowed = false;
-      completionView = await workflow.view();
-      updateWorkflowDisplay(completionView, ctx);
-      return;
-    }
-    completionView = undefined;
     const core = bindCore(ctx);
-    completionMutationsAllowed = true;
-    updateDisplay(core, ctx);
+    const workflow = await readWorkflowBackend(ctx);
+    completionWorkflowView = workflow ? await workflow.view() : undefined;
+    try { completionProjectView = await (await readProjectBackend(ctx)).view(); } catch { completionProjectView = undefined; }
+    if (completionWorkflowView) updateWorkflowDisplay(completionWorkflowView, ctx);
+    else updateDisplay(core, ctx);
   };
   pi.on("session_start", async (_event, ctx) => refreshSession(ctx));
   pi.on("session_tree", async (_event, ctx) => refreshSession(ctx));
 
   const execute = async (request: TodoPublicRequest, ctx: ExtensionContext): Promise<SurfaceResult> => {
     try {
-      const workflow = await readWorkflowBackend(ctx);
-      if (workflow) {
-        completionMutationsAllowed = false;
+      const workflow = request.scope === "session" || request.scope === "project" ? undefined : await readWorkflowBackend(ctx);
+      const scope = request.scope ?? (workflow ? "initiative" : "session");
+      const core = bindCore(ctx);
+      if (scope === "all") {
+        if (request.action !== "list") throw new Error("all scope is read-only; choose session, project, or initiative");
+        const views = [projectSessionTodoView(core.state()), await (await readProjectBackend(ctx)).view()];
+        if (workflow) views.push(await workflow.view());
+        const view = combineViews(views);
+        return { content: [{ type: "text", text: renderScopedList(view) }], details: { view } };
+      }
+      if (scope === "initiative") {
+        if (!workflow) throw new Error("no focused active initiative todo authority");
         const result = await workflow.execute(request);
-        completionView = result.view;
+        completionWorkflowView = result.view;
         updateWorkflowDisplay(result.view, ctx);
         return workflowResult(request.action, result.view, result.item);
       }
-      completionView = undefined;
-      const core = bindCore(ctx);
-      completionMutationsAllowed = true;
+      if (scope === "project") {
+        const result = await (await readProjectBackend(ctx)).execute(request);
+        completionProjectView = result.view;
+        return backendResult(request.action, result);
+      }
       const result = dispatch(core, request);
       updateDisplay(core, ctx);
       return result;
     } catch (error) {
       const core = safeCore(pi, ctx);
       return errorResult(
-        error instanceof TodoCoreError || error instanceof WorkflowTodoError ? error.code : "INVALID_REQUEST",
+        error instanceof TodoCoreError || error instanceof WorkflowTodoError || error instanceof ProjectTodoStoreError ? error.code : "INVALID_REQUEST",
         error instanceof Error ? error.message : String(error),
-        error instanceof WorkflowTodoError
-          ? "Use swe status or an intentional swe revise operation for unsupported workflow changes."
-          : todoRecoveryHint(core.state(), request.action),
+        error instanceof WorkflowTodoError ? "Use swe status or an intentional swe revise operation for unsupported workflow changes." : todoRecoveryHint(core.state(), request.action),
       );
     }
   };
@@ -124,20 +134,17 @@ export function registerLightweightTodoSurface(pi: ExtensionAPI, options: Surfac
   pi.registerTool({
     name: "todo",
     label: "Todo",
-    description: "Unified focus list: branch-backed standalone todos, or the focused active SWE workflow projected directly from workflow.json.",
-    promptSnippet: "Use todo for lightweight work. A focused active pi-swe initiative is projected without copying state; finish marks workflow work implemented.",
+    description: "Unified session, tracked project, and focused initiative todo authorities. Project mutations require explicit project scope.",
+    promptSnippet: "Use todo for lightweight work. Unscoped calls select focused initiative work when active, otherwise session work; use scope project explicitly for tracked project todos.",
     parameters: lightweightTodoParameters,
     executionMode: "sequential",
     async execute(_id, params, signal, _onUpdate, ctx) {
       signal?.throwIfAborted();
-      if (!isTodoPublicAction(params.action)) return errorResult("INVALID_REQUEST", "unsupported todo action", "Inspect current state with todo list and retry with a supported action.");
+      if (!isTodoPublicAction(params.action) || (params.scope !== undefined && !isTodoScope(params.scope))) return errorResult("INVALID_REQUEST", "unsupported todo action or scope");
       const run = queue.then(async () => {
         signal?.throwIfAborted();
-        try {
-          return await execute(requestFrom(params.action, params), ctx);
-        } catch (error) {
-          return errorResult("INVALID_REQUEST", error instanceof Error ? error.message : String(error), "Inspect current state with todo list and retry with the required fields.");
-        }
+        try { return await execute(requestFrom(params.action, params), ctx); }
+        catch (error) { return errorResult("INVALID_REQUEST", error instanceof Error ? error.message : String(error), "Inspect current state with todo list and retry with the required fields."); }
       });
       queue = run.then(() => undefined, () => undefined);
       const result = await run;
@@ -147,39 +154,43 @@ export function registerLightweightTodoSurface(pi: ExtensionAPI, options: Surfac
   });
 
   pi.registerCommand("todo", {
-    description: "Manage standalone or focused workflow work · /todo <action> [arguments]",
-    getArgumentCompletions: (prefix) => completionView
-      ? getWorkflowTodoCommandCompletions(prefix, completionView)
-      : getTodoCommandCompletions(prefix, safeState(completionCore), completionMutationsAllowed),
+    description: "Manage todo authorities · /todo [session|project|initiative|all] <action>",
+    getArgumentCompletions: (prefix) => scopedCompletions(prefix, completionCore, completionProjectView, completionWorkflowView),
     handler: async (args, ctx) => {
+      const extensionCtx = ctx as ExtensionContext;
       let workflow: TodoBackend | undefined;
-      try { workflow = await readWorkflowBackend(ctx as ExtensionContext); }
-      catch (error) {
-        ctx.ui.notify(`Todo authority is unavailable: ${error instanceof Error ? error.message : String(error)}`, "error");
-        return;
-      }
-      completionView = workflow ? await workflow.view() : undefined;
-      completionMutationsAllowed = !workflow;
-      const core = workflow ? undefined : bindCore(ctx as ExtensionContext);
-      if (!args.trim()) {
-        if (workflow) {
-          const view = await workflow.view();
-          ctx.ui.notify(`${renderWorkflowList(view)}\n\nWorkflow authority: start ready work or finish active work; use swe revise for structural changes.`, "info");
-        } else {
-          ctx.ui.notify(renderTodoQuickHelp(core!.state(), true), "info");
+      try {
+        workflow = await readWorkflowBackend(extensionCtx);
+        completionWorkflowView = workflow ? await workflow.view() : undefined;
+      } catch (error) {
+        if (!/^(session|project)\s+/.test(args.trim())) {
+          ctx.ui.notify(`Todo authority is unavailable: ${error instanceof Error ? error.message : String(error)}`, "error");
+          return;
         }
+      }
+      if (/^(project|all)\s+/.test(args.trim())) {
+        try { completionProjectView = await (await readProjectBackend(extensionCtx)).view(); }
+        catch (error) { ctx.ui.notify(`Project todo authority is unavailable: ${error instanceof Error ? error.message : String(error)}`, "error"); return; }
+      }
+      const core = bindCore(extensionCtx);
+      if (!args.trim()) {
+        if (workflow) ctx.ui.notify(`${renderWorkflowList(await workflow.view())}\n\nAuthority: initiative. Use /todo session list or /todo project list for other scopes.`, "info");
+        else ctx.ui.notify(`${renderTodoQuickHelp(core.state(), true)}\nScope: session · also available: /todo project list, /todo all list`, "info");
         return;
       }
-      if (args.trim() === "open") {
-        await openTodoDocket(pi, ctx, workflow);
+      const openMatch = /^(?:(session|project|initiative|all)\s+)?open$/.exec(args.trim());
+      if (openMatch) {
+        const scope = openMatch[1] as TodoScope | undefined;
+        if (scope === "session" || (!scope && !workflow)) await openTodoDocket(pi, ctx);
+        else await openScopedDocket(pi, ctx, scope, core, workflow, await readProjectBackend(extensionCtx));
         return;
       }
       const request = commandRequest(args);
       if (!request) {
-        ctx.ui.notify(`${renderUsage(TODO_COMMAND_ACTIONS)}\n${core ? todoRecoveryHint(core.state(), args.trim().split(/\s+/, 1)[0]) : "Use /swe status for current workflow lifecycle guidance."}`, "warning");
+        ctx.ui.notify(`${renderUsage(TODO_COMMAND_ACTIONS)}\nScopes: session, project, initiative, all (all is list/open only).`, "warning");
         return;
       }
-      const result = await execute(request, ctx as ExtensionContext);
+      const result = await execute(request, extensionCtx);
       ctx.ui.notify(result.content[0]?.text ?? "", result.details.error ? "error" : "info");
     },
   });
@@ -223,22 +234,28 @@ function dispatch(core: BranchTodoCore, request: TodoPublicRequest): SurfaceResu
 }
 
 function requestFrom(action: TodoPublicAction, params: Record<string, unknown>): TodoPublicRequest {
-  if (action === "create") return { action, title: stringParam(params.title, "title"), parentTodoId: optionalString(params.parentTodoId) };
+  const scope = isTodoScope(params.scope) ? params.scope : undefined;
+  if (action === "create") return { action, scope, title: stringParam(params.title, "title"), parentTodoId: optionalString(params.parentTodoId) };
   if (action === "move") return {
     action,
+    scope,
     todoId: stringParam(params.todoId, "todoId"),
     beforeTodoId: optionalString(params.beforeTodoId),
     afterTodoId: optionalString(params.afterTodoId),
   };
-  if (action === "delete" || action === "start" || action === "unblock") return { action, todoId: stringParam(params.todoId, "todoId") };
-  if (action === "finish") return { action, todoId: optionalString(params.todoId), summary: optionalString(params.summary) };
-  if (action === "block") return { action, todoId: optionalString(params.todoId), reason: stringParam(params.reason, "reason") };
-  return { action };
+  if (action === "delete" || action === "start" || action === "unblock") return { action, scope, todoId: stringParam(params.todoId, "todoId") };
+  if (action === "finish") return { action, scope, todoId: optionalString(params.todoId), summary: optionalString(params.summary) };
+  if (action === "block") return { action, scope, todoId: optionalString(params.todoId), reason: stringParam(params.reason, "reason") };
+  return { action, scope };
 }
 
 function commandRequest(args: string): TodoPublicRequest | undefined {
-  const input = args.trim();
-  if (!input || input === "list") return { action: "list" };
+  let input = args.trim();
+  let scope: TodoScope | undefined;
+  const scopeMatch = /^(session|project|initiative|all)(?:\s+([\s\S]+))?$/.exec(input);
+  if (scopeMatch) { scope = scopeMatch[1] as TodoScope; input = scopeMatch[2]?.trim() ?? ""; }
+  if (!input || input === "list") return { action: "list", scope };
+  if (scope === "all") return undefined;
   const space = input.indexOf(" ");
   const action = space === -1 ? input : input.slice(0, space);
   const rest = space === -1 ? "" : input.slice(space + 1).trim();
@@ -247,27 +264,111 @@ function commandRequest(args: string): TodoPublicRequest | undefined {
     if (parentMarker > 0) {
       const title = rest.slice(0, parentMarker).trim();
       const parentTodoId = rest.slice(parentMarker + " --parent ".length).trim();
-      if (title && parentTodoId && !/\s/.test(parentTodoId)) return { action, title, parentTodoId };
+      if (title && parentTodoId && !/\s/.test(parentTodoId)) return { action, scope, title, parentTodoId };
       return undefined;
     }
-    return { action, title: rest };
+    return { action, scope, title: rest };
   }
   if (action === "move") {
     const match = /^(\S+)\s+(before|after)\s+(\S+)$/.exec(rest);
     if (match) return match[2] === "before"
-      ? { action, todoId: match[1]!, beforeTodoId: match[3]! }
-      : { action, todoId: match[1]!, afterTodoId: match[3]! };
+      ? { action, scope, todoId: match[1]!, beforeTodoId: match[3]! }
+      : { action, scope, todoId: match[1]!, afterTodoId: match[3]! };
   }
-  if ((action === "delete" || action === "start") && rest && !/\s/.test(rest)) return { action, todoId: rest };
-  if (action === "finish") return { action, todoId: rest || undefined };
-  if (action === "unblock" && rest) return { action, todoId: rest };
+  if ((action === "delete" || action === "start") && rest && !/\s/.test(rest)) return { action, scope, todoId: rest };
+  if (action === "finish") return { action, scope, todoId: rest || undefined };
+  if (action === "unblock" && rest) return { action, scope, todoId: rest };
   if (action === "block") {
     const separator = rest.indexOf(" ");
     if (separator > 0 && rest.slice(separator + 1).trim()) {
-      return { action, todoId: rest.slice(0, separator), reason: rest.slice(separator + 1).trim() };
+      return { action, scope, todoId: rest.slice(0, separator), reason: rest.slice(separator + 1).trim() };
     }
   }
   return undefined;
+}
+
+function backendResult(action: TodoPublicAction, result: TodoMutationResult): SurfaceResult {
+  if (action === "list") return { content: [{ type: "text", text: renderScopedList(result.view) }], details: { view: result.view } };
+  const label = result.item ? `${result.item.title} [${result.item.rawStatus}] (${result.item.scope}:${result.item.id})` : "project todo";
+  const text = action === "delete"
+    ? `Deleted ${label} (${result.deletedCount ?? 0} todo${result.deletedCount === 1 ? "" : "s"}).`
+    : `${verb(action)} ${label}.`;
+  return { content: [{ type: "text", text }], details: { todo: result.item, deletedCount: result.deletedCount, view: result.view } };
+}
+
+function combineViews(views: TodoView[]): TodoView {
+  return {
+    provider: "combined",
+    scope: "all",
+    authorityId: "session + project + initiative",
+    items: views.flatMap((view) => view.items.map((item) => ({
+      ...item,
+      id: `${item.scope}:${item.id}`,
+      parentId: item.parentId ? `${item.scope}:${item.parentId}` : undefined,
+      capabilities: NO_TODO_CAPABILITIES,
+    }))),
+  };
+}
+
+function renderScopedList(view: TodoView): string {
+  if (!view.items.length) return `No ${view.scope} todos.`;
+  return view.items.map((item) => `${"  ".repeat(item.depth)}[${item.scope}] ${item.title} [${item.rawStatus}] (${item.id})`).join("\n");
+}
+
+function scopedCompletions(prefix: string, core?: BranchTodoCore, project?: TodoView, workflow?: TodoView) {
+  const normalized = prefix.trimStart();
+  const scoped = /^(session|project|initiative|all)\s+(.*)$/s.exec(normalized);
+  if (scoped) {
+    const scope = scoped[1] as TodoScope;
+    const remainder = scoped[2]!;
+    const values = scope === "all"
+      ? getTodoCommandCompletions(remainder).filter((item) => item.value === "open" || item.value === "list")
+      : scope === "initiative"
+        ? (workflow ? getWorkflowTodoCommandCompletions(remainder, workflow) : [])
+        : getTodoCommandCompletions(remainder, scope === "session" ? safeState(core) : project ? coreStateFromView(project) : undefined, true);
+    return values.map((item) => ({ ...item, value: `${scope} ${item.value}` }));
+  }
+  if (!/\s/.test(normalized)) {
+    const actions = workflow ? getWorkflowTodoCommandCompletions(normalized, workflow) : getTodoCommandCompletions(normalized, safeState(core), true);
+    const scopes = TODO_SCOPES.filter((scope) => scope.startsWith(normalized)).map((scope) => ({ value: scope, label: scope, description: `/todo ${scope} <action> · explicit ${scope} authority` }));
+    return [...scopes, ...actions];
+  }
+  return workflow ? getWorkflowTodoCommandCompletions(normalized, workflow) : getTodoCommandCompletions(normalized, safeState(core), true);
+}
+
+function coreStateFromView(view: TodoView): TodoCoreState {
+  const state: TodoCoreState = { todos: {}, order: [] };
+  for (const item of view.items) {
+    const status = item.rawStatus as TodoPublicItem["status"];
+    state.todos[item.id] = { id: item.id, title: item.title, status, parentTodoId: item.parentId, blockedReason: item.blockedReason };
+    state.order.push(item.id);
+    if (status === "in_progress") state.activeTodoId = item.id;
+  }
+  return state;
+}
+
+async function openScopedDocket(
+  pi: ExtensionAPI,
+  ctx: ExtensionCommandContext,
+  requestedScope: TodoScope | undefined,
+  core: BranchTodoCore,
+  workflow: TodoBackend | undefined,
+  project: TodoBackend,
+): Promise<void> {
+  const scope = requestedScope ?? (workflow ? "initiative" : "session");
+  if (scope === "session") return openTodoDocket(pi, ctx);
+  if (scope === "initiative" && !workflow) { ctx.ui.notify("No focused active initiative todo authority.", "warning"); return; }
+  const view = scope === "all"
+    ? combineViews([projectSessionTodoView(core.state()), await project.view(), ...(workflow ? [await workflow.view()] : [])])
+    : await (scope === "initiative" ? workflow! : project).view();
+  if (!ctx.hasUI || ctx.mode !== "tui") {
+    ctx.ui.notify(renderSharedDocketLines(view, plainTodoTheme, { width: 92, includeDone: true, limit: 100 }).join("\n") || `No ${scope} todos.`, "info");
+    return;
+  }
+  await ctx.ui.custom<void>((tui, theme, _keybindings, done) => new TodoDocketModal({
+    view, theme, requestRender: () => tui.requestRender(), close: () => done(undefined),
+    terminalRows: () => (tui as unknown as { terminal?: { rows?: number } }).terminal?.rows ?? 40,
+  }), { overlay: true, overlayOptions: { width: "80%", minWidth: 44, maxHeight: "85%", anchor: "center", margin: 1 } });
 }
 
 async function openTodoDocket(pi: ExtensionAPI, ctx: ExtensionCommandContext, workflow?: TodoBackend): Promise<void> {

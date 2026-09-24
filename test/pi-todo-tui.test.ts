@@ -4,7 +4,9 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 
 import type { TodoCoreState } from "../extensions/pi-swe/src/todo/state-core.ts";
 import { renderTodoDocketLines, renderTodoProgress } from "../extensions/pi-swe/src/todo/ui/docket.ts";
+import { renderSharedDocketLines } from "../extensions/pi-swe/src/todo/ui/shared-docket.ts";
 import { LightweightTodoModal } from "../extensions/pi-swe/src/todo/ui/modal.ts";
+import { NO_TODO_CAPABILITIES, type TodoView } from "../extensions/pi-swe/src/todo/provider.ts";
 import { plainTodoTheme } from "../extensions/pi-swe/src/todo/ui/theme.ts";
 
 const state: TodoCoreState = {
@@ -106,6 +108,23 @@ test("lightweight modal keeps keyboard selection visible while navigating long l
   assert.match(output, /↑ more/);
   assert.match(output, /↓ more/);
   for (const line of modal.render(44)) assert.ok(visibleWidth(line) <= 44, line);
+});
+
+test("combined docket is authority-labelled, scope-qualified, capability-aware, and bounded", () => {
+  const view: TodoView = {
+    provider: "combined", scope: "all", authorityId: "session + project + initiative",
+    items: Array.from({ length: 150 }, (_, index) => ({
+      id: `project:ptodo_${index}`, scope: "project" as const, authorityId: "repo/.pi-todos.json",
+      title: `Project task ${index}`, status: "ready" as const, rawStatus: "ready", depth: 0,
+      ready: true, executable: true, capabilities: NO_TODO_CAPABILITIES,
+    })),
+  };
+  const lines = renderSharedDocketLines(view, plainTodoTheme, { width: 100, includeDone: true, limit: 8 });
+  assert.ok(lines.length <= 10);
+  assert.match(lines.join("\n"), /ALL TASKS.*session \+ project \+ initiative/);
+  assert.match(lines.join("\n"), /Project task 0 \(project:ptodo_0\)/);
+  assert.match(lines.at(-1) ?? "", /142 more/);
+  for (const line of lines) assert.ok(visibleWidth(line) <= 100, line);
 });
 
 test("lightweight modal restores keyboard navigation, expansion, filtering, and framing", () => {

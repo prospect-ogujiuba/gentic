@@ -21,7 +21,8 @@ export function projectStandaloneTodoView(state: TodoCoreState): TodoView {
   const rows = orderedTodoRows(state, true);
   return {
     provider: "standalone",
-    authorityId: "session",
+    scope: "session",
+    authorityId: "current-session",
     items: rows.map(({ todo, depth }) => {
       const capabilities: TodoCapabilities = {
         ...NO_TODO_CAPABILITIES,
@@ -35,6 +36,8 @@ export function projectStandaloneTodoView(state: TodoCoreState): TodoView {
       };
       return {
         id: todo.id,
+        scope: "session",
+        authorityId: "current-session",
         title: todo.title,
         status: todo.status === "in_progress" ? "active" : todo.status === "external_blocked" ? "blocked" : todo.status === "completed" ? "complete" : "ready",
         rawStatus: todo.status,
@@ -105,9 +108,10 @@ function sharedOptions(options: TodoDocketRenderOptions): SharedDocketRenderOpti
 function projectStandaloneTodoViewFromRows(rows: TodoTreeRow[]): TodoView {
   return {
     provider: "standalone",
-    authorityId: "session",
+    scope: "session",
+    authorityId: "current-session",
     items: rows.map(({ todo, depth }) => ({
-      id: todo.id, title: todo.title, depth, parentId: todo.parentTodoId, rawStatus: todo.status,
+      id: todo.id, scope: "session", authorityId: "current-session", title: todo.title, depth, parentId: todo.parentTodoId, rawStatus: todo.status,
       status: todo.status === "in_progress" ? "active" : todo.status === "external_blocked" ? "blocked" : todo.status === "completed" ? "complete" : "ready",
       blockedReason: todo.blockedReason, ready: todo.status === "ready", executable: true, capabilities: NO_TODO_CAPABILITIES,
     })),
