@@ -4,7 +4,7 @@ Gentic is a native Pi package. Pi owns discovery and lifecycle; contributors sho
 
 ## Clean checkout
 
-Requirements: Git, Node.js 22.19.0 or newer, npm, and Pi 0.84.2.
+Requirements: Git, Node.js 22.19.0 or newer, npm, and Pi 0.87.1.
 
 ```sh
 git clone https://github.com/prospect-ogujiuba/gentic.git

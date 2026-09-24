@@ -18,7 +18,7 @@ The `npm:gentic` name is not supported while `package.json#private` is true. See
 
 ## Development baseline
 
-Gentic currently supports exactly `@earendil-works/pi-coding-agent` **0.84.2**. The exact pin keeps the compatibility artifact and lockfile reproducible; widening the supported range requires updating and verifying the compatibility baseline first.
+Gentic currently supports exactly `@earendil-works/pi-coding-agent` **0.87.1**. The exact pin keeps the compatibility artifact and lockfile reproducible; widening the supported range requires updating and verifying the compatibility baseline first.
 
 Development and CI require Node.js **22.19.0 or newer**. From a clean checkout:
 
