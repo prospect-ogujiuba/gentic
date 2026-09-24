@@ -4,6 +4,7 @@ import { posix, relative, resolve, sep } from "node:path";
 
 import {
   contractFingerprint,
+  type IndependentReviewEvidence,
   type Initiative,
   type ModelReviewEvidence,
   type RelevantSourceSnapshot,
@@ -20,6 +21,7 @@ export type ReviewRequest = {
   summary: string;
   sessionId: string;
 };
+export type IndependentReviewRequest = Omit<ReviewRequest, "sessionId"> & { reviewerSessionId: string; recorderSessionId: string };
 export type PreparedVerification = { token: string; command: string; workId: string; relevantPaths: string[] };
 type ToolCall = { toolCallId: string; toolName: string; input: Record<string, unknown> };
 type ToolResult = { toolCallId: string; toolName: string; isError: boolean; content: Array<{ type: string; text?: string }> };
@@ -121,6 +123,33 @@ export function createModelReviewEvidence(cwd: string, initiative: Initiative, r
     contractFingerprint: contractFingerprint(initiative), source: snapshotRelevantPaths(cwd, request.relevantPaths),
     dimensions: [...new Set(request.dimensions.map((item) => item.trim()))], summary: request.summary.trim(),
     provenance: { kind: "pi-model-self-review", sessionId: request.sessionId.trim() },
+  };
+}
+
+export function createIndependentReviewEvidence(cwd: string, initiative: Initiative, request: IndependentReviewRequest, now = new Date().toISOString()): IndependentReviewEvidence {
+  const work = initiative.work.find((item) => item.id === request.workId && item.kind !== "phase");
+  if (!work) throw new Error(`unknown executable work ${request.workId}`);
+  if (work.status !== "implemented") throw new Error("independent review can only be recorded for implemented work");
+  if (!request.obligationIds.length || request.obligationIds.some((id) => !work.obligationIds?.includes(id))) throw new Error("review obligationIds must belong to work");
+  for (const obligationId of request.obligationIds) {
+    const obligation = initiative.obligations.find((item) => item.id === obligationId)!;
+    if (!obligation.verification.requiredEvidence?.includes("independent-review")) throw new Error(`obligation ${obligationId} does not accept independent-review evidence`);
+  }
+  if (!Array.isArray(request.dimensions) || !request.dimensions.length || request.dimensions.length > 32) throw new Error("review dimensions must contain 1 to 32 entries");
+  for (const dimension of request.dimensions) if (typeof dimension !== "string" || !dimension.trim() || dimension.length > 128) throw new Error("review dimensions must be bounded non-empty text");
+  if (typeof request.summary !== "string" || !request.summary.trim() || request.summary.length > 8_192) throw new Error("review summary must be bounded non-empty text");
+  if (typeof request.reviewerSessionId !== "string" || !request.reviewerSessionId.trim() || request.reviewerSessionId.length > 256) throw new Error("reviewerSessionId is required");
+  if (typeof request.recorderSessionId !== "string" || !request.recorderSessionId.trim() || request.recorderSessionId.length > 256) throw new Error("recorderSessionId is required");
+  if (request.reviewerSessionId.trim() === request.recorderSessionId.trim()) throw new Error("independent review requires a distinct reviewer session");
+  return {
+    id: `E-${randomUUID()}`, kind: "independent-review", workId: request.workId,
+    obligationIds: [...new Set(request.obligationIds)], outcome: request.outcome, reviewedAt: now,
+    contractFingerprint: contractFingerprint(initiative), source: snapshotRelevantPaths(cwd, request.relevantPaths),
+    dimensions: [...new Set(request.dimensions.map((item) => item.trim()))], summary: request.summary.trim(),
+    provenance: {
+      kind: "pi-interactive-session-review", transport: "interactive-shell",
+      reviewerSessionId: request.reviewerSessionId.trim(), recorderSessionId: request.recorderSessionId.trim(),
+    },
   };
 }
 

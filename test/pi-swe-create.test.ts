@@ -17,6 +17,8 @@ function proposal(id = "new-initiative") {
   value.status = "draft";
   value.evidence = [];
   value.artifacts = [];
+  value.policies = { commitOnWorkCompletion: false, independentReviewOnCompletion: true };
+  value.obligations[0].verification.requiredEvidence = [...new Set([...(value.obligations[0].verification.requiredEvidence ?? ["machine-command"]), "independent-review"])];
   value.work = value.work.map((item: any) => {
     if (item.kind === "phase") return item;
     const { disposition: _disposition, ...rest } = item;

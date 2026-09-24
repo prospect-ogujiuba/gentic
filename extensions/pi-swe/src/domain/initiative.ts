@@ -29,7 +29,7 @@ export type Initiative = {
   status: InitiativeStatus;
   objective: string;
   bootstrap?: { mode: string; runtimeValidated: boolean; approval: string; adoptionRequirement: string };
-  policies?: { commitOnWorkCompletion: boolean };
+  policies?: { commitOnWorkCompletion: boolean; independentReviewOnCompletion?: boolean };
   scope: { in: string[]; out: string[] };
   constraints: string[];
   acceptanceCriteria: Array<{ id: string; text: string }>;
@@ -54,7 +54,7 @@ export type Initiative = {
 };
 
 export type RelevantSourceSnapshot = { kind: "bounded-paths"; paths: string[]; hash: string };
-export type EvidenceKind = "machine-command" | "model-review";
+export type EvidenceKind = "machine-command" | "model-review" | "independent-review";
 export type MachineCommandEvidence = {
   id: string;
   kind: "machine-command";
@@ -83,7 +83,25 @@ export type ModelReviewEvidence = {
   summary: string;
   provenance: { kind: "pi-model-self-review"; sessionId: string };
 };
-export type VerificationEvidence = MachineCommandEvidence | ModelReviewEvidence;
+export type IndependentReviewEvidence = {
+  id: string;
+  kind: "independent-review";
+  workId: string;
+  obligationIds: string[];
+  outcome: "passed" | "failed";
+  reviewedAt: string;
+  contractFingerprint: string;
+  source: RelevantSourceSnapshot;
+  dimensions: string[];
+  summary: string;
+  provenance: {
+    kind: "pi-interactive-session-review";
+    transport: "interactive-shell";
+    reviewerSessionId: string;
+    recorderSessionId: string;
+  };
+};
+export type VerificationEvidence = MachineCommandEvidence | ModelReviewEvidence | IndependentReviewEvidence;
 
 const LIMITS = { collection: 1_000, text: 8_192, id: 128, path: 1_024 } as const;
 const IDENTIFIER = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/;
@@ -111,6 +129,12 @@ export function parseInitialInitiative(input: unknown): Initiative {
     if (!item.criterionIds?.length) throw new Error(`initial executable work ${item.id} must cover acceptance criteria`);
     if (!item.obligationIds?.length) throw new Error(`initial executable work ${item.id} must carry verification obligations`);
   }
+  if (initiative.policies?.independentReviewOnCompletion !== true) {
+    throw new Error("new initiatives must require independent review on completion");
+  }
+  if (!initiative.obligations.some((item) => item.verification.requiredEvidence?.includes("independent-review"))) {
+    throw new Error("new initiatives must include an independent-review obligation");
+  }
   return initiative;
 }
 
@@ -135,8 +159,9 @@ export function parseInitiative(input: unknown): Initiative {
   }
   if (input.policies !== undefined) {
     object(input.policies, "policies");
-    exact(input.policies, ["commitOnWorkCompletion"], "policies");
+    exact(input.policies, ["commitOnWorkCompletion", "independentReviewOnCompletion"], "policies", ["independentReviewOnCompletion"]);
     bool(input.policies.commitOnWorkCompletion, "commitOnWorkCompletion");
+    if (input.policies.independentReviewOnCompletion !== undefined) bool(input.policies.independentReviewOnCompletion, "independentReviewOnCompletion");
   }
 
   object(input.scope, "scope");
@@ -160,7 +185,7 @@ export function parseInitiative(input: unknown): Initiative {
   array(input.obligations, "obligations");
   for (const item of input.obligations) {
     object(item, "obligation"); exact(item, ["id", "practiceId", "criterionIds", "text", "verification"], "obligation"); id(item.id, "obligation id"); id(item.practiceId, "obligation practiceId"); ids(item.criterionIds, "obligation criterionIds"); text(item.text, "obligation text"); object(item.verification, "obligation verification"); exact(item.verification, ["kind", "requiredEvidence", "sequence"], "obligation verification", ["requiredEvidence", "sequence"]); text(item.verification.kind, "verification kind");
-    if (item.verification.requiredEvidence !== undefined) { array(item.verification.requiredEvidence, "verification requiredEvidence"); if (!item.verification.requiredEvidence.length) throw new Error("verification requiredEvidence cannot be empty"); for (const kind of item.verification.requiredEvidence) enumValue(kind, ["machine-command", "model-review"], "required evidence kind"); if (new Set(item.verification.requiredEvidence).size !== item.verification.requiredEvidence.length) throw new Error("verification requiredEvidence contains duplicates"); }
+    if (item.verification.requiredEvidence !== undefined) { array(item.verification.requiredEvidence, "verification requiredEvidence"); if (!item.verification.requiredEvidence.length) throw new Error("verification requiredEvidence cannot be empty"); for (const kind of item.verification.requiredEvidence) enumValue(kind, ["machine-command", "model-review", "independent-review"], "required evidence kind"); if (new Set(item.verification.requiredEvidence).size !== item.verification.requiredEvidence.length) throw new Error("verification requiredEvidence contains duplicates"); }
     if (item.verification.sequence !== undefined) { enumValue(item.verification.sequence, ["red-green"], "verification sequence"); if (!(item.verification.requiredEvidence ?? ["machine-command"]).includes("machine-command")) throw new Error("red-green verification requires machine-command evidence"); }
   }
 
@@ -248,7 +273,7 @@ function validateGraph(initiative: Initiative): void {
 
 function parseEvidence(value: unknown): void {
   object(value, "evidence");
-  id(value.id, "evidence id"); enumValue(value.kind, ["machine-command", "model-review"], "evidence kind"); id(value.workId, "evidence workId"); ids(value.obligationIds, "evidence obligationIds"); if (!value.obligationIds.length) throw new Error("evidence requires obligationIds"); enumValue(value.outcome, ["passed", "failed"], "evidence outcome");
+  id(value.id, "evidence id"); enumValue(value.kind, ["machine-command", "model-review", "independent-review"], "evidence kind"); id(value.workId, "evidence workId"); ids(value.obligationIds, "evidence obligationIds"); if (!value.obligationIds.length) throw new Error("evidence requires obligationIds"); enumValue(value.outcome, ["passed", "failed"], "evidence outcome");
   if (value.kind === "machine-command") {
     exact(value, ["id", "kind", "workId", "obligationIds", "outcome", "execution", "startedAt", "completedAt", "durationMs", "contractFingerprint", "source", "provenance", "outputHash"], "machine evidence");
     object(value.execution, "evidence execution"); exact(value.execution, ["executable", "args", "cwd"], "evidence execution"); enumValue(value.execution.executable, ["bash"], "evidence executable"); if (!Array.isArray(value.execution.args) || value.execution.args.length !== 2 || value.execution.args[0] !== "-lc") throw new Error("evidence args must be exact bash argv"); text(value.execution.args[1], "evidence command"); enumValue(value.execution.cwd, ["."], "evidence cwd");
@@ -258,7 +283,15 @@ function parseEvidence(value: unknown): void {
   } else {
     exact(value, ["id", "kind", "workId", "obligationIds", "outcome", "reviewedAt", "contractFingerprint", "source", "dimensions", "summary", "provenance"], "review evidence");
     timestamp(value.reviewedAt, "evidence reviewedAt"); parseSnapshot(value.source); strings(value.dimensions, "review dimensions"); if (!value.dimensions.length) throw new Error("review dimensions cannot be empty"); text(value.summary, "review summary");
-    object(value.provenance, "evidence provenance"); exact(value.provenance, ["kind", "sessionId"], "evidence provenance"); enumValue(value.provenance.kind, ["pi-model-self-review"], "evidence provenance kind"); text(value.provenance.sessionId, "review sessionId");
+    object(value.provenance, "evidence provenance");
+    if (value.kind === "model-review") {
+      exact(value.provenance, ["kind", "sessionId"], "evidence provenance"); enumValue(value.provenance.kind, ["pi-model-self-review"], "evidence provenance kind"); text(value.provenance.sessionId, "review sessionId");
+    } else {
+      exact(value.provenance, ["kind", "transport", "reviewerSessionId", "recorderSessionId"], "evidence provenance");
+      enumValue(value.provenance.kind, ["pi-interactive-session-review"], "evidence provenance kind"); enumValue(value.provenance.transport, ["interactive-shell"], "review transport");
+      text(value.provenance.reviewerSessionId, "reviewer sessionId"); text(value.provenance.recorderSessionId, "recorder sessionId");
+      if (value.provenance.reviewerSessionId === value.provenance.recorderSessionId) throw new Error("independent review requires a distinct reviewer session");
+    }
   }
   hash(value.contractFingerprint, "evidence contractFingerprint");
 }

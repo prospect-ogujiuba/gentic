@@ -44,7 +44,7 @@ export function buildSwePlanningPrompt(plan: SwePlanRequest): string {
     "The user invoked /swe plan. Assess and create a proportional durable SWE initiative for the request below.",
     `Use the canonical initiativeId ${JSON.stringify(plan.initiativeId)}.`,
     "Use the structured swe tool with action=create as the sole workflow.json bootstrap path.",
-    "Create a complete schema-valid draft proposal with concrete scope, acceptance criteria, justified practices, work, and verification obligations. Keep small work small. Do not ask the user to author workflow.json or provide a specification file unless a genuine product decision is missing.",
+    "Create a complete schema-valid draft proposal with concrete scope, acceptance criteria, justified practices, work, and verification obligations. Set policies.independentReviewOnCompletion=true and require independent-review evidence on a designated qualification obligation; commitOnWorkCompletion remains an explicit boolean opt-in. Keep small work small. Do not ask the user to author workflow.json or provide a specification file unless a genuine product decision is missing.",
     "",
     "Initiative request:",
     plan.request,

@@ -15,7 +15,7 @@ import { plainSweTheme } from "../ui/theme.ts";
 import { registerLightweightTodoSurface } from "../todo/thin-surface.ts";
 import { WorkflowTodoBackend } from "../todo/workflow-backend.ts";
 
-const ACTIONS = ["create", "status", "next", "start", "implemented", "revise", "prepare_verification", "record_review", "complete", "pause", "resume"] as const;
+const ACTIONS = ["create", "status", "next", "start", "implemented", "revise", "prepare_verification", "prepare_independent_review", "record_review", "complete", "pause", "resume"] as const;
 const parameters = Type.Object({
   action: StringEnum(ACTIONS),
   initiativeId: Type.String({ maxLength: 128 }),
@@ -98,6 +98,7 @@ export function registerSweSurface(pi: ExtensionAPI): void {
       "Stop for credentials, destructive or irreversible operations, a contract/scope revision, a genuine blocker, or authorization not already granted by the user or repository policy.",
       "Use swe prepare_verification before running the exact command through Pi's ordinary bash tool; never substitute internal pi.exec.",
       "Use swe record_review only for an explicit model self-review; label it as self-review, not independent or human review.",
+      "Every new initiative requires passing independent-review evidence before its designated work can complete. Use swe prepare_independent_review, launch another Pi session through interactive_shell with the returned token instruction, wait for it to exit, then query that session so pi-swe can observe its completed token-bearing output. A launch acknowledgement is not review evidence.",
       "When successful work-item completion returns an opt-in completionCommit, invoke its exact command through Pi's ordinary bash tool, report any failure without reverting completion, and never claim a commit before that command succeeds.",
       "After every executable work item is complete or disposed, call swe complete without workId to finalize the initiative.",
     ],
@@ -223,6 +224,13 @@ async function executeAction(service: SweService, input: {
       relevantPaths: input.relevantPaths ?? [], dimensions: input.dimensions ?? [], summary: required(input.summary, "summary"), sessionId,
     });
     return { text: renderStatus(stored.initiative), details: { initiative: stored.initiative, hash: stored.hash } };
+  }
+  if (input.action === "prepare_independent_review") {
+    const prepared = service.prepareIndependentReview(input.initiativeId, {
+      workId: workId(), obligationIds: input.obligationIds ?? [], relevantPaths: input.relevantPaths ?? [],
+      dimensions: input.dimensions ?? [], summary: required(input.summary, "summary"), recorderSessionId: sessionId,
+    });
+    return { text: `Prepared independent review ${prepared.token}. ${prepared.instruction}`, details: { prepared } };
   }
   const stored = input.action === "start" ? await service.start(input.initiativeId, workId())
     : input.action === "implemented" ? await service.markImplemented(input.initiativeId, workId())

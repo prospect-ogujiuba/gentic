@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 
-import { VerificationCollector } from "../extensions/pi-swe/src/app/verification.ts";
-import { completionBlockers, completeWork } from "../extensions/pi-swe/src/domain/completion.ts";
-import { parseInitiative, transitionWork } from "../extensions/pi-swe/src/domain/initiative.ts";
+import { snapshotRelevantPaths, VerificationCollector } from "../extensions/pi-swe/src/app/verification.ts";
+import { completionBlockers, completeInitiative, completeWork } from "../extensions/pi-swe/src/domain/completion.ts";
+import { contractFingerprint, parseInitiative, transitionWork } from "../extensions/pi-swe/src/domain/initiative.ts";
 import { SweService } from "../extensions/pi-swe/src/app/service.ts";
 import { InitiativeStore, initiativePath } from "../extensions/pi-swe/src/app/store.ts";
 
@@ -122,6 +122,84 @@ test("completion requires each obligation's declared evidence kinds and RED befo
 
     const noRed = parseInitiative({ ...implemented, evidence: [green, review] });
     assert.match(completionBlockers(noRed, "W-1", root).join(" "), /RED.*before.*GREEN/i);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("independent review evidence requires distinct interactive sessions and current source", () => {
+  const { root, initiative } = fixture();
+  try {
+    const configured = parseInitiative({
+      ...initiative,
+      policies: { commitOnWorkCompletion: false, independentReviewOnCompletion: true },
+      obligations: initiative.obligations.map((item) => item.id === "O-1"
+        ? { ...item, verification: { kind: "independent-review", requiredEvidence: ["independent-review"] } }
+        : item),
+    });
+    const implemented = transitionWork(transitionWork(configured, "W-1", "active"), "W-1", "implemented");
+    assert.match(completionBlockers(implemented, "W-1", root).join(" "), /missing independent-review evidence/i);
+    const fingerprint = contractFingerprint(implemented);
+    const source = snapshotRelevantPaths(root, ["src/bug.ts"]);
+    const evidence = {
+      id: "E-independent", kind: "independent-review", workId: "W-1", obligationIds: ["O-1"], outcome: "passed",
+      reviewedAt: "2026-09-21T18:00:00.000Z", contractFingerprint: fingerprint, source,
+      dimensions: ["correctness", "completion-gate"], summary: "A separate interactive Pi session found no blockers.",
+      provenance: { kind: "pi-interactive-session-review", transport: "interactive-shell", reviewerSessionId: "reviewer-session", recorderSessionId: "recorder-session" },
+    };
+    const reviewed = parseInitiative({ ...implemented, evidence: [evidence] });
+    assert.deepEqual(completionBlockers(reviewed, "W-1", root), []);
+    const terminalWork = reviewed.work.map((item) => item.kind === "phase" ? item
+      : item.id === "W-1" ? { ...item, status: "complete" as const }
+      : { ...item, status: "pending" as const, disposition: { kind: "cancelled" as const, reason: "fixture terminal disposition" } });
+    const terminalWithoutReview = parseInitiative({ ...reviewed, work: terminalWork, evidence: [] });
+    assert.throws(() => completeInitiative(terminalWithoutReview, root), /requires independent-review evidence/i);
+    assert.equal(completeInitiative(parseInitiative({ ...reviewed, work: terminalWork }), root).status, "complete");
+    const selfSession = structuredClone(evidence); selfSession.provenance.reviewerSessionId = "recorder-session";
+    assert.throws(() => parseInitiative({ ...implemented, evidence: [selfSession] }), /distinct reviewer session/i);
+    writeFileSync(join(root, "src/bug.ts"), "changed after independent review\n");
+    assert.match(completionBlockers(reviewed, "W-1", root).join(" "), /stale source/i);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("service records independent review only from observed exited interactive session output", async () => {
+  const { root, initiative } = fixture();
+  try {
+    const configured = parseInitiative({
+      ...initiative,
+      policies: { commitOnWorkCompletion: false, independentReviewOnCompletion: true },
+      obligations: initiative.obligations.map((item) => item.id === "O-1"
+        ? { ...item, verification: { kind: "independent-review", requiredEvidence: ["independent-review"] } }
+        : item),
+    });
+    const implemented = transitionWork(transitionWork(configured, "W-1", "active"), "W-1", "implemented");
+    const path = initiativePath(root, "fixture"); mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, `${JSON.stringify(implemented, null, 2)}\n`);
+    const service = new SweService(root, new InitiativeStore(root), new VerificationCollector(root));
+    const prepared = service.prepareIndependentReview("fixture", {
+      workId: "W-1", obligationIds: ["O-1"], relevantPaths: ["src/bug.ts"], dimensions: ["correctness"],
+      summary: "Separate interactive session review completed without blockers.", recorderSessionId: "recorder",
+    });
+    assert.equal(service.observeToolCall({ toolCallId: "launch", toolName: "interactive_shell", input: { spawn: { agent: "pi" } } }, root), false);
+    assert.equal(service.status("fixture").initiative.evidence.length, 0, "launch-only must not create evidence");
+    assert.equal(service.observeToolCall({ toolCallId: "query", toolName: "interactive_shell", input: { sessionId: "reviewer-shell" } }, root), true);
+    assert.equal(await service.observeToolResult({ toolCallId: "query", toolName: "interactive_shell", isError: false, content: [{ type: "text", text: `Session reviewer-shell running GENTIC_INDEPENDENT_REVIEW:${prepared.token}:passed` }] }), undefined);
+    assert.equal(service.status("fixture").initiative.evidence.length, 0, "running session must not create evidence");
+    service.observeToolCall({ toolCallId: "malformed", toolName: "interactive_shell", input: { sessionId: "reviewer-shell" } }, root);
+    assert.equal(await service.observeToolResult({ toolCallId: "malformed", toolName: "interactive_shell", isError: false, content: [{ type: "text", text: `Session reviewer-shell exited\nGENTIC_INDEPENDENT_REVIEW:${prepared.token}:passed-junk` }] }), undefined);
+    assert.equal(service.status("fixture").initiative.evidence.length, 0, "malformed marker must not create evidence");
+    service.observeToolCall({ toolCallId: "cancelled", toolName: "interactive_shell", input: { sessionId: "reviewer-shell" } }, root);
+    assert.equal(await service.observeToolResult({ toolCallId: "cancelled", toolName: "interactive_shell", isError: false, content: [{ type: "text", text: `Session reviewer-shell cancelled after timeout. Reviewer discussed exited sessions.\nGENTIC_INDEPENDENT_REVIEW:${prepared.token}:passed` }] }), undefined);
+    assert.equal(service.status("fixture").initiative.evidence.length, 0, "cancelled or timed-out session must not create evidence");
+    writeFileSync(join(root, "src/bug.ts"), "changed during review\n");
+    service.observeToolCall({ toolCallId: "stale", toolName: "interactive_shell", input: { sessionId: "reviewer-shell" } }, root);
+    await assert.rejects(() => service.observeToolResult({ toolCallId: "stale", toolName: "interactive_shell", isError: false, content: [{ type: "text", text: `Session reviewer-shell exited\nGENTIC_INDEPENDENT_REVIEW:${prepared.token}:passed` }] }), /preparation is stale.*source changed/i);
+    writeFileSync(join(root, "src/bug.ts"), "export const value = 0;\n");
+    const refreshed = service.prepareIndependentReview("fixture", {
+      workId: "W-1", obligationIds: ["O-1"], relevantPaths: ["src/bug.ts"], dimensions: ["correctness"],
+      summary: "Separate interactive session review completed without blockers.", recorderSessionId: "recorder",
+    });
+    service.observeToolCall({ toolCallId: "exited", toolName: "interactive_shell", input: { sessionId: "reviewer-shell" } }, root);
+    const stored = await service.observeToolResult({ toolCallId: "exited", toolName: "interactive_shell", isError: false, content: [{ type: "text", text: `Session reviewer-shell exited\nGENTIC_INDEPENDENT_REVIEW:${refreshed.token}:passed` }] });
+    assert.deepEqual(stored?.initiative.evidence[0].provenance, { kind: "pi-interactive-session-review", transport: "interactive-shell", reviewerSessionId: "reviewer-shell", recorderSessionId: "recorder" });
+    assert.deepEqual(completionBlockers(stored!.initiative, "W-1", root), []);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

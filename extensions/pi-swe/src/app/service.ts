@@ -1,10 +1,12 @@
 import { completionBlockers, completeInitiative, completeWork } from "../domain/completion.ts";
-import { parseInitiative, readyWork, transitionWork, type Initiative, type WorkItem } from "../domain/initiative.ts";
+import { contractFingerprint, parseInitiative, readyWork, transitionWork, type Initiative, type RelevantSourceSnapshot, type WorkItem } from "../domain/initiative.ts";
 import { buildSweContextProjection } from "../pi/context.ts";
 import { hashInitiativeArtifacts } from "./artifacts.ts";
 import { InitiativeStore, type StoredInitiative } from "./store.ts";
 import { prepareCompletionCommit, type CompletionCommitPreparation } from "./completion-commit.ts";
-import { createModelReviewEvidence, VerificationCollector, type PreparedVerification, type ReviewRequest, type VerificationRequest } from "./verification.ts";
+import { randomUUID } from "node:crypto";
+
+import { createIndependentReviewEvidence, createModelReviewEvidence, snapshotRelevantPaths, VerificationCollector, type IndependentReviewRequest, type PreparedVerification, type ReviewRequest, type VerificationRequest } from "./verification.ts";
 
 export type CompletionResult = StoredInitiative & CompletionCommitPreparation;
 
@@ -15,9 +17,20 @@ export type IntentionalRevisionRequest = {
   proposal: unknown;
 };
 
+type PendingIndependentReview = Omit<IndependentReviewRequest, "reviewerSessionId"> & {
+  initiativeId: string;
+  token: string;
+  preparedRevision: number;
+  preparedContractFingerprint: string;
+  preparedSource: RelevantSourceSnapshot;
+  toolCallId?: string;
+  reviewerSessionId?: string;
+};
+
 export class SweService {
   #selected?: string;
   #verificationInitiative?: string;
+  #pendingIndependentReview?: PendingIndependentReview;
   readonly cwd: string;
   readonly store: InitiativeStore;
   readonly collector: VerificationCollector;
@@ -92,10 +105,32 @@ export class SweService {
   }
 
   observeToolCall(event: { toolCallId: string; toolName: string; input: Record<string, unknown> }, cwd: string): boolean {
+    const pending = this.#pendingIndependentReview;
+    if (pending && !pending.toolCallId && event.toolName === "interactive_shell" && typeof event.input.sessionId === "string") {
+      pending.toolCallId = event.toolCallId;
+      pending.reviewerSessionId = event.input.sessionId;
+      return true;
+    }
     return this.collector.observeToolCall(event, cwd);
   }
 
   async observeToolResult(event: { toolCallId: string; toolName: string; input?: Record<string, unknown>; isError: boolean; content: Array<{ type: string; text?: string }> }): Promise<StoredInitiative | undefined> {
+    const pending = this.#pendingIndependentReview;
+    if (pending && pending.toolCallId === event.toolCallId && pending.reviewerSessionId && event.toolName === "interactive_shell") {
+      const output = event.content.filter((item) => item.type === "text" && typeof item.text === "string").map((item) => item.text).join("\n");
+      const marker = `GENTIC_INDEPENDENT_REVIEW:${pending.token}:passed`;
+      const hasExactMarkerLine = output.split(/\r?\n/).some((line) => line.trim() === marker);
+      const escapedSessionId = pending.reviewerSessionId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const cleanExit = new RegExp(`^Session ${escapedSessionId} exited\\b`, "mi").test(output)
+        && !/\b(cancelled|killed|timed?\s*out|timeout|user-takeover|backgrounded)\b/i.test(output);
+      if (!event.isError && cleanExit && hasExactMarkerLine) {
+        this.#pendingIndependentReview = undefined;
+        return this.#recordIndependentReview(pending, pending.reviewerSessionId);
+      }
+      pending.toolCallId = undefined;
+      pending.reviewerSessionId = undefined;
+      return undefined;
+    }
     const evidence = this.collector.observeToolResult(event);
     if (!evidence || !this.#verificationInitiative) return undefined;
     const initiativeId = this.#verificationInitiative;
@@ -110,10 +145,39 @@ export class SweService {
     });
   }
 
+  prepareIndependentReview(initiativeId: string, request: Omit<IndependentReviewRequest, "reviewerSessionId" | "outcome">): { token: string; instruction: string } {
+    const initiative = this.status(initiativeId).initiative;
+    const preparedEvidence = createIndependentReviewEvidence(this.cwd, initiative, { ...request, reviewerSessionId: "prepared-reviewer", outcome: "failed" });
+    const token = randomUUID();
+    this.#pendingIndependentReview = {
+      ...request, initiativeId, token, outcome: "failed",
+      preparedRevision: initiative.revision,
+      preparedContractFingerprint: preparedEvidence.contractFingerprint,
+      preparedSource: preparedEvidence.source,
+    };
+    return {
+      token,
+      instruction: `Launch a fresh Pi session through interactive_shell to review the prepared relevant paths. Wait for it to finish and print exactly GENTIC_INDEPENDENT_REVIEW:${token}:passed only if no blockers remain. Then query that exited interactive_shell session so pi-swe can observe its completed output.`,
+    };
+  }
+
+  async #recordIndependentReview(pending: PendingIndependentReview, reviewerSessionId: string): Promise<StoredInitiative> {
+    return this.#mutate(pending.initiativeId, `record observed independent interactive review for ${pending.workId}`, (initiative) => {
+      if (initiative.revision !== pending.preparedRevision) throw new Error("independent review preparation is stale: initiative revision changed");
+      if (contractFingerprint(initiative) !== pending.preparedContractFingerprint) throw new Error("independent review preparation is stale: contract changed");
+      const currentSource = snapshotRelevantPaths(this.cwd, pending.relevantPaths);
+      if (currentSource.hash !== pending.preparedSource.hash || JSON.stringify(currentSource.paths) !== JSON.stringify(pending.preparedSource.paths)) {
+        throw new Error("independent review preparation is stale: relevant source changed");
+      }
+      const evidence = createIndependentReviewEvidence(this.cwd, initiative, { ...pending, reviewerSessionId, outcome: "passed" });
+      return { ...initiative, evidence: [...initiative.evidence, evidence] };
+    });
+  }
+
   async complete(initiativeId: string, workId?: string): Promise<CompletionResult> {
     const stored = workId
       ? await this.#mutate(initiativeId, `complete ${workId} with current evidence`, (initiative) => completeWork(initiative, workId, this.cwd))
-      : await this.#mutate(initiativeId, "complete initiative", completeInitiative);
+      : await this.#mutate(initiativeId, "complete initiative", (initiative) => completeInitiative(initiative, this.cwd));
     const preparation = workId ? prepareCompletionCommit(stored.initiative, workId) : {};
     return { ...stored, ...preparation };
   }
