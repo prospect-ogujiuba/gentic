@@ -4,16 +4,16 @@
 
 The code is generally careful and unusually well-tested. The weak point is **architecture**, not sloppiness: several extensions have blurred ownership, private cross-extension coupling, or far more machinery than their value justifies.
 
-| Extension | Surface | Verdict |
-|---|---|---|
-| `pi-hud` | widget, command, 9 events | **Poorly designed** |
-| `pi-swe` | `swe` + `todo`, tools, commands, UI, 6 events | **Overgrown / poorly bounded** |
-| `pi-context` | command, pressure monitoring, exports | **Overengineered** |
-| `pi-primitives` | prompt-policy framework | **Wrong abstraction** |
-| `pi-commands` | `clear`, `scaffold` | **Mixed; scaffolder boundary is bad** |
-| `pi-catalog` | catalog command/tool, templates | **Mixed; confused ownership** |
-| `pi-git` | snapshot command/tool | **Good, slightly monolithic** |
-| `pi-artifacts` | artifact tool | **Good** |
+| Extension       | Surface                                       | Verdict                               |
+| --------------- | --------------------------------------------- | ------------------------------------- |
+| `pi-hud`        | widget, command, 9 events                     | **Poorly designed**                   |
+| `pi-swe`        | `swe` + `todo`, tools, commands, UI, 6 events | **Overgrown / poorly bounded**        |
+| `pi-context`    | command, pressure monitoring, exports         | **Overengineered**                    |
+| `pi-primitives` | prompt-policy framework                       | **Wrong abstraction**                 |
+| `pi-commands`   | `clear`, `scaffold`                           | **Mixed; scaffolder boundary is bad** |
+| `pi-catalog`    | catalog command/tool, templates               | **Mixed; confused ownership**         |
+| `pi-git`        | snapshot command/tool                         | **Good, slightly monolithic**         |
+| `pi-artifacts`  | artifact tool                                 | **Good**                              |
 
 ## Priority order
 
