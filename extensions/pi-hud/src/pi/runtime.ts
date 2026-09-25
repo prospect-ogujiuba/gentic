@@ -80,6 +80,8 @@ export class HudRuntimeOwner {
       if (this.active
         && this.generation === lifecycleGeneration
         && this.snapshots.isCurrent(snapshotGeneration, ctx.cwd)) this.apply(ctx);
+    }).catch(() => {
+      // Provider failures remain local; the next lifecycle event can retry.
     });
   }
 

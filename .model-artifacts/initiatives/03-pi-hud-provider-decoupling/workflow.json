@@ -2,8 +2,8 @@
   "kind": "gentic.swe.initiative",
   "schemaVersion": 1,
   "id": "03-pi-hud-provider-decoupling",
-  "revision": 2,
-  "status": "draft",
+  "revision": 8,
+  "status": "active",
   "objective": "Decouple pi-hud from sibling extension internals by consuming the qualified Git and context provider contracts, while preserving widget behavior, configuration, lifecycle generation, caching, rendering, and shutdown semantics.",
   "policies": {
     "commitOnWorkCompletion": true,
@@ -150,7 +150,7 @@
       "id": "W-1",
       "kind": "task",
       "title": "Characterize HUD behavior and provider interactions",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [],
       "criterionIds": [
         "AC-3"
@@ -206,7 +206,171 @@
     }
   ],
   "artifacts": [],
-  "evidence": [],
+  "evidence": [
+    {
+      "id": "E-0326d02c-3ccc-4c60-910a-bdf48e97afc3",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-hud-*.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T21:24:32.484Z",
+      "completedAt": "2026-09-25T21:25:06.796Z",
+      "durationMs": 34312,
+      "contractFingerprint": "sha256:a5372ef1ebadaa4fd88e064f316ea98011f7b07c024c12b3f1e01287cba13a91",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-hud/index.ts",
+            "extensions/pi-hud/src/app/git-snapshot-service.ts",
+            "extensions/pi-hud/src/app/git-status.ts",
+            "extensions/pi-hud/src/app/snapshot.ts",
+            "extensions/pi-hud/src/app/state.ts",
+            "extensions/pi-hud/src/pi/adapter.ts",
+            "extensions/pi-hud/src/pi/register.ts",
+            "extensions/pi-hud/src/pi/runtime.ts",
+            "extensions/pi-hud/src/ui/surfaces/widget.ts",
+            "extensions/pi-hud/types.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:44581682c7eed564224b2c5c40735fc7190042da8f30a1907971abce5a5e77b5"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-hud/index.ts",
+            "extensions/pi-hud/src/app/git-snapshot-service.ts",
+            "extensions/pi-hud/src/app/git-status.ts",
+            "extensions/pi-hud/src/app/snapshot.ts",
+            "extensions/pi-hud/src/app/state.ts",
+            "extensions/pi-hud/src/pi/adapter.ts",
+            "extensions/pi-hud/src/pi/register.ts",
+            "extensions/pi-hud/src/pi/runtime.ts",
+            "extensions/pi-hud/src/ui/surfaces/widget.ts",
+            "extensions/pi-hud/types.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:44581682c7eed564224b2c5c40735fc7190042da8f30a1907971abce5a5e77b5"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_bwU8huhOGGoga4wNFf68XeMt|fc_0083bcf9b6b300a0016ab6e690f87c87d2b3c1f4d8f9fe4592",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:196c0d781201a2abc9facc7742c1e6cdfe350b68361b28fdc70a55cba8760963"
+    },
+    {
+      "id": "E-22b5fe9d-fbbd-4d40-918d-623dfcca1b8f",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-hud-lifecycle.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T21:26:26.400Z",
+      "completedAt": "2026-09-25T21:26:28.224Z",
+      "durationMs": 1824,
+      "contractFingerprint": "sha256:a5372ef1ebadaa4fd88e064f316ea98011f7b07c024c12b3f1e01287cba13a91",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-hud/src/pi/runtime.ts",
+            "test/pi-hud-lifecycle.test.ts"
+          ],
+          "hash": "sha256:9690a2d1815b7c5c2f47dfa972984751f1a942b4b7c1c6415c6175bc11192fcf"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-hud/src/pi/runtime.ts",
+            "test/pi-hud-lifecycle.test.ts"
+          ],
+          "hash": "sha256:9690a2d1815b7c5c2f47dfa972984751f1a942b4b7c1c6415c6175bc11192fcf"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_iqWJDwpSLQi6y6vYvfPuNIRc|fc_0083bcf9b6b300a0016ab6e702c82087d29fa9ceb877f32b1e",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:fd4d3005fb63250a97ee44c941a88b590a9dd68f77d545067cb1d153714ac300"
+    },
+    {
+      "id": "E-4a016047-f502-469b-88fc-100fbc303872",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-hud-lifecycle.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T21:26:43.483Z",
+      "completedAt": "2026-09-25T21:26:45.306Z",
+      "durationMs": 1823,
+      "contractFingerprint": "sha256:a5372ef1ebadaa4fd88e064f316ea98011f7b07c024c12b3f1e01287cba13a91",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-hud/src/pi/runtime.ts",
+            "test/pi-hud-lifecycle.test.ts"
+          ],
+          "hash": "sha256:7d04bed6b6abdef5605040ceaaad7c4120aaa0658c2b7c11c2204ba53eb37d8c"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-hud/src/pi/runtime.ts",
+            "test/pi-hud-lifecycle.test.ts"
+          ],
+          "hash": "sha256:7d04bed6b6abdef5605040ceaaad7c4120aaa0658c2b7c11c2204ba53eb37d8c"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_S1l9uprQqxXomTK6R8mBtIzA|fc_0083bcf9b6b300a0016ab6e713d95087d2b6d5a7efcee7e0d5",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:a4805f45a87a7d1546f55b3aa03e8e366f58a5217510e5ac8ba17a84b7be7767"
+    }
+  ],
   "decisions": [
     {
       "id": "D-1",

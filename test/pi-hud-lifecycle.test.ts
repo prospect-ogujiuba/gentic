@@ -76,6 +76,27 @@ test("widget runtime cleanup is idempotent and rejects late refresh generations"
   assert.equal(snapshots.disposeCalls, 2);
 });
 
+test("refresh provider failures stay contained within the HUD lifecycle", async () => {
+  const snapshots = new FakeSnapshots();
+  snapshots.requestRefresh = () => Promise.reject(new Error("provider unavailable"));
+  const runtime = new HudRuntimeOwner(snapshots);
+  const harness = lifecycleContext();
+  const unhandled: unknown[] = [];
+  const onUnhandled = (error: unknown) => unhandled.push(error);
+  process.on("unhandledRejection", onUnhandled);
+
+  try {
+    runtime.start(harness.ctx);
+    runtime.update(harness.ctx, true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(runtime.isActive(), true);
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+    runtime.shutdown(harness.ctx);
+  }
+});
+
 test("registered lifecycle remains singular and excludes retired history events", () => {
   const handlers = new Map<string, unknown[]>();
   piHud({
