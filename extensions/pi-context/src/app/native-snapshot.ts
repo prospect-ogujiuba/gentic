@@ -48,6 +48,7 @@ const DIAGNOSTIC_CODES = new Set<NativeSnapshotDiagnostic>([
   "branch-truncated",
   "prompt-options-truncated",
   "content-truncated",
+  "contributors-degraded",
   "contributors-truncated",
 ]);
 
@@ -117,12 +118,15 @@ export function createNativeContextSnapshot(
     publicContributors.length = NATIVE_SNAPSHOT_LIMITS.maxContributors;
     addDiagnostic(diagnostics, "contributors-truncated");
   }
+  const contributorDetail = options.collectContributors === false ? "unavailable" : "degraded";
+  if (contributorDetail === "degraded") addDiagnostic(diagnostics, "contributors-degraded");
 
   return {
     schemaVersion: 1,
     capturedAt: safeCapturedAt(options.capturedAt),
     usage,
     pressure: pressureFromUsage(usage, options.pressurePolicy ?? DEFAULT_CONTEXT_PRESSURE_POLICY),
+    contributorDetail,
     contributors: publicContributors,
     branch: {
       totalEntries,
@@ -178,6 +182,7 @@ export function sanitizeNativeContextSnapshot(input: NativeContextSnapshot): Nat
       remainingPercent: percentNumber(propertyValue(usage, "remainingPercent")),
     },
     pressure: sanitizePressure(pressure),
+    contributorDetail: propertyValue(candidate, "contributorDetail") === "degraded" ? "degraded" : "unavailable",
     contributors,
     branch: {
       totalEntries: integer(propertyValue(branch, "totalEntries")),

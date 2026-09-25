@@ -2,8 +2,8 @@
   "kind": "gentic.swe.initiative",
   "schemaVersion": 1,
   "id": "02-pi-context-telemetry-boundary",
-  "revision": 2,
-  "status": "draft",
+  "revision": 8,
+  "status": "active",
   "objective": "Replace pi-context's recursive interpretation of loosely typed Pi runtime internals with a typed, bounded context telemetry contract and simpler snapshot pipeline while preserving /pi-context, HUD adapter behavior, pressure notifications, content safety, and JSON/Markdown report compatibility.",
   "policies": {
     "commitOnWorkCompletion": true,
@@ -153,7 +153,7 @@
       "id": "W-1",
       "kind": "task",
       "title": "Characterize context telemetry, privacy, and compatibility behavior",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [],
       "criterionIds": [
         "AC-3",
@@ -210,7 +210,167 @@
     }
   ],
   "artifacts": [],
-  "evidence": [],
+  "evidence": [
+    {
+      "id": "E-d89fe915-5994-418f-b315-7a38fa36aba0",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-context-characterization.test.ts test/pi-context-native-snapshot-contract.test.ts test/pi-context-native-snapshot.test.ts test/pi-context-native-pressure-export.test.ts test/pi-context-lightweight-runtime.test.ts test/pi-context-qualification.test.ts test/pi-hud-snapshot-service.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T20:05:20.471Z",
+      "completedAt": "2026-09-25T20:05:32.667Z",
+      "durationMs": 12196,
+      "contractFingerprint": "sha256:7f08a1a85d137827f6fd1985708e29e619cd6755a2769b1eee852be1ae5c7119",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/src/app/hud-adapter.ts",
+            "extensions/pi-context/src/app/native-export.ts",
+            "extensions/pi-context/src/app/native-snapshot-contract.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "extensions/pi-context/src/pi/register.ts",
+            "test/pi-context-characterization.test.ts",
+            "test/pi-context-lightweight-runtime.test.ts",
+            "test/pi-context-native-pressure-export.test.ts",
+            "test/pi-context-native-snapshot-contract.test.ts",
+            "test/pi-context-native-snapshot.test.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts"
+          ],
+          "hash": "sha256:3a1bc71e34ca44bff76c2d1889b27301bfa8b9044ffdd6a8d4cb615986f837c1"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/src/app/hud-adapter.ts",
+            "extensions/pi-context/src/app/native-export.ts",
+            "extensions/pi-context/src/app/native-snapshot-contract.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "extensions/pi-context/src/pi/register.ts",
+            "test/pi-context-characterization.test.ts",
+            "test/pi-context-lightweight-runtime.test.ts",
+            "test/pi-context-native-pressure-export.test.ts",
+            "test/pi-context-native-snapshot-contract.test.ts",
+            "test/pi-context-native-snapshot.test.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts"
+          ],
+          "hash": "sha256:3a1bc71e34ca44bff76c2d1889b27301bfa8b9044ffdd6a8d4cb615986f837c1"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_mReDdo9ZsoBn4mz06arjNO5E|fc_099b0a039db64e45016ab6d400051087d2883c31c794e24c78",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:329eaa010b30424048b2536ef0bcee99a02fefc375b75aac8f5224486dece2bd"
+    },
+    {
+      "id": "E-c64d9e06-8bde-4271-a989-896c4c85fd5b",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-context-native-snapshot-contract.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T20:07:15.262Z",
+      "completedAt": "2026-09-25T20:07:17.573Z",
+      "durationMs": 2311,
+      "contractFingerprint": "sha256:7f08a1a85d137827f6fd1985708e29e619cd6755a2769b1eee852be1ae5c7119",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/src/app/native-snapshot-contract.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "test/pi-context-native-snapshot-contract.test.ts"
+          ],
+          "hash": "sha256:552dbbc71724ab57c1acca92cf9117646b132e5cfbcac5a160a8954a65c1ec90"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/src/app/native-snapshot-contract.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "test/pi-context-native-snapshot-contract.test.ts"
+          ],
+          "hash": "sha256:552dbbc71724ab57c1acca92cf9117646b132e5cfbcac5a160a8954a65c1ec90"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_nQdKgl55GE6kI9kexllhuMTL|fc_099b0a039db64e45016ab6d473922087d2b17bf3ff0817dad0",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:e0a49d185fb0a971d6134696e8fe3860b5d123ef917843fc25798237008fa331"
+    },
+    {
+      "id": "E-aad70c08-57e0-4e2c-b361-a3d8a9e3581f",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-context-native-snapshot-contract.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T20:08:04.459Z",
+      "completedAt": "2026-09-25T20:08:08.086Z",
+      "durationMs": 3627,
+      "contractFingerprint": "sha256:7f08a1a85d137827f6fd1985708e29e619cd6755a2769b1eee852be1ae5c7119",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/src/app/native-snapshot-contract.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "test/pi-context-native-snapshot-contract.test.ts"
+          ],
+          "hash": "sha256:29ce1cf3b88ffc64eb39943ad417c2272b5c5ecf7cbfe236843037fd6d062d03"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/src/app/native-snapshot-contract.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "test/pi-context-native-snapshot-contract.test.ts"
+          ],
+          "hash": "sha256:29ce1cf3b88ffc64eb39943ad417c2272b5c5ecf7cbfe236843037fd6d062d03"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_XAm1k8vCrgAY1QMd7RUaH2KC|fc_099b0a039db64e45016ab6d4a4b78487d2848332c594279726",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:9873406c9b5ddd573ed033cf489e2a0cd6ac7f31d1223d830fc960787dcb39c5"
+    }
+  ],
   "decisions": [
     {
       "id": "D-1",

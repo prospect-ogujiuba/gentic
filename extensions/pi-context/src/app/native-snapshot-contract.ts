@@ -48,6 +48,8 @@ export type NativeContributorKind =
   | "tool-results"
   | "other-session";
 
+export type NativeContributorDetail = "degraded" | "unavailable";
+
 export type NativeSnapshotDiagnostic =
   | "usage-unavailable"
   | "prompt-options-unavailable"
@@ -55,6 +57,7 @@ export type NativeSnapshotDiagnostic =
   | "branch-truncated"
   | "prompt-options-truncated"
   | "content-truncated"
+  | "contributors-degraded"
   | "contributors-truncated";
 
 export type NativeSnapshotPressure = {
@@ -80,6 +83,7 @@ export type NativeContextSnapshot = {
     remainingPercent?: number;
   };
   pressure: NativeSnapshotPressure;
+  contributorDetail: NativeContributorDetail;
   contributors: NativeSnapshotContributor[];
   branch: {
     totalEntries: number;

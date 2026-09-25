@@ -5,6 +5,7 @@ import {
   EXCLUDED_RUNTIME_LEDGER_EVENTS,
   NATIVE_SNAPSHOT_LIMITS,
   NATIVE_SNAPSHOT_SOURCES,
+  createNativeContextSnapshot,
   type NativeContextSnapshot,
   type NativeSnapshotContext,
 } from "../extensions/pi-context/src/app/index.ts";
@@ -53,18 +54,31 @@ test("public snapshot schema contains aggregates and fixed diagnostics, not sens
     capturedAt: "2026-09-14T02:03:00.000Z",
     usage: { usedTokens: 750, contextWindowTokens: 1_000, remainingTokens: 250, remainingPercent: 25 },
     pressure: { available: true, level: "warning", remainingPercent: 25 },
+    contributorDetail: "degraded",
     contributors: [{ kind: "context-files", itemCount: 2, byteCount: 400, tokenCount: 100 }],
     branch: { totalEntries: 900, scannedEntries: 512, truncated: true },
-    diagnostics: ["branch-truncated"],
+    diagnostics: ["contributors-degraded", "branch-truncated"],
     bounds: NATIVE_SNAPSHOT_LIMITS,
   } satisfies NativeContextSnapshot;
 
-  assert.deepEqual(Object.keys(snapshot).sort(), ["bounds", "branch", "capturedAt", "contributors", "diagnostics", "pressure", "schemaVersion", "usage"]);
+  assert.deepEqual(Object.keys(snapshot).sort(), ["bounds", "branch", "capturedAt", "contributorDetail", "contributors", "diagnostics", "pressure", "schemaVersion", "usage"]);
   assert.deepEqual(Object.keys(snapshot.contributors[0]!).sort(), ["byteCount", "itemCount", "kind", "tokenCount"]);
   assert.doesNotMatch(
     JSON.stringify(snapshot),
     /"(?:content|prompt|preview|path|credential|secret|messageId|toolCallId|sessionId|providerId)"\s*:/i,
   );
+});
+
+test("native compatibility input reports contributor degradation explicitly", () => {
+  const snapshot = createNativeContextSnapshot({
+    getContextUsage: () => ({ tokens: 50, contextWindow: 100, percent: 50 }),
+    getSystemPromptOptions: () => ({ contextFiles: [{ path: "/private/secret", content: "secret" }] }),
+    sessionManager: { getBranch: () => [{ type: "message", message: { role: "user", content: "secret" } }] },
+  } as never, { capturedAt: "2026-09-14T02:03:00.000Z" });
+
+  assert.equal(snapshot.contributorDetail, "degraded");
+  assert.ok(snapshot.diagnostics.includes("contributors-degraded"));
+  assert.doesNotMatch(JSON.stringify(snapshot), /secret|private/);
 });
 
 test("runtime meets the design target for streaming and per-tool subscriptions", () => {
