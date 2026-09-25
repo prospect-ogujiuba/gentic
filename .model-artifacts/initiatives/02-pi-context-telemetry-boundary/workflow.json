@@ -2,8 +2,8 @@
   "kind": "gentic.swe.initiative",
   "schemaVersion": 1,
   "id": "02-pi-context-telemetry-boundary",
-  "revision": 27,
-  "status": "active",
+  "revision": 28,
+  "status": "complete",
   "objective": "Replace pi-context's recursive interpretation of loosely typed Pi runtime internals with a typed, bounded context telemetry contract and simpler snapshot pipeline while preserving /pi-context, HUD adapter behavior, pressure notifications, content safety, and JSON/Markdown report compatibility.",
   "policies": {
     "commitOnWorkCompletion": true,
