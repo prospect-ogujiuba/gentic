@@ -362,13 +362,15 @@ function readUsage(value: unknown): NativeContextSnapshot["usage"] {
   const usage = record(value) ?? {};
   const usedTokens = nonNegativeNumber(propertyValue(usage, "tokens"));
   const contextWindowTokens = positiveNumber(propertyValue(usage, "contextWindow"));
-  const usedPercent = finiteNumber(propertyValue(usage, "percent"));
-  const remainingTokens = usedTokens === undefined || contextWindowTokens === undefined
-    ? undefined
-    : Math.max(0, contextWindowTokens - usedTokens);
-  const remainingPercent = usedTokens !== undefined && contextWindowTokens !== undefined
-    ? clampPercent(100 - ((usedTokens / contextWindowTokens) * 100))
-    : usedPercent === undefined ? undefined : clampPercent(100 - usedPercent);
+  const usedPercent = percentNumber(propertyValue(usage, "percent"));
+  const hasTokenPair = usedTokens !== undefined && contextWindowTokens !== undefined;
+  const validTokenPair = hasTokenPair && usedTokens <= contextWindowTokens;
+  const remainingTokens = validTokenPair ? contextWindowTokens - usedTokens : undefined;
+  const remainingPercent = validTokenPair
+    ? 100 - ((usedTokens / contextWindowTokens) * 100)
+    : hasTokenPair
+      ? undefined
+      : usedPercent === undefined ? undefined : 100 - usedPercent;
   return { usedTokens, contextWindowTokens, remainingTokens, remainingPercent };
 }
 
@@ -412,7 +414,8 @@ function propertyValue(value: Record<string, unknown>, key: string): unknown {
 
 function arrayLength(value: unknown[]): number | undefined {
   const length = safely(() => value.length);
-  return length.ok ? nonNegativeInteger(length.value) : undefined;
+  const integer = length.ok ? nonNegativeInteger(length.value) : undefined;
+  return integer === undefined ? undefined : Math.min(integer, NATIVE_SNAPSHOT_LIMITS.maxNumericValue);
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -425,8 +428,8 @@ function addDiagnostic(diagnostics: NativeSnapshotDiagnostic[], diagnostic: Nati
   if (!diagnostics.includes(diagnostic)) diagnostics.push(diagnostic);
 }
 
-function finiteNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+function percentNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100 ? value : undefined;
 }
 
 function nonNegativeNumber(value: unknown): number | undefined {
@@ -439,10 +442,6 @@ function positiveNumber(value: unknown): number | undefined {
 
 function nonNegativeInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined;
-}
-
-function clampPercent(value: number): number {
-  return Math.max(0, Math.min(100, value));
 }
 
 function formatUsage(tokens: number | undefined, contextWindow: number | undefined): string {

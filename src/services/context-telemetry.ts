@@ -95,7 +95,7 @@ function sanitizePressure(value: Record<string, unknown>): ContextTelemetryPress
 }
 
 function capturedAt(value: unknown): string {
-  if (typeof value === "string" && Number.isFinite(Date.parse(value))) return new Date(value).toISOString();
+  if (typeof value === "string" && value.length <= 64 && Number.isFinite(Date.parse(value))) return new Date(value).toISOString();
   return new Date().toISOString();
 }
 
@@ -127,11 +127,15 @@ function integer(value: unknown): number {
 }
 
 function nonNegativeNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.min(value, CONTEXT_TELEMETRY_LIMITS.maxNumericValue)
+    : undefined;
 }
 
 function positiveNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.min(value, CONTEXT_TELEMETRY_LIMITS.maxNumericValue)
+    : undefined;
 }
 
 function percent(value: unknown): number | undefined {

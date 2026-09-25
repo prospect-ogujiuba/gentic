@@ -168,12 +168,28 @@ function piContextHelpText(): string {
 function readPressureUsage(ctx: Pick<ExtensionContext, "getContextUsage">): ContextPressureUsage | undefined {
   const usage = safeValue(() => ctx.getContextUsage());
   if (!usage) return undefined;
+  const tokens = finiteNonNegative(usage.tokens);
+  const contextWindow = finitePositive(usage.contextWindow);
+  const percent = finitePercent(usage.percent);
+  if (tokens !== undefined && contextWindow !== undefined && tokens > contextWindow) return undefined;
   return {
-    tokens: typeof usage.tokens === "number" ? usage.tokens : undefined,
-    contextWindow: typeof usage.contextWindow === "number" ? usage.contextWindow : undefined,
-    percent: typeof usage.percent === "number" ? usage.percent : undefined,
-    tokenConfidence: typeof usage.tokens === "number" || typeof usage.percent === "number" ? "estimated" : "unknown",
+    tokens,
+    contextWindow,
+    percent,
+    tokenConfidence: tokens !== undefined || percent !== undefined ? "estimated" : "unknown",
   };
+}
+
+function finiteNonNegative(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function finitePositive(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function finitePercent(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100 ? value : undefined;
 }
 
 function usageFromSnapshot(snapshot: ReturnType<typeof createNativeContextSnapshot>): ContextPressureUsage | undefined {

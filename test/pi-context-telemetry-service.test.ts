@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createPiContextHudSnapshot } from "../extensions/pi-context/src/app/index.ts";
 import {
   CONTEXT_TELEMETRY_LIMITS,
   type ContextTelemetrySnapshotInput,
@@ -57,4 +58,43 @@ test("package service bounds untyped consumers and never traverses extra content
   assert.equal(snapshot.diagnostics.length, 1);
   assert.equal(secretReads, 0);
   assert.doesNotMatch(JSON.stringify(snapshot), new RegExp(marker));
+});
+
+test("unavailable HUD timestamps reject oversized input before date parsing", () => {
+  const oversized = "x".repeat(1_000_000);
+  const originalParse = Date.parse;
+  const parsed: string[] = [];
+  Date.parse = (value: string) => {
+    parsed.push(value);
+    return originalParse(value);
+  };
+  try {
+    const hud = createPiContextHudSnapshot(undefined, { capturedAt: oversized });
+    assert.equal(hud.available, false);
+    assert.notEqual(hud.capturedAt, oversized);
+    assert.equal(parsed.includes(oversized), false);
+  } finally {
+    Date.parse = originalParse;
+  }
+});
+
+test("oversized aggregate numbers saturate before HUD summation and JSON serialization", () => {
+  const snapshot = sanitizeContextTelemetrySnapshot({
+    capturedAt: "x".repeat(1_000_000),
+    contributorDetail: "degraded",
+    contributors: Array.from({ length: CONTEXT_TELEMETRY_LIMITS.maxContributors }, () => ({
+      kind: "tool-results",
+      itemCount: 1e308,
+      byteCount: 1e308,
+      tokenCount: 1e308,
+    })),
+  });
+  const hud = createPiContextHudSnapshot(snapshot, { capturedAt: "2026-09-14T05:00:00.000Z" });
+  const json = JSON.stringify(hud);
+
+  assert.equal(snapshot.contributors[0]?.byteCount, Number.MAX_SAFE_INTEGER);
+  assert.equal(snapshot.contributors[0]?.itemCount, Number.MAX_SAFE_INTEGER);
+  assert.equal(hud.totalBytes, Number.MAX_SAFE_INTEGER);
+  assert.equal(Number.isFinite(hud.totalBytes), true);
+  assert.doesNotMatch(json, /"(?:totalBytes|byteCount|tokenCount|itemCount)":null/);
 });

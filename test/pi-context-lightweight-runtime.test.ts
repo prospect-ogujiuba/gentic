@@ -69,6 +69,37 @@ test("command builds native output on demand and writes only explicit exports", 
   assert.deepEqual({ usageCalls, promptCalls, branchCalls }, { usageCalls: 3, promptCalls: 3, branchCalls: 3 });
 });
 
+test("lifecycle pressure rejects inconsistent usage even when percent looks valid", () => {
+  const handlers = new Map<string, Function>();
+  const notifications: string[] = [];
+  let usage = { tokens: 101, contextWindow: 100, percent: 80 };
+  registerPiContext({
+    on: (event: string, handler: Function) => handlers.set(event, handler),
+    registerCommand: () => undefined,
+  } as never, {
+    loadConfig: () => ({
+      config: {
+        version: 1,
+        pressure: Object.freeze({ warningPercent: 20, criticalPercent: 8, hysteresisPercent: 3 }),
+      },
+      diagnostics: [],
+      paths: { global: "/safe/global", project: "/safe/project" },
+    }),
+  });
+  const ctx = {
+    cwd: "/safe/project",
+    getContextUsage: () => usage,
+    ui: { notify: (text: string) => notifications.push(text) },
+  };
+
+  handlers.get("session_start")?.({ reason: "startup" }, ctx);
+  assert.deepEqual(notifications, []);
+  usage = { tokens: 80, contextWindow: 100, percent: 80 };
+  handlers.get("turn_end")?.({}, ctx);
+  assert.equal(notifications.length, 1);
+  assert.match(notifications[0]!, /20% remaining/);
+});
+
 test("temporarily unavailable compaction preserves pressure until valid hysteresis recovery", () => {
   const handlers = new Map<string, Function>();
   const notifications: string[] = [];

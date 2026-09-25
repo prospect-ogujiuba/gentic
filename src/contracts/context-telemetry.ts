@@ -6,6 +6,7 @@ export const CONTEXT_TELEMETRY_LIMITS = Object.freeze({
   maxPromptGuidelinesScanned: 64,
   maxContentBlocksPerValue: 64,
   maxMeasuredCharsPerValue: 65_536,
+  maxNumericValue: Number.MAX_SAFE_INTEGER,
   maxContributors: 8,
   maxDiagnostics: 4,
 } as const);

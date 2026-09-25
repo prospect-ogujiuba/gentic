@@ -2,7 +2,7 @@
   "kind": "gentic.swe.initiative",
   "schemaVersion": 1,
   "id": "02-pi-context-telemetry-boundary",
-  "revision": 14,
+  "revision": 27,
   "status": "active",
   "objective": "Replace pi-context's recursive interpretation of loosely typed Pi runtime internals with a typed, bounded context telemetry contract and simpler snapshot pipeline while preserving /pi-context, HUD adapter behavior, pressure notifications, content safety, and JSON/Markdown report compatibility.",
   "policies": {
@@ -192,7 +192,7 @@
       "id": "W-3",
       "kind": "task",
       "title": "Preserve reports, document the consumer boundary, and qualify pi-context",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "W-2"
       ],
@@ -530,6 +530,793 @@
       "provenance": {
         "kind": "pi-model-self-review",
         "sessionId": "01a0da1c-c92c-7349-bf5b-b0da5b00ce5b"
+      }
+    },
+    {
+      "id": "E-fdb03241-a46c-4d30-bce6-cf045f5bcd65",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && node --experimental-strip-types --test test/pi-context*.test.ts test/pi-hud*.test.ts && npm run check:dependencies && npm run check:performance && npm run check:commands && npm run check && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T20:16:30.882Z",
+      "completedAt": "2026-09-25T20:18:03.150Z",
+      "durationMs": 92268,
+      "contractFingerprint": "sha256:7f08a1a85d137827f6fd1985708e29e619cd6755a2769b1eee852be1ae5c7119",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/index.ts",
+            "extensions/pi-context/src/app/hud-adapter.ts",
+            "extensions/pi-context/src/app/index.ts",
+            "extensions/pi-context/src/app/native-export.ts",
+            "extensions/pi-context/src/app/native-pressure.ts",
+            "extensions/pi-context/src/app/native-snapshot-contract.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "extensions/pi-context/src/pi/register.ts",
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-characterization.test.ts",
+            "test/pi-context-config.test.ts",
+            "test/pi-context-lightweight-runtime.test.ts",
+            "test/pi-context-native-pressure-export.test.ts",
+            "test/pi-context-native-snapshot-contract.test.ts",
+            "test/pi-context-native-snapshot.test.ts",
+            "test/pi-context-pressure.test.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-context-telemetry-service.test.ts",
+            "test/pi-hud-legacy-removal.test.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-minimum-surface-contract.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:62fe7b819113f06bd7cd189bc4be0cd6cd11a9d16462372bf9b0e0af38ddd7ae"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/index.ts",
+            "extensions/pi-context/src/app/hud-adapter.ts",
+            "extensions/pi-context/src/app/index.ts",
+            "extensions/pi-context/src/app/native-export.ts",
+            "extensions/pi-context/src/app/native-pressure.ts",
+            "extensions/pi-context/src/app/native-snapshot-contract.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "extensions/pi-context/src/pi/register.ts",
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-characterization.test.ts",
+            "test/pi-context-config.test.ts",
+            "test/pi-context-lightweight-runtime.test.ts",
+            "test/pi-context-native-pressure-export.test.ts",
+            "test/pi-context-native-snapshot-contract.test.ts",
+            "test/pi-context-native-snapshot.test.ts",
+            "test/pi-context-pressure.test.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-context-telemetry-service.test.ts",
+            "test/pi-hud-legacy-removal.test.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-minimum-surface-contract.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:62fe7b819113f06bd7cd189bc4be0cd6cd11a9d16462372bf9b0e0af38ddd7ae"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_I91FHVPaQEPLNFtwjDneCvcY|fc_099b0a039db64e45016ab6d69e8ea087d280de409aa5b1509e",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:df6bbc43097c5127449a5c239d1e9e34cbda84864c8b7eee3764340d181ccaa3"
+    },
+    {
+      "id": "E-e7fca516-e1f8-4c96-bec1-f8f6eb4963df",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && node --experimental-strip-types --test test/pi-context-telemetry-service.test.ts test/pi-context-native-snapshot-contract.test.ts test/pi-context-qualification.test.ts test/pi-hud-snapshot-service.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T20:25:02.638Z",
+      "completedAt": "2026-09-25T20:25:23.720Z",
+      "durationMs": 21082,
+      "contractFingerprint": "sha256:7f08a1a85d137827f6fd1985708e29e619cd6755a2769b1eee852be1ae5c7119",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/src/app/hud-adapter.ts",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-native-snapshot-contract.test.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-context-telemetry-service.test.ts",
+            "test/pi-hud-snapshot-service.test.ts"
+          ],
+          "hash": "sha256:9b031fe837f33cb2c0ff2d2f7ee0df7d42be418794d3ffe894df94a23c89cf2a"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/src/app/hud-adapter.ts",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-native-snapshot-contract.test.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-context-telemetry-service.test.ts",
+            "test/pi-hud-snapshot-service.test.ts"
+          ],
+          "hash": "sha256:9b031fe837f33cb2c0ff2d2f7ee0df7d42be418794d3ffe894df94a23c89cf2a"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_STSndPlo2GUl7T2uyIO2sXL6|fc_099b0a039db64e45016ab6d89e682c87d2bb75d5cfcc7dce05",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:8986edc8898b6f4419ba8a1f882eb67aec4847c54340425ea82abfbfd58bf621"
+    },
+    {
+      "id": "E-9c09302f-6b16-4695-b4da-5a0a41b5015c",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && node --experimental-strip-types --test test/pi-context*.test.ts test/pi-hud*.test.ts && npm run check:dependencies && npm run check:performance && npm run check:commands && npm run check && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T20:26:02.037Z",
+      "completedAt": "2026-09-25T20:27:14.957Z",
+      "durationMs": 72920,
+      "contractFingerprint": "sha256:7f08a1a85d137827f6fd1985708e29e619cd6755a2769b1eee852be1ae5c7119",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/index.ts",
+            "extensions/pi-context/src/app/hud-adapter.ts",
+            "extensions/pi-context/src/app/index.ts",
+            "extensions/pi-context/src/app/native-export.ts",
+            "extensions/pi-context/src/app/native-pressure.ts",
+            "extensions/pi-context/src/app/native-snapshot-contract.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "extensions/pi-context/src/pi/register.ts",
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-characterization.test.ts",
+            "test/pi-context-config.test.ts",
+            "test/pi-context-lightweight-runtime.test.ts",
+            "test/pi-context-native-pressure-export.test.ts",
+            "test/pi-context-native-snapshot-contract.test.ts",
+            "test/pi-context-native-snapshot.test.ts",
+            "test/pi-context-pressure.test.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-context-telemetry-service.test.ts",
+            "test/pi-hud-legacy-removal.test.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-minimum-surface-contract.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:517065b4189548a63302458a83f2fe372f279d56ffde5a19d11c16e253a06021"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/index.ts",
+            "extensions/pi-context/src/app/hud-adapter.ts",
+            "extensions/pi-context/src/app/index.ts",
+            "extensions/pi-context/src/app/native-export.ts",
+            "extensions/pi-context/src/app/native-pressure.ts",
+            "extensions/pi-context/src/app/native-snapshot-contract.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "extensions/pi-context/src/pi/register.ts",
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-characterization.test.ts",
+            "test/pi-context-config.test.ts",
+            "test/pi-context-lightweight-runtime.test.ts",
+            "test/pi-context-native-pressure-export.test.ts",
+            "test/pi-context-native-snapshot-contract.test.ts",
+            "test/pi-context-native-snapshot.test.ts",
+            "test/pi-context-pressure.test.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-context-telemetry-service.test.ts",
+            "test/pi-hud-legacy-removal.test.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-minimum-surface-contract.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:517065b4189548a63302458a83f2fe372f279d56ffde5a19d11c16e253a06021"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_2sjQAOc5MfohVaSRTTLLr6dg|fc_099b0a039db64e45016ab6d8d951a487d290bcf01d2dcf7162",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:fe2228778e07e6f61636291a9e2f76b7d78c819a6dd5ca0f3c2f48aff003d81f"
+    },
+    {
+      "id": "E-da329c42-7fe4-438e-b72e-c1744f70644e",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && node --experimental-strip-types --test test/pi-context-telemetry-service.test.ts test/pi-context-qualification.test.ts test/pi-hud-qualification.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T20:40:05.383Z",
+      "completedAt": "2026-09-25T20:40:34.288Z",
+      "durationMs": 28905,
+      "contractFingerprint": "sha256:7f08a1a85d137827f6fd1985708e29e619cd6755a2769b1eee852be1ae5c7119",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/src/app/hud-adapter.ts",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-context-telemetry-service.test.ts",
+            "test/pi-hud-qualification.test.ts"
+          ],
+          "hash": "sha256:a0fa86111fb77611ba9287f3d9b9848bc8f6e9f534c21c86f8a858abcae92c00"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/src/app/hud-adapter.ts",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-context-telemetry-service.test.ts",
+            "test/pi-hud-qualification.test.ts"
+          ],
+          "hash": "sha256:a0fa86111fb77611ba9287f3d9b9848bc8f6e9f534c21c86f8a858abcae92c00"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_o71xzgRk4eZ2sSJqDmQFIpl8|fc_099b0a039db64e45016ab6dc2543e087d2b4cdbcbababeb06b",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:9b9436a9d38ccc2831a1c210fc5e4be12adc29a8adc0deb18ea0722833851985"
+    },
+    {
+      "id": "E-ff54b445-54c1-4357-ad8a-030fff158ebc",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && node --experimental-strip-types --test test/pi-context*.test.ts test/pi-hud*.test.ts && npm run check:dependencies && npm run check:performance && npm run check:commands && npm run check && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T20:40:51.197Z",
+      "completedAt": "2026-09-25T20:42:20.850Z",
+      "durationMs": 89653,
+      "contractFingerprint": "sha256:7f08a1a85d137827f6fd1985708e29e619cd6755a2769b1eee852be1ae5c7119",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/index.ts",
+            "extensions/pi-context/src/app/hud-adapter.ts",
+            "extensions/pi-context/src/app/index.ts",
+            "extensions/pi-context/src/app/native-export.ts",
+            "extensions/pi-context/src/app/native-pressure.ts",
+            "extensions/pi-context/src/app/native-snapshot-contract.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "extensions/pi-context/src/pi/register.ts",
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-characterization.test.ts",
+            "test/pi-context-config.test.ts",
+            "test/pi-context-lightweight-runtime.test.ts",
+            "test/pi-context-native-pressure-export.test.ts",
+            "test/pi-context-native-snapshot-contract.test.ts",
+            "test/pi-context-native-snapshot.test.ts",
+            "test/pi-context-pressure.test.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-context-telemetry-service.test.ts",
+            "test/pi-hud-legacy-removal.test.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-minimum-surface-contract.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:b3b0a0ad806602eb5c7761f96c7101093ec910e1e63e559e7adab928b010db54"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/index.ts",
+            "extensions/pi-context/src/app/hud-adapter.ts",
+            "extensions/pi-context/src/app/index.ts",
+            "extensions/pi-context/src/app/native-export.ts",
+            "extensions/pi-context/src/app/native-pressure.ts",
+            "extensions/pi-context/src/app/native-snapshot-contract.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "extensions/pi-context/src/pi/register.ts",
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-characterization.test.ts",
+            "test/pi-context-config.test.ts",
+            "test/pi-context-lightweight-runtime.test.ts",
+            "test/pi-context-native-pressure-export.test.ts",
+            "test/pi-context-native-snapshot-contract.test.ts",
+            "test/pi-context-native-snapshot.test.ts",
+            "test/pi-context-pressure.test.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-context-telemetry-service.test.ts",
+            "test/pi-hud-legacy-removal.test.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-minimum-surface-contract.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:b3b0a0ad806602eb5c7761f96c7101093ec910e1e63e559e7adab928b010db54"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_qkc3reeW6eKv3d4brEoepr3B|fc_099b0a039db64e45016ab6dc52dc8887d2b1ac1240a535bbb6",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:1970de88bb0e18d263e45a6fd52ecb0f98c64093c4279f879a33a9ebf2571500"
+    },
+    {
+      "id": "E-0768fb05-699c-417c-9b88-009fc91fdd03",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && node --experimental-strip-types --test test/pi-context-native-snapshot.test.ts test/pi-context-pressure.test.ts test/pi-context-qualification.test.ts test/pi-context-telemetry-service.test.ts test/pi-hud-qualification.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T20:46:05.613Z",
+      "completedAt": "2026-09-25T20:46:30.753Z",
+      "durationMs": 25140,
+      "contractFingerprint": "sha256:7f08a1a85d137827f6fd1985708e29e619cd6755a2769b1eee852be1ae5c7119",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/src/app/hud-adapter.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-native-snapshot.test.ts",
+            "test/pi-context-pressure.test.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-context-telemetry-service.test.ts",
+            "test/pi-hud-qualification.test.ts"
+          ],
+          "hash": "sha256:27f972d4538d8c4c91c3f81bfbef499febacd3dcb220ab8f362f7457dc732a16"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/src/app/hud-adapter.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-native-snapshot.test.ts",
+            "test/pi-context-pressure.test.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-context-telemetry-service.test.ts",
+            "test/pi-hud-qualification.test.ts"
+          ],
+          "hash": "sha256:27f972d4538d8c4c91c3f81bfbef499febacd3dcb220ab8f362f7457dc732a16"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_nLaynNtwdZIvnaSOyH1hX5vd|fc_099b0a039db64e45016ab6dd8d46d487d2a47a81e06f7ed4f5",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:144b422ebdb072f09cbe45314b533e8ae9f9db357b3b9b5aead2e57126a57c16"
+    },
+    {
+      "id": "E-5191db16-926d-499a-a751-b0e14ee7f84c",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && node --experimental-strip-types --test test/pi-context*.test.ts test/pi-hud*.test.ts && npm run check:dependencies && npm run check:performance && npm run check:commands && npm run check && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T20:46:48.630Z",
+      "completedAt": "2026-09-25T20:50:26.843Z",
+      "durationMs": 218213,
+      "contractFingerprint": "sha256:7f08a1a85d137827f6fd1985708e29e619cd6755a2769b1eee852be1ae5c7119",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/index.ts",
+            "extensions/pi-context/src/app/hud-adapter.ts",
+            "extensions/pi-context/src/app/index.ts",
+            "extensions/pi-context/src/app/native-export.ts",
+            "extensions/pi-context/src/app/native-pressure.ts",
+            "extensions/pi-context/src/app/native-snapshot-contract.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "extensions/pi-context/src/pi/register.ts",
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-characterization.test.ts",
+            "test/pi-context-config.test.ts",
+            "test/pi-context-lightweight-runtime.test.ts",
+            "test/pi-context-native-pressure-export.test.ts",
+            "test/pi-context-native-snapshot-contract.test.ts",
+            "test/pi-context-native-snapshot.test.ts",
+            "test/pi-context-pressure.test.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-context-telemetry-service.test.ts",
+            "test/pi-hud-legacy-removal.test.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-minimum-surface-contract.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:961c5acd56c2be345923d8d39f2a2023d915fe177f559f24e47944f514372faf"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/index.ts",
+            "extensions/pi-context/src/app/hud-adapter.ts",
+            "extensions/pi-context/src/app/index.ts",
+            "extensions/pi-context/src/app/native-export.ts",
+            "extensions/pi-context/src/app/native-pressure.ts",
+            "extensions/pi-context/src/app/native-snapshot-contract.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "extensions/pi-context/src/pi/register.ts",
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-characterization.test.ts",
+            "test/pi-context-config.test.ts",
+            "test/pi-context-lightweight-runtime.test.ts",
+            "test/pi-context-native-pressure-export.test.ts",
+            "test/pi-context-native-snapshot-contract.test.ts",
+            "test/pi-context-native-snapshot.test.ts",
+            "test/pi-context-pressure.test.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-context-telemetry-service.test.ts",
+            "test/pi-hud-legacy-removal.test.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-minimum-surface-contract.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:961c5acd56c2be345923d8d39f2a2023d915fe177f559f24e47944f514372faf"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_omVcgV3oBGJfM7bhLMND6qvz|fc_099b0a039db64e45016ab6ddb82fdc87d28d62ed4f45cff3e5",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:a57fd44245ddde510afa7137586cffcf75054a50e138afb20d47865c00f6bc83"
+    },
+    {
+      "id": "E-13d0bbfb-7aa7-432e-bccf-8b69f8e4c30c",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && node --experimental-strip-types --test test/pi-context-native-snapshot.test.ts test/pi-context-lightweight-runtime.test.ts test/pi-context-pressure.test.ts test/pi-context-qualification.test.ts test/pi-context-telemetry-service.test.ts test/pi-hud-qualification.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T20:55:17.422Z",
+      "completedAt": "2026-09-25T20:55:43.508Z",
+      "durationMs": 26086,
+      "contractFingerprint": "sha256:7f08a1a85d137827f6fd1985708e29e619cd6755a2769b1eee852be1ae5c7119",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/src/app/hud-adapter.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "extensions/pi-context/src/pi/register.ts",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-lightweight-runtime.test.ts",
+            "test/pi-context-native-snapshot.test.ts",
+            "test/pi-context-pressure.test.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-context-telemetry-service.test.ts",
+            "test/pi-hud-qualification.test.ts"
+          ],
+          "hash": "sha256:93c94b7cc6373608b7005731ce6c056bc4f03d05afd4379d7d8aa5ec60c07a50"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/src/app/hud-adapter.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "extensions/pi-context/src/pi/register.ts",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-lightweight-runtime.test.ts",
+            "test/pi-context-native-snapshot.test.ts",
+            "test/pi-context-pressure.test.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-context-telemetry-service.test.ts",
+            "test/pi-hud-qualification.test.ts"
+          ],
+          "hash": "sha256:93c94b7cc6373608b7005731ce6c056bc4f03d05afd4379d7d8aa5ec60c07a50"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_HHw0NLqTuigz3SGiu7IFSai7|fc_099b0a039db64e45016ab6dfb50fb487d2a45f7cf51f5e3ae3",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:cb8d5216ef101f12515708193fc96351d4b379ae6b8fd2a007854a354f40b201"
+    },
+    {
+      "id": "E-c6e66931-8d00-4aa9-8b99-fdd02e706cea",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && node --experimental-strip-types --test test/pi-context*.test.ts test/pi-hud*.test.ts && npm run check:dependencies && npm run check:performance && npm run check:commands && npm run check && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T20:56:03.378Z",
+      "completedAt": "2026-09-25T20:57:31.004Z",
+      "durationMs": 87626,
+      "contractFingerprint": "sha256:7f08a1a85d137827f6fd1985708e29e619cd6755a2769b1eee852be1ae5c7119",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/index.ts",
+            "extensions/pi-context/src/app/hud-adapter.ts",
+            "extensions/pi-context/src/app/index.ts",
+            "extensions/pi-context/src/app/native-export.ts",
+            "extensions/pi-context/src/app/native-pressure.ts",
+            "extensions/pi-context/src/app/native-snapshot-contract.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "extensions/pi-context/src/pi/register.ts",
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-characterization.test.ts",
+            "test/pi-context-config.test.ts",
+            "test/pi-context-lightweight-runtime.test.ts",
+            "test/pi-context-native-pressure-export.test.ts",
+            "test/pi-context-native-snapshot-contract.test.ts",
+            "test/pi-context-native-snapshot.test.ts",
+            "test/pi-context-pressure.test.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-context-telemetry-service.test.ts",
+            "test/pi-hud-legacy-removal.test.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-minimum-surface-contract.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:6f6a804ab3611c0209c3c13ee5e9601ff247508d6dc02e864ddafc32a40e08ae"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/index.ts",
+            "extensions/pi-context/src/app/hud-adapter.ts",
+            "extensions/pi-context/src/app/index.ts",
+            "extensions/pi-context/src/app/native-export.ts",
+            "extensions/pi-context/src/app/native-pressure.ts",
+            "extensions/pi-context/src/app/native-snapshot-contract.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "extensions/pi-context/src/pi/register.ts",
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-characterization.test.ts",
+            "test/pi-context-config.test.ts",
+            "test/pi-context-lightweight-runtime.test.ts",
+            "test/pi-context-native-pressure-export.test.ts",
+            "test/pi-context-native-snapshot-contract.test.ts",
+            "test/pi-context-native-snapshot.test.ts",
+            "test/pi-context-pressure.test.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-context-telemetry-service.test.ts",
+            "test/pi-hud-legacy-removal.test.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-minimum-surface-contract.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:6f6a804ab3611c0209c3c13ee5e9601ff247508d6dc02e864ddafc32a40e08ae"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_j3EgZbC2qQRSbNoKi2jafUfB|fc_099b0a039db64e45016ab6dfe31a2087d291a89bf6d48280a0",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:2d7edc48a3e50e86bae6a391660d74d8864f2c621ab329cfd0504657f437d269"
+    },
+    {
+      "id": "E-628f8054-49b7-4be1-b9c5-75dd5a18b8f8",
+      "kind": "independent-review",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "reviewedAt": "2026-09-25T21:04:29.764Z",
+      "contractFingerprint": "sha256:7f08a1a85d137827f6fd1985708e29e619cd6755a2769b1eee852be1ae5c7119",
+      "source": {
+        "kind": "bounded-paths",
+        "paths": [
+          "extensions/pi-context/README.md",
+          "extensions/pi-context/src/app/hud-adapter.ts",
+          "extensions/pi-context/src/app/native-export.ts",
+          "extensions/pi-context/src/app/native-pressure.ts",
+          "extensions/pi-context/src/app/native-snapshot-contract.ts",
+          "extensions/pi-context/src/app/native-snapshot.ts",
+          "extensions/pi-context/src/pi/register.ts",
+          "src/contracts/context-telemetry.ts",
+          "src/services/context-telemetry.ts",
+          "test/pi-context-lightweight-runtime.test.ts",
+          "test/pi-context-native-pressure-export.test.ts",
+          "test/pi-context-native-snapshot-contract.test.ts",
+          "test/pi-context-native-snapshot.test.ts",
+          "test/pi-context-pressure.test.ts",
+          "test/pi-context-qualification.test.ts",
+          "test/pi-context-telemetry-service.test.ts",
+          "test/pi-hud-native-widget-wiring.test.ts",
+          "test/pi-hud-qualification.test.ts"
+        ],
+        "hash": "sha256:c24ad383505eeb88b1037b9716241adf299ca72ce2376ff8092959d28defb834"
+      },
+      "dimensions": [
+        "privacy/content retention",
+        "boundedness/no arbitrary traversal",
+        "finite aggregate/timestamp/array handling",
+        "invalid usage pressure handling",
+        "command/report/HUD compatibility",
+        "consumer contract clarity"
+      ],
+      "summary": "Independent final review of the corrected current sources. Numeric saturation, timestamp bounds, invalid usage rejection, hostile array-length clamping, lifecycle validation, and documentation fixes are present; 73 focused and 259 repository tests plus all gates pass. Emit the exact pass token only if no blockers remain.",
+      "provenance": {
+        "kind": "pi-interactive-session-review",
+        "transport": "interactive-shell",
+        "reviewerSessionId": "rapid-shore",
+        "recorderSessionId": "01a0da1c-c92c-7349-bf5b-b0da5b00ce5b"
       }
     }
   ],

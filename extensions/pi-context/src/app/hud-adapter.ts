@@ -86,7 +86,10 @@ export function createPiContextHudSnapshot(
     available: true,
     capturedAt: snapshot.capturedAt,
     totalTokens: snapshot.usage.usedTokens,
-    totalBytes: snapshot.contributors.reduce((total, value) => total + value.byteCount, 0),
+    totalBytes: snapshot.contributors.reduce(
+      (total, value) => Math.min(NATIVE_SNAPSHOT_LIMITS.maxNumericValue, total + value.byteCount),
+      0,
+    ),
     contextWindowTokens: snapshot.usage.contextWindowTokens,
     remainingTokens: snapshot.usage.remainingTokens,
     pressure: snapshot.pressure,
@@ -110,7 +113,7 @@ export function createPiContextHudSnapshot(
 }
 
 function unavailableSnapshot(capturedAt: string | undefined): PiContextHudSnapshot {
-  const timestamp = typeof capturedAt === "string" && Number.isFinite(Date.parse(capturedAt))
+  const timestamp = typeof capturedAt === "string" && capturedAt.length <= 64 && Number.isFinite(Date.parse(capturedAt))
     ? new Date(capturedAt).toISOString()
     : new Date().toISOString();
   return {

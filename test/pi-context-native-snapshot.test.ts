@@ -92,6 +92,25 @@ test("pressure-only native snapshots skip prompt and branch contributor scans", 
   assert.deepEqual(snapshot.pressure, { available: true, level: "warning", remainingPercent: 25 });
 });
 
+test("invalid native usage remains unavailable instead of being clamped into pressure", () => {
+  const invalidPercent = createNativeContextSnapshot(context({ usage: { percent: 150 } }).ctx as never, { collectContributors: false });
+  assert.deepEqual(invalidPercent.usage, {
+    usedTokens: undefined,
+    contextWindowTokens: undefined,
+    remainingTokens: undefined,
+    remainingPercent: undefined,
+  });
+  assert.deepEqual(invalidPercent.pressure, { available: false, level: "unavailable" });
+  assert.ok(invalidPercent.diagnostics.includes("usage-unavailable"));
+
+  const invalidTokens = createNativeContextSnapshot(context({
+    usage: { tokens: 101, contextWindow: 100, percent: 101 },
+  }).ctx as never, { collectContributors: false });
+  assert.equal(invalidTokens.usage.remainingTokens, undefined);
+  assert.equal(invalidTokens.usage.remainingPercent, undefined);
+  assert.deepEqual(invalidTokens.pressure, { available: false, level: "unavailable" });
+});
+
 test("snapshot and summary retain only numeric aggregates and fixed labels", () => {
   const fixture = context();
   const snapshot = createNativeContextSnapshot(fixture.ctx as never);
@@ -106,6 +125,28 @@ test("snapshot and summary retain only numeric aggregates and fixed labels", () 
   const failedSnapshot = createNativeContextSnapshot(failed.ctx as never);
   assert.deepEqual(failedSnapshot.diagnostics, ["prompt-options-unavailable", "branch-unavailable"]);
   assert.doesNotMatch(JSON.stringify(failedSnapshot), new RegExp(marker));
+});
+
+test("hostile array lengths are clamped before branch index arithmetic", () => {
+  let entryReads = 0;
+  const branch = new Proxy([], {
+    get(target, key, receiver) {
+      if (key === "length") return 1e16;
+      if (typeof key === "string" && /^\d+$/.test(key)) {
+        entryReads += 1;
+        return entry("message", { message: { role: "user", content: marker } });
+      }
+      return Reflect.get(target, key, receiver);
+    },
+  });
+  const snapshot = createNativeContextSnapshot(context({ branch }).ctx as never);
+
+  assert.deepEqual(snapshot.branch, {
+    totalEntries: Number.MAX_SAFE_INTEGER,
+    scannedEntries: NATIVE_SNAPSHOT_LIMITS.maxBranchEntriesScanned,
+    truncated: true,
+  });
+  assert.equal(entryReads, NATIVE_SNAPSHOT_LIMITS.maxBranchEntriesScanned);
 });
 
 test("caps every input dimension and reports truncation for oversized hostile values", () => {

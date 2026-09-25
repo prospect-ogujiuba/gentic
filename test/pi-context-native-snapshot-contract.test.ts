@@ -32,6 +32,7 @@ test("native snapshot work and retained output have explicit constant bounds", (
     maxPromptGuidelinesScanned: 64,
     maxContentBlocksPerValue: 64,
     maxMeasuredCharsPerValue: 65_536,
+    maxNumericValue: Number.MAX_SAFE_INTEGER,
     maxContributors: 8,
     maxDiagnostics: 4,
   });
