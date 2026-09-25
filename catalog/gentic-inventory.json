@@ -188,8 +188,10 @@
       "entrypoint": "extensions/pi-git/index.ts",
       "sourceFiles": [
         "extensions/pi-git/index.ts",
+        "extensions/pi-git/src/app/parse.ts",
         "extensions/pi-git/src/app/snapshot.ts",
-        "extensions/pi-git/src/pi/register.ts"
+        "extensions/pi-git/src/pi/register.ts",
+        "extensions/pi-git/src/ui/render.ts"
       ],
       "registrations": {
         "commands": [

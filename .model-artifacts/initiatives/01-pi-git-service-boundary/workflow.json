@@ -2,8 +2,8 @@
   "kind": "gentic.swe.initiative",
   "schemaVersion": 1,
   "id": "01-pi-git-service-boundary",
-  "revision": 3,
-  "status": "draft",
+  "revision": 28,
+  "status": "complete",
   "objective": "Establish the production extension-dependency guard, then extract a supported bounded-process and Git snapshot service boundary from pi-git, separating process supervision, collection, parsing, and rendering while preserving git_snapshot and /pi-git behavior and enabling pi-hud to consume stable contracts.",
   "policies": {
     "commitOnWorkCompletion": true,
@@ -177,7 +177,7 @@
       "id": "W-0",
       "kind": "task",
       "title": "Enforce production extension dependency boundaries",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [],
       "criterionIds": [
         "AC-5"
@@ -194,7 +194,7 @@
       "id": "W-1",
       "kind": "task",
       "title": "Characterize current pi-git behavior and define the stable contract",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "W-0"
       ],
@@ -214,7 +214,7 @@
       "id": "W-2",
       "kind": "task",
       "title": "Extract bounded process and Git snapshot services",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "W-1"
       ],
@@ -235,7 +235,7 @@
       "id": "W-3",
       "kind": "task",
       "title": "Document and qualify the pi-git service boundary",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "W-2"
       ],
@@ -253,7 +253,640 @@
     }
   ],
   "artifacts": [],
-  "evidence": [],
+  "evidence": [
+    {
+      "id": "E-8b7c8bd8-0fdc-465e-bbd6-3cd2c8e16fe1",
+      "kind": "machine-command",
+      "workId": "W-0",
+      "obligationIds": [
+        "O-0"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/extension-dependency-boundaries.test.ts && npm run check:dependencies && npm run typecheck"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T18:47:21.577Z",
+      "completedAt": "2026-09-25T18:47:32.806Z",
+      "durationMs": 11229,
+      "contractFingerprint": "sha256:73cf976925d77f3957231b1c6a21d4634ec636973154d3530bfee4925fe8b165",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "test/extension-dependency-boundaries.test.ts"
+          ],
+          "hash": "sha256:bcb447392aee6d71210b7e1b18731a8fb4aace2ccc7df05eb6e1f77cf85c1d55"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "test/extension-dependency-boundaries.test.ts"
+          ],
+          "hash": "sha256:bcb447392aee6d71210b7e1b18731a8fb4aace2ccc7df05eb6e1f77cf85c1d55"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_P8rY4FzD7LATHQmQ0G4ybhUw|fc_0f695241c106d8c3016ab6c1b9ab6c87d29fed20ce0c0634d7",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:cb5e4a0ca048b21c507c2f7ceb589e0460450b31cb7d2bbdc6605746a37c6aa0"
+    },
+    {
+      "id": "E-f6ef4060-ec3f-4095-8d7d-23d8c99fa9e6",
+      "kind": "machine-command",
+      "workId": "W-0",
+      "obligationIds": [
+        "O-0"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --input-type=module -e 'import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from \"node:fs\"; import {tmpdir} from \"node:os\"; import {join} from \"node:path\"; import {checkProductionExtensionDependencies,formatDependencyFailures} from \"./scripts/check-extension-dependencies.mjs\"; const root=mkdtempSync(join(tmpdir(),\"guard-red-\")); mkdirSync(join(root,\"extensions/pi-a/src\"),{recursive:true}); mkdirSync(join(root,\"extensions/pi-b/src\"),{recursive:true}); writeFileSync(join(root,\"extensions/pi-a/src/index.ts\"),\"import \\\"../../pi-b/src/private.ts\\\";\\n\"); writeFileSync(join(root,\"extensions/pi-b/src/private.ts\"),\"export {};\\n\"); const failures=formatDependencyFailures(checkProductionExtensionDependencies(root,[])); rmSync(root,{recursive:true,force:true}); console.error(failures.join(\"\\n\")); process.exit(failures.length ? 1 : 0);'"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T18:48:05.667Z",
+      "completedAt": "2026-09-25T18:48:06.641Z",
+      "durationMs": 974,
+      "contractFingerprint": "sha256:73cf976925d77f3957231b1c6a21d4634ec636973154d3530bfee4925fe8b165",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "test/extension-dependency-boundaries.test.ts"
+          ],
+          "hash": "sha256:bcb447392aee6d71210b7e1b18731a8fb4aace2ccc7df05eb6e1f77cf85c1d55"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "test/extension-dependency-boundaries.test.ts"
+          ],
+          "hash": "sha256:bcb447392aee6d71210b7e1b18731a8fb4aace2ccc7df05eb6e1f77cf85c1d55"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_9MRS7KHyF34Mu14KdG9nlObJ|fc_0f695241c106d8c3016ab6c1e225f487d2a5befddc5a3314be",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:b34d4b59001c97e6c53f0855d4cc415ca1dce7c80843df6acbcc248648915b0b"
+    },
+    {
+      "id": "E-ba63ce35-60de-42c3-bbea-cd1a959374e7",
+      "kind": "machine-command",
+      "workId": "W-0",
+      "obligationIds": [
+        "O-0"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/extension-dependency-boundaries.test.ts && npm run check:dependencies && npm run typecheck"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T18:48:16.248Z",
+      "completedAt": "2026-09-25T18:48:31.139Z",
+      "durationMs": 14891,
+      "contractFingerprint": "sha256:73cf976925d77f3957231b1c6a21d4634ec636973154d3530bfee4925fe8b165",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "test/extension-dependency-boundaries.test.ts"
+          ],
+          "hash": "sha256:bcb447392aee6d71210b7e1b18731a8fb4aace2ccc7df05eb6e1f77cf85c1d55"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "test/extension-dependency-boundaries.test.ts"
+          ],
+          "hash": "sha256:bcb447392aee6d71210b7e1b18731a8fb4aace2ccc7df05eb6e1f77cf85c1d55"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_vpEWpyk4iAWgnUKgHrFKJ0Gp|fc_0f695241c106d8c3016ab6c1f048b887d2ab8ea6a6f2896fad",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:7770188cdeb7f7d6d25d3082996cc2e604c05ec7341d8545d7d54fdeade66261"
+    },
+    {
+      "id": "E-f63a2b6f-6014-44d9-8765-6e12691b5a5b",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-git.test.ts && npm run typecheck"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T18:49:37.098Z",
+      "completedAt": "2026-09-25T18:49:48.365Z",
+      "durationMs": 11267,
+      "contractFingerprint": "sha256:73cf976925d77f3957231b1c6a21d4634ec636973154d3530bfee4925fe8b165",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-git/index.ts",
+            "extensions/pi-git/src/app/snapshot.ts",
+            "extensions/pi-git/src/pi/register.ts",
+            "test/pi-git.test.ts"
+          ],
+          "hash": "sha256:2cd79d299409ae09b3f15c1f8d9bc734a6f62513d6e19d0f2bcdf25ed45d7848"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-git/index.ts",
+            "extensions/pi-git/src/app/snapshot.ts",
+            "extensions/pi-git/src/pi/register.ts",
+            "test/pi-git.test.ts"
+          ],
+          "hash": "sha256:2cd79d299409ae09b3f15c1f8d9bc734a6f62513d6e19d0f2bcdf25ed45d7848"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_qrVgiw2IKNejc9duNGTKuDti|fc_0f695241c106d8c3016ab6c24147d887d282e7ecc2ca16ed17",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:190eaa32afffe22afbadd3d5a57886f9a6d5028a4afb84835fe85c24120b544a"
+    },
+    {
+      "id": "E-f62505cb-8bd2-4082-ae9d-2a2806332eb4",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "set -euo pipefail; file='extensions/pi-git/src/app/snapshot.ts'; backup=\"$(mktemp)\"; cp \"$file\" \"$backup\"; cleanup() { cp \"$backup\" \"$file\"; rm -f \"$backup\"; }; trap cleanup EXIT; python3 -c 'from pathlib import Path; p=Path(\"extensions/pi-git/src/app/snapshot.ts\"); s=p.read_text(); old=\"git snapshot: ${data.ok ? \\\"ok\\\" : \\\"error\\\"}\"; assert old in s; p.write_text(s.replace(old, \"git state: ${data.ok ? \\\"ok\\\" : \\\"error\\\"}\", 1))'; node --experimental-strip-types --test test/pi-git.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T18:50:18.753Z",
+      "completedAt": "2026-09-25T18:50:21.618Z",
+      "durationMs": 2865,
+      "contractFingerprint": "sha256:73cf976925d77f3957231b1c6a21d4634ec636973154d3530bfee4925fe8b165",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-git/index.ts",
+            "extensions/pi-git/src/app/snapshot.ts",
+            "extensions/pi-git/src/pi/register.ts",
+            "test/pi-git.test.ts"
+          ],
+          "hash": "sha256:2cd79d299409ae09b3f15c1f8d9bc734a6f62513d6e19d0f2bcdf25ed45d7848"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-git/index.ts",
+            "extensions/pi-git/src/app/snapshot.ts",
+            "extensions/pi-git/src/pi/register.ts",
+            "test/pi-git.test.ts"
+          ],
+          "hash": "sha256:2cd79d299409ae09b3f15c1f8d9bc734a6f62513d6e19d0f2bcdf25ed45d7848"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_Is4NUUcbYU4TvZuxs6XRLQOY|fc_0f695241c106d8c3016ab6c2685b4c87d2a886161112729d39",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:c03b1ba9d0ceb52f3dfdbfbcb81ea28ebc4f556372198e7be8c364a9eb7703b8"
+    },
+    {
+      "id": "E-ad72b4ae-0892-4d24-ac24-e991f1cc1148",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-git.test.ts && npm run typecheck"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T18:50:35.013Z",
+      "completedAt": "2026-09-25T18:51:20.675Z",
+      "durationMs": 45662,
+      "contractFingerprint": "sha256:73cf976925d77f3957231b1c6a21d4634ec636973154d3530bfee4925fe8b165",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-git/index.ts",
+            "extensions/pi-git/src/app/snapshot.ts",
+            "extensions/pi-git/src/pi/register.ts",
+            "test/pi-git.test.ts"
+          ],
+          "hash": "sha256:2cd79d299409ae09b3f15c1f8d9bc734a6f62513d6e19d0f2bcdf25ed45d7848"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-git/index.ts",
+            "extensions/pi-git/src/app/snapshot.ts",
+            "extensions/pi-git/src/pi/register.ts",
+            "test/pi-git.test.ts"
+          ],
+          "hash": "sha256:2cd79d299409ae09b3f15c1f8d9bc734a6f62513d6e19d0f2bcdf25ed45d7848"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_E1EJM0nZTE8mxecNGWLqF9G1|fc_0f695241c106d8c3016ab6c27b2c4887d281b4e2d32b85fa48",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:bae087659b8a5be601c984aeff2848d834c6351cd8663c4fbe16a40ec8663381"
+    },
+    {
+      "id": "E-242bd0c7-f43b-40f9-894b-664dbe93a33f",
+      "kind": "machine-command",
+      "workId": "W-2",
+      "obligationIds": [
+        "O-2"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-git.test.ts test/extension-dependency-boundaries.test.ts && npm run check:dependencies && npm run typecheck"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T18:54:44.255Z",
+      "completedAt": "2026-09-25T18:54:58.895Z",
+      "durationMs": 14640,
+      "contractFingerprint": "sha256:73cf976925d77f3957231b1c6a21d4634ec636973154d3530bfee4925fe8b165",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-git/index.ts",
+            "extensions/pi-git/src/app/parse.ts",
+            "extensions/pi-git/src/app/snapshot.ts",
+            "extensions/pi-git/src/pi/register.ts",
+            "extensions/pi-git/src/ui/render.ts",
+            "src/contracts/git-snapshot.ts",
+            "src/services/bounded-process.ts",
+            "test/pi-git.test.ts"
+          ],
+          "hash": "sha256:22afabb3069a51e4fd11b13eaecb2ba3f1b523df765dce807e57752daee2d8de"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-git/index.ts",
+            "extensions/pi-git/src/app/parse.ts",
+            "extensions/pi-git/src/app/snapshot.ts",
+            "extensions/pi-git/src/pi/register.ts",
+            "extensions/pi-git/src/ui/render.ts",
+            "src/contracts/git-snapshot.ts",
+            "src/services/bounded-process.ts",
+            "test/pi-git.test.ts"
+          ],
+          "hash": "sha256:22afabb3069a51e4fd11b13eaecb2ba3f1b523df765dce807e57752daee2d8de"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_0DVsCRBobOqYUHmvQ8GNyAVX|fc_0f695241c106d8c3016ab6c374498087d2b3c593cbe038d3e6",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:797a2ac6f34bf78c76c8d7d0bb99c8964acd63bbc18ce6478e99d8e9faf1b89f"
+    },
+    {
+      "id": "E-92696f1d-5dd2-436f-ab2b-aff0f889b035",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-git.test.ts test/extension-dependency-boundaries.test.ts && npm run typecheck && npm run check && npm run check:commands && npm run check:performance && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T18:55:48.218Z",
+      "completedAt": "2026-09-25T18:56:05.916Z",
+      "durationMs": 17698,
+      "contractFingerprint": "sha256:73cf976925d77f3957231b1c6a21d4634ec636973154d3530bfee4925fe8b165",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-git/README.md",
+            "extensions/pi-git/index.ts",
+            "extensions/pi-git/src/app/parse.ts",
+            "extensions/pi-git/src/app/snapshot.ts",
+            "extensions/pi-git/src/pi/register.ts",
+            "extensions/pi-git/src/ui/render.ts",
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "src/contracts/git-snapshot.ts",
+            "src/services/bounded-process.ts",
+            "test/extension-dependency-boundaries.test.ts",
+            "test/pi-git.test.ts"
+          ],
+          "hash": "sha256:6d9b5f78d3865f00612e449cf60ff924e94aa43a94ac3b54862e61f7eeefd9bd"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-git/README.md",
+            "extensions/pi-git/index.ts",
+            "extensions/pi-git/src/app/parse.ts",
+            "extensions/pi-git/src/app/snapshot.ts",
+            "extensions/pi-git/src/pi/register.ts",
+            "extensions/pi-git/src/ui/render.ts",
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "src/contracts/git-snapshot.ts",
+            "src/services/bounded-process.ts",
+            "test/extension-dependency-boundaries.test.ts",
+            "test/pi-git.test.ts"
+          ],
+          "hash": "sha256:6d9b5f78d3865f00612e449cf60ff924e94aa43a94ac3b54862e61f7eeefd9bd"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_QkIp8zmQYj86rVQD1DVOK4bR|fc_0f695241c106d8c3016ab6c3b3ea0487d2910444eecc023e17",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:7d588758954b3d7f8b09e85dafef12286b1a0dae6417dbe74714e99cb0228688"
+    },
+    {
+      "id": "E-850e0e29-e2c6-4e42-b3da-cf077665728d",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-git.test.ts test/extension-dependency-boundaries.test.ts && npm run typecheck && npm run check && npm run check:commands && npm run check:performance && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T18:56:33.193Z",
+      "completedAt": "2026-09-25T18:57:29.196Z",
+      "durationMs": 56003,
+      "contractFingerprint": "sha256:73cf976925d77f3957231b1c6a21d4634ec636973154d3530bfee4925fe8b165",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "catalog/gentic-inventory.json",
+            "extensions/pi-git/README.md",
+            "extensions/pi-git/index.ts",
+            "extensions/pi-git/src/app/parse.ts",
+            "extensions/pi-git/src/app/snapshot.ts",
+            "extensions/pi-git/src/pi/register.ts",
+            "extensions/pi-git/src/ui/render.ts",
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "src/contracts/git-snapshot.ts",
+            "src/services/bounded-process.ts",
+            "test/extension-dependency-boundaries.test.ts",
+            "test/pi-git.test.ts"
+          ],
+          "hash": "sha256:eaa015a1bced2a648e79b77425f31f153ac7d58c5fbcc031acbc6ec00223b55c"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "catalog/gentic-inventory.json",
+            "extensions/pi-git/README.md",
+            "extensions/pi-git/index.ts",
+            "extensions/pi-git/src/app/parse.ts",
+            "extensions/pi-git/src/app/snapshot.ts",
+            "extensions/pi-git/src/pi/register.ts",
+            "extensions/pi-git/src/ui/render.ts",
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "src/contracts/git-snapshot.ts",
+            "src/services/bounded-process.ts",
+            "test/extension-dependency-boundaries.test.ts",
+            "test/pi-git.test.ts"
+          ],
+          "hash": "sha256:eaa015a1bced2a648e79b77425f31f153ac7d58c5fbcc031acbc6ec00223b55c"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_i3kRkcGx2QlGGw7qnfokxNjd|fc_0f695241c106d8c3016ab6c3e0dfcc87d2a32ea36a41d159dd",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:12bdb637efaa0b1774cbdae7da3a5e8253f189f95ee8f1bdc305e79fc2c1f761"
+    },
+    {
+      "id": "E-83941f5b-425b-43d3-90b0-b9e5cc1fe808",
+      "kind": "independent-review",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "reviewedAt": "2026-09-25T19:10:26.668Z",
+      "contractFingerprint": "sha256:73cf976925d77f3957231b1c6a21d4634ec636973154d3530bfee4925fe8b165",
+      "source": {
+        "kind": "bounded-paths",
+        "paths": [
+          "catalog/gentic-inventory.json",
+          "extensions/pi-git/README.md",
+          "extensions/pi-git/index.ts",
+          "extensions/pi-git/src/app/parse.ts",
+          "extensions/pi-git/src/app/snapshot.ts",
+          "extensions/pi-git/src/pi/register.ts",
+          "extensions/pi-git/src/ui/render.ts",
+          "package.json",
+          "scripts/check-extension-dependencies.mjs",
+          "src/contracts/git-snapshot.ts",
+          "src/services/bounded-process.ts",
+          "test/extension-dependency-boundaries.test.ts",
+          "test/pi-git.test.ts"
+        ],
+        "hash": "sha256:eaa015a1bced2a648e79b77425f31f153ac7d58c5fbcc031acbc6ec00223b55c"
+      },
+      "dimensions": [
+        "behavior-preservation",
+        "bounds-and-cancellation",
+        "dependency-guard",
+        "contract-design",
+        "test-coverage"
+      ],
+      "summary": "Review the pi-git boundary extraction for behavior preservation, bounded/cancellable process semantics, exact stale-detecting dependency exceptions, registration-free supported contracts, parsing/rendering separation, and adequacy of focused and repository qualification.",
+      "provenance": {
+        "kind": "pi-interactive-session-review",
+        "transport": "interactive-shell",
+        "reviewerSessionId": "quick-cloud",
+        "recorderSessionId": "01a0d9dd-359e-7349-bf5b-b0d88ca6d46c"
+      }
+    },
+    {
+      "id": "E-ee1ee8aa-ab5a-4904-9c31-fbf3899c0347",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-git.test.ts test/extension-dependency-boundaries.test.ts && npm run typecheck && npm run check && npm run check:commands && npm run check:performance && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T19:11:18.884Z",
+      "completedAt": "2026-09-25T19:12:44.526Z",
+      "durationMs": 85642,
+      "contractFingerprint": "sha256:73cf976925d77f3957231b1c6a21d4634ec636973154d3530bfee4925fe8b165",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "catalog/gentic-inventory.json",
+            "extensions/pi-git/README.md",
+            "extensions/pi-git/index.ts",
+            "extensions/pi-git/src/app/parse.ts",
+            "extensions/pi-git/src/app/snapshot.ts",
+            "extensions/pi-git/src/pi/register.ts",
+            "extensions/pi-git/src/ui/render.ts",
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "src/contracts/git-snapshot.ts",
+            "src/services/bounded-process.ts",
+            "test/extension-dependency-boundaries.test.ts",
+            "test/pi-git.test.ts"
+          ],
+          "hash": "sha256:65b596a24f7076ef268e140a7262a88a0a887ce3237cb4422c0f15d4f9a6c49d"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "catalog/gentic-inventory.json",
+            "extensions/pi-git/README.md",
+            "extensions/pi-git/index.ts",
+            "extensions/pi-git/src/app/parse.ts",
+            "extensions/pi-git/src/app/snapshot.ts",
+            "extensions/pi-git/src/pi/register.ts",
+            "extensions/pi-git/src/ui/render.ts",
+            "package.json",
+            "scripts/check-extension-dependencies.mjs",
+            "src/contracts/git-snapshot.ts",
+            "src/services/bounded-process.ts",
+            "test/extension-dependency-boundaries.test.ts",
+            "test/pi-git.test.ts"
+          ],
+          "hash": "sha256:65b596a24f7076ef268e140a7262a88a0a887ce3237cb4422c0f15d4f9a6c49d"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_H6ZRnGxKql1fNdupsySKxqtl|fc_0f695241c106d8c3016ab6c756904087d29297ef8eadde5cd0",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:ae98512c77c4cb908f32e071868c64c37f0d34fb83349cd0d2418d712a6115e7"
+    },
+    {
+      "id": "E-0acb4786-17e6-4ed5-8038-0f2253c621d3",
+      "kind": "independent-review",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "reviewedAt": "2026-09-25T19:18:20.719Z",
+      "contractFingerprint": "sha256:73cf976925d77f3957231b1c6a21d4634ec636973154d3530bfee4925fe8b165",
+      "source": {
+        "kind": "bounded-paths",
+        "paths": [
+          "catalog/gentic-inventory.json",
+          "extensions/pi-git/README.md",
+          "extensions/pi-git/index.ts",
+          "extensions/pi-git/src/app/parse.ts",
+          "extensions/pi-git/src/app/snapshot.ts",
+          "extensions/pi-git/src/pi/register.ts",
+          "extensions/pi-git/src/ui/render.ts",
+          "package.json",
+          "scripts/check-extension-dependencies.mjs",
+          "src/contracts/git-snapshot.ts",
+          "src/services/bounded-process.ts",
+          "test/extension-dependency-boundaries.test.ts",
+          "test/pi-git.test.ts"
+        ],
+        "hash": "sha256:65b596a24f7076ef268e140a7262a88a0a887ce3237cb4422c0f15d4f9a6c49d"
+      },
+      "dimensions": [
+        "behavior-preservation",
+        "bounds-and-cancellation",
+        "dependency-guard",
+        "contract-design",
+        "test-coverage"
+      ],
+      "summary": "Review the final pi-git boundary extraction, including the production guard's complete extension-source scan and exact six current HUD exceptions, for behavior preservation, bounds/cancellation, contract design, and test adequacy.",
+      "provenance": {
+        "kind": "pi-interactive-session-review",
+        "transport": "interactive-shell",
+        "reviewerSessionId": "mild-bloom",
+        "recorderSessionId": "01a0d9dd-359e-7349-bf5b-b0d88ca6d46c"
+      }
+    }
+  ],
   "decisions": [
     {
       "id": "D-1",

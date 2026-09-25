@@ -1,7 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
-import { renderSnapshot, snapshot } from "../app/snapshot.ts";
+import { collectGitSnapshot } from "../app/snapshot.ts";
+import { renderSnapshot } from "../ui/render.ts";
 
 export function registerPiGit(pi: ExtensionAPI): void {
   pi.registerTool({
@@ -16,7 +17,7 @@ export function registerPiGit(pi: ExtensionAPI): void {
     ],
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, signal, _onUpdate, ctx) {
-      const data = await snapshot(pi, ctx, signal);
+      const data = await collectGitSnapshot(ctx.cwd, signal);
       return { content: [{ type: "text", text: renderSnapshot(data) }], details: data };
     },
   });
@@ -24,7 +25,7 @@ export function registerPiGit(pi: ExtensionAPI): void {
   pi.registerCommand("pi-git", {
     description: "/pi-git — show deterministic git scope for commit/push handoff",
     handler: async (_args, ctx) => {
-      const data = await snapshot(pi, ctx, ctx.signal);
+      const data = await collectGitSnapshot(ctx.cwd, ctx.signal);
       ctx.ui.notify(renderSnapshot(data), "info");
     },
   });
