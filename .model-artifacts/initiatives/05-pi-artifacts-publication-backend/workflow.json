@@ -2,11 +2,11 @@
   "kind": "gentic.swe.initiative",
   "schemaVersion": 1,
   "id": "05-pi-artifacts-publication-backend",
-  "revision": 2,
+  "revision": 3,
   "status": "draft",
   "objective": "Extract one supported safe-file-publication backend for pi-artifacts and compatible context reports, preserving canonical paths, bounded content, collision and symlink defenses, atomic exclusive publication, and pi-swe's exclusive ownership of workflow.json.",
   "policies": {
-    "commitOnWorkCompletion": false,
+    "commitOnWorkCompletion": true,
     "independentReviewOnCompletion": true
   },
   "scope": {

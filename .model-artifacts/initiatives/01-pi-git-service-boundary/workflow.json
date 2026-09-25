@@ -2,11 +2,11 @@
   "kind": "gentic.swe.initiative",
   "schemaVersion": 1,
   "id": "01-pi-git-service-boundary",
-  "revision": 2,
+  "revision": 3,
   "status": "draft",
   "objective": "Establish the production extension-dependency guard, then extract a supported bounded-process and Git snapshot service boundary from pi-git, separating process supervision, collection, parsing, and rendering while preserving git_snapshot and /pi-git behavior and enabling pi-hud to consume stable contracts.",
   "policies": {
-    "commitOnWorkCompletion": false,
+    "commitOnWorkCompletion": true,
     "independentReviewOnCompletion": true
   },
   "scope": {

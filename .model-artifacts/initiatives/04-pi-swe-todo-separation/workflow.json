@@ -2,11 +2,11 @@
   "kind": "gentic.swe.initiative",
   "schemaVersion": 1,
   "id": "04-pi-swe-todo-separation",
-  "revision": 1,
+  "revision": 2,
   "status": "draft",
   "objective": "Separate todo ownership from pi-swe core and isolate optional SWE/Todo UI automation behind a shared presentation-only docket kit, while preserving workflow.json authority, todo scope semantics, public commands/tools, persistence formats, lifecycle integrity, and evidence gates.",
   "policies": {
-    "commitOnWorkCompletion": false,
+    "commitOnWorkCompletion": true,
     "independentReviewOnCompletion": true
   },
   "scope": {

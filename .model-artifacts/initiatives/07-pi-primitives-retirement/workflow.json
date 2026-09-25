@@ -2,11 +2,11 @@
   "kind": "gentic.swe.initiative",
   "schemaVersion": 1,
   "id": "07-pi-primitives-retirement",
-  "revision": 1,
+  "revision": 2,
   "status": "draft",
   "objective": "Retire pi-primitives as a parallel plugin/resource framework by migrating each policy to native Pi resources or explicit extension policy code, narrowing the existing extension path to a compatibility policy bundle, and deferring physical rename or scaffold removal until an approved breaking-change window.",
   "policies": {
-    "commitOnWorkCompletion": false,
+    "commitOnWorkCompletion": true,
     "independentReviewOnCompletion": true
   },
   "scope": {

@@ -2,11 +2,11 @@
   "kind": "gentic.swe.initiative",
   "schemaVersion": 1,
   "id": "03-pi-hud-provider-decoupling",
-  "revision": 1,
+  "revision": 2,
   "status": "draft",
   "objective": "Decouple pi-hud from sibling extension internals by consuming the qualified Git and context provider contracts, while preserving widget behavior, configuration, lifecycle generation, caching, rendering, and shutdown semantics.",
   "policies": {
-    "commitOnWorkCompletion": false,
+    "commitOnWorkCompletion": true,
     "independentReviewOnCompletion": true
   },
   "scope": {
