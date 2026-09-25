@@ -57,7 +57,7 @@ test("qualified snapshot, HUD, exports, and registration stay bounded and conten
   const oversized = marker.repeat(NATIVE_SNAPSHOT_LIMITS.maxMeasuredCharsPerValue + 1);
   let propertyReads = 0;
   const manyProperties: Record<string, unknown> = {};
-  for (let index = 0; index < NATIVE_SNAPSHOT_LIMITS.maxObjectPropertiesPerValue + 100; index += 1) {
+  for (let index = 0; index < 132; index += 1) {
     Object.defineProperty(manyProperties, `${marker}-${index}`, {
       enumerable: true,
       get() { propertyReads += 1; return marker; },
@@ -116,7 +116,7 @@ test("qualified snapshot, HUD, exports, and registration stay bounded and conten
   assert.ok(snapshot.contributors.length <= NATIVE_SNAPSHOT_LIMITS.maxContributors);
   assert.ok(snapshot.diagnostics.length <= NATIVE_SNAPSHOT_LIMITS.maxDiagnostics);
   assert.ok(snapshot.diagnostics.includes("content-truncated"));
-  assert.equal(propertyReads, NATIVE_SNAPSHOT_LIMITS.maxObjectPropertiesPerValue);
+  assert.equal(propertyReads, 0, "compatibility measurement must not enumerate arbitrary content objects");
   assert.ok(hud.contributors.length <= 5);
   assert.ok(hud.warnings.length <= NATIVE_SNAPSHOT_LIMITS.maxDiagnostics);
   for (const output of outputs) assert.doesNotMatch(output, new RegExp(marker));

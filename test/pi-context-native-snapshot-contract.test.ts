@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 
 import {
@@ -30,9 +31,6 @@ test("native snapshot work and retained output have explicit constant bounds", (
     maxToolsScanned: 64,
     maxPromptGuidelinesScanned: 64,
     maxContentBlocksPerValue: 64,
-    maxObjectPropertiesPerValue: 32,
-    maxValueNodesScanned: 256,
-    maxValueDepth: 4,
     maxMeasuredCharsPerValue: 65_536,
     maxContributors: 8,
     maxDiagnostics: 4,
@@ -79,6 +77,12 @@ test("native compatibility input reports contributor degradation explicitly", ()
   assert.equal(snapshot.contributorDetail, "degraded");
   assert.ok(snapshot.diagnostics.includes("contributors-degraded"));
   assert.doesNotMatch(JSON.stringify(snapshot), /secret|private/);
+});
+
+test("native adapter has no arbitrary-object traversal machinery", () => {
+  const source = fs.readFileSync(new URL("../extensions/pi-context/src/app/native-snapshot.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /\b(?:measureValue|WeakSet|Object\.keys)\b|for\s*\(\s*const\s+\w+\s+in\s+/);
+  assert.match(source, /createContextTelemetrySnapshot/);
 });
 
 test("runtime meets the design target for streaming and per-tool subscriptions", () => {

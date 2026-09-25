@@ -113,7 +113,7 @@ test("content-safe Markdown and JSON are written only by an explicit export call
   const json = writeNativeContextExport(snapshot, { cwd, format: "json" });
   assert.equal(fs.readdirSync(reportDir).length, 2);
   const payload = JSON.parse(fs.readFileSync(json.path, "utf8"));
-  assert.deepEqual(Object.keys(payload).sort(), ["bounds", "branch", "capturedAt", "contributors", "diagnostics", "pressure", "schemaVersion", "usage"]);
+  assert.deepEqual(Object.keys(payload).sort(), ["bounds", "branch", "capturedAt", "contributorDetail", "contributors", "diagnostics", "pressure", "schemaVersion", "usage"]);
   assert.deepEqual(payload.pressure, { available: true, level: "warning", remainingPercent: 25 });
   assert.doesNotMatch(JSON.stringify(payload), new RegExp(marker));
 });

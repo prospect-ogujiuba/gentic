@@ -24,6 +24,7 @@ export {
   NATIVE_SNAPSHOT_LIMITS,
   NATIVE_SNAPSHOT_SOURCES,
   type NativeContextSnapshot,
+  type NativeContributorDetail,
   type NativeContributorKind,
   type NativeSnapshotContext,
   type NativeSnapshotContributor,

@@ -2,7 +2,7 @@
   "kind": "gentic.swe.initiative",
   "schemaVersion": 1,
   "id": "02-pi-context-telemetry-boundary",
-  "revision": 8,
+  "revision": 14,
   "status": "active",
   "objective": "Replace pi-context's recursive interpretation of loosely typed Pi runtime internals with a typed, bounded context telemetry contract and simpler snapshot pipeline while preserving /pi-context, HUD adapter behavior, pressure notifications, content safety, and JSON/Markdown report compatibility.",
   "policies": {
@@ -171,7 +171,7 @@
       "id": "W-2",
       "kind": "task",
       "title": "Introduce the typed bounded telemetry contract and simplify snapshots",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "W-1"
       ],
@@ -369,6 +369,168 @@
         "permissionBoundary": "ordinary-bash-tool-call"
       },
       "outputHash": "sha256:9873406c9b5ddd573ed033cf489e2a0cd6ac7f31d1223d830fc960787dcb39c5"
+    },
+    {
+      "id": "E-01cf187a-e018-42f2-a58c-98aa89ac25f8",
+      "kind": "machine-command",
+      "workId": "W-2",
+      "obligationIds": [
+        "O-2"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && node --experimental-strip-types --test test/pi-context-characterization.test.ts test/pi-context-native-snapshot-contract.test.ts test/pi-context-native-snapshot.test.ts test/pi-context-native-pressure-export.test.ts test/pi-context-qualification.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T20:12:15.835Z",
+      "completedAt": "2026-09-25T20:12:36.029Z",
+      "durationMs": 20194,
+      "contractFingerprint": "sha256:7f08a1a85d137827f6fd1985708e29e619cd6755a2769b1eee852be1ae5c7119",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/src/app/index.ts",
+            "extensions/pi-context/src/app/native-snapshot-contract.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-characterization.test.ts",
+            "test/pi-context-native-pressure-export.test.ts",
+            "test/pi-context-native-snapshot-contract.test.ts",
+            "test/pi-context-native-snapshot.test.ts",
+            "test/pi-context-qualification.test.ts"
+          ],
+          "hash": "sha256:6bb94a29d935b5524b4b6cffb0f9df910b2a8f6665feefdc3130c856f43d2d02"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/src/app/index.ts",
+            "extensions/pi-context/src/app/native-snapshot-contract.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-characterization.test.ts",
+            "test/pi-context-native-pressure-export.test.ts",
+            "test/pi-context-native-snapshot-contract.test.ts",
+            "test/pi-context-native-snapshot.test.ts",
+            "test/pi-context-qualification.test.ts"
+          ],
+          "hash": "sha256:6bb94a29d935b5524b4b6cffb0f9df910b2a8f6665feefdc3130c856f43d2d02"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_KF7ZAKvKCmdRjpYyKBWqUuyZ|fc_099b0a039db64e45016ab6d59f803c87d2bd33ef89cb049069",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:3fd19b3455e03429fd97f588c38eccd8e9cd036f83cff945dd4708d45a1316f9"
+    },
+    {
+      "id": "E-57a93fac-942e-430f-8005-d40d6449039f",
+      "kind": "machine-command",
+      "workId": "W-2",
+      "obligationIds": [
+        "O-2"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && node --experimental-strip-types --test test/pi-context-telemetry-service.test.ts test/pi-context-characterization.test.ts test/pi-context-native-snapshot-contract.test.ts test/pi-context-native-snapshot.test.ts test/pi-context-native-pressure-export.test.ts test/pi-context-qualification.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T20:13:34.932Z",
+      "completedAt": "2026-09-25T20:14:21.433Z",
+      "durationMs": 46501,
+      "contractFingerprint": "sha256:7f08a1a85d137827f6fd1985708e29e619cd6755a2769b1eee852be1ae5c7119",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/src/app/index.ts",
+            "extensions/pi-context/src/app/native-snapshot-contract.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-characterization.test.ts",
+            "test/pi-context-native-pressure-export.test.ts",
+            "test/pi-context-native-snapshot-contract.test.ts",
+            "test/pi-context-native-snapshot.test.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-context-telemetry-service.test.ts"
+          ],
+          "hash": "sha256:a95a446eb5819372a5fdae5b6bdc479ed132d97bf351a1cc028b962bf23e0340"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/src/app/index.ts",
+            "extensions/pi-context/src/app/native-snapshot-contract.ts",
+            "extensions/pi-context/src/app/native-snapshot.ts",
+            "src/contracts/context-telemetry.ts",
+            "src/services/context-telemetry.ts",
+            "test/pi-context-characterization.test.ts",
+            "test/pi-context-native-pressure-export.test.ts",
+            "test/pi-context-native-snapshot-contract.test.ts",
+            "test/pi-context-native-snapshot.test.ts",
+            "test/pi-context-qualification.test.ts",
+            "test/pi-context-telemetry-service.test.ts"
+          ],
+          "hash": "sha256:a95a446eb5819372a5fdae5b6bdc479ed132d97bf351a1cc028b962bf23e0340"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_N7zfYYm5lY0y57HU3v2H7yTp|fc_099b0a039db64e45016ab6d5ee791887d2949f58620a686132",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:180fed675633318868c9abddcc089bd9abd5270739027d5b409cbde212667076"
+    },
+    {
+      "id": "E-1fb676ea-f1e6-4ca8-b9ea-3a662db77401",
+      "kind": "model-review",
+      "workId": "W-2",
+      "obligationIds": [
+        "O-2"
+      ],
+      "outcome": "passed",
+      "reviewedAt": "2026-09-25T20:15:13.949Z",
+      "contractFingerprint": "sha256:7f08a1a85d137827f6fd1985708e29e619cd6755a2769b1eee852be1ae5c7119",
+      "source": {
+        "kind": "bounded-paths",
+        "paths": [
+          "extensions/pi-context/src/app/index.ts",
+          "extensions/pi-context/src/app/native-snapshot-contract.ts",
+          "extensions/pi-context/src/app/native-snapshot.ts",
+          "src/contracts/context-telemetry.ts",
+          "src/services/context-telemetry.ts",
+          "test/pi-context-native-pressure-export.test.ts",
+          "test/pi-context-native-snapshot-contract.test.ts",
+          "test/pi-context-native-snapshot.test.ts",
+          "test/pi-context-qualification.test.ts",
+          "test/pi-context-telemetry-service.test.ts"
+        ],
+        "hash": "sha256:f1d910b27b6d18001b8b8b91319e61dbcd96462e19a45ad0515165de12b69238"
+      },
+      "dimensions": [
+        "self-review: contract clarity",
+        "self-review: boundedness",
+        "self-review: privacy",
+        "self-review: compatibility"
+      ],
+      "summary": "Source-bound self-review of src/contracts/context-telemetry.ts, src/services/context-telemetry.ts, the native adapter, and focused tests found no blocking issues. The shared service is registration-free and allowlist-sanitized; the native adapter reads only named supported properties, never enumerates or recursively traverses arbitrary values, caps every collection/text dimension, exposes degraded/unavailable contributor detail, and retains only numeric aggregates/fixed codes. Existing usage, pressure, contributor fields, HUD input, and report modes remain present; contributorDetail is additive. Focused typecheck and 20 tests pass; git diff --check is clean.",
+      "provenance": {
+        "kind": "pi-model-self-review",
+        "sessionId": "01a0da1c-c92c-7349-bf5b-b0da5b00ce5b"
+      }
     }
   ],
   "decisions": [
