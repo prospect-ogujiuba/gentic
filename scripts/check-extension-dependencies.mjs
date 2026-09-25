@@ -8,44 +8,7 @@ const SCRIPT_ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"]);
 const GLOB_CHARACTERS = /[*?{}[\]]/;
 
-export const TEMPORARY_PRIVATE_SRC_EXCEPTIONS = Object.freeze([
-  Object.freeze({
-    importer: "extensions/pi-hud/types.ts",
-    specifier: "../pi-context/src/app/index.ts",
-    target: "extensions/pi-context/src/app/index.ts",
-    removalOwner: "03-pi-hud-provider-decoupling",
-  }),
-  Object.freeze({
-    importer: "extensions/pi-hud/src/app/git-status.ts",
-    specifier: "../../../pi-git/src/app/snapshot.ts",
-    target: "extensions/pi-git/src/app/snapshot.ts",
-    removalOwner: "03-pi-hud-provider-decoupling",
-  }),
-  Object.freeze({
-    importer: "extensions/pi-hud/src/app/snapshot.ts",
-    specifier: "../../../pi-context/src/app/index.ts",
-    target: "extensions/pi-context/src/app/index.ts",
-    removalOwner: "03-pi-hud-provider-decoupling",
-  }),
-  Object.freeze({
-    importer: "extensions/pi-hud/src/app/snapshot.ts",
-    specifier: "../../../pi-context/src/domain/index.ts",
-    target: "extensions/pi-context/src/domain/index.ts",
-    removalOwner: "03-pi-hud-provider-decoupling",
-  }),
-  Object.freeze({
-    importer: "extensions/pi-hud/src/pi/runtime.ts",
-    specifier: "../../../pi-context/src/config/index.ts",
-    target: "extensions/pi-context/src/config/index.ts",
-    removalOwner: "03-pi-hud-provider-decoupling",
-  }),
-  Object.freeze({
-    importer: "extensions/pi-hud/src/pi/runtime.ts",
-    specifier: "../../../pi-context/src/domain/index.ts",
-    target: "extensions/pi-context/src/domain/index.ts",
-    removalOwner: "03-pi-hud-provider-decoupling",
-  }),
-]);
+export const TEMPORARY_PRIVATE_SRC_EXCEPTIONS = Object.freeze([]);
 
 function toRepoPath(root, path) {
   return relative(root, path).split(sep).join("/");

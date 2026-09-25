@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync, rmSync } from "node:fs";
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { test } from "node:test";
 
+import type { GitSnapshot } from "../extensions/pi-git/index.ts";
 import { GitCollectionError, collectGitStatus } from "../extensions/pi-hud/src/app/git-status.ts";
 import { GitSnapshotService } from "../extensions/pi-hud/src/app/git-snapshot-service.ts";
 import type { GitStatus } from "../extensions/pi-hud/types.ts";
@@ -19,12 +16,25 @@ const cleanStatus: GitStatus = {
   behindCount: 0,
 };
 
-async function fakeGit(source: string, shebang = "#!/usr/bin/env node"): Promise<{ path: string; cleanup(): Promise<void> }> {
-  const directory = await mkdtemp(join(tmpdir(), "pi-hud-git-"));
-  const path = join(directory, "git");
-  await writeFile(path, `${shebang}\n${source}\n`, "utf8");
-  await chmod(path, 0o755);
-  return { path, cleanup: () => rm(directory, { recursive: true, force: true }) };
+function providerSnapshot(overrides: Partial<GitSnapshot> = {}): GitSnapshot {
+  return {
+    ok: true,
+    root: "/repo",
+    branch: "main",
+    detached: false,
+    upstream: "origin/main",
+    ahead: 0,
+    behind: 0,
+    clean: true,
+    staged: [],
+    unstaged: [],
+    untracked: [],
+    conflicts: [],
+    remotes: [],
+    truncated: { status: false, remotes: false },
+    errors: [],
+    ...overrides,
+  };
 }
 
 test("snapshot service debounces and coalesces one refresh per generation", async () => {
@@ -45,6 +55,22 @@ test("snapshot service debounces and coalesces one refresh per generation", asyn
   assert.equal(calls, 1);
   assert.equal(result.status, "fresh");
   assert.equal(result.snapshot?.branch, "main");
+  service.dispose();
+});
+
+test("snapshot service forwards the bounded HUD response deadline", async () => {
+  let observedTimeout: number | undefined;
+  const service = new GitSnapshotService({
+    debounceMs: 0,
+    timeoutMs: 17,
+    collector: async (_cwd, options) => {
+      observedTimeout = options.timeoutMs;
+      return undefined;
+    },
+  });
+
+  await service.requestRefresh("/repo");
+  assert.equal(observedTimeout, 17);
   service.dispose();
 });
 
@@ -157,68 +183,95 @@ test("snapshot disposal clears debounce work without launching a collector", asy
   assert.equal(service.hasPendingWork(), false);
 });
 
-test("async Git collector leaves timers responsive for a slow repository", async () => {
-  const executable = await fakeGit(`
-const args = process.argv.slice(2).join(" ");
-setTimeout(() => {
-  if (args === "rev-parse --show-toplevel") console.log("/repo");
-  else if (args === "branch --show-current") console.log("main");
-  else if (args === "status --porcelain=v1") console.log(" M file.ts");
-  else process.exit(1);
-}, 20);
-`);
-  try {
-    let timerFired = false;
-    const pending = collectGitStatus(process.cwd(), { gitPath: executable.path, timeoutMs: 2_000, maxOutputBytes: 4_096 });
-    await new Promise<void>((resolve) => setTimeout(() => { timerFired = true; resolve(); }, 0));
-    assert.equal(timerFired, true);
-    assert.equal((await pending)?.unstagedCount, 1);
-  } finally {
-    await executable.cleanup();
-  }
+test("Git adapter projects the stable provider snapshot without running Git itself", async () => {
+  const controller = new AbortController();
+  let observedCwd: string | undefined;
+  let observedSignal: AbortSignal | undefined;
+  const status = await collectGitStatus("/repo", { signal: controller.signal }, async (cwd, signal) => {
+    observedCwd = cwd;
+    observedSignal = signal;
+    return providerSnapshot({
+      branch: "feature/provider",
+      upstream: "origin/feature/provider",
+      ahead: 2,
+      behind: 1,
+      clean: false,
+      staged: [{ code: "M ", path: "staged.ts" }],
+      unstaged: [{ code: " M", path: "unstaged.ts" }],
+      untracked: ["new.ts"],
+      conflicts: [{ code: "UU", path: "conflict.ts" }],
+    });
+  });
+
+  assert.equal(observedCwd, "/repo");
+  assert.ok(observedSignal);
+  assert.notStrictEqual(observedSignal, controller.signal, "HUD deadline uses a derived provider signal");
+  assert.equal(observedSignal.aborted, false);
+  assert.deepEqual(status, {
+    branch: "feature/provider",
+    dirty: true,
+    stagedCount: 2,
+    unstagedCount: 2,
+    untrackedCount: 1,
+    upstream: "origin/feature/provider",
+    remoteName: "origin",
+    aheadCount: 2,
+    behindCount: 1,
+  });
 });
 
-test("async Git collector bounds timeout, output, non-repo, command failure, and cancellation", async () => {
-  const timeoutGit = await fakeGit(`setTimeout(() => console.log("/repo"), 200);`);
-  const outputGit = await fakeGit(`
-const args = process.argv.slice(2).join(" ");
-if (args === "rev-parse --show-toplevel") console.log("/repo");
-else if (args === "branch --show-current") console.log("x".repeat(2000));
-else console.log("");
-`);
-  const failureGit = await fakeGit(`
-const args = process.argv.slice(2).join(" ");
-if (args === "rev-parse --show-toplevel") console.log("/repo");
-else if (args === "branch --show-current") console.log("main");
-else if (args === "status --porcelain=v1") { console.error("status exploded with bounded detail"); process.exit(2); }
-else process.exit(1);
-`);
-  const nonRepoGit = await fakeGit(`process.exit(1);`);
-  const resistantPidFile = join(tmpdir(), `gentic-resistant-git-${process.pid}.pid`);
-  const resistantGit = await fakeGit(`echo "$$" > ${JSON.stringify(resistantPidFile)}
-trap '' TERM
-sleep 3
-printf '/repo\\n'`, "#!/bin/sh");
+test("Git adapter settles its deadline while cancelling an uncooperative provider", async () => {
+  let observedAbort = false;
+  const pending = collectGitStatus("/repo", { timeoutMs: 10 }, (_cwd, signal) => new Promise(() => {
+    signal?.addEventListener("abort", () => { observedAbort = true; }, { once: true });
+  }));
+  const bounded = Promise.race([
+    pending,
+    new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("deadline did not settle")), 100)),
+  ]);
 
-  try {
-    await assert.rejects(collectGitStatus(process.cwd(), { gitPath: timeoutGit.path, timeoutMs: 20 }), (error: unknown) => error instanceof GitCollectionError && error.code === "timeout");
-    await assert.rejects(collectGitStatus(process.cwd(), { gitPath: outputGit.path, timeoutMs: 2_000, maxOutputBytes: 128 }), (error: unknown) => error instanceof GitCollectionError && error.code === "output-limit");
-    await assert.rejects(collectGitStatus(process.cwd(), { gitPath: failureGit.path, timeoutMs: 2_000 }), (error: unknown) => error instanceof GitCollectionError && error.code === "command-failure" && error.message.length <= 200);
-    assert.equal(await collectGitStatus(process.cwd(), { gitPath: nonRepoGit.path, timeoutMs: 2_000 }), undefined);
+  await assert.rejects(
+    bounded,
+    (error: unknown) => error instanceof GitCollectionError && error.code === "timeout",
+  );
+  assert.equal(observedAbort, true);
+});
 
-    const timeoutStarted = Date.now();
-    await assert.rejects(collectGitStatus(process.cwd(), { gitPath: resistantGit.path, timeoutMs: 200 }), (error: unknown) => error instanceof GitCollectionError && error.code === "timeout");
-    assert.ok(Date.now() - timeoutStarted < 3_000, "HUD Git timeout must report promptly when a child ignores SIGTERM");
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    const resistantPid = Number(readFileSync(resistantPidFile, "utf8"));
-    assert.throws(() => process.kill(resistantPid, 0), /ESRCH|no such process/i, "timed-out Git child must be terminated");
+test("Git adapter maps unavailable, failed, truncated, timed out, and cancelled provider results", async () => {
+  const unavailable = async () => providerSnapshot({
+    ok: false,
+    root: undefined,
+    errors: [{ command: "git rev-parse --show-toplevel", code: 128, message: "not a repository", killed: false }],
+  });
+  assert.equal(await collectGitStatus("/not-a-repo", {}, unavailable), undefined);
 
-    const controller = new AbortController();
-    const cancelled = collectGitStatus(process.cwd(), { gitPath: timeoutGit.path, timeoutMs: 500, signal: controller.signal });
-    controller.abort();
-    await assert.rejects(cancelled, (error: unknown) => error instanceof GitCollectionError && error.code === "cancelled");
-  } finally {
-    await Promise.all([timeoutGit.cleanup(), outputGit.cleanup(), failureGit.cleanup(), nonRepoGit.cleanup(), resistantGit.cleanup()]);
-    rmSync(resistantPidFile, { force: true });
-  }
+  const timedOut = async () => providerSnapshot({
+    ok: false,
+    root: undefined,
+    errors: [{ command: "git rev-parse --show-toplevel", code: 143, message: "root timed out", killed: true }],
+  });
+  await assert.rejects(
+    collectGitStatus("/repo", {}, timedOut),
+    (error: unknown) => error instanceof GitCollectionError && error.code === "timeout",
+  );
+
+  const failed = async () => providerSnapshot({
+    ok: false,
+    errors: [{ command: "git status", code: 2, message: "status failed", killed: false }],
+  });
+  await assert.rejects(
+    collectGitStatus("/repo", {}, failed),
+    (error: unknown) => error instanceof GitCollectionError && error.code === "command-failure" && error.message === "status failed",
+  );
+  await assert.rejects(
+    collectGitStatus("/repo", {}, async () => providerSnapshot({ truncated: { status: true, remotes: false } })),
+    (error: unknown) => error instanceof GitCollectionError && error.code === "output-limit",
+  );
+
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(
+    collectGitStatus("/repo", { signal: controller.signal }, async () => { throw new Error("aborted"); }),
+    (error: unknown) => error instanceof GitCollectionError && error.code === "cancelled",
+  );
 });

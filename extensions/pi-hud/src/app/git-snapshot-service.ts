@@ -9,7 +9,6 @@ export interface GitSnapshotServiceOptions {
   freshnessMs?: number;
   retryCooldownMs?: number;
   timeoutMs?: number;
-  maxOutputBytes?: number;
   now?: () => number;
 }
 
@@ -33,7 +32,6 @@ export class GitSnapshotService {
   private readonly freshnessMs: number;
   private readonly retryCooldownMs: number;
   private readonly timeoutMs: number;
-  private readonly maxOutputBytes: number;
   private readonly now: () => number;
   private generation = 0;
   private cwd?: string;
@@ -49,7 +47,6 @@ export class GitSnapshotService {
     this.freshnessMs = options.freshnessMs ?? 1_000;
     this.retryCooldownMs = options.retryCooldownMs ?? 1_000;
     this.timeoutMs = options.timeoutMs ?? 800;
-    this.maxOutputBytes = options.maxOutputBytes ?? 64 * 1024;
     this.now = options.now ?? Date.now;
   }
 
@@ -136,11 +133,7 @@ export class GitSnapshotService {
     pending.controller = controller;
 
     try {
-      const snapshot = await this.collector(pending.cwd, {
-        signal: controller.signal,
-        timeoutMs: this.timeoutMs,
-        maxOutputBytes: this.maxOutputBytes,
-      });
+      const snapshot = await this.collector(pending.cwd, { signal: controller.signal, timeoutMs: this.timeoutMs });
       if (!this.canPublish(pending)) return;
 
       if (snapshot) {

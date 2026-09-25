@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
 
 import { registerHudCommand } from "../extensions/pi-hud/src/pi/adapter.ts";
+import type { HudContextProvider } from "../extensions/pi-hud/src/app/context-provider.ts";
 import { GitSnapshotService } from "../extensions/pi-hud/src/app/git-snapshot-service.ts";
 import { createSnapshot, withLiveUsage } from "../extensions/pi-hud/src/app/snapshot.ts";
 import { HudRuntimeOwner } from "../extensions/pi-hud/src/pi/runtime.ts";
@@ -99,6 +100,56 @@ test("HUD reads native usage once, fails closed on thrown accessors, and project
   assert.deepEqual(failed.piContext?.pressure, { available: false, level: "unavailable" });
   assert.doesNotMatch(JSON.stringify(failed), /PRIVATE_/);
   assert.doesNotThrow(() => withLiveUsage(initial, hostile));
+});
+
+test("runtime consumes an injected stable context provider", () => {
+  const snapshots = new QualificationSnapshots();
+  const loaded: string[] = [];
+  const observedUsage: Array<number | null | undefined> = [];
+  const provider: HudContextProvider = {
+    defaultPressurePolicy: { warningPercent: 25, criticalPercent: 10, hysteresisPercent: 5 },
+    loadPressurePolicy(cwd) {
+      loaded.push(cwd);
+      return { warningPercent: 30, criticalPercent: 12, hysteresisPercent: 3 };
+    },
+    createHudSnapshot(usage, pressurePolicy, capturedAt) {
+      observedUsage.push(usage?.tokens);
+      assert.equal(pressurePolicy.warningPercent, 30);
+      return {
+        schemaVersion: 1,
+        available: true,
+        capturedAt: capturedAt ?? "2026-09-25T00:00:00.000Z",
+        totalTokens: usage?.tokens ?? undefined,
+        totalBytes: 0,
+        contextWindowTokens: usage?.contextWindow ?? undefined,
+        remainingTokens: 30,
+        pressure: { available: true, level: "warning", remainingPercent: 30 },
+        tokenConfidence: "estimated",
+        contributors: [],
+        warnings: [],
+        truncatedWarnings: 0,
+      };
+    },
+  };
+  const rendered: string[][] = [];
+  const ctx = {
+    cwd: "/provider-repo",
+    mode: "rpc" as const,
+    model: undefined,
+    getContextUsage: () => ({ tokens: 70, contextWindow: 100, percent: 70 }),
+    getSystemPrompt: () => "",
+    sessionManager: { getBranch: () => [] },
+    ui: { setWidget(_id: string, value: string[] | undefined) { if (value) rendered.push(value); } },
+  };
+  const runtime = new HudRuntimeOwner(snapshots, provider);
+
+  runtime.start(ctx as never);
+  runtime.apply(ctx as never);
+  runtime.shutdown(ctx as never);
+
+  assert.deepEqual(loaded, ["/provider-repo"]);
+  assert.deepEqual(observedUsage, [70, 70]);
+  assert.match(rendered.at(-1)?.join("\n") ?? "", /context warning.*70\/100 30% left/);
 });
 
 test("JSON and print commands perform no UI calls", async () => {

@@ -216,11 +216,11 @@
       "entrypoint": "extensions/pi-hud/index.ts",
       "sourceFiles": [
         "extensions/pi-hud/index.ts",
+        "extensions/pi-hud/src/app/context-provider.ts",
         "extensions/pi-hud/src/app/git-snapshot-service.ts",
         "extensions/pi-hud/src/app/git-status.ts",
         "extensions/pi-hud/src/app/snapshot.ts",
         "extensions/pi-hud/src/app/state.ts",
-        "extensions/pi-hud/src/domain/git-status.ts",
         "extensions/pi-hud/src/pi/adapter.ts",
         "extensions/pi-hud/src/pi/register.ts",
         "extensions/pi-hud/src/pi/runtime.ts",

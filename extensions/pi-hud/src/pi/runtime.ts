@@ -1,9 +1,9 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { loadEffectiveContextConfig } from "../../../pi-context/src/config/index.ts";
 import {
-  DEFAULT_CONTEXT_PRESSURE_POLICY,
+  piContextProvider,
   type ContextPressurePolicy,
-} from "../../../pi-context/src/domain/index.ts";
+  type HudContextProvider,
+} from "../app/context-provider.ts";
 import { gitSnapshotService, type GitSnapshotService } from "../app/git-snapshot-service.ts";
 import { createSnapshot, withLiveUsage } from "../app/snapshot.ts";
 import { resetHudState, state } from "../app/state.ts";
@@ -21,11 +21,17 @@ export class HudRuntimeOwner {
   private active = false;
   private generation = 0;
   private context?: HudUiContext;
-  private pressurePolicy: ContextPressurePolicy = DEFAULT_CONTEXT_PRESSURE_POLICY;
+  private pressurePolicy: ContextPressurePolicy;
   private readonly snapshots: Pick<GitSnapshotService, "reset" | "dispose" | "requestRefresh" | "currentGeneration" | "isCurrent">;
+  private readonly contextProvider: HudContextProvider;
 
-  constructor(snapshots: Pick<GitSnapshotService, "reset" | "dispose" | "requestRefresh" | "currentGeneration" | "isCurrent"> = gitSnapshotService) {
+  constructor(
+    snapshots: Pick<GitSnapshotService, "reset" | "dispose" | "requestRefresh" | "currentGeneration" | "isCurrent"> = gitSnapshotService,
+    contextProvider: HudContextProvider = piContextProvider,
+  ) {
     this.snapshots = snapshots;
+    this.contextProvider = contextProvider;
+    this.pressurePolicy = contextProvider.defaultPressurePolicy;
   }
 
   isActive(): boolean { return this.active; }
@@ -36,7 +42,7 @@ export class HudRuntimeOwner {
     this.generation += 1;
     this.active = true;
     this.context = ctx;
-    this.pressurePolicy = loadEffectiveContextConfig({ cwd: ctx.cwd }).config.pressure;
+    this.pressurePolicy = this.contextProvider.loadPressurePolicy(ctx.cwd);
     resetHudState();
     this.snapshots.reset(ctx.cwd);
   }
@@ -47,7 +53,7 @@ export class HudRuntimeOwner {
     this.generation += 1;
     const ownedContext = this.context ?? ctx;
     this.context = undefined;
-    this.pressurePolicy = DEFAULT_CONTEXT_PRESSURE_POLICY;
+    this.pressurePolicy = this.contextProvider.defaultPressurePolicy;
     if (ownedContext) this.clearWidget(ownedContext);
     this.snapshots.dispose();
     resetHudState();
@@ -66,8 +72,8 @@ export class HudRuntimeOwner {
       return;
     }
 
-    const snapshot = createSnapshot(ctx, this.pressurePolicy);
-    const liveSnapshot = () => withLiveUsage(snapshot, ctx, this.pressurePolicy);
+    const snapshot = createSnapshot(ctx, this.pressurePolicy, this.contextProvider);
+    const liveSnapshot = () => withLiveUsage(snapshot, ctx, this.pressurePolicy, this.contextProvider);
     if (ctx.mode === "rpc") ctx.ui.setWidget(HUD_WIDGET_ID, renderHudWidgetLines(liveSnapshot(), RPC_THEME, RPC_RENDER_WIDTH));
     else ctx.ui.setWidget(HUD_WIDGET_ID, createHudWidgetComponent(liveSnapshot));
   }

@@ -32,7 +32,9 @@ The former footer replacement, modal, component toggle matrix, work timer, event
 
 ## Refresh and ownership
 
-`src/pi/runtime.ts` owns one session generation and the `pi-hud` widget. Native model, context usage, session branch data, and coarse activity are projected into an on-demand bounded snapshot. Live context projection reads native usage once, fails closed when unavailable, and skips prompt/branch contributor scans. Git collection is event-driven, asynchronous, single-flight, and uses pi-git's shared bounded process runner for deadline/output enforcement and forced process-group cleanup after cancellation, and negatively cached for one second after unavailable/error results to prevent subprocess storms. Session reset bypasses that cache. There is no interval or background polling loop, and widget rendering itself starts no timers or subscriptions.
+`src/pi/runtime.ts` owns one session generation and the `pi-hud` widget. Native model, context usage, and coarse activity are projected into an on-demand bounded snapshot. Live context projection reads native usage once, fails closed when unavailable, and skips prompt/branch contributor scans. The local context adapter consumes pi-context's public entrypoint for pressure policy loading and bounded HUD snapshots; it does not inspect prompt, branch, or tool content.
+
+Git collection is event-driven, asynchronous, and single-flight. The HUD consumes `collectGitSnapshot` and its typed contract from pi-git's public entrypoint, while pi-git owns commands, bounded process execution, process deadlines, output limits, and process-group cleanup. HUD-local orchestration applies an 800 ms response deadline through the provider's cancellation signal, maps bounded or timed-out provider results into display state, and negatively caches unavailable/error results for one second to prevent provider storms. Session reset bypasses that cache. There is no interval or background polling loop, and widget rendering itself starts no timers or subscriptions.
 
 Shutdown clears only widget id `pi-hud`, cancels pending Git work, and rejects late generation results. Pi's native footer, working indicator, statuses, editor, and other widgets remain untouched.
 
@@ -40,4 +42,5 @@ Shutdown clears only widget id `pi-hud`, cancels pending Git work, and rejects l
 
 - `node --experimental-strip-types --test test/pi-hud*.test.ts test/pi-context-hud-adapter.test.ts`
 - `npm run typecheck`
+- `npm run check:dependencies`
 - `npm run check:performance`

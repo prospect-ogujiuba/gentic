@@ -29,14 +29,11 @@ const exactException = {
   removalOwner: "migration-owner",
 };
 
-test("current production source passes only through exact temporary HUD exceptions", () => {
+test("current production source has no sibling private-src imports or temporary exceptions", () => {
   const result = checkProductionExtensionDependencies(repositoryRoot);
   assert.deepEqual(formatDependencyFailures(result), []);
   assert.equal(result.staleExceptions.length, 0);
-  assert.ok(TEMPORARY_PRIVATE_SRC_EXCEPTIONS.length > 0);
-  assert.ok(TEMPORARY_PRIVATE_SRC_EXCEPTIONS.every((entry) =>
-    entry.importer.startsWith("extensions/pi-hud/")
-    && entry.removalOwner === "03-pi-hud-provider-decoupling"));
+  assert.equal(TEMPORARY_PRIVATE_SRC_EXCEPTIONS.length, 0);
 });
 
 test("rejects a new sibling extension private-src import while ignoring test fixtures", (t) => {

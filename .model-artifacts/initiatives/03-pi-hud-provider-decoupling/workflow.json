@@ -2,8 +2,8 @@
   "kind": "gentic.swe.initiative",
   "schemaVersion": 1,
   "id": "03-pi-hud-provider-decoupling",
-  "revision": 8,
-  "status": "active",
+  "revision": 26,
+  "status": "complete",
   "objective": "Decouple pi-hud from sibling extension internals by consuming the qualified Git and context provider contracts, while preserving widget behavior, configuration, lifecycle generation, caching, rendering, and shutdown semantics.",
   "policies": {
     "commitOnWorkCompletion": true,
@@ -167,7 +167,7 @@
       "id": "W-2",
       "kind": "task",
       "title": "Migrate HUD to stable Git and context providers",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "W-1"
       ],
@@ -188,7 +188,7 @@
       "id": "W-3",
       "kind": "task",
       "title": "Remove migration allowances and qualify pi-hud",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "W-2"
       ],
@@ -369,6 +369,547 @@
         "permissionBoundary": "ordinary-bash-tool-call"
       },
       "outputHash": "sha256:a4805f45a87a7d1546f55b3aa03e8e366f58a5217510e5ac8ba17a84b7be7767"
+    },
+    {
+      "id": "E-96c4b4c3-4097-4fa9-80d0-7e2d25c5a736",
+      "kind": "machine-command",
+      "workId": "W-2",
+      "obligationIds": [
+        "O-2"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-hud-*.test.ts test/extension-dependency-boundaries.test.ts && npm run typecheck && npm run check:dependencies"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T21:32:27.872Z",
+      "completedAt": "2026-09-25T21:32:44.948Z",
+      "durationMs": 17076,
+      "contractFingerprint": "sha256:a5372ef1ebadaa4fd88e064f316ea98011f7b07c024c12b3f1e01287cba13a91",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/index.ts",
+            "extensions/pi-git/index.ts",
+            "extensions/pi-hud/README.md",
+            "extensions/pi-hud/src/app/context-provider.ts",
+            "extensions/pi-hud/src/app/git-snapshot-service.ts",
+            "extensions/pi-hud/src/app/git-status.ts",
+            "extensions/pi-hud/src/app/snapshot.ts",
+            "extensions/pi-hud/src/pi/runtime.ts",
+            "extensions/pi-hud/types.ts",
+            "scripts/check-extension-dependencies.mjs",
+            "test/extension-dependency-boundaries.test.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:34dc5c976272c96b77bf491bd6ebdd8dcee75e2ccaa4f8cc049044d0578071e2"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/index.ts",
+            "extensions/pi-git/index.ts",
+            "extensions/pi-hud/README.md",
+            "extensions/pi-hud/src/app/context-provider.ts",
+            "extensions/pi-hud/src/app/git-snapshot-service.ts",
+            "extensions/pi-hud/src/app/git-status.ts",
+            "extensions/pi-hud/src/app/snapshot.ts",
+            "extensions/pi-hud/src/pi/runtime.ts",
+            "extensions/pi-hud/types.ts",
+            "scripts/check-extension-dependencies.mjs",
+            "test/extension-dependency-boundaries.test.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:34dc5c976272c96b77bf491bd6ebdd8dcee75e2ccaa4f8cc049044d0578071e2"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_8aQfjdH0LyAyVuW0PNj11IQB|fc_0083bcf9b6b300a0016ab6e86be96887d2be09f404a81097c2",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:9f57ef5a66c630f30a90e7d769cef79a799e90c6485869b1e74184b3b7b0e1ad"
+    },
+    {
+      "id": "E-cf5f1d5d-e5cb-4544-af69-97dd658e8fc3",
+      "kind": "model-review",
+      "workId": "W-2",
+      "obligationIds": [
+        "O-2"
+      ],
+      "outcome": "passed",
+      "reviewedAt": "2026-09-25T21:33:27.255Z",
+      "contractFingerprint": "sha256:a5372ef1ebadaa4fd88e064f316ea98011f7b07c024c12b3f1e01287cba13a91",
+      "source": {
+        "kind": "bounded-paths",
+        "paths": [
+          "extensions/pi-context/index.ts",
+          "extensions/pi-git/index.ts",
+          "extensions/pi-hud/README.md",
+          "extensions/pi-hud/src/app/context-provider.ts",
+          "extensions/pi-hud/src/app/git-snapshot-service.ts",
+          "extensions/pi-hud/src/app/git-status.ts",
+          "extensions/pi-hud/src/app/snapshot.ts",
+          "extensions/pi-hud/src/pi/runtime.ts",
+          "extensions/pi-hud/types.ts",
+          "scripts/check-extension-dependencies.mjs",
+          "test/extension-dependency-boundaries.test.ts",
+          "test/pi-hud-qualification.test.ts",
+          "test/pi-hud-snapshot-service.test.ts"
+        ],
+        "hash": "sha256:ef5d17973e1accd5fd85b7ba1e29e783faef04af79ed8c69dc4619154c35cafb"
+      },
+      "dimensions": [
+        "self-review: provider ownership",
+        "self-review: dependency boundary",
+        "self-review: lifecycle and cache preservation",
+        "self-review: user-visible compatibility"
+      ],
+      "summary": "Model self-review, not independent review: pi-hud imports only qualified public pi-git and pi-context entrypoints through narrow injectable adapters. Git subprocess execution, deadlines, output limits, and cancellation remain provider-owned; context configuration, telemetry construction, pressure classification, and sanitization remain pi-context-owned. HUD-local code only maps typed snapshots and retains single-flight, debounce, negative-cache, lifecycle-generation, command, widget, and rendering semantics. The production dependency scanner remains enabled with zero exceptions. Normal, unavailable, failed, cancelled, and injected-provider paths are covered. No blocking findings.",
+      "provenance": {
+        "kind": "pi-model-self-review",
+        "sessionId": "01a0da73-e065-7349-bf5b-b0dd088411e0"
+      }
+    },
+    {
+      "id": "E-65dd3c13-cae5-45d1-9de5-b83ecb3d174f",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-hud-*.test.ts test/pi-git.test.ts test/pi-context-*.test.ts test/extension-dependency-boundaries.test.ts && npm run typecheck && npm run check:dependencies && npm run check:performance && npm run check:commands && npm run check && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T21:34:01.926Z",
+      "completedAt": "2026-09-25T21:34:22.200Z",
+      "durationMs": 20274,
+      "contractFingerprint": "sha256:a5372ef1ebadaa4fd88e064f316ea98011f7b07c024c12b3f1e01287cba13a91",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/index.ts",
+            "extensions/pi-git/index.ts",
+            "extensions/pi-hud/README.md",
+            "extensions/pi-hud/index.ts",
+            "extensions/pi-hud/src/app/context-provider.ts",
+            "extensions/pi-hud/src/app/git-snapshot-service.ts",
+            "extensions/pi-hud/src/app/git-status.ts",
+            "extensions/pi-hud/src/app/snapshot.ts",
+            "extensions/pi-hud/src/app/state.ts",
+            "extensions/pi-hud/src/pi/adapter.ts",
+            "extensions/pi-hud/src/pi/register.ts",
+            "extensions/pi-hud/src/pi/runtime.ts",
+            "extensions/pi-hud/src/ui/surfaces/widget.ts",
+            "extensions/pi-hud/types.ts",
+            "package.json",
+            "scripts/check-command-inventory.mjs",
+            "scripts/check-extension-dependencies.mjs",
+            "scripts/check-performance-budgets.ts",
+            "test/extension-dependency-boundaries.test.ts",
+            "test/pi-git.test.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:cdd5a3be91e60a86241e1b50776352ac27a1502fe4c6a8d53ec3a141b16fe735"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/index.ts",
+            "extensions/pi-git/index.ts",
+            "extensions/pi-hud/README.md",
+            "extensions/pi-hud/index.ts",
+            "extensions/pi-hud/src/app/context-provider.ts",
+            "extensions/pi-hud/src/app/git-snapshot-service.ts",
+            "extensions/pi-hud/src/app/git-status.ts",
+            "extensions/pi-hud/src/app/snapshot.ts",
+            "extensions/pi-hud/src/app/state.ts",
+            "extensions/pi-hud/src/pi/adapter.ts",
+            "extensions/pi-hud/src/pi/register.ts",
+            "extensions/pi-hud/src/pi/runtime.ts",
+            "extensions/pi-hud/src/ui/surfaces/widget.ts",
+            "extensions/pi-hud/types.ts",
+            "package.json",
+            "scripts/check-command-inventory.mjs",
+            "scripts/check-extension-dependencies.mjs",
+            "scripts/check-performance-budgets.ts",
+            "test/extension-dependency-boundaries.test.ts",
+            "test/pi-git.test.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:cdd5a3be91e60a86241e1b50776352ac27a1502fe4c6a8d53ec3a141b16fe735"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_QwwMdX3uMMeK38Q374oaTSbt|fc_0083bcf9b6b300a0016ab6e8c9860087d28383b155d2ab0569",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:75d1ff4c757cf901f1c3627cdf25327bd001642dc2ebf79e101c63d6213ec9c7"
+    },
+    {
+      "id": "E-c2d1616a-0e9d-420c-aba3-380195531edd",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-hud-*.test.ts test/pi-git.test.ts test/pi-context-*.test.ts test/extension-dependency-boundaries.test.ts && npm run typecheck && npm run check:dependencies && npm run check:performance && npm run check:commands && npm run check && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T21:34:59.665Z",
+      "completedAt": "2026-09-25T21:35:51.335Z",
+      "durationMs": 51670,
+      "contractFingerprint": "sha256:a5372ef1ebadaa4fd88e064f316ea98011f7b07c024c12b3f1e01287cba13a91",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "catalog/gentic-inventory.json",
+            "extensions/pi-context/index.ts",
+            "extensions/pi-git/index.ts",
+            "extensions/pi-hud/README.md",
+            "extensions/pi-hud/index.ts",
+            "extensions/pi-hud/src/app/context-provider.ts",
+            "extensions/pi-hud/src/app/git-snapshot-service.ts",
+            "extensions/pi-hud/src/app/git-status.ts",
+            "extensions/pi-hud/src/app/snapshot.ts",
+            "extensions/pi-hud/src/app/state.ts",
+            "extensions/pi-hud/src/pi/adapter.ts",
+            "extensions/pi-hud/src/pi/register.ts",
+            "extensions/pi-hud/src/pi/runtime.ts",
+            "extensions/pi-hud/src/ui/surfaces/widget.ts",
+            "extensions/pi-hud/types.ts",
+            "package.json",
+            "scripts/check-command-inventory.mjs",
+            "scripts/check-extension-dependencies.mjs",
+            "scripts/check-performance-budgets.ts",
+            "test/extension-dependency-boundaries.test.ts",
+            "test/pi-git.test.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:55bfe6e9f6a410878ca3b21a7b4b4b83c00f19f40779ab4607773dca46c09500"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "catalog/gentic-inventory.json",
+            "extensions/pi-context/index.ts",
+            "extensions/pi-git/index.ts",
+            "extensions/pi-hud/README.md",
+            "extensions/pi-hud/index.ts",
+            "extensions/pi-hud/src/app/context-provider.ts",
+            "extensions/pi-hud/src/app/git-snapshot-service.ts",
+            "extensions/pi-hud/src/app/git-status.ts",
+            "extensions/pi-hud/src/app/snapshot.ts",
+            "extensions/pi-hud/src/app/state.ts",
+            "extensions/pi-hud/src/pi/adapter.ts",
+            "extensions/pi-hud/src/pi/register.ts",
+            "extensions/pi-hud/src/pi/runtime.ts",
+            "extensions/pi-hud/src/ui/surfaces/widget.ts",
+            "extensions/pi-hud/types.ts",
+            "package.json",
+            "scripts/check-command-inventory.mjs",
+            "scripts/check-extension-dependencies.mjs",
+            "scripts/check-performance-budgets.ts",
+            "test/extension-dependency-boundaries.test.ts",
+            "test/pi-git.test.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:55bfe6e9f6a410878ca3b21a7b4b4b83c00f19f40779ab4607773dca46c09500"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_ZdPlhrXyTJzjcy3kfKTUPlrf|fc_0083bcf9b6b300a0016ab6e9046b0c87d2b2fa749906c59ce4",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:bd24573bd6a02f1741b7ac62212e7f1d5d5aeaef5f17938572be9d6d42c4c480"
+    },
+    {
+      "id": "E-3408ccc8-b4a5-48e8-b3b6-b34146de2a88",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-hud-*.test.ts test/pi-git.test.ts test/pi-context-*.test.ts test/extension-dependency-boundaries.test.ts && npm run typecheck && npm run check:dependencies && npm run check:performance && npm run check:commands && npm run check && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T21:44:51.114Z",
+      "completedAt": "2026-09-25T21:45:42.784Z",
+      "durationMs": 51670,
+      "contractFingerprint": "sha256:a5372ef1ebadaa4fd88e064f316ea98011f7b07c024c12b3f1e01287cba13a91",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "catalog/gentic-inventory.json",
+            "extensions/pi-context/index.ts",
+            "extensions/pi-git/index.ts",
+            "extensions/pi-hud/README.md",
+            "extensions/pi-hud/index.ts",
+            "extensions/pi-hud/src/app/context-provider.ts",
+            "extensions/pi-hud/src/app/git-snapshot-service.ts",
+            "extensions/pi-hud/src/app/git-status.ts",
+            "extensions/pi-hud/src/app/snapshot.ts",
+            "extensions/pi-hud/src/app/state.ts",
+            "extensions/pi-hud/src/pi/adapter.ts",
+            "extensions/pi-hud/src/pi/register.ts",
+            "extensions/pi-hud/src/pi/runtime.ts",
+            "extensions/pi-hud/src/ui/surfaces/widget.ts",
+            "extensions/pi-hud/types.ts",
+            "package.json",
+            "scripts/check-command-inventory.mjs",
+            "scripts/check-extension-dependencies.mjs",
+            "scripts/check-performance-budgets.ts",
+            "test/extension-dependency-boundaries.test.ts",
+            "test/pi-git.test.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:c451ef446a8c40081ef771dfa6721569a864a76c5f20aab66d9bf5a3bed2e91b"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "catalog/gentic-inventory.json",
+            "extensions/pi-context/index.ts",
+            "extensions/pi-git/index.ts",
+            "extensions/pi-hud/README.md",
+            "extensions/pi-hud/index.ts",
+            "extensions/pi-hud/src/app/context-provider.ts",
+            "extensions/pi-hud/src/app/git-snapshot-service.ts",
+            "extensions/pi-hud/src/app/git-status.ts",
+            "extensions/pi-hud/src/app/snapshot.ts",
+            "extensions/pi-hud/src/app/state.ts",
+            "extensions/pi-hud/src/pi/adapter.ts",
+            "extensions/pi-hud/src/pi/register.ts",
+            "extensions/pi-hud/src/pi/runtime.ts",
+            "extensions/pi-hud/src/ui/surfaces/widget.ts",
+            "extensions/pi-hud/types.ts",
+            "package.json",
+            "scripts/check-command-inventory.mjs",
+            "scripts/check-extension-dependencies.mjs",
+            "scripts/check-performance-budgets.ts",
+            "test/extension-dependency-boundaries.test.ts",
+            "test/pi-git.test.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:c451ef446a8c40081ef771dfa6721569a864a76c5f20aab66d9bf5a3bed2e91b"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_Jygc2dCb2iDjb8LCVxKot9Ws|fc_0083bcf9b6b300a0016ab6eb52879887d2ab1fd4609532aefc",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:5aa0648501f6a5204872e10ce62a37cc68939145235e50c16f2de3eb5fa76ea6"
+    },
+    {
+      "id": "E-9a75f440-469d-489a-9c96-671cdcd61736",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-hud-*.test.ts test/pi-git.test.ts test/pi-context-*.test.ts test/extension-dependency-boundaries.test.ts && npm run typecheck && npm run check:dependencies && npm run check:performance && npm run check:commands && npm run check && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-25T21:51:50.916Z",
+      "completedAt": "2026-09-25T21:52:32.783Z",
+      "durationMs": 41867,
+      "contractFingerprint": "sha256:a5372ef1ebadaa4fd88e064f316ea98011f7b07c024c12b3f1e01287cba13a91",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "catalog/gentic-inventory.json",
+            "extensions/pi-context/index.ts",
+            "extensions/pi-git/index.ts",
+            "extensions/pi-hud/README.md",
+            "extensions/pi-hud/index.ts",
+            "extensions/pi-hud/src/app/context-provider.ts",
+            "extensions/pi-hud/src/app/git-snapshot-service.ts",
+            "extensions/pi-hud/src/app/git-status.ts",
+            "extensions/pi-hud/src/app/snapshot.ts",
+            "extensions/pi-hud/src/app/state.ts",
+            "extensions/pi-hud/src/pi/adapter.ts",
+            "extensions/pi-hud/src/pi/register.ts",
+            "extensions/pi-hud/src/pi/runtime.ts",
+            "extensions/pi-hud/src/ui/surfaces/widget.ts",
+            "extensions/pi-hud/types.ts",
+            "package.json",
+            "scripts/check-command-inventory.mjs",
+            "scripts/check-extension-dependencies.mjs",
+            "scripts/check-performance-budgets.ts",
+            "test/extension-dependency-boundaries.test.ts",
+            "test/pi-git.test.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:5c0e95ef642d66da1cb222d83fa2a0925159288287108c81d8e3cd3bca40c6a9"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "catalog/gentic-inventory.json",
+            "extensions/pi-context/index.ts",
+            "extensions/pi-git/index.ts",
+            "extensions/pi-hud/README.md",
+            "extensions/pi-hud/index.ts",
+            "extensions/pi-hud/src/app/context-provider.ts",
+            "extensions/pi-hud/src/app/git-snapshot-service.ts",
+            "extensions/pi-hud/src/app/git-status.ts",
+            "extensions/pi-hud/src/app/snapshot.ts",
+            "extensions/pi-hud/src/app/state.ts",
+            "extensions/pi-hud/src/pi/adapter.ts",
+            "extensions/pi-hud/src/pi/register.ts",
+            "extensions/pi-hud/src/pi/runtime.ts",
+            "extensions/pi-hud/src/ui/surfaces/widget.ts",
+            "extensions/pi-hud/types.ts",
+            "package.json",
+            "scripts/check-command-inventory.mjs",
+            "scripts/check-extension-dependencies.mjs",
+            "scripts/check-performance-budgets.ts",
+            "test/extension-dependency-boundaries.test.ts",
+            "test/pi-git.test.ts",
+            "test/pi-hud-lifecycle.test.ts",
+            "test/pi-hud-mode-contract.test.ts",
+            "test/pi-hud-native-widget-wiring.test.ts",
+            "test/pi-hud-qualification.test.ts",
+            "test/pi-hud-snapshot-service.test.ts",
+            "test/pi-hud-widget-renderer.test.ts"
+          ],
+          "hash": "sha256:5c0e95ef642d66da1cb222d83fa2a0925159288287108c81d8e3cd3bca40c6a9"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_sbMgdGJFvU1v6a7cNfYQluan|fc_0083bcf9b6b300a0016ab6ecf6816c87d2919e85310ae25150",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:5436477ca033e2147958f15f4cdb96962039a1a9ad95013be2f8fa4737897bcb"
+    },
+    {
+      "id": "E-106bf653-587a-4b5e-8a1d-e41d761a86b1",
+      "kind": "independent-review",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "reviewedAt": "2026-09-25T22:02:30.145Z",
+      "contractFingerprint": "sha256:a5372ef1ebadaa4fd88e064f316ea98011f7b07c024c12b3f1e01287cba13a91",
+      "source": {
+        "kind": "bounded-paths",
+        "paths": [
+          "catalog/gentic-inventory.json",
+          "extensions/pi-context/index.ts",
+          "extensions/pi-git/index.ts",
+          "extensions/pi-hud/README.md",
+          "extensions/pi-hud/src/app/context-provider.ts",
+          "extensions/pi-hud/src/app/git-snapshot-service.ts",
+          "extensions/pi-hud/src/app/git-status.ts",
+          "extensions/pi-hud/src/app/snapshot.ts",
+          "extensions/pi-hud/src/pi/runtime.ts",
+          "extensions/pi-hud/types.ts",
+          "scripts/check-extension-dependencies.mjs",
+          "test/extension-dependency-boundaries.test.ts",
+          "test/pi-hud-lifecycle.test.ts",
+          "test/pi-hud-native-widget-wiring.test.ts",
+          "test/pi-hud-qualification.test.ts",
+          "test/pi-hud-snapshot-service.test.ts",
+          "test/pi-hud-widget-renderer.test.ts"
+        ],
+        "hash": "sha256:439fcfe5b8d6068da0eb4f36af823d35f9b86131f12bb5ab1b62ba9dd1e93b0a"
+      },
+      "dimensions": [
+        "architecture boundary and provider ownership",
+        "lifecycle generation, cancellation, caching, independently settling deadline, and shutdown safety",
+        "user-visible HUD command, rendering, configuration, and state compatibility",
+        "test and dependency-enforcement adequacy"
+      ],
+      "summary": "Final re-review of current source. Two prior reviews found (1) loss of the 800 ms HUD Git response deadline/root-timeout misclassification and (2) a cooperative-only deadline that could hang on a provider ignoring cancellation. Current code independently races deadline settlement while still aborting provider work, maps killed root snapshots and status truncation to bounded errors, and includes a noncooperative-provider regression test. All focused and full repository gates pass. Confirm all prior blockers are resolved and no new architecture, lifecycle, cache, shutdown, or compatibility blocker remains.",
+      "provenance": {
+        "kind": "pi-interactive-session-review",
+        "transport": "interactive-shell",
+        "reviewerSessionId": "hud-final-review",
+        "recorderSessionId": "01a0da73-e065-7349-bf5b-b0dd088411e0"
+      }
     }
   ],
   "decisions": [

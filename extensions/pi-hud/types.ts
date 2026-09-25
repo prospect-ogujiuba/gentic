@@ -1,5 +1,5 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { PiContextHudSnapshot } from "../pi-context/src/app/index.ts";
+import type { PiContextHudSnapshot } from "./src/app/context-provider.ts";
 
 export type AgentState = "idle" | "thinking" | "reading" | "editing" | "writing" | "executing" | "testing";
 export type DisplayMode = "off" | "widget-first";

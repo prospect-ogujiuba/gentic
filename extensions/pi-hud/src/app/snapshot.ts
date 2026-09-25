@@ -1,8 +1,8 @@
-import { createNativeContextSnapshot, createPiContextHudSnapshot } from "../../../pi-context/src/app/index.ts";
 import {
-  DEFAULT_CONTEXT_PRESSURE_POLICY,
+  piContextProvider,
   type ContextPressurePolicy,
-} from "../../../pi-context/src/domain/index.ts";
+  type HudContextProvider,
+} from "./context-provider.ts";
 import { gitSnapshotService } from "./git-snapshot-service.ts";
 import { state } from "./state.ts";
 import type { HudSnapshot, SnapshotContext, UsageSnapshot } from "../../types.ts";
@@ -42,31 +42,30 @@ function readUsageSnapshot(usage: NativeUsage | undefined): UsageSnapshot | unde
 function createPressureSnapshot(
   usage: NativeUsage | undefined,
   pressurePolicy: ContextPressurePolicy,
+  provider: HudContextProvider,
   capturedAt?: string,
 ) {
-  return createPiContextHudSnapshot(createNativeContextSnapshot({
-    getContextUsage: () => usage,
-    getSystemPromptOptions: () => undefined,
-    sessionManager: { getBranch: () => [] },
-  } as never, { capturedAt, pressurePolicy, collectContributors: false }), { topContributors: 0 });
+  return provider.createHudSnapshot(usage, pressurePolicy, capturedAt);
 }
 
 export function withLiveUsage(
   snapshot: HudSnapshot,
   ctx: SnapshotContext,
-  pressurePolicy: ContextPressurePolicy = DEFAULT_CONTEXT_PRESSURE_POLICY,
+  pressurePolicy: ContextPressurePolicy = piContextProvider.defaultPressurePolicy,
+  provider: HudContextProvider = piContextProvider,
 ): HudSnapshot {
   const nativeUsage = readNativeUsage(ctx);
   return {
     ...snapshot,
     usage: readUsageSnapshot(nativeUsage),
-    piContext: createPressureSnapshot(nativeUsage, pressurePolicy, snapshot.piContext?.capturedAt),
+    piContext: createPressureSnapshot(nativeUsage, pressurePolicy, provider, snapshot.piContext?.capturedAt),
   };
 }
 
 export function createSnapshot(
   ctx: SnapshotContext,
-  pressurePolicy: ContextPressurePolicy = DEFAULT_CONTEXT_PRESSURE_POLICY,
+  pressurePolicy: ContextPressurePolicy = piContextProvider.defaultPressurePolicy,
+  provider: HudContextProvider = piContextProvider,
 ): HudSnapshot {
   const gitState = gitSnapshotService.getState(ctx.cwd);
   const nativeUsage = readNativeUsage(ctx);
@@ -74,7 +73,7 @@ export function createSnapshot(
     modelId: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
     worktreeId: ctx.cwd,
     usage: readUsageSnapshot(nativeUsage),
-    piContext: createPressureSnapshot(nativeUsage, pressurePolicy),
+    piContext: createPressureSnapshot(nativeUsage, pressurePolicy, provider),
     git: gitState.snapshot,
     gitState,
     activeTools: state.activeTools,
