@@ -1,0 +1,239 @@
+{
+  "kind": "gentic.swe.initiative",
+  "schemaVersion": 1,
+  "id": "03-pi-hud-provider-decoupling",
+  "revision": 1,
+  "status": "draft",
+  "objective": "Decouple pi-hud from sibling extension internals by consuming the qualified Git and context provider contracts, while preserving widget behavior, configuration, lifecycle generation, caching, rendering, and shutdown semantics.",
+  "policies": {
+    "commitOnWorkCompletion": false,
+    "independentReviewOnCompletion": true
+  },
+  "scope": {
+    "in": [
+      "Characterize pi-hud display, configuration, cache, activity/model/context/Git state, lifecycle, and shutdown behavior.",
+      "Replace imports resolving into pi-git/src and pi-context/src with stable contracts from initiatives 01 and 02.",
+      "Keep HUD orchestration and rendering local while providers own Git collection and context telemetry.",
+      "Remove any temporary architecture-boundary allowlist entries and document provider dependencies.",
+      "Add a production-source dependency check preventing cross-extension private imports."
+    ],
+    "out": [
+      "Reimplementing Git process supervision or context introspection inside pi-hud.",
+      "Changing /pi-hud, widget ID pi-hud, display configuration, or user-visible state semantics.",
+      "Redesigning the HUD visual layout beyond changes required for compatible provider adaptation.",
+      "Implementing provider services owned by initiatives 01 or 02.",
+      "Committing, pushing, releasing, or deploying."
+    ]
+  },
+  "constraints": [
+    "Implementation starts only after 01-pi-git-service-boundary and 02-pi-context-telemetry-boundary expose qualified contracts.",
+    "No production pi-hud import may resolve beneath another extension's private src tree.",
+    "Provider adapters must preserve cancellation, boundedness, content safety, and lifecycle cleanup.",
+    "The dependency checker scans production extension source only so legitimate isolated tests remain possible.",
+    "Any temporary exact-file/import allowlist must fail when stale and be removed before completion."
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "text": "pi-hud has no production import resolving beneath another extension's private src tree."
+    },
+    {
+      "id": "AC-2",
+      "text": "Git and context values come through stable typed providers without duplicating provider implementation."
+    },
+    {
+      "id": "AC-3",
+      "text": "/pi-hud, widget ID, configuration, display state, caching, event lifecycle, rendering, and shutdown behavior remain compatible."
+    },
+    {
+      "id": "AC-4",
+      "text": "An architecture check prevents future sibling private-source imports and reports zero remaining allowlisted violations."
+    },
+    {
+      "id": "AC-5",
+      "text": "Focused and repository qualification passes with independent review of decoupling and behavior preservation."
+    }
+  ],
+  "assessment": {
+    "depth": "deep",
+    "reason": "pi-hud spans nine hooks and coordinates several runtime states; changing its provider boundary can regress lifecycle, caching, cancellation, rendering, and compilation independence.",
+    "surfaces": [
+      "extensions/pi-hud/**",
+      "qualified contracts from initiatives 01 and 02",
+      "test/pi-hud-*.test.ts",
+      "dependency architecture checks",
+      "extension documentation"
+    ],
+    "unknowns": [
+      "Provider contract final shapes are intentionally owned by initiatives 01 and 02.",
+      "Some current adapter logic may belong with providers and require an intentional boundary decision after source inspection."
+    ]
+  },
+  "practices": [
+    {
+      "id": "P-1",
+      "practice": "Characterization-first integration refactor",
+      "appliesTo": [
+        "W-1"
+      ],
+      "reason": "HUD behavior must be frozen before replacing deep imports."
+    },
+    {
+      "id": "P-2",
+      "practice": "Explicit provider injection and boundary enforcement",
+      "appliesTo": [
+        "W-2"
+      ],
+      "reason": "Stable providers and an automated rule prevent recurrence of sibling-private coupling."
+    },
+    {
+      "id": "P-3",
+      "practice": "Lifecycle-focused integration qualification",
+      "appliesTo": [
+        "W-3"
+      ],
+      "reason": "Events, caches, cancellation, rendering, and shutdown require integrated evidence and independent review."
+    }
+  ],
+  "obligations": [
+    {
+      "id": "O-1",
+      "practiceId": "P-1",
+      "criterionIds": [
+        "AC-3"
+      ],
+      "text": "Characterize HUD snapshots, configuration, cache invalidation, activity/model/context/Git transitions, narrow rendering, disablement, cancellation, and shutdown before migration.",
+      "verification": {
+        "kind": "hud-characterization",
+        "requiredEvidence": [
+          "machine-command"
+        ],
+        "sequence": "red-green"
+      }
+    },
+    {
+      "id": "O-2",
+      "practiceId": "P-2",
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-4"
+      ],
+      "text": "Verify production-source dependency scanning, provider injection, absence of sibling private imports, no duplicated Git/context implementation, and removal of temporary allowlists.",
+      "verification": {
+        "kind": "provider-boundary-tests",
+        "requiredEvidence": [
+          "machine-command",
+          "model-review"
+        ]
+      }
+    },
+    {
+      "id": "O-3",
+      "practiceId": "P-3",
+      "criterionIds": [
+        "AC-3",
+        "AC-5"
+      ],
+      "text": "Run HUD, Git, and context focused suites plus typecheck, dependency, performance, command, and full repository gates, then obtain independent review of lifecycle safety and architecture.",
+      "verification": {
+        "kind": "hud-release-qualification",
+        "requiredEvidence": [
+          "machine-command",
+          "independent-review"
+        ]
+      }
+    }
+  ],
+  "work": [
+    {
+      "id": "W-1",
+      "kind": "task",
+      "title": "Characterize HUD behavior and provider interactions",
+      "status": "pending",
+      "dependsOn": [],
+      "criterionIds": [
+        "AC-3"
+      ],
+      "obligationIds": [
+        "O-1"
+      ],
+      "testing": {
+        "approach": "Strengthen adapter, state, cache, render, event, cancellation, and shutdown tests before altering imports.",
+        "reason": "The widget is integration-heavy despite its small surface."
+      }
+    },
+    {
+      "id": "W-2",
+      "kind": "task",
+      "title": "Migrate HUD to stable Git and context providers",
+      "status": "pending",
+      "dependsOn": [
+        "W-1"
+      ],
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-4"
+      ],
+      "obligationIds": [
+        "O-2"
+      ],
+      "testing": {
+        "approach": "Replace private imports with injected typed providers, enable the production dependency rule, and test both normal and unavailable/degraded providers.",
+        "reason": "Explicit providers restore extension independence and testability."
+      }
+    },
+    {
+      "id": "W-3",
+      "kind": "task",
+      "title": "Remove migration allowances and qualify pi-hud",
+      "status": "pending",
+      "dependsOn": [
+        "W-2"
+      ],
+      "criterionIds": [
+        "AC-3",
+        "AC-5"
+      ],
+      "obligationIds": [
+        "O-3"
+      ],
+      "testing": {
+        "approach": "Remove temporary allowances, run integrated gates, review diffs for duplicated ownership, and obtain independent source-bound review.",
+        "reason": "Completion requires both compatible behavior and a clean enforced boundary."
+      }
+    }
+  ],
+  "artifacts": [],
+  "evidence": [],
+  "decisions": [
+    {
+      "id": "D-1",
+      "text": "pi-hud consumes providers but does not own Git collection or context telemetry.",
+      "basis": "The architecture review identifies duplicated/deep internal ownership as the core defect."
+    },
+    {
+      "id": "D-2",
+      "text": "Boundary enforcement targets production source, not test fixtures.",
+      "basis": "Tests may need isolated imports while runtime extension independence remains the enforced invariant."
+    }
+  ],
+  "risks": [
+    {
+      "id": "R-1",
+      "text": "Provider migration subtly changes cache timing or event ordering.",
+      "mitigation": "Characterize lifecycle and use deterministic adapter tests before switching implementations."
+    },
+    {
+      "id": "R-2",
+      "text": "A temporary allowlist masks remaining coupling.",
+      "mitigation": "Use exact stale-detecting entries and make zero allowlisted violations an exit criterion."
+    },
+    {
+      "id": "R-3",
+      "text": "HUD duplicates fallback provider logic.",
+      "mitigation": "Limit HUD adapters to intent/format conversion and review for process or introspection code."
+    }
+  ]
+}

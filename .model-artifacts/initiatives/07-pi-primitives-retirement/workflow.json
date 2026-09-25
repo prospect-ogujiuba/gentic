@@ -1,0 +1,262 @@
+{
+  "kind": "gentic.swe.initiative",
+  "schemaVersion": 1,
+  "id": "07-pi-primitives-retirement",
+  "revision": 1,
+  "status": "draft",
+  "objective": "Retire pi-primitives as a parallel plugin/resource framework by migrating each policy to native Pi resources or explicit extension policy code, narrowing the existing extension path to a compatibility policy bundle, and deferring physical rename or scaffold removal until an approved breaking-change window.",
+  "policies": {
+    "commitOnWorkCompletion": false,
+    "independentReviewOnCompletion": true
+  },
+  "scope": {
+    "in": [
+      "Inventory and characterize concise-output, implementation-file-completion, model-artifacts, whimsical, trigger matching, injection order, enablement, isolation, diagnostics, and configuration behavior.",
+      "Classify each primitive as a native skill, prompt, extension hook, or explicit package policy and migrate it to the smallest native boundary.",
+      "Remove internal discovery, resource loading, generic trigger/plugin abstractions, and central plugin-style registration where native Pi facilities replace them.",
+      "Keep extensions/pi-primitives as a narrowed compatibility policy bundle during this release unless a separately approved major-version revision authorizes renaming.",
+      "Recognize existing configuration and the deprecated whimsical policy safely, with clear migration/deprecation diagnostics.",
+      "Coordinate /scaffold primitive behavior with initiative 06 without assuming removal authorization."
+    ],
+    "out": [
+      "Physically renaming pi-primitives to pi-policies in a non-major release.",
+      "Removing /scaffold primitive or breaking existing filter/config paths without explicit release approval and an intentional authority revision.",
+      "Creating a new Gentic registry, resource type, discovery system, or enable/disable mechanism.",
+      "Changing unrelated package profiles or native Pi discovery semantics.",
+      "Committing, pushing, releasing, or deploying."
+    ]
+  },
+  "constraints": [
+    "Implementation follows initiatives 01-06 so shared boundaries and scaffolding ownership are settled first.",
+    "Use native Pi extensions, skills, prompts, hooks, package discovery, and configuration rather than recreating them.",
+    "Preserve applicable injected policy text, trigger semantics, registration order, and safe defaults until each migration is explicitly qualified.",
+    "Keep the extension path stable; the optional pi-policies rename is a major-release decision outside this initiative.",
+    "If /scaffold primitive cannot yet be removed, retain it for one release as compatible generation or an explicitly approved deprecation-only command; do not silently change it.",
+    "Malformed, unknown, oversized, or legacy configuration must remain bounded and produce actionable diagnostics."
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "text": "Every current primitive has an explicit native-resource or extension-policy destination with characterized behavior and migration tests."
+    },
+    {
+      "id": "AC-2",
+      "text": "The internal generic plugin framework—parallel discovery, generic resource loading, trigger abstraction, isolation wrapper, and central plugin-style registry—is removed where native Pi owns those concerns."
+    },
+    {
+      "id": "AC-3",
+      "text": "The retained extensions/pi-primitives path is a narrow compatibility policy bundle, not a new resource system, and existing supported configuration degrades safely with migration diagnostics."
+    },
+    {
+      "id": "AC-4",
+      "text": "The physical pi-policies rename and unapproved /scaffold primitive removal remain deferred; public filter/config behavior changes only through explicit approved compatibility decisions."
+    },
+    {
+      "id": "AC-5",
+      "text": "Prompt injection content/order, trigger behavior, safe defaults, and relevant package-profile behavior remain qualified, with inventories/docs updated."
+    },
+    {
+      "id": "AC-6",
+      "text": "Focused and full repository qualification passes with independent review that no parallel plugin architecture remains."
+    }
+  ],
+  "assessment": {
+    "depth": "deep",
+    "reason": "Retiring a resource framework affects prompt policy, triggers, configuration, package profiles, scaffolding, and user-visible injections; migration must avoid both behavior drift and recreating the abstraction elsewhere.",
+    "surfaces": [
+      "extensions/pi-primitives/**",
+      "native skills/prompts/extensions/package resources",
+      "extensions/pi-commands scaffold primitive behavior",
+      "package profiles and filters",
+      "catalog inventory and resource validation tests"
+    ],
+    "unknowns": [
+      "The release owner has not approved removal of /scaffold primitive.",
+      "The optional pi-primitives to pi-policies physical rename is deferred to a major release.",
+      "Each primitive's best native destination must be confirmed against current Pi APIs and repository conventions."
+    ]
+  },
+  "practices": [
+    {
+      "id": "P-1",
+      "practice": "Per-policy characterization and migration mapping",
+      "appliesTo": [
+        "W-1"
+      ],
+      "reason": "Each primitive has distinct triggers and injection behavior and should not be migrated through a one-size-fits-all replacement."
+    },
+    {
+      "id": "P-2",
+      "practice": "Native-resource migration without replacement framework",
+      "appliesTo": [
+        "W-2"
+      ],
+      "reason": "The goal is to remove the parallel abstraction, not rename or relocate it."
+    },
+    {
+      "id": "P-3",
+      "practice": "Compatibility-gated retirement and independent qualification",
+      "appliesTo": [
+        "W-3"
+      ],
+      "reason": "Legacy config, scaffolding, package paths, prompt behavior, and inventories require explicit negative tests and release-aware review."
+    }
+  ],
+  "obligations": [
+    {
+      "id": "O-1",
+      "practiceId": "P-1",
+      "criterionIds": [
+        "AC-1",
+        "AC-5"
+      ],
+      "text": "Characterize every primitive's policy text, trigger positives/negatives, injection order, enablement, safe defaults, isolation, diagnostics, legacy configuration, and package-profile behavior before migration.",
+      "verification": {
+        "kind": "primitive-characterization",
+        "requiredEvidence": [
+          "machine-command"
+        ],
+        "sequence": "red-green"
+      }
+    },
+    {
+      "id": "O-2",
+      "practiceId": "P-2",
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-3"
+      ],
+      "text": "Verify each policy uses a native or explicit extension boundary, the generic internal framework is removed, no replacement registry/resource type is introduced, and configuration remains bounded with actionable diagnostics.",
+      "verification": {
+        "kind": "native-policy-migration-tests",
+        "requiredEvidence": [
+          "machine-command",
+          "model-review"
+        ]
+      }
+    },
+    {
+      "id": "O-3",
+      "practiceId": "P-3",
+      "criterionIds": [
+        "AC-3",
+        "AC-4",
+        "AC-5",
+        "AC-6"
+      ],
+      "text": "Run primitive/policy, prompt, package, scaffold compatibility, inventory, typecheck, resource, command, performance, and full repository gates, then obtain independent review of framework retirement and compatibility decisions.",
+      "verification": {
+        "kind": "primitives-retirement-qualification",
+        "requiredEvidence": [
+          "machine-command",
+          "independent-review"
+        ]
+      }
+    }
+  ],
+  "work": [
+    {
+      "id": "W-1",
+      "kind": "task",
+      "title": "Characterize and map every primitive to a native destination",
+      "status": "pending",
+      "dependsOn": [],
+      "criterionIds": [
+        "AC-1",
+        "AC-5"
+      ],
+      "obligationIds": [
+        "O-1"
+      ],
+      "testing": {
+        "approach": "Build a per-policy behavior matrix and focused positive, negative, order, enablement, malformed-config, and profile fixtures before migration.",
+        "reason": "The policies are small but behaviorally different; each needs an explicit destination and baseline."
+      }
+    },
+    {
+      "id": "W-2",
+      "kind": "task",
+      "title": "Migrate policies and remove the internal primitive framework",
+      "status": "pending",
+      "dependsOn": [
+        "W-1"
+      ],
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-3"
+      ],
+      "obligationIds": [
+        "O-2"
+      ],
+      "testing": {
+        "approach": "Move each policy to native resources or explicit hooks, delete superseded generic machinery, and test that no parallel registry/discovery/loading layer remains.",
+        "reason": "A native migration succeeds only when the obsolete abstraction is actually removed."
+      }
+    },
+    {
+      "id": "W-3",
+      "kind": "task",
+      "title": "Apply compatibility gates and qualify retirement",
+      "status": "pending",
+      "dependsOn": [
+        "W-2"
+      ],
+      "criterionIds": [
+        "AC-3",
+        "AC-4",
+        "AC-5",
+        "AC-6"
+      ],
+      "obligationIds": [
+        "O-3"
+      ],
+      "testing": {
+        "approach": "Preserve or explicitly gate scaffold/path compatibility, refresh docs/inventories, run all declared gates, and obtain independent source-bound review.",
+        "reason": "Retirement must be safe for current users and must not smuggle in unapproved breaking changes."
+      }
+    }
+  ],
+  "artifacts": [],
+  "evidence": [],
+  "decisions": [
+    {
+      "id": "D-1",
+      "text": "Defer the physical pi-primitives to pi-policies rename.",
+      "basis": "Package filter paths are public compatibility surfaces and the consolidation plan recommends a major-release gate."
+    },
+    {
+      "id": "D-2",
+      "text": "Do not assume /scaffold primitive may be removed.",
+      "basis": "The breaking-change window is unresolved; initiative 06 preserves it and this initiative requires explicit approval before changing it."
+    },
+    {
+      "id": "D-3",
+      "text": "Migrate policies individually rather than creating a replacement generic framework.",
+      "basis": "The reviewed defect is the existence of a plugin system inside Pi's plugin/resource system."
+    }
+  ],
+  "risks": [
+    {
+      "id": "R-1",
+      "text": "Prompt policy text or trigger ordering changes during migration.",
+      "mitigation": "Use per-policy golden injection and ordering tests."
+    },
+    {
+      "id": "R-2",
+      "text": "The old framework is recreated under a policy name.",
+      "mitigation": "Review for discovery, generic loaders, trigger registries, and parallel enablement abstractions and reject them."
+    },
+    {
+      "id": "R-3",
+      "text": "Existing config or package filters break.",
+      "mitigation": "Keep the path stable, parse legacy fields safely, and emit bounded migration diagnostics."
+    },
+    {
+      "id": "R-4",
+      "text": "Scaffold behavior conflicts with initiative 06.",
+      "mitigation": "Treat initiative 06's preserved behavior as the baseline and require explicit release approval before removal/deprecation changes."
+    }
+  ]
+}

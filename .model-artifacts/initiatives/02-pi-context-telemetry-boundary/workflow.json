@@ -1,0 +1,243 @@
+{
+  "kind": "gentic.swe.initiative",
+  "schemaVersion": 1,
+  "id": "02-pi-context-telemetry-boundary",
+  "revision": 1,
+  "status": "draft",
+  "objective": "Replace pi-context's recursive interpretation of loosely typed Pi runtime internals with a typed, bounded context telemetry contract and simpler snapshot pipeline while preserving /pi-context, HUD adapter behavior, pressure notifications, content safety, and JSON/Markdown report compatibility.",
+  "policies": {
+    "commitOnWorkCompletion": false,
+    "independentReviewOnCompletion": true
+  },
+  "scope": {
+    "in": [
+      "Characterize authoritative aggregate usage, contributor estimates, pressure conversion, notifications, HUD adapter output, and Markdown/JSON report behavior.",
+      "Define a typed bounded context snapshot contract at the package-level service boundary.",
+      "Refactor pi-context to prefer authoritative telemetry and drastically reduce recursive contributor analysis.",
+      "Retain only bounded compatibility handling needed for supported current Pi runtime data.",
+      "Document the stable consumer contract for pi-hud initiative 03."
+    ],
+    "out": [
+      "Changing /pi-context command names or removing JSON/Markdown report modes.",
+      "Capturing prompt, message, tool argument, file path, or other content in telemetry.",
+      "Refactoring pi-hud consumer code; initiative 03 owns that migration.",
+      "Adding a general arbitrary-object inspection framework.",
+      "Committing, pushing, releasing, or deploying."
+    ]
+  },
+  "constraints": [
+    "Depends conceptually on the shared service conventions established by 01-pi-git-service-boundary, without duplicating its process domain.",
+    "Preserve /pi-context json through a typed system-JSON artifact operation.",
+    "Snapshots must remain bounded and content-safe and retain no prompt, message, tool-input, or path data.",
+    "Prefer authoritative aggregate usage; contributor detail must degrade explicitly rather than infer deeply from unknown object graphs.",
+    "Shared contracts/services must have no registration or UI side effects."
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "text": "A typed bounded context telemetry contract replaces recursive interpretation as the primary snapshot input."
+    },
+    {
+      "id": "AC-2",
+      "text": "Contributor analysis is substantially simplified, bounded, and explicit about unavailable or degraded detail."
+    },
+    {
+      "id": "AC-3",
+      "text": "/pi-context, pressure notifications, HUD adapter values, and Markdown/JSON report naming and content remain compatible."
+    },
+    {
+      "id": "AC-4",
+      "text": "Tests prove snapshots retain no prompt, message, tool-input, or path content and remain bounded under malformed or oversized runtime data."
+    },
+    {
+      "id": "AC-5",
+      "text": "Focused and repository qualification passes and the supported consumer boundary is documented."
+    }
+  ],
+  "assessment": {
+    "depth": "deep",
+    "reason": "The current implementation defensively traverses loosely typed runtime state; simplifying it affects privacy, compatibility, pressure signaling, reports, and a downstream HUD consumer.",
+    "surfaces": [
+      "extensions/pi-context/**",
+      "src/contracts/**",
+      "src/services/**",
+      "test/pi-context-*.test.ts",
+      "test/pi-hud-*.test.ts",
+      "artifact/report compatibility"
+    ],
+    "unknowns": [
+      "The installed Pi telemetry surface may not yet expose every desired contributor field.",
+      "Some contributor detail may require an explicit degraded mode until a native typed API is available."
+    ]
+  },
+  "practices": [
+    {
+      "id": "P-1",
+      "practice": "Characterization and privacy-first contract design",
+      "appliesTo": [
+        "W-1"
+      ],
+      "reason": "Current outputs and prohibited-content guarantees must be explicit before replacing introspection."
+    },
+    {
+      "id": "P-2",
+      "practice": "Bounded typed-adapter refactoring",
+      "appliesTo": [
+        "W-2"
+      ],
+      "reason": "The replacement must reduce complexity without reintroducing unsafe traversal in a compatibility layer."
+    },
+    {
+      "id": "P-3",
+      "practice": "Integrated compatibility and independent qualification",
+      "appliesTo": [
+        "W-3"
+      ],
+      "reason": "Command, notification, report, and HUD-facing behavior require end-to-end confirmation."
+    }
+  ],
+  "obligations": [
+    {
+      "id": "O-1",
+      "practiceId": "P-1",
+      "criterionIds": [
+        "AC-1",
+        "AC-3",
+        "AC-4"
+      ],
+      "text": "Establish failing/passing characterization and privacy fixtures for aggregate usage, contributor degradation, pressure thresholds, notifications, HUD adapter output, report modes, malformed getters, cycles, and oversized data.",
+      "verification": {
+        "kind": "context-characterization-and-privacy",
+        "requiredEvidence": [
+          "machine-command"
+        ],
+        "sequence": "red-green"
+      }
+    },
+    {
+      "id": "O-2",
+      "practiceId": "P-2",
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-4"
+      ],
+      "text": "Verify the typed adapter is bounded, avoids recursive arbitrary-object interpretation, reports degraded contributor data explicitly, and never retains prohibited content.",
+      "verification": {
+        "kind": "typed-telemetry-boundary-tests",
+        "requiredEvidence": [
+          "machine-command",
+          "model-review"
+        ]
+      }
+    },
+    {
+      "id": "O-3",
+      "practiceId": "P-3",
+      "criterionIds": [
+        "AC-3",
+        "AC-5"
+      ],
+      "text": "Run context and HUD-focused tests plus typecheck, dependency, performance, command, and repository gates, then obtain independent review of privacy, compatibility, bounds, and contract clarity.",
+      "verification": {
+        "kind": "context-release-qualification",
+        "requiredEvidence": [
+          "machine-command",
+          "independent-review"
+        ]
+      }
+    }
+  ],
+  "work": [
+    {
+      "id": "W-1",
+      "kind": "task",
+      "title": "Characterize context telemetry, privacy, and compatibility behavior",
+      "status": "pending",
+      "dependsOn": [],
+      "criterionIds": [
+        "AC-3",
+        "AC-4"
+      ],
+      "obligationIds": [
+        "O-1"
+      ],
+      "testing": {
+        "approach": "Extend current tests with authoritative aggregates, contributor degradation, pressure/notification, report, HUD adapter, malformed-data, and prohibited-content cases before refactoring.",
+        "reason": "The current defensive implementation embodies implicit privacy and compatibility contracts that must not be lost."
+      }
+    },
+    {
+      "id": "W-2",
+      "kind": "task",
+      "title": "Introduce the typed bounded telemetry contract and simplify snapshots",
+      "status": "pending",
+      "dependsOn": [
+        "W-1"
+      ],
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-4"
+      ],
+      "obligationIds": [
+        "O-2"
+      ],
+      "testing": {
+        "approach": "Implement the contract and bounded adapter, delete superseded recursive analysis, and run focused negative, privacy, and complexity-oriented review.",
+        "reason": "Typed authoritative data should replace defensive interpretation rather than merely wrap it."
+      }
+    },
+    {
+      "id": "W-3",
+      "kind": "task",
+      "title": "Preserve reports, document the consumer boundary, and qualify pi-context",
+      "status": "pending",
+      "dependsOn": [
+        "W-2"
+      ],
+      "criterionIds": [
+        "AC-3",
+        "AC-5"
+      ],
+      "obligationIds": [
+        "O-3"
+      ],
+      "testing": {
+        "approach": "Verify byte/path compatibility where promised, run all declared gates, and obtain source-bound independent review.",
+        "reason": "Consumers and users need stable command/report behavior despite the internal simplification."
+      }
+    }
+  ],
+  "artifacts": [],
+  "evidence": [],
+  "decisions": [
+    {
+      "id": "D-1",
+      "text": "Preserve /pi-context json and Markdown reporting.",
+      "basis": "The consolidation plan explicitly retains JSON through a typed system-artifact operation."
+    },
+    {
+      "id": "D-2",
+      "text": "Prefer explicit contributor degradation over deep fallback introspection.",
+      "basis": "The architecture defect is disproportionate complexity and sensitivity to undocumented runtime shapes."
+    }
+  ],
+  "risks": [
+    {
+      "id": "R-1",
+      "text": "Native telemetry lacks contributor detail users currently see.",
+      "mitigation": "Preserve authoritative aggregate usage and expose bounded explicit degradation instead of guessing."
+    },
+    {
+      "id": "R-2",
+      "text": "Simplification accidentally weakens content-safety guarantees.",
+      "mitigation": "Use adversarial prohibited-content fixtures and source-bound privacy review."
+    },
+    {
+      "id": "R-3",
+      "text": "Report compatibility changes during service extraction.",
+      "mitigation": "Retain golden naming/content fixtures for both JSON and Markdown modes."
+    }
+  ]
+}

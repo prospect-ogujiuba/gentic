@@ -1,0 +1,252 @@
+{
+  "kind": "gentic.swe.initiative",
+  "schemaVersion": 1,
+  "id": "05-pi-artifacts-publication-backend",
+  "revision": 2,
+  "status": "draft",
+  "objective": "Extract one supported safe-file-publication backend for pi-artifacts and compatible context reports, preserving canonical paths, bounded content, collision and symlink defenses, atomic exclusive publication, and pi-swe's exclusive ownership of workflow.json.",
+  "policies": {
+    "commitOnWorkCompletion": false,
+    "independentReviewOnCompletion": true
+  },
+  "scope": {
+    "in": [
+      "Characterize pi-artifacts normalization, canonical naming, size bounds, collision, traversal, symlink, atomicity, durability, and error behavior.",
+      "Identify secure publication overlap in pi-context report output and extract the minimal reusable backend.",
+      "Migrate pi-artifacts and typed pi-context Markdown/JSON report operations to the backend without changing paths or bytes.",
+      "Centralize the shared adversarial path/publication safety matrix and document ownership boundaries.",
+      "Retain pi-swe workflow authority publication as a separate privileged path owned only by SweService/store."
+    ],
+    "out": [
+      "Redesigning the artifact tool or changing canonical artifact locations and filenames.",
+      "Allowing the shared backend to create or modify any initiative workflow.json.",
+      "Migrating unrelated arbitrary file writes or creating a general filesystem framework.",
+      "Changing pi-context telemetry semantics beyond its report-publication adapter.",
+      "Committing, pushing, releasing, or deploying."
+    ]
+  },
+  "constraints": [
+    "After initiatives 01-03 establish provider and HUD boundaries, this initiative may proceed in parallel with 04-pi-swe-todo-separation and 06-pi-commands-catalog-ownership; it does not depend on their completion.",
+    "Treat the existing pi-swe workflow publication boundary as fixed input: workflow.json remains solely written by pi-swe, regardless of parallel execution.",
+    "workflow.json must be explicitly denied by shared publication APIs and remain solely written by pi-swe.",
+    "Preserve exclusive no-overwrite behavior, stable parent-relative operations, traversal/symlink defenses, size bounds, file and directory sync, and atomic publication.",
+    "Existing artifact and context-report path names and content remain byte-compatible.",
+    "Shared backend contains no Pi tool/command registration or domain-specific workflow lifecycle logic."
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "text": "One minimal backend owns reusable safe artifact/report publication mechanics for pi-artifacts and pi-context."
+    },
+    {
+      "id": "AC-2",
+      "text": "Artifact tool and context Markdown/JSON report paths, names, content, size bounds, collision, and error behavior remain compatible."
+    },
+    {
+      "id": "AC-3",
+      "text": "Traversal, symlink, parent-swap, collision, interruption, and concurrent-publication cases fail closed without overwrite or partial publication."
+    },
+    {
+      "id": "AC-4",
+      "text": "The shared backend cannot create or modify workflow.json, and pi-swe remains its sole publication authority."
+    },
+    {
+      "id": "AC-5",
+      "text": "Focused security and full repository qualification passes with independent review."
+    }
+  ],
+  "assessment": {
+    "depth": "deep",
+    "reason": "The extension is well-designed, but extracting security-sensitive publication code across consumers risks path traversal, symlink races, overwrite, durability, and workflow authority violations.",
+    "surfaces": [
+      "extensions/pi-artifacts/**",
+      "extensions/pi-context report publication",
+      "shared publication service modules",
+      "extensions/pi-swe workflow store boundary",
+      "artifact/context/SWE security tests"
+    ],
+    "unknowns": [
+      "The exact overlap worth sharing must be confirmed against current implementations.",
+      "Platform support differences for stable directory descriptors may constrain the reusable API."
+    ]
+  },
+  "practices": [
+    {
+      "id": "P-1",
+      "practice": "Adversarial characterization before extraction",
+      "appliesTo": [
+        "W-1"
+      ],
+      "reason": "Existing security and byte/path behavior must be captured before centralization."
+    },
+    {
+      "id": "P-2",
+      "practice": "Least-capability publication service",
+      "appliesTo": [
+        "W-2"
+      ],
+      "reason": "The shared backend should expose only safe artifact/report publication and explicitly deny workflow authority paths."
+    },
+    {
+      "id": "P-3",
+      "practice": "Security-focused integrated qualification",
+      "appliesTo": [
+        "W-3"
+      ],
+      "reason": "Multiple consumers and privileged workflow boundaries require full negative testing and independent review."
+    }
+  ],
+  "obligations": [
+    {
+      "id": "O-1",
+      "practiceId": "P-1",
+      "criterionIds": [
+        "AC-2",
+        "AC-3",
+        "AC-4"
+      ],
+      "text": "Characterize artifact and context-report bytes/paths plus traversal, symlink, parent-swap, collision, interruption, concurrency, size, durability, and workflow.json denial cases before extraction.",
+      "verification": {
+        "kind": "publication-characterization",
+        "requiredEvidence": [
+          "machine-command"
+        ],
+        "sequence": "red-green"
+      }
+    },
+    {
+      "id": "O-2",
+      "practiceId": "P-2",
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-3",
+        "AC-4"
+      ],
+      "text": "Verify the shared backend has no registration or workflow lifecycle dependencies, publishes exclusively and atomically, preserves consumer outputs, and rejects workflow.json and unsafe paths.",
+      "verification": {
+        "kind": "safe-publication-tests",
+        "requiredEvidence": [
+          "machine-command",
+          "model-review"
+        ]
+      }
+    },
+    {
+      "id": "O-3",
+      "practiceId": "P-3",
+      "criterionIds": [
+        "AC-2",
+        "AC-3",
+        "AC-4",
+        "AC-5"
+      ],
+      "text": "Run artifact, context, SWE security, typecheck, dependency, command, performance, and full repository gates, then obtain independent security and boundary review.",
+      "verification": {
+        "kind": "publication-release-qualification",
+        "requiredEvidence": [
+          "machine-command",
+          "independent-review"
+        ]
+      }
+    }
+  ],
+  "work": [
+    {
+      "id": "W-1",
+      "kind": "task",
+      "title": "Characterize artifact and report publication security",
+      "status": "pending",
+      "dependsOn": [],
+      "criterionIds": [
+        "AC-2",
+        "AC-3",
+        "AC-4"
+      ],
+      "obligationIds": [
+        "O-1"
+      ],
+      "testing": {
+        "approach": "Extend golden and adversarial fixtures before moving any publication primitive.",
+        "reason": "Safe extraction requires a proven behavioral and security baseline."
+      }
+    },
+    {
+      "id": "W-2",
+      "kind": "task",
+      "title": "Extract and adopt the safe publication backend",
+      "status": "pending",
+      "dependsOn": [
+        "W-1"
+      ],
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-3",
+        "AC-4"
+      ],
+      "obligationIds": [
+        "O-2"
+      ],
+      "testing": {
+        "approach": "Implement a least-capability backend, migrate pi-artifacts and context reports, and rerun consumer and adversarial tests.",
+        "reason": "Centralization is valuable only if it reduces duplication without broadening write authority."
+      }
+    },
+    {
+      "id": "W-3",
+      "kind": "task",
+      "title": "Document ownership and qualify publication safety",
+      "status": "pending",
+      "dependsOn": [
+        "W-2"
+      ],
+      "criterionIds": [
+        "AC-5"
+      ],
+      "obligationIds": [
+        "O-3"
+      ],
+      "testing": {
+        "approach": "Run integrated gates, inspect workflow authority denial and public compatibility, and obtain independent source-bound review.",
+        "reason": "Security-sensitive shared code requires repository-wide evidence and distinct review."
+      }
+    }
+  ],
+  "artifacts": [],
+  "evidence": [],
+  "decisions": [
+    {
+      "id": "D-1",
+      "text": "Share artifact/report publication mechanics but not pi-swe workflow authority publication.",
+      "basis": "workflow.json has stronger lifecycle and identity invariants and must remain exclusively owned by pi-swe."
+    },
+    {
+      "id": "D-2",
+      "text": "Keep pi-artifacts public behavior unchanged.",
+      "basis": "The review identifies it as the best-designed extension and recommends only optional utility extraction."
+    },
+    {
+      "id": "D-3",
+      "text": "Run this work in the same post-provider wave as initiatives 04 and 06 when capacity permits.",
+      "basis": "The consolidation plan identifies UI, publication, and scaffolding migrations as separate regression surfaces that need not block one another."
+    }
+  ],
+  "risks": [
+    {
+      "id": "R-1",
+      "text": "Generalization weakens path or race defenses.",
+      "mitigation": "Use a shared adversarial matrix and a minimal capability-oriented API."
+    },
+    {
+      "id": "R-2",
+      "text": "Context reports change names or bytes.",
+      "mitigation": "Retain golden path/content fixtures for Markdown and JSON outputs."
+    },
+    {
+      "id": "R-3",
+      "text": "The backend becomes a route around SweService.",
+      "mitigation": "Explicitly deny workflow.json and independently review write-authority boundaries."
+    }
+  ]
+}

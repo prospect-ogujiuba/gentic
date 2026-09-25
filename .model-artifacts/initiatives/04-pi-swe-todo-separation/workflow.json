@@ -1,0 +1,286 @@
+{
+  "kind": "gentic.swe.initiative",
+  "schemaVersion": 1,
+  "id": "04-pi-swe-todo-separation",
+  "revision": 1,
+  "status": "draft",
+  "objective": "Separate todo ownership from pi-swe core and isolate optional SWE/Todo UI automation behind a shared presentation-only docket kit, while preserving workflow.json authority, todo scope semantics, public commands/tools, persistence formats, lifecycle integrity, and evidence gates.",
+  "policies": {
+    "commitOnWorkCompletion": false,
+    "independentReviewOnCompletion": true
+  },
+  "scope": {
+    "in": [
+      "Characterize swe and todo command/tool behavior, authority selection, persistence, lifecycle transitions, completion evidence, UI/non-UI rendering, and restart/fork behavior.",
+      "Define explicit pi-swe-core, pi-todo, workflow-projection, and optional UI/automation adapter boundaries.",
+      "Extract shared ANSI-width, frame, scrolling, selection, keyboard, and modal mechanics into a presentation-only docket kit.",
+      "Move todo registration and ownership out of SWE core while preserving session, project, and initiative projection semantics.",
+      "Keep all workflow mutation and verification authority in SweService and all Todo mutations in their canonical backends.",
+      "Update documentation, anatomy, package registration, and compatibility tests."
+    ],
+    "out": [
+      "Changing workflow.json schema or weakening evidence, independent-review, revision, locking, or permission-boundary guarantees.",
+      "Merging SWE and Todo persistence or mutation services into the shared docket kit.",
+      "Changing public swe/todo tool names, slash commands, authority scopes, state formats, or keyboard behavior.",
+      "Adding autonomous agents, worktrees, deployments, or a second workflow ledger.",
+      "Committing, pushing, releasing, or deploying."
+    ]
+  },
+  "constraints": [
+    "Begins after provider initiatives 01-03 only in implementation order; it must not consume their domain code.",
+    "workflow.json remains sole SWE authority and SweService remains its mutation authority.",
+    "Shared UI emits intents only and has no session access, file I/O, service imports, Pi event registration, or timers.",
+    "Todo initiative projection remains an integration contract rather than Todo ownership folded into SWE core.",
+    "Preserve bounded TUI and non-TUI output, project/session/initiative scope selection, branch/fork behavior, and persistence compatibility.",
+    "Independent-review and ordinary-bash verification boundaries must remain intact."
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "text": "Todo registration, persistence, and canonical mutation ownership are separated from pi-swe core behind explicit contracts."
+    },
+    {
+      "id": "AC-2",
+      "text": "SWE core remains sole owner of workflow lifecycle, workflow.json mutation, verification evidence, review, completion, and opt-in completion commits."
+    },
+    {
+      "id": "AC-3",
+      "text": "A shared presentation-only docket kit replaces duplicated formatting/modal mechanics without importing lifecycle, persistence, session, or registration code."
+    },
+    {
+      "id": "AC-4",
+      "text": "Existing swe/todo commands and tools, authority scopes, persistence formats, fork/restart behavior, keyboard actions, and bounded TUI/non-TUI output remain compatible."
+    },
+    {
+      "id": "AC-5",
+      "text": "Focused security, persistence, lifecycle, UI, and full repository qualification passes with independent review."
+    }
+  ],
+  "assessment": {
+    "depth": "deep",
+    "reason": "This extension combines durable workflow authority, three Todo scopes, persistence, permission-bound verification, completion commits, and UI; separating it has broad integrity and compatibility risk.",
+    "surfaces": [
+      "extensions/pi-swe/**",
+      "new pi-todo or equivalent extension boundary",
+      "src/ui/docket-kit/**",
+      "test/pi-swe-*.test.ts",
+      "todo tests and fixtures",
+      "package extension registration and docs"
+    ],
+    "unknowns": [
+      "The least disruptive physical package split requires current package-discovery inspection.",
+      "Some existing shared types may need a compatibility export while consumers migrate."
+    ]
+  },
+  "practices": [
+    {
+      "id": "P-1",
+      "practice": "Contract and persistence characterization",
+      "appliesTo": [
+        "W-1"
+      ],
+      "reason": "Authority selection, formats, lifecycle, and restart semantics must be explicit before moving ownership."
+    },
+    {
+      "id": "P-2",
+      "practice": "Layered extraction with mutation-authority tests",
+      "appliesTo": [
+        "W-2",
+        "W-3"
+      ],
+      "reason": "Todo/SWE separation and shared UI must not blur persistence or lifecycle authority."
+    },
+    {
+      "id": "P-3",
+      "practice": "Security and compatibility qualification",
+      "appliesTo": [
+        "W-4"
+      ],
+      "reason": "Evidence gates, locks, permissions, UI, and public surfaces need integrated and independent review."
+    }
+  ],
+  "obligations": [
+    {
+      "id": "O-1",
+      "practiceId": "P-1",
+      "criterionIds": [
+        "AC-2",
+        "AC-4"
+      ],
+      "text": "Characterize SWE lifecycle/evidence/commit behavior and session, project, and initiative Todo selection, mutation, persistence, fork, restart, malformed-state, and bounded-output behavior before extraction.",
+      "verification": {
+        "kind": "swe-todo-characterization",
+        "requiredEvidence": [
+          "machine-command"
+        ],
+        "sequence": "red-green"
+      }
+    },
+    {
+      "id": "O-2",
+      "practiceId": "P-2",
+      "criterionIds": [
+        "AC-1",
+        "AC-2"
+      ],
+      "text": "Verify separated ownership with negative tests proving Todo cannot mutate workflow completion/verification and SWE core does not own Todo persistence or registration.",
+      "verification": {
+        "kind": "authority-separation-tests",
+        "requiredEvidence": [
+          "machine-command",
+          "model-review"
+        ]
+      }
+    },
+    {
+      "id": "O-3",
+      "practiceId": "P-2",
+      "criterionIds": [
+        "AC-3",
+        "AC-4"
+      ],
+      "text": "Test docket-kit ANSI width, truncation, frames, narrow widths, scrolling, empty lists, selection preservation, keyboard intents, and absence of lifecycle/session/file/service dependencies.",
+      "verification": {
+        "kind": "docket-kit-tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-4",
+      "practiceId": "P-3",
+      "criterionIds": [
+        "AC-2",
+        "AC-4",
+        "AC-5"
+      ],
+      "text": "Run focused SWE/Todo persistence, qualification, security, command, UI, typecheck, and full repository gates, then obtain independent review of authority boundaries and compatibility.",
+      "verification": {
+        "kind": "swe-todo-release-qualification",
+        "requiredEvidence": [
+          "machine-command",
+          "independent-review"
+        ]
+      }
+    }
+  ],
+  "work": [
+    {
+      "id": "W-1",
+      "kind": "task",
+      "title": "Characterize SWE and Todo contracts and ownership",
+      "status": "pending",
+      "dependsOn": [],
+      "criterionIds": [
+        "AC-2",
+        "AC-4"
+      ],
+      "obligationIds": [
+        "O-1"
+      ],
+      "testing": {
+        "approach": "Extend existing lifecycle, evidence, persistence, branch, authority-selection, malformed-state, TUI, and command fixtures before moving modules.",
+        "reason": "The current welded implementation contains several durable behavioral contracts."
+      }
+    },
+    {
+      "id": "W-2",
+      "kind": "task",
+      "title": "Separate Todo ownership from SWE core",
+      "status": "pending",
+      "dependsOn": [
+        "W-1"
+      ],
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-4"
+      ],
+      "obligationIds": [
+        "O-2"
+      ],
+      "testing": {
+        "approach": "Introduce explicit contracts and registration boundaries, preserve formats, and add cross-authority negative tests.",
+        "reason": "Todo should integrate with workflow projection without becoming part of SWE's mutation authority."
+      }
+    },
+    {
+      "id": "W-3",
+      "kind": "task",
+      "title": "Extract the presentation-only docket kit",
+      "status": "pending",
+      "dependsOn": [
+        "W-2"
+      ],
+      "criterionIds": [
+        "AC-3",
+        "AC-4"
+      ],
+      "obligationIds": [
+        "O-3"
+      ],
+      "testing": {
+        "approach": "Move shared formatting/modal mechanics behind intent callbacks and retain adapter-level snapshot tests.",
+        "reason": "UI duplication can be removed safely only if domain and persistence dependencies are prohibited."
+      }
+    },
+    {
+      "id": "W-4",
+      "kind": "task",
+      "title": "Qualify SWE/Todo separation and compatibility",
+      "status": "pending",
+      "dependsOn": [
+        "W-3"
+      ],
+      "criterionIds": [
+        "AC-2",
+        "AC-4",
+        "AC-5"
+      ],
+      "obligationIds": [
+        "O-4"
+      ],
+      "testing": {
+        "approach": "Run complete focused and repository gates, inspect authority boundaries, and obtain independent source-bound review.",
+        "reason": "The split is complete only when lifecycle integrity and existing surfaces remain proven."
+      }
+    }
+  ],
+  "artifacts": [],
+  "evidence": [],
+  "decisions": [
+    {
+      "id": "D-1",
+      "text": "Todo becomes a distinct ownership boundary while initiative Todo remains a workflow projection contract.",
+      "basis": "This follows the review recommendation without introducing synchronization or a second initiative ledger."
+    },
+    {
+      "id": "D-2",
+      "text": "Shared docket code owns presentation only.",
+      "basis": "Lifecycle and persistence coupling would recreate the architecture problem in a new shared module."
+    }
+  ],
+  "risks": [
+    {
+      "id": "R-1",
+      "text": "The physical split changes registration order or public discovery.",
+      "mitigation": "Characterize discovery and retain compatibility adapters until package registration tests pass."
+    },
+    {
+      "id": "R-2",
+      "text": "Shared UI begins owning lifecycle decisions.",
+      "mitigation": "Use intent-only interfaces and enforce forbidden imports in production shared UI."
+    },
+    {
+      "id": "R-3",
+      "text": "Persistence formats drift during module moves.",
+      "mitigation": "Use existing fixtures, byte/schema compatibility tests, and malformed-state negative cases."
+    },
+    {
+      "id": "R-4",
+      "text": "Verification or completion permission boundaries weaken.",
+      "mitigation": "Retain ordinary-bash observation tests and independently review mutation ownership."
+    }
+  ]
+}

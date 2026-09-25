@@ -1,0 +1,291 @@
+{
+  "kind": "gentic.swe.initiative",
+  "schemaVersion": 1,
+  "id": "01-pi-git-service-boundary",
+  "revision": 2,
+  "status": "draft",
+  "objective": "Establish the production extension-dependency guard, then extract a supported bounded-process and Git snapshot service boundary from pi-git, separating process supervision, collection, parsing, and rendering while preserving git_snapshot and /pi-git behavior and enabling pi-hud to consume stable contracts.",
+  "policies": {
+    "commitOnWorkCompletion": false,
+    "independentReviewOnCompletion": true
+  },
+  "scope": {
+    "in": [
+      "Add the production-source architecture check that rejects imports resolving beneath sibling extension private src trees, initially with exact stale-detecting exceptions only for current pi-hud violations.",
+      "Characterize current pi-git tool, command, cancellation, bounds, error, parsing, and rendering behavior.",
+      "Move bounded subprocess execution into a small package-level service without registration side effects.",
+      "Define a typed Git snapshot contract and separate collection/parsing from presentation.",
+      "Update pi-git adapters to use the supported service and export only the contract intended for sibling consumers.",
+      "Document the supported boundary and hand temporary guard exceptions to initiative 03 for mandatory removal."
+    ],
+    "out": [
+      "Changing git_snapshot fields, /pi-git output semantics, timeouts, limits, or cancellation behavior.",
+      "Refactoring pi-hud itself or removing its temporary exceptions; initiative 03 owns consumer migration and final zero-allowlist enforcement.",
+      "Creating a general-purpose process framework or moving unrelated subprocess code.",
+      "Scanning test fixtures as production dependency violations.",
+      "Committing, pushing, releasing, or deploying."
+    ]
+  },
+  "constraints": [
+    "Preserve public tool and command names and structured output compatibility.",
+    "Keep process execution bounded, cancellable, output-limited, and free of shell interpolation regressions.",
+    "Shared contracts and services must have no Pi registration or UI side effects.",
+    "The architecture check scans production extension source only; any initial exception must name the exact file/import, fail when stale, and be removed by initiative 03.",
+    "Do not duplicate context telemetry or artifact publication responsibilities.",
+    "Current source and tests must be inspected before edits; intentionally revise this authority if they invalidate its contract."
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "text": "git_snapshot and /pi-git retain compatible outputs, bounds, cancellation, and structured error behavior."
+    },
+    {
+      "id": "AC-2",
+      "text": "Bounded process supervision is owned by a supported small service rather than pi-git's snapshot orchestration module."
+    },
+    {
+      "id": "AC-3",
+      "text": "Git collection and parsing are separated from rendering behind a typed snapshot contract usable without importing pi-git private src internals."
+    },
+    {
+      "id": "AC-4",
+      "text": "Focused and repository qualification passes, and documentation identifies the supported consumer boundary."
+    },
+    {
+      "id": "AC-5",
+      "text": "A production-source dependency check runs before service extraction, rejects new sibling private-src imports, and permits only exact stale-detecting temporary HUD exceptions owned for removal by initiative 03."
+    }
+  ],
+  "assessment": {
+    "depth": "standard",
+    "reason": "The extension is narrow, but process cancellation, resource bounds, a new shared contract, and an early architecture guard affect downstream HUD decoupling and repository boundaries.",
+    "surfaces": [
+      "extensions/pi-git/**",
+      "production extension dependency checks",
+      "src/contracts/**",
+      "src/services/**",
+      "test/pi-git*.test.ts",
+      "docs and extension anatomy checks"
+    ],
+    "unknowns": [
+      "The exact package-level filenames should follow existing repository conventions discovered during implementation.",
+      "Additional internal consumers of execBounded may need migration or explicit compatibility shims."
+    ]
+  },
+  "practices": [
+    {
+      "id": "P-0",
+      "practice": "Boundary guard before extraction",
+      "appliesTo": [
+        "W-0"
+      ],
+      "reason": "New sibling-private dependencies must be prevented before shared services begin moving."
+    },
+    {
+      "id": "P-1",
+      "practice": "Characterization-first refactoring",
+      "appliesTo": [
+        "W-1"
+      ],
+      "reason": "Existing observable Git behavior must remain stable while internal responsibilities move."
+    },
+    {
+      "id": "P-2",
+      "practice": "Bounded process and contract testing",
+      "appliesTo": [
+        "W-2"
+      ],
+      "reason": "Cancellation, output limits, parsing, and stable typed boundaries require direct negative and integration tests."
+    },
+    {
+      "id": "P-3",
+      "practice": "Integrated qualification and independent review",
+      "appliesTo": [
+        "W-3"
+      ],
+      "reason": "The extracted boundary must work across repository checks and be safe for later sibling consumption."
+    }
+  ],
+  "obligations": [
+    {
+      "id": "O-0",
+      "practiceId": "P-0",
+      "criterionIds": [
+        "AC-5"
+      ],
+      "text": "Verify the production-only architecture check rejects a new sibling private-src import, accepts current source only through exact temporary HUD exceptions, and fails when an exception is stale or broadened.",
+      "verification": {
+        "kind": "dependency-guard-tests",
+        "requiredEvidence": [
+          "machine-command"
+        ],
+        "sequence": "red-green"
+      }
+    },
+    {
+      "id": "O-1",
+      "practiceId": "P-1",
+      "criterionIds": [
+        "AC-1"
+      ],
+      "text": "Run focused characterization tests before and after extraction for tool/command output, unusual Git states, cancellation, timeouts, output limits, and structured failures.",
+      "verification": {
+        "kind": "pi-git-characterization",
+        "requiredEvidence": [
+          "machine-command"
+        ],
+        "sequence": "red-green"
+      }
+    },
+    {
+      "id": "O-2",
+      "practiceId": "P-2",
+      "criterionIds": [
+        "AC-2",
+        "AC-3"
+      ],
+      "text": "Verify the bounded-process service and Git contract have no registration side effects, parsing/rendering remain separated, and no production consumer needs a new private pi-git src import.",
+      "verification": {
+        "kind": "service-boundary-tests",
+        "requiredEvidence": [
+          "machine-command"
+        ]
+      }
+    },
+    {
+      "id": "O-3",
+      "practiceId": "P-3",
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-3",
+        "AC-4",
+        "AC-5"
+      ],
+      "text": "Run pi-git focused tests plus typecheck, dependency, performance, and repository gates, then obtain independent review of behavior preservation, bounds, cancellation, guard behavior, and contract design.",
+      "verification": {
+        "kind": "release-qualification",
+        "requiredEvidence": [
+          "machine-command",
+          "independent-review"
+        ]
+      }
+    }
+  ],
+  "work": [
+    {
+      "id": "W-0",
+      "kind": "task",
+      "title": "Enforce production extension dependency boundaries",
+      "status": "pending",
+      "dependsOn": [],
+      "criterionIds": [
+        "AC-5"
+      ],
+      "obligationIds": [
+        "O-0"
+      ],
+      "testing": {
+        "approach": "Add the production-source dependency rule first with negative fixtures and only exact stale-detecting exceptions for current HUD violations.",
+        "reason": "The consolidation plan requires stopping new coupling before extraction starts."
+      }
+    },
+    {
+      "id": "W-1",
+      "kind": "task",
+      "title": "Characterize current pi-git behavior and define the stable contract",
+      "status": "pending",
+      "dependsOn": [
+        "W-0"
+      ],
+      "criterionIds": [
+        "AC-1",
+        "AC-3"
+      ],
+      "obligationIds": [
+        "O-1"
+      ],
+      "testing": {
+        "approach": "Add or strengthen focused tests around current snapshots, rendering, errors, cancellation, and bounds before moving code.",
+        "reason": "The refactor should preserve a proven behavioral baseline."
+      }
+    },
+    {
+      "id": "W-2",
+      "kind": "task",
+      "title": "Extract bounded process and Git snapshot services",
+      "status": "pending",
+      "dependsOn": [
+        "W-1"
+      ],
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-3"
+      ],
+      "obligationIds": [
+        "O-2"
+      ],
+      "testing": {
+        "approach": "Move responsibilities behind typed package-level modules, update adapters, and run focused service and integration tests including negative process cases.",
+        "reason": "A small supported boundary removes de facto private API reuse without redesigning pi-git."
+      }
+    },
+    {
+      "id": "W-3",
+      "kind": "task",
+      "title": "Document and qualify the pi-git service boundary",
+      "status": "pending",
+      "dependsOn": [
+        "W-2"
+      ],
+      "criterionIds": [
+        "AC-4",
+        "AC-5"
+      ],
+      "obligationIds": [
+        "O-3"
+      ],
+      "testing": {
+        "approach": "Run the complete declared gate set on current sources and request source-bound independent review.",
+        "reason": "Downstream initiatives need a qualified stable provider contract and enforced boundary."
+      }
+    }
+  ],
+  "artifacts": [],
+  "evidence": [],
+  "decisions": [
+    {
+      "id": "D-1",
+      "text": "pi-git owns Git collection and parsing; the shared process service owns only bounded execution mechanics.",
+      "basis": "This preserves narrow domain ownership and avoids a shared-service monolith."
+    },
+    {
+      "id": "D-2",
+      "text": "The initial dependency guard is delivered here before extraction; initiative 03 owns removal of the exact HUD exceptions.",
+      "basis": "This matches the consolidation plan's ordering while preserving one clear migration owner."
+    },
+    {
+      "id": "D-3",
+      "text": "No pi-git public redesign is included.",
+      "basis": "The architecture review judges the extension basically good and recommends extraction rather than replacement."
+    }
+  ],
+  "risks": [
+    {
+      "id": "R-1",
+      "text": "Moving process code changes cancellation or output-limit semantics.",
+      "mitigation": "Characterize those behaviors first and exercise timeout, abort, oversized-output, and shutdown cases after extraction."
+    },
+    {
+      "id": "R-2",
+      "text": "The new service becomes an unbounded general utility.",
+      "mitigation": "Keep its typed API minimal and scoped to existing proven bounded execution needs."
+    },
+    {
+      "id": "R-3",
+      "text": "Temporary dependency exceptions become permanent.",
+      "mitigation": "Require exact stale-detecting entries and make their removal an explicit initiative 03 completion criterion."
+    }
+  ]
+}
