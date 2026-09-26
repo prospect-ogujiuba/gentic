@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -61,14 +61,14 @@ test("startup config failures remain visible and global disable avoids registrat
     ];
     for (const [invalid, expected] of invalidConfigs) {
       writeFileSync(configPath, JSON.stringify(invalid));
-      const invalidReport = await registerPrimitives({} as never, { configPath, primitives: [] });
+      const invalidReport = await registerPrimitives({ on() {} } as never, { configPath });
       assert.equal(invalidReport.failures[0]?.name, "config");
       assert.match(invalidReport.failures[0]?.error || "", expected);
     }
     writeFileSync(configPath, `{}${" ".repeat(16382)}`);
-    assert.deepEqual((await registerPrimitives({} as never, { configPath, primitives: [] })).failures, []);
+    assert.deepEqual((await registerPrimitives({ on() {} } as never, { configPath })).failures, []);
     writeFileSync(configPath, `{}${" ".repeat(16383)}`);
-    assert.match((await registerPrimitives({} as never, { configPath, primitives: [] })).failures[0]?.error || "", /16384 bytes/);
+    assert.match((await registerPrimitives({ on() {} } as never, { configPath })).failures[0]?.error || "", /16384 bytes/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -298,123 +298,80 @@ test("conditional policies are idempotent and never copy triggering content", as
   assert.ok(first.systemPrompt!.length - 4 <= 3 * (8192 + 2));
 });
 
-test("explicit primitive registration isolates failures and preserves startup diagnostics", async () => {
-  const commands: string[] = [];
-  const handlers: Array<(event: unknown, ctx: { ui: { setStatus(key: string, value: string): void; notify(message: string, level: string): void } }) => void> = [];
-  const pi = {
-    registerCommand(name: string) { commands.push(name); },
-    on(name: string, callback: typeof handlers[number]) {
-      if (name === "session_start") handlers.push(callback);
-    },
-  } as never;
-
-  const report = await registerPrimitives(pi, {
-    primitives: [
-      { name: "broken", dir: "/broken", register() { throw new Error("broken registration"); } },
-      { name: "healthy", dir: "/healthy", register(api: { registerCommand(name: string): void }) { api.registerCommand("healthy"); } },
-    ],
-  });
-
-  assert.deepEqual(report.loaded, ["healthy"]);
-  assert.deepEqual(report.failures, [{ name: "broken", error: "broken registration" }]);
-  assert.deepEqual(commands, ["healthy"]);
-
-  registerPrimitiveStatus(pi, report);
-  const statuses: string[] = [];
-  const warnings: string[] = [];
-  handlers[0]?.({}, {
-    ui: {
-      setStatus(key, value) { statuses.push(`${key}: ${value}`); },
-      notify(message, level) { warnings.push(`${level}: ${message}`); },
-    },
-  });
-  assert.deepEqual(statuses, ["pi-primitives: 1 registered, 1 failed"]);
-  assert.deepEqual(warnings, ["warning: Primitive registration failures:\n- broken: broken registration"]);
-});
-
-test("hostile thrown values produce bounded diagnostics without breaking registration isolation", async () => {
-  const registered: string[] = [];
-  const report = await registerPrimitives({} as never, { primitives: [
-    { name: "unprintable", dir: "/unused", register() { throw { toString() { throw new Error("secondary failure"); } }; } },
-    { name: "oversized", dir: "/unused", register() { throw new Error(`prefix-${"x".repeat(2000)}`); } },
-    { name: "healthy", dir: "/unused", register() { registered.push("healthy"); } },
-  ] });
-  assert.deepEqual(registered, ["healthy"]);
-  assert.deepEqual(report.loaded, ["healthy"]);
-  assert.deepEqual(report.failures.map((failure) => failure.name), ["unprintable", "oversized"]);
+test("fixed policy failures remain isolated with bounded diagnostics", async () => {
+  let calls = 0;
+  const report = await registerPrimitives({ on() {
+    if (++calls === 1) throw { toString() { throw new Error("secondary"); } };
+    if (calls === 2) throw new Error(`prefix-${"x".repeat(2000)}`);
+  } } as never);
+  assert.equal(calls, 3);
+  assert.deepEqual(report.loaded, ["model-artifacts", "whimsical"]);
+  assert.deepEqual(report.failures.map((failure) => failure.name), ["concise-output", "implementation-file-completion"]);
   assert.equal(report.failures[0]?.error, "Unknown error");
-  assert.ok((report.failures[1]?.error.length ?? Infinity) <= 512);
+  assert.equal(report.failures[1]?.error.length, 512);
   assert.match(report.failures[1]?.error || "", /^prefix-/);
+
+  let start: Function | undefined;
+  registerPrimitiveStatus({ on(_name: string, handler: Function) { start = handler; } } as never, report);
+  const warnings: string[] = [];
+  const statuses: string[] = [];
+  start!({}, { ui: {
+    setStatus(key: string, value: string) { statuses.push(`${key}: ${value}`); },
+    notify(message: string) { warnings.push(message); },
+  } });
+  assert.deepEqual(statuses, ["pi-primitives: 2 registered, 2 failed"]);
+  assert.match(warnings[0]!, /concise-output: Unknown error/);
+  assert.match(warnings[1]!, /whimsical is deprecated/);
 });
 
-test("invalid primitive JSON, regex, and empty triggers do not prevent later registration", async () => {
-  const root = mkdtempSync(join(tmpdir(), "gentic-primitives-"));
-  const fixtures = ["invalid-json", "invalid-regex", "empty-phrase", "empty-pattern", "empty-match-pattern"];
+test("legacy scaffold trigger validation remains available without a registry", () => {
+  for (const text of ["{", "null", "[]", '{"pathPatterns":["["]}', '{"phrases":[""]}', '{"pathPatterns":["^"]}']) {
+    assert.throws(() => loadPrimitiveTriggers({ name: "legacy", dir: ".", path: (p) => p, readText: () => text }));
+  }
+});
+
+test("fixed bundle rejects unknown config names and fields while retaining valid disablement", async () => {
+  const root = mkdtempSync(join(tmpdir(), "gentic-policy-config-"));
   try {
-    for (const name of fixtures) {
-      const dir = join(root, name);
-      mkdirSync(dir, { recursive: true });
+    const configPath = join(root, "config.json");
+    writeFileSync(configPath, JSON.stringify({ disabled: ["missing-primitive", "concise-output"], plugins: [] }));
+    const report = await registerPrimitives({ on() {} } as never, { configPath });
+    assert.deepEqual(report.loaded, ["implementation-file-completion", "model-artifacts", "whimsical"]);
+    assert.deepEqual(report.skipped, ["concise-output"]);
+    assert.match(report.failures[0]!.error, /Unknown config fields: plugins/);
+    assert.equal(report.failures[1]!.error, "Unknown disabled primitives: missing-primitive");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("bundle exposes no plugin definitions, context factory, registry, or runtime trigger loader", async () => {
+  const source = readFileSync(new URL("../extensions/pi-primitives/index.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /PolicyDefinition|PrimitiveDefinition|EXPLICIT_|primitiveContext|primitivePath|options\.(?:primitives|policies)|for \(const (?:policy|primitive)/);
+  for (const name of ["concise-output", "implementation-file-completion", "model-artifacts"]) {
+    const policy = readFileSync(new URL(`../extensions/pi-primitives/primitives/${name}/index.ts`, import.meta.url), "utf8");
+    assert.doesNotMatch(policy, /PrimitiveContext|loadPrimitiveTriggers|loadPromptPolicy|triggers\.json/);
+    assert.match(policy, /new URL\("\.\/injection\.md", import\.meta\.url\)/);
+  }
+  let customRan = false;
+  await registerPrimitives({ on() {} } as never, { primitives: [{ register() { customRan = true; } }] } as never);
+  assert.equal(customRan, false);
+});
+
+test("fixed predicates retain every legacy phrase/path and injection order", async () => {
+  const pipeline = await beforeAgentStartPipeline();
+  for (const [name, heading, paths] of [
+    ["implementation-file-completion", "# Implementation file completion convention", ["docs/phase-1.md", "todo.md", "implementation.md"]],
+    ["model-artifacts", "# Model artifacts convention", ["reports/check.md", ".model-artifacts/demo", "logs/check.md"]],
+  ] as const) {
+    const fixture = JSON.parse(readFileSync(new URL(`../extensions/pi-primitives/primitives/${name}/triggers.json`, import.meta.url), "utf8"));
+    for (const prompt of [...fixture.phrases, ...paths]) {
+      const result = pipeline({ prompt: prompt.toUpperCase(), systemPrompt: "BASE" });
+      assert.ok(result?.systemPrompt?.includes(heading), prompt);
     }
-    writeFileSync(join(root, "invalid-json/triggers.json"), "{");
-    writeFileSync(join(root, "invalid-regex/triggers.json"), JSON.stringify({ pathPatterns: ["["] }));
-    writeFileSync(join(root, "empty-phrase/triggers.json"), JSON.stringify({ phrases: [""] }));
-    writeFileSync(join(root, "empty-pattern/triggers.json"), JSON.stringify({ pathPatterns: [""] }));
-    writeFileSync(join(root, "empty-match-pattern/triggers.json"), JSON.stringify({ pathPatterns: ["^"] }));
-    const commands: string[] = [];
-    const report = await registerPrimitives({} as never, { primitives: [
-      ...fixtures.map(name => ({ name, dir: join(root, name), register: (_pi: unknown, ctx: Parameters<typeof loadPrimitiveTriggers>[0]) => { loadPrimitiveTriggers(ctx); } })),
-      { name: "rejected", dir: root, async register() { throw new Error("async failure"); } },
-      { name: "z-valid", dir: root, register() { commands.push("later"); } },
-    ] });
-    assert.deepEqual(report.loaded, ["z-valid"]);
-    assert.deepEqual(report.failures.map((failure) => failure.name), ["invalid-json", "invalid-regex", "empty-phrase", "empty-pattern", "empty-match-pattern", "rejected"]);
-    assert.deepEqual(commands, ["later"]);
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-test("primitive resource reads reject traversal through symlinks", async () => {
-  const root = mkdtempSync(join(tmpdir(), "gentic-primitives-path-"));
-  try {
-    const dir = join(root, "primitive");
-    mkdirSync(dir);
-    writeFileSync(join(root, "outside.txt"), "secret");
-    writeFileSync(join(dir, "..local.txt"), "local");
-    symlinkSync(join(root, "outside.txt"), join(dir, "link.txt"));
-    symlinkSync(join(root, "future-outside.txt"), join(dir, "dangling.txt"));
-    const report = await registerPrimitives({} as never, { primitives: [
-      { name: "dot-prefixed", dir, register(_pi, ctx) { assert.equal(ctx.readText("..local.txt"), "local"); } },
-      { name: "contained", dir, register(_pi, ctx) { ctx.readText("link.txt"); } },
-      { name: "dangling", dir, register(_pi, ctx) { ctx.path("dangling.txt"); } },
-    ] });
-    assert.deepEqual(report.loaded, ["dot-prefixed"]);
-    assert.deepEqual(report.failures.map((failure) => failure.name), ["contained", "dangling"]);
-    assert.ok(report.failures.every((failure) => /escapes primitive directory|cannot be resolved within primitive directory/.test(failure.error)));
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-test("primitive config reports unknown disabled names without hiding valid registration", async () => {
-  const root = mkdtempSync(join(tmpdir(), "gentic-primitives-unknown-config-"));
-  try {
-    const configPath = join(root, "config.json");
-    writeFileSync(configPath, JSON.stringify({ disabled: ["missing-primitive"] }));
-    const report = await registerPrimitives({} as never, { configPath, primitives: [
-      { name: "healthy", dir: root, register() {} },
-    ] });
-    assert.deepEqual(report.loaded, ["healthy"]);
-    assert.deepEqual(report.skipped, []);
-    assert.deepEqual(report.failures, [{ name: "config", error: "Unknown disabled primitives: missing-primitive" }]);
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-test("primitive config can disable modules without hiding status data", async () => {
-  const root = mkdtempSync(join(tmpdir(), "gentic-primitives-config-"));
-  try {
-    const configPath = join(root, "config.json");
-    writeFileSync(configPath, JSON.stringify({ disabled: ["disabled"] }));
-    const report = await registerPrimitives({} as never, { configPath, primitives: [
-      { name: "disabled", dir: root, register() { throw new Error("should not register"); } },
-    ] });
-    assert.deepEqual(report.skipped, ["disabled"]);
-    assert.deepEqual(report.failures, []);
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+  const result = pipeline({ prompt: "assigned file; write a report", systemPrompt: "BASE" })!.systemPrompt!;
+  assert.ok(result.indexOf("# Output and Responses") < result.indexOf("# Implementation file"));
+  assert.ok(result.indexOf("# Implementation file") < result.indexOf("# Model artifacts"));
+  for (const prompt of [`${"x/".repeat(8192)}`, `${"x".repeat(506)}plan.md`]) {
+    assert.doesNotMatch(pipeline({ prompt, systemPrompt: "BASE" })!.systemPrompt!, /# Implementation file/);
+  }
 });

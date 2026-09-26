@@ -30,7 +30,7 @@ export function formatScaffoldPreview(preview: ScaffoldPreview): string {
 export function formatScaffoldApplyResult(result: ScaffoldApplyResult): string {
   const heading = [result.kind, result.name, result.variant].filter(Boolean).join(" ");
   const nextSteps = result.kind === "primitive"
-    ? [`- next: import ${result.name} in extensions/pi-primitives/index.ts and add it to EXPLICIT_PRIMITIVES`]
+    ? [`- next: load extensions/pi-primitives/primitives/${result.name}/index.ts through native Pi extension settings or --extension; no bundle registry edit is needed`]
     : [];
   return [`Applied scaffold: ${heading}`, `Project root: ${result.projectRoot}`, ...result.createdPaths.map((path) => `- created ${path}`), ...nextSteps].join("\n");
 }

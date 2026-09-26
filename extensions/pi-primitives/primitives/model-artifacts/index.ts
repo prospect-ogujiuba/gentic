@@ -1,14 +1,16 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { PrimitiveContext } from "../../index.ts";
-import { loadPrimitiveTriggers, matchesPrimitivePrompt } from "../../triggers.ts";
-import { loadPromptPolicy } from "../../prompt-policy.ts";
+import { readFileSync } from "node:fs";
+import { promptPolicy } from "../../prompt-policy.ts";
+import { pathCandidates, promptFields } from "../../prompt-input.ts";
 
-export default function modelArtifactsPrimitive(pi: ExtensionAPI, ctx: PrimitiveContext): void {
-  const applyPolicy = loadPromptPolicy(ctx);
-  const triggers = loadPrimitiveTriggers(ctx);
-
+export default function modelArtifacts(pi: ExtensionAPI): void {
+  const applyPolicy = promptPolicy(readFileSync(new URL("./injection.md", import.meta.url), "utf8"));
   pi.on("before_agent_start", (event) => {
-    if (!matchesPrimitivePrompt(event, triggers)) return;
-    return applyPolicy(event.systemPrompt);
+    const applicable = promptFields(event).some((text) => {
+      const lower = text.toLowerCase();
+      if (["model artifacts", "model-artifacts", ".model-artifacts", "generated artifact", "artifact path", "write a report", "write a plan", "analysis artifact", "coordination artifact", "todo artifact", "review evidence"].some((phrase) => lower.includes(phrase))) return true;
+      return pathCandidates(text).some((path) => /\.model-artifacts\//i.test(path) || /\b(?:reports|plans|findings|logs|specs|todo)\/[\w./-]*\.md\b/i.test(path));
+    });
+    if (applicable) return applyPolicy(event.systemPrompt);
   });
 }

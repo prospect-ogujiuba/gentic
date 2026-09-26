@@ -202,7 +202,7 @@ test("scaffold previews every native variant including theme and contextual comm
   } finally { rmSync(project, { recursive: true, force: true }); }
 });
 
-test("primitive scaffold uses bounded host helpers and requires explicit registration", () => {
+test("primitive scaffold keeps its paths and bounded helpers with a native entrypoint", async () => {
   const project = createProject();
   try {
     const preview = createScaffoldPreview("primitive", "review-helper", undefined, "dry-run", options(project));
@@ -212,14 +212,29 @@ test("primitive scaffold uses bounded host helpers and requires explicit registr
       "extensions/pi-primitives/primitives/review-helper/triggers.json",
     ]);
     const entry = preview.files.find((file) => file.target.endsWith("index.ts"))!.renderedContent;
-    assert.match(entry, /loadPrimitiveTriggers/);
+    assert.match(entry, /parsePrimitiveTriggers/);
     assert.match(entry, /matchesPrimitivePrompt/);
-    assert.match(entry, /loadPromptPolicy/);
+    assert.match(entry, /promptPolicy/);
+    assert.doesNotMatch(entry, /PrimitiveContext|EXPLICIT_PRIMITIVES/);
+    assert.match(entry, /Primitive\(pi: ExtensionAPI\)/);
     const triggers = JSON.parse(preview.files.find((file) => file.target.endsWith("triggers.json"))!.renderedContent);
     assert.doesNotThrow(() => triggers.pathPatterns.forEach((pattern: string) => new RegExp(pattern, "i")));
 
     const result = applyScaffold("primitive", "review-helper", undefined, options(project));
-    assert.match(formatScaffoldApplyResult(result), /EXPLICIT_PRIMITIVES/);
+    assert.match(formatScaffoldApplyResult(result), /native Pi extension settings or --extension/);
+    for (const helper of ["prompt-policy.ts", "prompt-input.ts", "triggers.ts"]) {
+      writeFileSync(join(project, "extensions/pi-primitives", helper), readFileSync(join(root, "extensions/pi-primitives", helper)));
+    }
+    const native = await import(pathToFileURL(join(project, result.createdPaths[0]!)).href);
+    const handlers: Array<(event: { prompt: string; systemPrompt: string }) => { systemPrompt: string } | undefined> = [];
+    native.default({ on(name: string, handler: typeof handlers[number]) {
+      assert.equal(name, "before_agent_start"); handlers.push(handler);
+    } });
+    assert.equal(handlers.length, 1);
+    assert.equal(handlers[0]!({ prompt: "unrelated", systemPrompt: "BASE" }), undefined);
+    const applied = handlers[0]!({ prompt: "review-helper", systemPrompt: "BASE" })!;
+    assert.match(applied.systemPrompt, /# review-helper/);
+    assert.equal(handlers[0]!({ prompt: "review-helper", systemPrompt: applied.systemPrompt }), undefined);
   } finally { rmSync(project, { recursive: true, force: true }); }
 });
 

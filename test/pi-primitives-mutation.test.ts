@@ -10,15 +10,14 @@ const root = new URL("..", import.meta.url).pathname;
 type Mutant = { name: string; file: string; from: string; to: string };
 
 const mutants: Mutant[] = [
-  { name: "depth boundary", file: "triggers.ts", from: "if (++nodes > 1024 || depth > 16)", to: "if (++nodes > 1024 || depth > 17)" },
-  { name: "character boundary", file: "triggers.ts", from: "if (characters > 32768)", to: "if (characters > 32769)" },
-  { name: "property boundary", file: "triggers.ts", from: "if (++properties > 1024)", to: "if (++properties > 1025)" },
+  { name: "depth boundary", file: "prompt-input.ts", from: "if (++nodes > 1024 || depth > 16)", to: "if (++nodes > 1024 || depth > 17)" },
+  { name: "character boundary", file: "prompt-input.ts", from: "if (characters > 32768)", to: "if (characters > 32769)" },
+  { name: "property boundary", file: "prompt-input.ts", from: "if (++properties > 1024)", to: "if (++properties > 1025)" },
   { name: "trigger count boundary", file: "triggers.ts", from: "const MAX_TRIGGER_ENTRIES = 64;", to: "const MAX_TRIGGER_ENTRIES = 65;" },
   { name: "empty-match regex", file: "triggers.ts", from: "if (compiled.test(\"\"))", to: "if (false && compiled.test(\"\"))" },
   { name: "path candidate length", file: "triggers.ts", from: "candidate.length > MAX_PATH_CANDIDATE_LENGTH", to: "false && candidate.length > MAX_PATH_CANDIDATE_LENGTH" },
   { name: "exact heading", file: "prompt-policy.ts", from: "systemPrompt.split(/\\r?\\n/).includes(heading)", to: "systemPrompt.includes(heading)" },
   { name: "config byte boundary", file: "index.ts", from: "statSync(configPath).size > MAX_CONFIG_BYTES", to: "statSync(configPath).size >= MAX_CONFIG_BYTES" },
-  { name: "resource path containment", file: "index.ts", from: "return rel === \"\" || (rel !== \"..\" && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));", to: "return true;" },
   { name: "diagnostic bound", file: "index.ts", from: "const MAX_DIAGNOSTIC_LENGTH = 512;", to: "const MAX_DIAGNOSTIC_LENGTH = 513;" },
   { name: "duplicate disabled names", file: "index.ts", from: "if (config.disabled && new Set(config.disabled).size !== config.disabled.length)", to: "if (false && config.disabled && new Set(config.disabled).size !== config.disabled.length)" },
 ];

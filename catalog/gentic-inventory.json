@@ -279,6 +279,7 @@
         "extensions/pi-primitives/primitives/implementation-file-completion/index.ts",
         "extensions/pi-primitives/primitives/model-artifacts/index.ts",
         "extensions/pi-primitives/primitives/whimsical/index.ts",
+        "extensions/pi-primitives/prompt-input.ts",
         "extensions/pi-primitives/prompt-policy.ts",
         "extensions/pi-primitives/triggers.ts"
       ],

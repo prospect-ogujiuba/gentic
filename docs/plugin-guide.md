@@ -17,9 +17,9 @@ Run `/scaffold` from the intended Pi project. Preview first, inspect every targe
 | Skill | `/scaffold skill foo --simple` or `--directory` | `skills/foo/` |
 | Prompt | `/scaffold prompt foo` | `prompts/foo.md` |
 | Theme | `/scaffold theme foo` | `themes/foo.json` |
-| Primitive | `/scaffold primitive foo` | `extensions/pi-primitives/primitives/foo/` (then import and add `foo` to `EXPLICIT_PRIMITIVES`) |
+| Primitive (compatibility) | `/scaffold primitive foo` | `extensions/pi-primitives/primitives/foo/` (load `index.ts` with native Pi extension settings or `--extension`) |
 
-Primitive use is restricted to small, shared runtime behavior. New product plugins use native extensions.
+The retained primitive scaffold generates a native extension with the same three file paths and bounded prompt helpers. It is not automatically registered, and no bundle registry exists. New product plugins use the native extension scaffold. Existing custom registry definitions must migrate to native extension entrypoints; the built-in bundle's path and `enabled`/`disabled` configuration remain supported.
 
 ## Plugin contract
 

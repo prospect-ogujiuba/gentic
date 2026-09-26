@@ -403,8 +403,8 @@
           "template": "primitive/index.template.ts",
           "target": "extensions/pi-primitives/primitives/sample-2-name/index.ts",
           "description": "primitive entrypoint",
-          "renderedContent": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nimport type { PrimitiveContext } from \"../../index.ts\";\nimport { loadPromptPolicy } from \"../../prompt-policy.ts\";\nimport { loadPrimitiveTriggers, matchesPrimitivePrompt } from \"../../triggers.ts\";\n\nexport default function sample2NamePrimitive(pi: ExtensionAPI, ctx: PrimitiveContext): void {\n  const applyPolicy = loadPromptPolicy(ctx);\n  const triggers = loadPrimitiveTriggers(ctx);\n\n  pi.on(\"before_agent_start\", (event) => {\n    if (!matchesPrimitivePrompt(event, triggers)) return;\n    return applyPolicy(event.systemPrompt);\n  });\n}\n",
-          "summary": "import { loadPromptPolicy } from \"../../prompt-policy.ts\";"
+          "renderedContent": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nimport { readFileSync } from \"node:fs\";\nimport { promptPolicy } from \"../../prompt-policy.ts\";\nimport { parsePrimitiveTriggers, matchesPrimitivePrompt } from \"../../triggers.ts\";\n\nexport default function sample2NamePrimitive(pi: ExtensionAPI): void {\n  const applyPolicy = promptPolicy(readFileSync(new URL(\"./injection.md\", import.meta.url), \"utf8\"));\n  const triggers = parsePrimitiveTriggers(readFileSync(new URL(\"./triggers.json\", import.meta.url), \"utf8\"));\n\n  pi.on(\"before_agent_start\", (event) => {\n    if (!matchesPrimitivePrompt(event, triggers)) return;\n    return applyPolicy(event.systemPrompt);\n  });\n}\n",
+          "summary": "import { readFileSync } from \"node:fs\";"
         },
         {
           "template": "primitive/supporting-file.template.md",
@@ -422,6 +422,6 @@
         }
       ]
     },
-    "text": "Dry-run scaffold: primitive sample-2-name\nProject root: <project>\nNo files written.\n- extensions/pi-primitives/primitives/sample-2-name/index.ts — primitive entrypoint; import { loadPromptPolicy } from \"../../prompt-policy.ts\";\n- extensions/pi-primitives/primitives/sample-2-name/injection.md — bounded primitive prompt policy; # sample-2-name\n- extensions/pi-primitives/primitives/sample-2-name/triggers.json — primitive triggers; {"
+    "text": "Dry-run scaffold: primitive sample-2-name\nProject root: <project>\nNo files written.\n- extensions/pi-primitives/primitives/sample-2-name/index.ts — primitive entrypoint; import { readFileSync } from \"node:fs\";\n- extensions/pi-primitives/primitives/sample-2-name/injection.md — bounded primitive prompt policy; # sample-2-name\n- extensions/pi-primitives/primitives/sample-2-name/triggers.json — primitive triggers; {"
   }
 }

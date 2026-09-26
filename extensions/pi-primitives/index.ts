@@ -1,64 +1,23 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import conciseOutput from "./primitives/concise-output/index.ts";
 import implementationFileCompletion from "./primitives/implementation-file-completion/index.ts";
 import modelArtifacts from "./primitives/model-artifacts/index.ts";
-import whimsical from "./primitives/whimsical/index.ts";
 
+/** Legacy scaffold source contract only. The bundle never creates or loads contexts. */
 export type PrimitiveContext = {
   name: string;
   dir: string;
   path(path: string): string;
   readText(path: string): string;
 };
-export type Primitive = (pi: ExtensionAPI, ctx: PrimitiveContext) => void | Promise<void>;
-export type PrimitiveDefinition = { name: string; dir: string; register: Primitive };
 export type PrimitiveRegistrationReport = { loaded: string[]; skipped: string[]; failures: Array<{ name: string; error: string }> };
-
 type PrimitiveConfig = { enabled?: boolean; disabled?: string[] };
 const MAX_CONFIG_BYTES = 16384;
 const MAX_DIAGNOSTIC_LENGTH = 512;
-const ROOT = fileURLToPath(new URL(".", import.meta.url));
-const PRIMITIVES_DIR = join(ROOT, "primitives");
-const CONFIG_PATH = join(ROOT, "config.json");
-const EXPLICIT_PRIMITIVES: readonly PrimitiveDefinition[] = [
-  { name: "concise-output", dir: join(PRIMITIVES_DIR, "concise-output"), register: conciseOutput },
-  { name: "implementation-file-completion", dir: join(PRIMITIVES_DIR, "implementation-file-completion"), register: implementationFileCompletion },
-  { name: "model-artifacts", dir: join(PRIMITIVES_DIR, "model-artifacts"), register: modelArtifacts },
-  { name: "whimsical", dir: join(PRIMITIVES_DIR, "whimsical"), register: whimsical },
-];
-
-function isContained(dir: string, path: string): boolean {
-  const rel = relative(dir, path);
-  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
-}
-
-function pathEntryExists(path: string): boolean {
-  try { lstatSync(path); return true; }
-  catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-    throw error;
-  }
-}
-
-function primitivePath(root: string, path: string): string {
-  const resolved = resolve(root, path);
-  if (!isContained(root, resolved)) throw new Error(`Primitive path escapes primitive directory: ${path}`);
-
-  let existing = resolved;
-  while (!pathEntryExists(existing)) {
-    const parent = dirname(existing);
-    if (parent === existing) break;
-    existing = parent;
-  }
-  let canonicalExisting: string;
-  try { canonicalExisting = realpathSync(existing); }
-  catch { throw new Error(`Primitive path cannot be resolved within primitive directory: ${path}`); }
-  if (!isContained(root, canonicalExisting)) throw new Error(`Primitive path escapes primitive directory: ${path}`);
-  return resolved;
-}
+const CONFIG_PATH = fileURLToPath(new URL("./config.json", import.meta.url));
+const NAMES = ["concise-output", "implementation-file-completion", "model-artifacts", "whimsical"];
 
 function describeError(error: unknown): string {
   try {
@@ -67,9 +26,7 @@ function describeError(error: unknown): string {
     const message = raw.slice(0, MAX_DIAGNOSTIC_LENGTH).replace(/\s+/g, " ").trim();
     if (!message) return "Unknown error";
     return truncated ? `${message.slice(0, MAX_DIAGNOSTIC_LENGTH - 3)}...` : message;
-  } catch {
-    return "Unknown error";
-  }
+  } catch { return "Unknown error"; }
 }
 
 function readConfig(report: PrimitiveRegistrationReport, configPath: string): PrimitiveConfig {
@@ -83,12 +40,10 @@ function readConfig(report: PrimitiveRegistrationReport, configPath: string): Pr
     if (config.disabled !== undefined && (!Array.isArray(config.disabled) || config.disabled.some((name) => typeof name !== "string"))) {
       throw new Error("disabled must be an array of primitive names");
     }
-    if (config.disabled?.some((name) => !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name))) {
-      throw new Error("disabled must contain kebab-case primitive names");
-    }
-    if (config.disabled && new Set(config.disabled).size !== config.disabled.length) {
-      throw new Error("disabled must not contain duplicate primitive names");
-    }
+    if (config.disabled?.some((name) => !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name))) throw new Error("disabled must contain kebab-case primitive names");
+    if (config.disabled && new Set(config.disabled).size !== config.disabled.length) throw new Error("disabled must not contain duplicate primitive names");
+    const unknownKeys = Object.keys(parsed).filter((key) => key !== "enabled" && key !== "disabled");
+    if (unknownKeys.length) report.failures.push({ name: "config", error: describeError(`Unknown config fields: ${unknownKeys.join(", ")}; use enabled/disabled or native Pi package filters`) });
     return config;
   } catch (error) {
     report.failures.push({ name: "config", error: describeError(error) });
@@ -96,50 +51,34 @@ function readConfig(report: PrimitiveRegistrationReport, configPath: string): Pr
   }
 }
 
-function primitiveContext(name: string, dir: string): PrimitiveContext {
-  let canonicalDir: string | undefined;
-  const root = (): string => canonicalDir ??= realpathSync(dir);
-  return {
-    name,
-    dir,
-    path(path) { return primitivePath(root(), path); },
-    readText(path) {
-      const canonicalRoot = root();
-      const resource = realpathSync(primitivePath(canonicalRoot, path));
-      if (!isContained(canonicalRoot, resource)) throw new Error(`Primitive path escapes primitive directory: ${path}`);
-      return readFileSync(resource, "utf8");
-    },
-  };
-}
-
-export async function registerPrimitives(
-  pi: ExtensionAPI,
-  options: { configPath?: string; primitives?: readonly PrimitiveDefinition[] } = {},
-): Promise<PrimitiveRegistrationReport> {
+/** Fixed compatibility bundle, not an extension/plugin registration API. */
+export async function registerPrimitives(pi: ExtensionAPI, options: { configPath?: string } = {}): Promise<PrimitiveRegistrationReport> {
   const report: PrimitiveRegistrationReport = { loaded: [], skipped: [], failures: [] };
-  const primitives = options.primitives ?? EXPLICIT_PRIMITIVES;
   const config = readConfig(report, options.configPath ?? CONFIG_PATH);
   if (config.enabled === false) {
-    report.skipped.push(...primitives.map((primitive) => primitive.name));
+    report.skipped.push(...NAMES);
     return report;
   }
   const disabled = new Set(config.disabled ?? []);
-  const known = new Set(primitives.map((primitive) => primitive.name));
-  const unknownDisabled = [...disabled].filter((name) => !known.has(name));
-  if (unknownDisabled.length) report.failures.push({ name: "config", error: describeError(new Error(`Unknown disabled primitives: ${unknownDisabled.join(", ")}`)) });
+  const unknownDisabled = [...disabled].filter((name) => !NAMES.includes(name));
+  if (unknownDisabled.length) report.failures.push({ name: "config", error: describeError(`Unknown disabled primitives: ${unknownDisabled.join(", ")}`) });
 
-  for (const primitive of primitives) {
-    if (disabled.has(primitive.name)) {
-      report.skipped.push(primitive.name);
-      continue;
-    }
-    try {
-      await primitive.register(pi, primitiveContext(primitive.name, primitive.dir));
-      report.loaded.push(primitive.name);
-    } catch (error) {
-      report.failures.push({ name: primitive.name, error: describeError(error) });
-    }
-  }
+  // Explicit policy boundaries preserve registration order and independent startup recovery.
+  if (disabled.has("concise-output")) report.skipped.push("concise-output");
+  else try { conciseOutput(pi); report.loaded.push("concise-output"); }
+  catch (error) { report.failures.push({ name: "concise-output", error: describeError(error) }); }
+
+  if (disabled.has("implementation-file-completion")) report.skipped.push("implementation-file-completion");
+  else try { implementationFileCompletion(pi); report.loaded.push("implementation-file-completion"); }
+  catch (error) { report.failures.push({ name: "implementation-file-completion", error: describeError(error) }); }
+
+  if (disabled.has("model-artifacts")) report.skipped.push("model-artifacts");
+  else try { modelArtifacts(pi); report.loaded.push("model-artifacts"); }
+  catch (error) { report.failures.push({ name: "model-artifacts", error: describeError(error) }); }
+
+  // Legacy name remains accepted; Pi owns the working indicator.
+  if (disabled.has("whimsical")) report.skipped.push("whimsical");
+  else report.loaded.push("whimsical");
   return report;
 }
 
@@ -148,6 +87,7 @@ export function registerPrimitiveStatus(pi: ExtensionAPI, report: PrimitiveRegis
     const summary = `${report.loaded.length} registered${report.skipped.length ? `, ${report.skipped.length} disabled` : ""}${report.failures.length ? `, ${report.failures.length} failed` : ""}`;
     ctx.ui.setStatus("pi-primitives", summary);
     if (report.failures.length) ctx.ui.notify(`Primitive registration failures:\n${report.failures.map((failure) => `- ${failure.name}: ${failure.error}`).join("\n")}`, "warning");
+    if (report.loaded.includes("whimsical")) ctx.ui.notify("pi-primitives: whimsical is deprecated and has no effect; Pi owns the working indicator. Disable whimsical in config.json to silence this notice.", "info");
   });
 }
 

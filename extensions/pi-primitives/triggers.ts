@@ -1,4 +1,7 @@
+// Legacy scaffold helpers only; built-in policies use fixed predicates, not trigger files.
 import type { PrimitiveContext } from "./index.ts";
+import { flattenTriggerText } from "./prompt-input.ts";
+export { flattenTriggerText } from "./prompt-input.ts";
 
 export type PrimitiveTriggers = {
   phrases: readonly string[];
@@ -33,7 +36,12 @@ function stringList(value: unknown, field: string): string[] {
 }
 
 export function loadPrimitiveTriggers(ctx: PrimitiveContext, file = "triggers.json"): PrimitiveTriggers {
-  const parsed: unknown = JSON.parse(ctx.readText(file));
+  return parsePrimitiveTriggers(ctx.readText(file));
+}
+
+/** Compatibility parser for the retained scaffold; not used by built-in policies. */
+export function parsePrimitiveTriggers(text: string): PrimitiveTriggers {
+  const parsed: unknown = JSON.parse(text);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("triggers must be a JSON object");
   const triggerFile = parsed as TriggerFile;
   const phrases = stringList(triggerFile.phrases, "phrases").map((phrase) => phrase.toLowerCase());
@@ -47,42 +55,6 @@ export function loadPrimitiveTriggers(ctx: PrimitiveContext, file = "triggers.js
     }
   });
   return { phrases, pathPatterns };
-}
-
-export function flattenTriggerText(value: unknown): string {
-  const parts: string[] = [];
-  const seen = new WeakSet<object>();
-  let nodes = 0;
-  let properties = 0;
-  let characters = 0;
-  let invalid = false;
-  const visit = (entry: unknown, depth: number): void => {
-    if (invalid) return;
-    if (++nodes > 1024 || depth > 16) { invalid = true; return; }
-    if (typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean") {
-      const text = String(entry);
-      characters += text.length + (parts.length ? 1 : 0);
-      if (characters > 32768) { invalid = true; return; }
-      parts.push(text);
-      return;
-    }
-    if (entry && typeof entry === "object") {
-      if (seen.has(entry)) { invalid = true; return; }
-      seen.add(entry);
-      for (const key in entry) {
-        if (invalid) break;
-        if (++properties > 1024) { invalid = true; break; }
-        if (!Object.hasOwn(entry, key)) continue;
-        const descriptor = Object.getOwnPropertyDescriptor(entry, key);
-        if (!descriptor || !("value" in descriptor)) { invalid = true; break; }
-        visit(descriptor.value, depth + 1);
-      }
-      seen.delete(entry);
-    }
-  };
-  try { visit(value, 0); } catch { invalid = true; }
-  // Do not match a partial/truncated input: oversized or malformed input fails closed.
-  return invalid ? "" : parts.join("\n");
 }
 
 function pathCandidates(text: string): string[] | undefined {

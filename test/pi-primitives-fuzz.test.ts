@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -102,48 +102,22 @@ test("seeded trigger and config fuzzing never escapes bounded diagnostics", asyn
     }
     for (const content of configCandidates) {
       writeFileSync(configPath, content);
-      const report = await registerPrimitives({} as never, { configPath, primitives: [{ name: "healthy", dir: root, register() {} }] });
+      const report = await registerPrimitives({ on() {} } as never, { configPath });
       assert.ok(report.failures.every((failure) => failure.error.length <= 512 && !/[\r\n]/.test(failure.error)));
     }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("seeded path and thrown-value fuzzing preserves containment and later registration", async () => {
+test("seeded thrown-value fuzzing preserves fixed policy startup recovery", async () => {
   const random = seeded(0xdecafbad);
-  const root = mkdtempSync(join(tmpdir(), "gentic-primitives-path-fuzz-"));
-  try {
-    const dir = join(root, "primitive");
-    mkdirSync(dir);
-    writeFileSync(join(root, "outside.txt"), "outside");
-    symlinkSync(join(root, "outside.txt"), join(dir, "escape.txt"));
-
-    for (let iteration = 0; iteration < 200; iteration += 1) {
-      const name = `${random() < 0.5 ? ".." : ""}safe-${iteration}.txt`;
-      writeFileSync(join(dir, name), `safe-${iteration}`);
-      const report = await registerPrimitives({} as never, { primitives: [
-        { name: "safe", dir, register(_pi, ctx) { assert.equal(ctx.readText(name), `safe-${iteration}`); } },
-      ] });
-      assert.deepEqual(report.loaded, ["safe"]);
-    }
-
-    for (const path of ["../outside.txt", join(root, "outside.txt"), "escape.txt"]) {
-      const report = await registerPrimitives({} as never, { primitives: [
-        { name: "escape", dir, register(_pi, ctx) { ctx.readText(path); } },
-        { name: "healthy", dir, register() {} },
-      ] });
-      assert.deepEqual(report.loaded, ["healthy"]);
-      assert.equal(report.failures[0]?.name, "escape");
-    }
-
-    for (let iteration = 0; iteration < 300; iteration += 1) {
-      const payload = `${"x".repeat(Math.floor(random() * 2000))}\nline-${iteration}`;
-      const report = await registerPrimitives({} as never, { primitives: [
-        { name: "hostile", dir, register() { throw iteration % 17 === 0 ? { toString() { throw new Error("nested"); } } : new Error(payload); } },
-        { name: "healthy", dir, register() {} },
-      ] });
-      assert.deepEqual(report.loaded, ["healthy"]);
-      assert.ok((report.failures[0]?.error.length ?? Infinity) <= 512);
-      assert.doesNotMatch(report.failures[0]?.error || "", /[\r\n]/);
-    }
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  for (let iteration = 0; iteration < 300; iteration += 1) {
+    const payload = `${"x".repeat(Math.floor(random() * 2000))}\nline-${iteration}`;
+    let calls = 0;
+    const report = await registerPrimitives({ on() {
+      if (++calls === 1) throw iteration % 17 === 0 ? { toString() { throw new Error("nested"); } } : new Error(payload);
+    } } as never);
+    assert.deepEqual(report.loaded, ["implementation-file-completion", "model-artifacts", "whimsical"]);
+    assert.ok((report.failures[0]?.error.length ?? Infinity) <= 512);
+    assert.doesNotMatch(report.failures[0]?.error || "", /[\r\n]/);
+  }
 });
