@@ -3,6 +3,6 @@
   "publicEntry": "index.ts",
   "layers": ["domain", "app", "pi", "ui"],
   "resources": [],
-  "state": ".model-artifacts/initiatives/<topic>/workflow.json, tracked repository-root .pi-todos.json project todos, plus branch gentic.todo.event session entries",
-  "tests": ["test/pi-swe-domain.test.ts", "test/pi-swe-store.test.ts", "test/pi-swe-create.test.ts", "test/pi-swe-evidence.test.ts", "test/pi-swe-runtime.test.ts", "test/pi-swe-revision-context.test.ts", "test/pi-swe-docket.test.ts", "test/pi-todo-characterization.test.ts", "test/pi-todo-command-adapter.test.ts", "test/pi-todo-contract.test.ts", "test/pi-todo-project-store.test.ts", "test/pi-todo-state-core.test.ts", "test/pi-todo-thin-surface.test.ts", "test/pi-todo-tui.test.ts", "test/pi-todo-workflow-backend.test.ts"]
+  "state": ".model-artifacts/initiatives/<topic>/workflow.json; optional pi-todo projection is published through Pi native events without owning Todo persistence",
+  "tests": ["test/pi-swe-domain.test.ts", "test/pi-swe-store.test.ts", "test/pi-swe-create.test.ts", "test/pi-swe-evidence.test.ts", "test/pi-swe-runtime.test.ts", "test/pi-swe-revision-context.test.ts", "test/pi-swe-docket.test.ts", "test/pi-todo-workflow-backend.test.ts"]
 }

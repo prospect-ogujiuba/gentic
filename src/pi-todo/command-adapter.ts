@@ -4,7 +4,7 @@ import {
   rootActionCompletions,
   type CommandActionSpec,
   type CommandCompletion,
-} from "../../../../src/command-guidance.ts";
+} from "../command-guidance.ts";
 import { TODO_MAX_ITEMS, type TodoPublicItem } from "./contract.ts";
 import type { TodoCoreState } from "./state-core.ts";
 

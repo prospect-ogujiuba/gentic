@@ -15,9 +15,11 @@ Gentic uses Pi's package manifest as the only resource loader. Resource director
 
 `pi-prompts` and `pi-skills` no-op extension entrypoints were removed. Their `add-prompt` and `add-skill` resources moved to the root-owned locations above.
 
-## SWE canonical surface
+## SWE and Todo canonical surfaces
 
-`pi-swe` owns runtime `/swe` and `/todo` plus the `swe` and `todo` tools. It has no prompt or skill resources. Durable multi-step work uses one `.model-artifacts/initiatives/<topic>/workflow.json`; session todos remain branch-backed, while explicitly scoped project todos use the tracked repository-root `.pi-todos.json`. The unified todo surface projects a focused active workflow directly and never copies, promotes, or synchronizes items between authorities.
+`pi-swe` owns runtime `/swe` and the `swe` tool. Durable multi-step work uses one `.model-artifacts/initiatives/<topic>/workflow.json`. The independently discovered `pi-todo` extension owns `/todo`, the `todo` tool, branch-backed session todos, and explicitly scoped tracked repository-root `.pi-todos.json` project todos. Neither extension has prompt or skill resources.
+
+When both extensions are loaded, an optional Pi-native event integration projects focused active workflow work directly into Todo. It never copies, promotes, or synchronizes items between authorities; Todo finish maps only to workflow `markImplemented`. Either entrypoint works alone, both load orders are supported, and no Gentic registry is involved.
 
 ## Validation
 

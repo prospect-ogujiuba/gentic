@@ -12,8 +12,6 @@ import { buildSwePlanningPrompt, prepareSwePlanRequest } from "./planning.ts";
 import { projectSweDocket, renderSweDocketLines } from "../ui/docket.ts";
 import { SweDocketModal } from "../ui/modal.ts";
 import { plainSweTheme } from "../ui/theme.ts";
-import { registerLightweightTodoSurface } from "../todo/thin-surface.ts";
-import { WorkflowTodoBackend } from "../todo/workflow-backend.ts";
 
 const ACTIONS = ["create", "status", "next", "start", "implemented", "revise", "prepare_verification", "prepare_independent_review", "record_review", "complete", "pause", "resume"] as const;
 const parameters = Type.Object({
@@ -38,17 +36,23 @@ const OPTIONAL_WORK_COMMANDS = new Set(["complete"]);
 
 export { getSweCommandCompletions } from "./autocomplete.ts";
 
-export function registerSweSurface(pi: ExtensionAPI): void {
+export type SweSurfaceOptions = {
+  onFocusChange?: (ctx: ExtensionContext) => Promise<void>;
+};
+
+/** The composition layer may project focused work without owning SWE lifecycle. */
+export type SweSurfaceController = {
+  focusedAuthority(ctx: ExtensionContext): { service: SweService; initiativeId: string } | undefined;
+};
+
+export function registerSweSurface(pi: ExtensionAPI, options: SweSurfaceOptions = {}): SweSurfaceController {
   const services = new Map<string, SweService>();
   const focused = new Map<string, string>();
   let completionCwd = process.cwd();
-  let refreshTodoSurface: ((ctx: ExtensionContext) => Promise<void>) | undefined;
   const service = (cwd: string) => { let value = services.get(cwd); if (!value) { value = new SweService(cwd); services.set(cwd, value); } return value; };
-  const rememberFocus = async (ctx: ExtensionContext, initiativeId: string): Promise<void> => {
-    focused.set(ctx.cwd, initiativeId);
-    pi.appendEntry(SWE_FOCUS_ENTRY_TYPE, { initiativeId });
+  const refreshFocusedProjection = async (ctx: ExtensionContext): Promise<void> => {
     try {
-      await refreshTodoSurface?.(ctx);
+      await options.onFocusChange?.(ctx);
     } catch {
       // Presentation refresh must never turn a successful durable SWE mutation
       // into an apparent failure; todo execution still resolves authority afresh.
@@ -56,8 +60,15 @@ export function registerSweSurface(pi: ExtensionAPI): void {
       catch { /* UI failure is non-authoritative. */ }
     }
   };
+  const rememberFocus = async (ctx: ExtensionContext, initiativeId: string): Promise<void> => {
+    focused.set(ctx.cwd, initiativeId);
+    pi.appendEntry(SWE_FOCUS_ENTRY_TYPE, { initiativeId });
+    await refreshFocusedProjection(ctx);
+  };
   const triggerContinuation = (cwd: string, initiativeId: string) => {
-    const initiative = service(cwd).status(initiativeId).initiative;
+    let initiative: Initiative;
+    try { initiative = service(cwd).status(initiativeId).initiative; }
+    catch { return; } // Invalid restored authority remains focused and fails closed without breaking session startup.
     const unfinished = initiative.work.some((item) => item.kind !== "phase" && item.status !== "complete" && !item.disposition);
     if (initiative.status !== "active" || !unfinished) return;
     pi.sendMessage({
@@ -66,11 +77,16 @@ export function registerSweSurface(pi: ExtensionAPI): void {
       display: false,
     }, { triggerTurn: true, deliverAs: "followUp" });
   };
-  pi.on("session_start", (_event, ctx) => {
+  pi.on("session_start", async (_event, ctx) => {
     completionCwd = ctx.cwd;
     const initiativeId = restoreSweFocus(ctx.sessionManager.getEntries());
-    if (!initiativeId) { focused.delete(ctx.cwd); return; }
+    if (!initiativeId) {
+      focused.delete(ctx.cwd);
+      await refreshFocusedProjection(ctx);
+      return;
+    }
     focused.set(ctx.cwd, initiativeId);
+    await refreshFocusedProjection(ctx);
     triggerContinuation(ctx.cwd, initiativeId);
   });
   pi.on("before_agent_start", (_event, ctx) => {
@@ -182,15 +198,15 @@ export function registerSweSurface(pi: ExtensionAPI): void {
     },
   });
 
-  refreshTodoSurface = registerLightweightTodoSurface(pi, {
-    resolveWorkflowBackend: (ctx) => {
+  return {
+    focusedAuthority(ctx) {
       const initiativeId = focused.get(ctx.cwd);
       if (!initiativeId) return undefined;
       const current = service(ctx.cwd);
       if (current.status(initiativeId).initiative.status !== "active") return undefined;
-      return new WorkflowTodoBackend(current, initiativeId);
+      return { service: current, initiativeId };
     },
-  }).refresh;
+  };
 }
 
 async function executeAction(service: SweService, input: {

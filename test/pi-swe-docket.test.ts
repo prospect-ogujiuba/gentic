@@ -171,12 +171,12 @@ test("responsive initiative list preserves full terminal names in two-line rows"
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("pi-swe runtime has no pi-todo dependency", () => {
+test("pi-swe lifecycle core has no pi-todo dependency", () => {
   for (const path of [
-    "extensions/pi-swe/index.ts",
+    "extensions/pi-swe/src/app/service.ts",
+    "extensions/pi-swe/src/app/store.ts",
     "extensions/pi-swe/src/pi/register.ts",
-    "extensions/pi-swe/src/ui/docket.ts",
-    "extensions/pi-swe/src/ui/modal.ts",
+    "extensions/pi-swe/src/domain/completion.ts",
   ]) {
     assert.doesNotMatch(readFileSync(new URL(`../${path}`, import.meta.url), "utf8"), /pi-todo/);
   }

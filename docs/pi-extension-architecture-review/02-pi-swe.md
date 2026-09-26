@@ -1,60 +1,30 @@
-# 2. `pi-swe` — several products welded together
+# 2. `pi-swe` — Todo boundary separated
 
 > Shared review context: [overall verdict, comparison table, and priority order](./README.md).
 
-## Verdict
+## Current verdict
 
-**Overgrown / poorly bounded**
+**Separated ownership; optional integration remains explicit**
 
-## Findings
+The original review found that pi-swe owned durable initiative lifecycle, verification, context, UI, standalone Todo, and workflow-backed Todo through one discovery entrypoint. Disabling pi-swe therefore removed lightweight Todo even though Todo was not an SWE implementation detail.
 
-At roughly 3,500 lines, `pi-swe` owns:
+## Implemented boundary
 
-- durable initiative authority
-- lifecycle/domain rules
-- verification capture
-- revision history
-- completion commits
-- planning prompts
-- context injection
-- modal/docket UI
-- standalone todos
-- workflow-backed todos
+The package now discovers two extension entrypoints:
 
-`registerSweSurface()` alone manages:
+- `extensions/pi-swe/index.ts` registers only `swe` and owns workflow lifecycle, evidence, review, completion, focus, and continuation.
+- `extensions/pi-todo/index.ts` registers only `todo` and owns session/project Todo persistence and mutation.
 
-- service caches
-- focus restoration
-- automatic continuation
-- context rewriting
-- tool observation
-- command dispatch
-- UI
-- todo registration
+Either extension works when the other is absent. Their optional focused-work integration uses Pi's native `pi.events` bus and the provider-neutral public contract in `src/pi-todo/workflow-integration.ts`. A request/announcement handshake supports both load orders, while focus-change events refresh Todo presentation. Neither extension imports the other's private implementation, and there is no shared registry or second ledger.
 
-`todo` is not an SWE implementation detail, yet disabling `pi-swe` removes the lightweight todo system too.
+`extensions/pi-swe/integrations/todo.ts` is a projection adapter owned by pi-swe. It exposes only workflow status, `start`, and Todo `finish` mapped to `markImplemented`. Verification, evidence, work completion, and initiative completion remain inaccessible to Todo.
 
-There is also substantial runtime state in maps and single mutable slots:
+The shared `src/ui/docket-kit/` owns presentation mechanics only; it has no lifecycle, persistence, session, or service authority.
 
-- `services`
-- `focused`
-- `completionCwd`
-- `SweService.#selected`
-- `SweService.#verificationInitiative`
-- `VerificationCollector.#pending`
+## Preserved behavior
 
-The implementation defends these carefully, but the design creates avoidable session-lifetime and routing complexity.
+The split retains public `swe`/`todo` names, session/project/initiative/all Todo selection, branch fork and restart replay, project persistence, malformed focused-authority fail-closed behavior, and bounded TUI/non-TUI output. Tests exercise each extension alone, both registration orders, focus refresh, absent integration, and denied authority crossings.
 
-## Recommended fix
+## Related priority
 
-Split the extension into:
-
-- `pi-todo`
-- `pi-swe-core`
-- an optional SWE UI/automation adapter
-
-Keep workflow projection as an integration contract rather than folding todo ownership into SWE.
-
-## Related priorities
-
-This maps directly to priority **#2** in the [shared priority order](./README.md#priority-order).
+This completes priority **#2** in the [shared priority order](./README.md#priority-order).

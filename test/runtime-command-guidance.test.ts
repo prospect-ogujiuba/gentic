@@ -8,7 +8,7 @@ import { completePiContextArgument } from "../extensions/pi-context/src/pi/regis
 import { registerPiGit } from "../extensions/pi-git/src/pi/register.ts";
 import { completeHudArgument, registerHudCommand } from "../extensions/pi-hud/src/pi/adapter.ts";
 import { getSweCommandCompletions } from "../extensions/pi-swe/src/pi/register.ts";
-import { getTodoCommandCompletions } from "../extensions/pi-swe/src/todo/thin-surface.ts";
+import { getTodoCommandCompletions } from "../src/pi-todo/thin-surface.ts";
 
 type Completion = { value: string; label: string; description?: string };
 type Command = {

@@ -1,5 +1,16 @@
 import type { TodoPublicAction, TodoPublicRequest, TodoScope } from "./contract.ts";
 
+/** Typed integration failure; no dependency on a workflow implementation. */
+export class WorkflowTodoError extends Error {
+  readonly code: "TODO_NOT_FOUND" | "INVALID_TRANSITION" | "UNSUPPORTED_WORKFLOW_ACTION";
+
+  constructor(code: WorkflowTodoError["code"], message: string) {
+    super(message);
+    this.name = "WorkflowTodoError";
+    this.code = code;
+  }
+}
+
 /** Provider-neutral status. rawStatus retains authority-specific lifecycle detail. */
 export type TodoViewStatus = "ready" | "active" | "blocked" | "implemented" | "complete" | "group";
 

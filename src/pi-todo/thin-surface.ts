@@ -6,7 +6,7 @@ import type {
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 
-import { renderUsage } from "../../../../src/command-guidance.ts";
+import { renderUsage } from "../command-guidance.ts";
 import {
   getTodoCommandCompletions,
   renderTodoQuickHelp,
@@ -28,7 +28,7 @@ import { BranchTodoCore, TodoCoreError, type TodoCoreState } from "./state-core.
 import { NO_TODO_CAPABILITIES, type TodoBackend, type TodoMutationResult, type TodoView, type TodoViewItem } from "./provider.ts";
 import { ProjectTodoBackend, projectSessionTodoView } from "./project-backend.ts";
 import { ProjectTodoStoreError } from "./project-store.ts";
-import { WorkflowTodoError } from "./workflow-backend.ts";
+import { WorkflowTodoError } from "./provider.ts";
 import { createTodoDocketComponent, orderedTodoRows, renderTodoDocketLines } from "./ui/docket.ts";
 import { createSharedDocketComponent, renderSharedDocketLines } from "./ui/shared-docket.ts";
 import { LightweightTodoModal, TodoDocketModal } from "./ui/modal.ts";
@@ -85,8 +85,14 @@ export function registerLightweightTodoSurface(pi: ExtensionAPI, options: Surfac
   const readProjectBackend = async (ctx: ExtensionContext) => resolveProjectBackend(ctx);
   const refreshSession = async (ctx: ExtensionContext): Promise<void> => {
     const core = bindCore(ctx);
-    const workflow = await readWorkflowBackend(ctx);
-    completionWorkflowView = workflow ? await workflow.view() : undefined;
+    try {
+      const workflow = await readWorkflowBackend(ctx);
+      completionWorkflowView = workflow ? await workflow.view() : undefined;
+    } catch (error) {
+      completionWorkflowView = undefined;
+      updateUnavailableDisplay(ctx, error);
+      return;
+    }
     try { completionProjectView = await (await readProjectBackend(ctx)).view(); } catch { completionProjectView = undefined; }
     if (completionWorkflowView) updateWorkflowDisplay(completionWorkflowView, ctx);
     else updateDisplay(core, ctx);
@@ -412,6 +418,14 @@ async function openTodoDocket(pi: ExtensionAPI, ctx: ExtensionCommandContext, wo
       margin: 1,
     },
   });
+}
+
+function updateUnavailableDisplay(ctx: ExtensionContext | ExtensionCommandContext, error: unknown): void {
+  if (!ctx.hasUI) return;
+  try { ctx.ui.setStatus(STATUS_KEY, "todo: unavailable"); } catch { /* UI failure is non-authoritative. */ }
+  try { ctx.ui.setWidget(STATUS_KEY, undefined); } catch { /* UI failure is non-authoritative. */ }
+  try { ctx.ui.notify(`Todo authority is unavailable: ${error instanceof Error ? error.message : String(error)}`, "warning"); }
+  catch { /* UI failure is non-authoritative. */ }
 }
 
 function updateWorkflowDisplay(view: TodoView, ctx: ExtensionContext | ExtensionCommandContext): void {

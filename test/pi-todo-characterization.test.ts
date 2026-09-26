@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import piSwe from "../extensions/pi-swe/index.ts";
+import piTodo from "../extensions/pi-todo/index.ts";
 
 type TodoState = {
   todos: Record<string, {
@@ -44,10 +44,10 @@ async function withHarness(run: (harness: ReturnType<typeof createHarness>) => P
   }
 }
 
-function createHarness(cwd: string) {
+function createHarness(cwd: string, initialBranch: unknown[] = []) {
   const handlers = new Map<string, Function>();
   const tools = new Map<string, RegisteredTool>();
-  const branch: unknown[] = [];
+  const branch: unknown[] = structuredClone(initialBranch);
   const pi = {
     on(event: string, handler: Function) { handlers.set(event, handler); },
     registerTool(tool: RegisteredTool & { name: string }) { tools.set(tool.name, tool); },
@@ -64,7 +64,7 @@ function createHarness(cwd: string) {
     sessionManager: { getBranch: () => branch },
     ui: { setStatus() {}, setWidget() {}, setTitle() {}, notify() {} },
   };
-  piSwe(pi as never);
+  piTodo(pi as never);
   const todo = tools.get("todo");
   assert.ok(todo);
   const execute = (action: string, params: Record<string, unknown> = {}) =>
@@ -126,6 +126,37 @@ test("tool state reconstructs exclusively from the active session branch", async
   });
 });
 
+test("fresh runtime replays persisted session entries without writing during reads", async () => {
+  await withHarness(async ({ cwd, branch, execute }) => {
+    const created = onlyTodo(await execute("create", { title: "Survive restart" }));
+    await execute("start", { todoId: created.id });
+    const persisted = structuredClone(branch);
+    const restarted = createHarness(cwd, persisted);
+
+    const state = stateOf(await restarted.execute("list", { scope: "session" }));
+    assert.equal(state.todos[created.id].status, "in_progress");
+    assert.deepEqual(restarted.branch, persisted);
+
+    await restarted.execute("finish", { scope: "session", todoId: created.id, summary: "after restart" });
+    assert.equal(stateOf(await restarted.execute("list")).todos[created.id].status, "completed");
+    assert.deepEqual(branch, persisted);
+  });
+});
+
+test("forked runtimes preserve their shared prefix but isolate later mutations", async () => {
+  await withHarness(async ({ cwd, branch, execute }) => {
+    const created = onlyTodo(await execute("create", { title: "Shared prefix" }));
+    const fork = createHarness(cwd, branch);
+    await execute("start", { todoId: created.id });
+    await fork.execute("block", { todoId: created.id, reason: "fork only" });
+
+    assert.equal(stateOf(await execute("list")).todos[created.id].status, "in_progress");
+    assert.equal(stateOf(await fork.execute("list")).todos[created.id].status, "external_blocked");
+    const forkOnly = onlyTodo(await fork.execute("create", { title: "Fork-local work" }));
+    assert.equal(stateOf(await execute("list")).todos[forkOnly.id], undefined);
+  });
+});
+
 test("registered tool permits at most one active todo for the session owner", async () => {
   await withHarness(async ({ execute }) => {
     const first = onlyTodo(await execute("create", { title: "First active" }));
@@ -146,11 +177,10 @@ test("registered tool permits at most one active todo for the session owner", as
   });
 });
 
-test("historical workflow files do not silently activate deleted SWE ownership", async () => {
-  await withHarness(async ({ ctx, handlers }) => {
-    const hook = handlers.get("tool_call") as ToolCallHandler;
-    assert.equal(await hook({ type: "tool_call", toolName: "todo", input: { action: "create" } }, ctx), undefined);
-    assert.equal(await hook({ type: "tool_call", toolName: "swe_workflow", input: { action: "status" } }, ctx), undefined);
-    assert.equal(await hook({ type: "tool_call", toolName: "write" }, ctx), undefined);
+test("standalone pi-todo installs no workflow lifecycle observation hooks", async () => {
+  await withHarness(async ({ handlers }) => {
+    assert.equal(handlers.has("tool_call"), false);
+    assert.equal(handlers.has("tool_result"), false);
+    assert.deepEqual([...handlers.keys()].sort(), ["session_start", "session_tree"]);
   });
 });

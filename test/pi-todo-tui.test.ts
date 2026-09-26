@@ -2,12 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { visibleWidth } from "@earendil-works/pi-tui";
 
-import type { TodoCoreState } from "../extensions/pi-swe/src/todo/state-core.ts";
-import { renderTodoDocketLines, renderTodoProgress } from "../extensions/pi-swe/src/todo/ui/docket.ts";
-import { renderSharedDocketLines } from "../extensions/pi-swe/src/todo/ui/shared-docket.ts";
-import { LightweightTodoModal } from "../extensions/pi-swe/src/todo/ui/modal.ts";
-import { NO_TODO_CAPABILITIES, type TodoView } from "../extensions/pi-swe/src/todo/provider.ts";
-import { plainTodoTheme } from "../extensions/pi-swe/src/todo/ui/theme.ts";
+import type { TodoCoreState } from "../src/pi-todo/state-core.ts";
+import { renderTodoDocketLines, renderTodoProgress } from "../src/pi-todo/ui/docket.ts";
+import { renderSharedDocketLines } from "../src/pi-todo/ui/shared-docket.ts";
+import { LightweightTodoModal } from "../src/pi-todo/ui/modal.ts";
+import { NO_TODO_CAPABILITIES, type TodoView } from "../src/pi-todo/provider.ts";
+import { plainTodoTheme } from "../src/pi-todo/ui/theme.ts";
 
 const state: TodoCoreState = {
   order: ["ready", "active", "blocked", "done"],

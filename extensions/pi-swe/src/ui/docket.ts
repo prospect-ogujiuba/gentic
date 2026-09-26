@@ -1,12 +1,12 @@
 import type { Initiative } from "../domain/initiative.ts";
-import { projectWorkflowTodoView } from "../todo/workflow-backend.ts";
-import type { TodoView, TodoViewItem } from "../todo/provider.ts";
+import { projectWorkflowTodoView } from "../../integrations/todo.ts";
+import type { TodoView, TodoViewItem } from "../../../../src/pi-todo/provider.ts";
 import {
   createSharedDocketComponent,
   renderSharedDocketLines,
   visibleTodoViewItems,
   type SharedDocketRenderOptions,
-} from "../todo/ui/shared-docket.ts";
+} from "../../../../src/pi-todo/ui/shared-docket.ts";
 import type { SweTheme } from "./theme.ts";
 
 export type SweDocketItem = TodoViewItem;

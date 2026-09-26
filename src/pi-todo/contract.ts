@@ -1,4 +1,4 @@
-/** Stable public contract for pi-swe's unified todo capability. */
+/** Stable public contract for the independently discovered Todo capability. */
 export const TODO_TEXT_LIMITS = Object.freeze({
   title: 256,
   todoId: 128,

@@ -37,7 +37,7 @@ function fixture() {
   return { root, store, collector, service: new SweService(root, store, collector) };
 }
 
-test("unified Pi surface registers swe and todo once and never internally executes verification", async () => {
+test("standalone SWE surface registers only swe and never internally executes verification", async () => {
   const handlers = new Map<string, Function>();
   const commands = new Map<string, any>();
   const tools = new Map<string, any>();
@@ -54,9 +54,9 @@ test("unified Pi surface registers swe and todo once and never internally execut
     exec() { execCalls += 1; throw new Error("must not bypass ordinary bash permissions"); },
   };
   piSwe(pi as never);
-  assert.deepEqual([...commands.keys()], ["swe", "todo"]);
-  assert.deepEqual([...tools.keys()], ["swe", "todo"]);
-  assert.deepEqual([...handlers.keys()].sort(), ["before_agent_start", "context", "session_start", "session_tree", "tool_call", "tool_result"]);
+  assert.deepEqual([...commands.keys()], ["swe"]);
+  assert.deepEqual([...tools.keys()], ["swe"]);
+  assert.deepEqual([...handlers.keys()].sort(), ["before_agent_start", "context", "session_start", "tool_call", "tool_result"]);
   assert.match(tools.get("swe").promptGuidelines.join(" "), /ordinary bash/i);
   assert.match(tools.get("swe").promptGuidelines.join(" "), /self-review.*not independent/i);
   assert.match(tools.get("swe").promptGuidelines.join(" "), /standing authorization.*without asking for confirmation/i);

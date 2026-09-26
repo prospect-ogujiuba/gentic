@@ -8,12 +8,12 @@ import piGit from "../extensions/pi-git/index.ts";
 import piHud from "../extensions/pi-hud/index.ts";
 import piPrimitives from "../extensions/pi-primitives/index.ts";
 import piSwe from "../extensions/pi-swe/index.ts";
+import piTodo from "../extensions/pi-todo/index.ts";
 import { createPiContextHudSnapshot } from "../extensions/pi-context/src/app/hud-adapter.ts";
 import { createSnapshot } from "../extensions/pi-hud/src/app/snapshot.ts";
 import { HudRuntimeOwner } from "../extensions/pi-hud/src/pi/runtime.ts";
 import { renderHudWidgetLines } from "../extensions/pi-hud/src/ui/surfaces/widget.ts";
 import type { HudSnapshot, Theme } from "../extensions/pi-hud/types.ts";
-import { lightweightTodoParameters } from "../extensions/pi-swe/src/todo/thin-surface.ts";
 import { generateGenticInventory } from "../src/release/inventory.ts";
 
 const root = new URL("..", import.meta.url).pathname;
@@ -93,19 +93,18 @@ const pi = new Proxy({ capabilities }, {
   get(target, key) {
     if (key in target) return target[key as keyof typeof target];
     if (key === "on") return (event: string, handler: unknown) => handlers.set(event, [...(handlers.get(event) ?? []), handler]);
-    if (key === "events") return { on() {} };
+    if (key === "events") return { on() {}, emit() {} };
     if (key === "registerTool") return (tool: { parameters?: unknown }) => { if (tool.parameters) schemas.push(tool.parameters); };
     if (typeof key === "string" && key.startsWith("register")) return () => undefined;
     if (key === "getCommands" || key === "getAllTools" || key === "getActiveTools") return () => [];
     return () => undefined;
   },
 });
-const extensions = [piCatalog, piCommands, piContext, piGit, piHud, piPrimitives, piSwe];
+const extensions = [piCatalog, piCommands, piContext, piGit, piHud, piPrimitives, piSwe, piTodo];
 const startupStarted = performance.now();
 for (const extension of extensions) await extension(pi as never);
 const startupMs = performance.now() - startupStarted;
 if (startupMs > budgets.extensionStartupMs) failures.push(`extension startup ${startupMs.toFixed(1)}ms exceeds ${budgets.extensionStartupMs}ms`);
-schemas.push(lightweightTodoParameters);
 const schemaBytes = Buffer.byteLength(JSON.stringify(schemas));
 if (schemaBytes > budgets.toolSchemaBytes) failures.push(`tool schemas ${schemaBytes} bytes exceeds ${budgets.toolSchemaBytes}`);
 const inventoryMs = measure("inventory generation", budgets.inventoryMs, () => { generateGenticInventory(root); });

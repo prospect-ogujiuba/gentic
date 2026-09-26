@@ -10,6 +10,7 @@ import piGit from "../extensions/pi-git/index.ts";
 import piHud from "../extensions/pi-hud/index.ts";
 import piPrimitives from "../extensions/pi-primitives/index.ts";
 import piSwe from "../extensions/pi-swe/index.ts";
+import piTodo from "../extensions/pi-todo/index.ts";
 import { generateGenticInventory } from "../src/release/inventory.ts";
 
 const root = new URL("..", import.meta.url).pathname;
@@ -26,7 +27,7 @@ test("generated source/manifest inventory matches runtime registration smoke out
     get(target, key) {
       if (key in target) return target[key as keyof typeof target];
       if (key === "on") return (event: string) => runtime.events.add(event);
-      if (key === "events") return { on() {} };
+      if (key === "events") return { on() {}, emit() {} };
       if (key === "registerCommand") return (name: string) => runtime.commands.add(name);
       if (key === "registerTool") return (tool: { name: string }) => runtime.tools.add(tool.name);
       if (typeof key === "string" && key.startsWith("register")) return () => undefined;
@@ -34,7 +35,7 @@ test("generated source/manifest inventory matches runtime registration smoke out
       return () => undefined;
     },
   });
-  for (const extension of [piArtifacts, piCatalog, piCommands, piContext, piGit, piHud, piPrimitives, piSwe]) {
+  for (const extension of [piArtifacts, piCatalog, piCommands, piContext, piGit, piHud, piPrimitives, piSwe, piTodo]) {
     await extension(pi as never);
   }
 

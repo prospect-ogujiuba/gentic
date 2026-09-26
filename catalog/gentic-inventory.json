@@ -37,7 +37,8 @@
       "extensions/pi-git/index.ts",
       "extensions/pi-hud/index.ts",
       "extensions/pi-primitives/index.ts",
-      "extensions/pi-swe/index.ts"
+      "extensions/pi-swe/index.ts",
+      "extensions/pi-todo/index.ts"
     ],
     "skills": [
       "skills/add-skill/SKILL.md"
@@ -94,7 +95,9 @@
         "extensions/pi-catalog/src/app/discovery-contract.ts",
         "extensions/pi-catalog/src/app/package-summary.ts",
         "extensions/pi-catalog/src/app/runtime-discovery.ts",
-        "extensions/pi-catalog/src/pi/register.ts"
+        "extensions/pi-catalog/src/pi/register.ts",
+        "src/command-guidance.ts",
+        "src/pi-contract.ts"
       ],
       "registrations": {
         "commands": [
@@ -126,7 +129,8 @@
         "extensions/pi-commands/commands/index.ts",
         "extensions/pi-commands/commands/scaffold.ts",
         "extensions/pi-commands/index.ts",
-        "extensions/pi-commands/types.ts"
+        "extensions/pi-commands/types.ts",
+        "src/command-guidance.ts"
       ],
       "registrations": {
         "commands": [
@@ -160,7 +164,9 @@
         "extensions/pi-context/src/domain/index.ts",
         "extensions/pi-context/src/domain/pressure.ts",
         "extensions/pi-context/src/pi/index.ts",
-        "extensions/pi-context/src/pi/register.ts"
+        "extensions/pi-context/src/pi/register.ts",
+        "src/contracts/context-telemetry.ts",
+        "src/services/context-telemetry.ts"
       ],
       "registrations": {
         "commands": [
@@ -191,7 +197,9 @@
         "extensions/pi-git/src/app/parse.ts",
         "extensions/pi-git/src/app/snapshot.ts",
         "extensions/pi-git/src/pi/register.ts",
-        "extensions/pi-git/src/ui/render.ts"
+        "extensions/pi-git/src/ui/render.ts",
+        "src/contracts/git-snapshot.ts",
+        "src/services/bounded-process.ts"
       ],
       "registrations": {
         "commands": [
@@ -226,7 +234,8 @@
         "extensions/pi-hud/src/pi/runtime.ts",
         "extensions/pi-hud/src/ui/lib/format.ts",
         "extensions/pi-hud/src/ui/surfaces/widget.ts",
-        "extensions/pi-hud/types.ts"
+        "extensions/pi-hud/types.ts",
+        "src/command-guidance.ts"
       ],
       "registrations": {
         "commands": [
@@ -290,6 +299,7 @@
       "entrypoint": "extensions/pi-swe/index.ts",
       "sourceFiles": [
         "extensions/pi-swe/index.ts",
+        "extensions/pi-swe/integrations/todo.ts",
         "extensions/pi-swe/src/app/artifacts.ts",
         "extensions/pi-swe/src/app/completion-commit.ts",
         "extensions/pi-swe/src/app/service.ts",
@@ -301,41 +311,79 @@
         "extensions/pi-swe/src/pi/context.ts",
         "extensions/pi-swe/src/pi/planning.ts",
         "extensions/pi-swe/src/pi/register.ts",
-        "extensions/pi-swe/src/todo/command-adapter.ts",
-        "extensions/pi-swe/src/todo/contract.ts",
-        "extensions/pi-swe/src/todo/project-backend.ts",
-        "extensions/pi-swe/src/todo/project-store.ts",
-        "extensions/pi-swe/src/todo/provider.ts",
-        "extensions/pi-swe/src/todo/state-core.ts",
-        "extensions/pi-swe/src/todo/thin-surface.ts",
-        "extensions/pi-swe/src/todo/ui/docket.ts",
-        "extensions/pi-swe/src/todo/ui/format.ts",
-        "extensions/pi-swe/src/todo/ui/modal.ts",
-        "extensions/pi-swe/src/todo/ui/shared-docket.ts",
-        "extensions/pi-swe/src/todo/ui/shared-modal.ts",
-        "extensions/pi-swe/src/todo/ui/theme.ts",
-        "extensions/pi-swe/src/todo/workflow-backend.ts",
         "extensions/pi-swe/src/ui/docket.ts",
         "extensions/pi-swe/src/ui/format.ts",
         "extensions/pi-swe/src/ui/modal.ts",
-        "extensions/pi-swe/src/ui/theme.ts"
+        "extensions/pi-swe/src/ui/theme.ts",
+        "src/command-guidance.ts",
+        "src/pi-todo/contract.ts",
+        "src/pi-todo/provider.ts",
+        "src/pi-todo/ui/format.ts",
+        "src/pi-todo/ui/shared-docket.ts",
+        "src/pi-todo/ui/shared-modal.ts",
+        "src/pi-todo/ui/theme.ts",
+        "src/pi-todo/workflow-integration.ts",
+        "src/ui/docket-kit/format.ts",
+        "src/ui/docket-kit/modal.ts"
       ],
       "registrations": {
         "commands": [
-          "swe",
-          "todo"
+          "swe"
         ],
         "tools": [
-          "swe",
-          "todo"
+          "swe"
         ],
         "events": [
           "before_agent_start",
           "context",
           "session_start",
-          "session_tree",
           "tool_call",
           "tool_result"
+        ],
+        "shortcuts": [],
+        "flags": [],
+        "providers": [],
+        "renderers": [],
+        "markdownTransformers": 0,
+        "uiSurfaces": [
+          "notify"
+        ]
+      }
+    },
+    {
+      "owner": "pi-todo",
+      "entrypoint": "extensions/pi-todo/index.ts",
+      "sourceFiles": [
+        "extensions/pi-todo/index.ts",
+        "src/command-guidance.ts",
+        "src/pi-todo/command-adapter.ts",
+        "src/pi-todo/contract.ts",
+        "src/pi-todo/project-backend.ts",
+        "src/pi-todo/project-store.ts",
+        "src/pi-todo/provider.ts",
+        "src/pi-todo/public.ts",
+        "src/pi-todo/state-core.ts",
+        "src/pi-todo/thin-surface.ts",
+        "src/pi-todo/ui/docket.ts",
+        "src/pi-todo/ui/format.ts",
+        "src/pi-todo/ui/modal.ts",
+        "src/pi-todo/ui/shared-docket.ts",
+        "src/pi-todo/ui/shared-modal.ts",
+        "src/pi-todo/ui/theme.ts",
+        "src/pi-todo/workflow-integration.ts",
+        "src/ui/docket-kit/format.ts",
+        "src/ui/docket-kit/modal.ts"
+      ],
+      "registrations": {
+        "commands": [
+          "todo"
+        ],
+        "tools": [
+          "todo"
+        ],
+        "events": [
+          "session_start",
+          "session_tree"
         ],
         "shortcuts": [],
         "flags": [],
@@ -371,7 +419,8 @@
         "+extensions/pi-git/index.ts",
         "+extensions/pi-hud/index.ts",
         "+extensions/pi-primitives/index.ts",
-        "+extensions/pi-swe/index.ts"
+        "+extensions/pi-swe/index.ts",
+        "+extensions/pi-todo/index.ts"
       ]
     }
   ]

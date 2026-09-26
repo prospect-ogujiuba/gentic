@@ -11,6 +11,7 @@ import piGit from "../extensions/pi-git/index.ts";
 import piHud from "../extensions/pi-hud/index.ts";
 import piPrimitives from "../extensions/pi-primitives/index.ts";
 import piSwe from "../extensions/pi-swe/index.ts";
+import piTodo from "../extensions/pi-todo/index.ts";
 
 const root = new URL("..", import.meta.url).pathname;
 
@@ -99,6 +100,7 @@ function createContext(entries: Array<Record<string, unknown>>) {
 
 function createPiHarness() {
   const handlers = new Map<string, Handler[]>();
+  const eventBusHandlers = new Map<string, Set<(value: unknown) => void>>();
   const commands = new Map<string, RegisteredCommand>();
   const tools = new Map<string, RegisteredTool>();
   const entries: Array<Record<string, unknown>> = [];
@@ -110,8 +112,14 @@ function createPiHarness() {
 
   const pi = {
     events: {
-      on(event: string, handler: Handler) {
-        handlers.set(event, [...(handlers.get(event) || []), handler]);
+      on(event: string, handler: (value: unknown) => void) {
+        const values = eventBusHandlers.get(event) ?? new Set();
+        values.add(handler);
+        eventBusHandlers.set(event, values);
+        return () => values.delete(handler);
+      },
+      emit(event: string, value: unknown) {
+        for (const handler of eventBusHandlers.get(event) ?? []) handler(value);
       },
     },
     capabilities: new Map(),
@@ -235,6 +243,7 @@ test("demo activates every Gentic-owned extension and exercises shared runtime p
   await harness.activate("pi-hud", piHud as never);
   await harness.activate("pi-primitives", piPrimitives as never);
   await harness.activate("pi-swe", piSwe as never);
+  await harness.activate("pi-todo", piTodo as never);
 
   for (const command of ["catalog", "clear", "scaffold", "pi-git", "pi-hud", "swe", "todo"]) {
     assert.equal(harness.commands.has(command), true, `missing /${command}`);

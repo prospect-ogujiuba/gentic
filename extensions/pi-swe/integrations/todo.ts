@@ -1,6 +1,14 @@
-import type { SweService } from "../app/service.ts";
-import { readyWork, type Initiative, type WorkItem } from "../domain/initiative.ts";
-import type { TodoPublicAction, TodoPublicRequest } from "./contract.ts";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+
+import type { SweService } from "../src/app/service.ts";
+import type { SweSurfaceController } from "../src/pi/register.ts";
+import { readyWork, type Initiative, type WorkItem } from "../src/domain/initiative.ts";
+import type { TodoPublicAction, TodoPublicRequest } from "../../../src/pi-todo/contract.ts";
+import {
+  TODO_WORKFLOW_PROVIDER_AVAILABLE_EVENT,
+  TODO_WORKFLOW_PROVIDER_REQUEST_EVENT,
+  type TodoWorkflowProvider,
+} from "../../../src/pi-todo/workflow-integration.ts";
 import {
   NO_TODO_CAPABILITIES,
   type TodoBackend,
@@ -9,16 +17,22 @@ import {
   type TodoView,
   type TodoViewItem,
   type TodoViewStatus,
-} from "./provider.ts";
+} from "../../../src/pi-todo/provider.ts";
+import { WorkflowTodoError } from "../../../src/pi-todo/provider.ts";
+export { WorkflowTodoError } from "../../../src/pi-todo/provider.ts";
 
-export class WorkflowTodoError extends Error {
-  readonly code: "TODO_NOT_FOUND" | "INVALID_TRANSITION" | "UNSUPPORTED_WORKFLOW_ACTION";
-
-  constructor(code: WorkflowTodoError["code"], message: string) {
-    super(message);
-    this.name = "WorkflowTodoError";
-    this.code = code;
-  }
+/** Publish the optional projection through Pi's native cross-extension event bus. */
+export function registerWorkflowTodoProvider(pi: ExtensionAPI, swe: SweSurfaceController): void {
+  if (!pi.events) return;
+  const provider: TodoWorkflowProvider = {
+    resolve(ctx: ExtensionContext) {
+      const authority = swe.focusedAuthority(ctx);
+      return authority ? new WorkflowTodoBackend(authority.service, authority.initiativeId) : undefined;
+    },
+  };
+  const announce = () => { pi.events.emit(TODO_WORKFLOW_PROVIDER_AVAILABLE_EVENT, provider); };
+  pi.events.on(TODO_WORKFLOW_PROVIDER_REQUEST_EVENT, announce);
+  announce();
 }
 
 /** A projection adapter only: workflow.json remains the sole state authority. */

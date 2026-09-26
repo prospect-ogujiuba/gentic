@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 
 import piSwe from "../extensions/pi-swe/index.ts";
+import piTodo from "../extensions/pi-todo/index.ts";
 import { SweService } from "../extensions/pi-swe/src/app/service.ts";
 import { initiativePath } from "../extensions/pi-swe/src/app/store.ts";
 
@@ -42,7 +43,7 @@ function legacyTodoBranch() {
   }];
 }
 
-test("focused active workflow is projected and todo mutations route only through SweService", async () => {
+for (const order of ["swe-first", "todo-first"] as const) test(`focused workflow projection is order-independent (${order})`, async () => {
   const { root, initiativeId } = fixture();
   try {
     const tools = new Map<string, any>();
@@ -52,15 +53,34 @@ test("focused active workflow is projected and todo mutations route only through
     const statuses: Array<string | undefined> = [];
     const widgets: unknown[] = [];
     let rejectPresentation = false;
+    let restoreFocused = true;
     let appendCount = 0;
+    const eventHandlers = new Map<string, Set<(value: unknown) => void>>();
     const pi = {
       on(name: string, handler: Function) { handlers.set(name, [...(handlers.get(name) ?? []), handler]); },
       registerTool(tool: { name: string }) { tools.set(tool.name, tool); },
       registerCommand(name: string, command: unknown) { commands.set(name, command); },
       appendEntry(customType: string) { if (customType === "gentic.todo.event") appendCount += 1; },
       sendMessage() {},
+      events: {
+        on(name: string, handler: (value: unknown) => void) {
+          const values = eventHandlers.get(name) ?? new Set();
+          values.add(handler);
+          eventHandlers.set(name, values);
+          return () => values.delete(handler);
+        },
+        emit(name: string, value: unknown) {
+          for (const handler of eventHandlers.get(name) ?? []) handler(value);
+        },
+      },
     };
-    piSwe(pi as never);
+    if (order === "swe-first") {
+      piSwe(pi as never);
+      piTodo(pi as never);
+    } else {
+      piTodo(pi as never);
+      piSwe(pi as never);
+    }
     const ctx = {
       cwd: root,
       hasUI: true,
@@ -68,7 +88,9 @@ test("focused active workflow is projected and todo mutations route only through
       sessionManager: {
         getSessionId: () => "workflow-todo-test",
         getBranch: () => branch,
-        getEntries: () => [{ type: "custom", customType: "gentic.swe.focus", data: { initiativeId } }],
+        getEntries: () => restoreFocused
+          ? [{ type: "custom", customType: "gentic.swe.focus", data: { initiativeId } }]
+          : [],
       },
       ui: {
         setStatus(_key: string, value: string | undefined) {
@@ -80,6 +102,14 @@ test("focused active workflow is projected and todo mutations route only through
       },
     };
     for (const handler of handlers.get("session_start") ?? []) await handler({ reason: "resume" }, ctx);
+    assert.match(statuses.at(-1) ?? "", /^todo: \d+ workflow$/, "restored focus must refresh Todo presentation in either load order");
+
+    restoreFocused = false;
+    for (const handler of handlers.get("session_start") ?? []) await handler({ reason: "switch-session" }, ctx);
+    assert.equal(statuses.at(-1), "todo: 1 open", "cleared focus must remove a stale workflow presentation in either load order");
+    restoreFocused = true;
+    for (const handler of handlers.get("session_start") ?? []) await handler({ reason: "restore-session" }, ctx);
+    assert.match(statuses.at(-1) ?? "", /^todo: \d+ workflow$/);
 
     const todo = tools.get("todo");
     const execute = (action: string, params: Record<string, unknown> = {}) => todo.execute(
@@ -122,6 +152,16 @@ test("focused active workflow is projected and todo mutations route only through
     assert.equal(appendCount, 0, "workflow operations must not append standalone todo entries");
     assert.equal(branch.length, 1);
 
+    const beforeDenied = readFileSync(initiativePath(root, initiativeId), "utf8");
+    for (const action of ["complete", "prepare_verification", "record_review", "revise"]) {
+      const denied = await execute(action, { todoId: "W-5" });
+      assert.equal(denied.isError, true, `${action} must not cross Todo authority`);
+      assert.equal(readFileSync(initiativePath(root, initiativeId), "utf8"), beforeDenied);
+    }
+    const secondFinish = await execute("finish", { todoId: "W-5" });
+    assert.equal(secondFinish.isError, true, "finish cannot promote implemented work to complete");
+    assert.equal(readFileSync(initiativePath(root, initiativeId), "utf8"), beforeDenied);
+
     const structural = await execute("delete", { todoId: "W-5" });
     assert.equal(structural.isError, true);
     assert.equal(structural.details.error.code, "UNSUPPORTED_WORKFLOW_ACTION");
@@ -145,6 +185,8 @@ test("focused active workflow is projected and todo mutations route only through
     assert.equal(branch.length, 1, "backend switching must not synchronize authorities");
 
     writeFileSync(initiativePath(root, initiativeId), "{malformed\n");
+    for (const handler of handlers.get("session_start") ?? []) await handler({ reason: "malformed-restore" }, ctx);
+    assert.equal(statuses.at(-1), "todo: unavailable", "malformed restored authority must fail closed without rejecting startup");
     const unavailable = await execute("create", { title: "must fail closed" });
     assert.equal(unavailable.isError, true);
     assert.match(unavailable.content[0].text, /malformed/i);

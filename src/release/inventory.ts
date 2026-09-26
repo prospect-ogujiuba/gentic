@@ -49,6 +49,24 @@ function walkSource(directory: string): string[] {
   return files;
 }
 
+/** Include root-owned composition modules without inventing another resource registry. */
+function withRootSourceDependencies(root: string, initial: string[]): string[] {
+  const files = new Set(initial);
+  const queue = [...initial];
+  const rootSource = join(root, "src") + sep;
+  for (let i = 0; i < queue.length; i++) {
+    const file = queue[i];
+    const source = readFileSync(file, "utf8");
+    for (const match of source.matchAll(/\b(?:from|import)\s*["'](\.[^"']+)["']/g)) {
+      const target = resolve(dirname(file), match[1]);
+      if (!target.startsWith(rootSource) || ![".ts", ".js", ".mjs"].includes(extname(target)) || !existsSync(target) || files.has(target)) continue;
+      files.add(target);
+      queue.push(target);
+    }
+  }
+  return [...files].sort();
+}
+
 function literals(source: string, pattern: RegExp): string[] {
   return [...source.matchAll(pattern)].map((match) => match[1]).filter(Boolean);
 }
@@ -137,7 +155,8 @@ export function generateGenticInventory(rootPath: string): GenticInventory {
     const absoluteEntrypoint = join(root, entrypoint);
     const external = entrypoint.startsWith("node_modules/");
     const sourceRoot = !external && (entrypoint.endsWith("/index.ts") || entrypoint.endsWith("/index.js")) ? dirname(absoluteEntrypoint) : absoluteEntrypoint;
-    const sourceFiles = sourceRoot === absoluteEntrypoint ? [absoluteEntrypoint] : walkSource(sourceRoot);
+    const ownedFiles = sourceRoot === absoluteEntrypoint ? [absoluteEntrypoint] : walkSource(sourceRoot);
+    const sourceFiles = external ? ownedFiles : withRootSourceDependencies(root, ownedFiles);
     const source = sourceFiles.map((path) => readFileSync(path, "utf8")).join("\n");
     return {
       owner: extensionOwner(entrypoint),

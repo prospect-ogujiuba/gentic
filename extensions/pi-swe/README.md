@@ -1,6 +1,6 @@
 # pi-swe
 
-pi-swe provides one validated durable initiative at `.model-artifacts/initiatives/<topic>/workflow.json` and one unified `todo` capability. Workflow files remain the sole planning authority; reports, revision logs, session entries, and UI projections never become a second task ledger. `SweService` is the workflow mutation authority used by commands, structured tools, and docket-backed actions.
+pi-swe provides one validated durable initiative at `.model-artifacts/initiatives/<topic>/workflow.json`. Workflow files remain the sole planning authority; reports, revision logs, session entries, and UI projections never become a second task ledger. `SweService` is the workflow mutation authority used by commands, structured tools, and docket-backed actions. The separately discovered pi-todo extension optionally presents focused workflow work without becoming a lifecycle authority.
 
 ## Lifecycle and authority
 
@@ -10,9 +10,13 @@ The domain layer enforces a closed schema, graph/reference/coverage rules, bound
 
 Pause, interruption, fork, and resume do not rewind repository state. Session entries retain only focus; every fresh context projection rereads current repository authority and revision. A focused active initiative with unfinished work triggers a bounded continuation turn on startup/resume; its approved workflow is standing authorization for routine reversible implementation, verification, corrective fixes, and cleanup. Continuation still stops for credentials, destructive or irreversible operations, required contract/scope revision, genuine blockers, or authorization not already granted by the user or repository policy. Draft, paused, complete, abandoned, and all-terminal initiatives do not auto-run. Concurrent or stale writers fail closed instead of silently overwriting current authority.
 
-## Unified todo authority
+## Optional pi-todo integration
 
-The pi-swe entrypoint is the sole registration point for both `swe` and `todo` commands and structured tools. The todo surface presents three separate authorities:
+The pi-swe discovery entrypoint registers only the `swe` command and structured tool. The independently discovered `extensions/pi-todo/index.ts` owns Todo registration, session events, and project persistence, so either extension works when the other is absent. `integrations/todo.ts` projects workflow state and delegates only start/implemented transitions to `SweService`.
+
+The two entrypoints communicate only through Pi's native `pi.events` bus and the public provider contract in `src/pi-todo/workflow-integration.ts`. A request/announcement handshake supports both registration orders; focus-change events refresh Todo presentation. There are no private sibling imports, shared runtime registry, second ledger, or registration-order dependency.
+
+When pi-todo is loaded, its surface presents three separate authorities:
 
 - **session** — fork-aware `gentic.todo.event` entries reconstructed only from the active Pi session branch. Rewind and fork semantics remain unchanged.
 - **project** — lightweight shared work in the repository-root, tracked `.pi-todos.json` snapshot. It survives distinct Pi sessions and clones through normal Git operations.
@@ -50,11 +54,15 @@ Small initiatives stay small. A light initiative may contain one executable task
 
 ## Surfaces and output
 
-Public surfaces are `/swe plan [--id <topic>] <request>`, `/swe list [<topic>]`, `/swe open|status|next|resume|pause <topic>`, `/swe start|implemented|complete <topic> <work-id>`, `/swe complete <topic>` for explicit initiative finalization, one `swe` structured tool whose actions include the sole supported `create` bootstrap, `/todo [session|project|initiative|all] <action>`, and one scope-aware `todo` structured tool. Bare `/swe` and `/todo` show authority-aware help. Local action specifications supply completion labels, syntax, help, and invalid-input usage through the shared presentation kernel; adapters still own parsing, authority selection, legal-transition filtering, execution, and lifecycle messages. SWE argument completion discovers validated `workflow.json` authorities and offers only relevant work IDs; completion remains advisory and cannot bypass lifecycle or evidence gates. Finalization requires active authority and every executable work item to be complete or intentionally disposed. The shared keyboard docket is a bounded projection of the selected provider. Bare `/swe list` returns a responsive two-line overview without changing focus: the complete copyable initiative ID appears alone, followed by revision, progress, status, and actionable current or next work. The host UI wraps naturally instead of receiving fixed-width padding or truncation. `/swe list <topic>` and non-TUI `open` return bounded work-docket text.
+Public pi-swe surfaces are `/swe plan [--id <topic>] <request>`, `/swe list [<topic>]`, `/swe open|status|next|resume|pause <topic>`, `/swe start|implemented|complete <topic> <work-id>`, `/swe complete <topic>` for explicit initiative finalization, and one `swe` structured tool whose actions include the sole supported `create` bootstrap. Separately discovered pi-todo provides `/todo [session|project|initiative|all] <action>` and one scope-aware `todo` structured tool. Bare `/swe` and `/todo` show authority-aware help. Local action specifications supply completion labels, syntax, help, and invalid-input usage through the shared presentation kernel; adapters still own parsing, authority selection, legal-transition filtering, execution, and lifecycle messages. SWE argument completion discovers validated `workflow.json` authorities and offers only relevant work IDs; completion remains advisory and cannot bypass lifecycle or evidence gates. Finalization requires active authority and every executable work item to be complete or intentionally disposed. The shared keyboard docket is a bounded projection of the selected provider. Bare `/swe list` returns a responsive two-line overview without changing focus: the complete copyable initiative ID appears alone, followed by revision, progress, status, and actionable current or next work. The host UI wraps naturally instead of receiving fixed-width padding or truncation. `/swe list <topic>` and non-TUI `open` return bounded work-docket text.
 
 ## Artifact boundary
 
 Referenced artifacts use safe canonical paths beneath `.model-artifacts/initiatives/<topic>/<kind>/`, with optional verified content hashes. Create model-generated Markdown through pi-artifacts, then attach its returned path and hash through a reviewed initiative revision. Artifacts support authority but do not replace it. Schema identity is `kind: gentic.swe.initiative` with `schemaVersion: 1`, and `workflow.json` remains exclusively owned by pi-swe.
+
+## Presentation boundary
+
+`src/ui/docket-kit/` owns ANSI-width formatting, frames, selection, filtering, scrolling, and keyboard intents. It receives rows, rendering callbacks, and close/render callbacks; it imports no lifecycle, persistence, session, or service code and starts no timers. Todo and SWE adapters retain authority-specific labels, capabilities, status projections, and content rendering. Existing modal constructors remain compatibility adapters. Frames now respect widths below 32 columns as well as normal terminal widths.
 
 ## Qualification
 

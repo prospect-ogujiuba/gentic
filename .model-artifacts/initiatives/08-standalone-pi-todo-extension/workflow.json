@@ -1,0 +1,824 @@
+{
+  "kind": "gentic.swe.initiative",
+  "schemaVersion": 1,
+  "id": "08-standalone-pi-todo-extension",
+  "revision": 16,
+  "status": "complete",
+  "objective": "Make pi-todo a genuinely standalone, independently discovered Pi extension while preserving SWE/Todo public behavior, authority boundaries, persistence, restart/fork semantics, and optional workflow projection integration.",
+  "policies": {
+    "commitOnWorkCompletion": false,
+    "independentReviewOnCompletion": true
+  },
+  "scope": {
+    "in": [
+      "Create extensions/pi-todo/index.ts as the independent owner of Todo command/tool registration, session/project persistence, and Todo mutation.",
+      "Remove Todo registration/composition ownership from extensions/pi-swe/index.ts so pi-swe runs correctly without pi-todo.",
+      "Connect optional workflow projection through a public, order-independent Pi-native integration contract with no private sibling imports.",
+      "Preserve public swe/todo command and tool names, scope selection, persistence formats, fork/restart behavior, malformed focused-authority fail-closed behavior, and finish-to-markImplemented-only semantics.",
+      "Exercise pi-swe alone, pi-todo alone, both load orders, focus refresh, absent integration, and denied authority crossings.",
+      "Update extension discovery metadata, profiles, catalog, inventory, anatomy, and documentation as required."
+    ],
+    "out": [
+      "Changing workflow.json schema, lifecycle, evidence, review, completion, or commit semantics.",
+      "Changing Todo persistence formats, public command/tool names, or scope-selection semantics.",
+      "Adding a shared registry, secondary task ledger, private sibling imports, or load-order dependency.",
+      "Committing, pushing, releasing, or deploying.",
+      "Starting or modifying unrelated draft initiatives 05-07."
+    ]
+  },
+  "constraints": [
+    "workflow.json remains sole SWE authority and SweService remains its mutation authority.",
+    "pi-todo owns Todo registration and canonical session/project Todo mutation independently of pi-swe.",
+    "Optional integration must use native Pi extension APIs/public contracts and tolerate either registration order and either extension being absent.",
+    "Todo finish may only request markImplemented for projected workflow work; it must never complete work or write evidence.",
+    "src/ui/docket-kit remains presentation-only.",
+    "Preserve predecessor initiative 04 history and all approved uncommitted changes.",
+    "Use test-after for already-correct characterization; do not manufacture RED evidence.",
+    "Run verification only through prepared ordinary bash commands and require independent review before completion."
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "text": "Pi discovers and loads extensions/pi-todo independently; Todo commands/tools and session/project persistence work when pi-swe is absent."
+    },
+    {
+      "id": "AC-2",
+      "text": "Pi-swe owns only workflow lifecycle/evidence/completion and works when pi-todo is absent."
+    },
+    {
+      "id": "AC-3",
+      "text": "Optional workflow projection integration is public, Pi-native, registration-order independent, refreshes focus correctly, fails closed on malformed authority, and permits only Todo finish to request markImplemented."
+    },
+    {
+      "id": "AC-4",
+      "text": "Existing public swe/todo names, scopes, formats, fork/restart behavior, and presentation-only docket boundary remain compatible."
+    },
+    {
+      "id": "AC-5",
+      "text": "Focused standalone/load-order/authority tests and full repository qualification pass with independent review."
+    }
+  ],
+  "assessment": {
+    "depth": "deep",
+    "reason": "Extension discovery and optional cross-extension lifecycle projection affect durable workflow authority, persistence, registration order, and public command/tool compatibility.",
+    "surfaces": [
+      "extensions/pi-todo/**",
+      "extensions/pi-swe/index.ts",
+      "extensions/pi-swe/src/pi/register.ts",
+      "extensions/pi-swe/integrations/**",
+      "src/pi-todo/**",
+      "src/release/inventory.ts",
+      "catalog/**",
+      "docs/**",
+      "test/pi-todo*.test.ts",
+      "test/pi-swe*.test.ts",
+      "test/runtime-command-guidance.test.ts"
+    ],
+    "unknowns": [
+      "The minimal Pi-native event protocol needed for two-way order-independent discovery and focus refresh must be validated against installed Pi extension APIs.",
+      "Generated catalog/inventory/anatomy outputs may require source metadata updates before regeneration."
+    ]
+  },
+  "practices": [
+    {
+      "id": "P-1",
+      "practice": "Standalone boundary implementation with compatibility tests",
+      "appliesTo": [
+        "W-1"
+      ],
+      "reason": "Independent loading and optional integration must preserve authority and persistence contracts in all extension combinations and load orders."
+    },
+    {
+      "id": "P-2",
+      "practice": "Discovery qualification and independent source-bound review",
+      "appliesTo": [
+        "W-2"
+      ],
+      "reason": "Native discovery metadata, generated inventories, documentation, and full gates must prove the split is complete."
+    }
+  ],
+  "obligations": [
+    {
+      "id": "O-1",
+      "practiceId": "P-1",
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-3",
+        "AC-4"
+      ],
+      "text": "Implement and test independent pi-todo/pi-swe loading, both registration orders, dynamic focus refresh, absent integration, malformed authority fail-closed behavior, fork/restart compatibility, and denied authority crossings including finish-to-markImplemented-only.",
+      "verification": {
+        "kind": "standalone-extension-boundary-tests",
+        "requiredEvidence": [
+          "machine-command",
+          "model-review"
+        ]
+      }
+    },
+    {
+      "id": "O-2",
+      "practiceId": "P-2",
+      "criterionIds": [
+        "AC-1",
+        "AC-4",
+        "AC-5"
+      ],
+      "text": "Verify native discovery, profiles, catalog, inventory, anatomy, documentation, focused suites, typecheck, command inventory, and full repository tests, then obtain independent source-bound review.",
+      "verification": {
+        "kind": "standalone-pi-todo-qualification",
+        "requiredEvidence": [
+          "machine-command",
+          "independent-review"
+        ]
+      }
+    }
+  ],
+  "work": [
+    {
+      "id": "W-1",
+      "kind": "task",
+      "title": "Implement standalone pi-todo and optional workflow projection",
+      "status": "complete",
+      "dependsOn": [],
+      "criterionIds": [
+        "AC-1",
+        "AC-2",
+        "AC-3",
+        "AC-4"
+      ],
+      "obligationIds": [
+        "O-1"
+      ],
+      "testing": {
+        "approach": "test-after",
+        "reason": "Predecessor characterization is already green; add standalone and integration-combination coverage while implementing the physical extension split."
+      }
+    },
+    {
+      "id": "W-2",
+      "kind": "task",
+      "title": "Qualify discovery metadata, compatibility, and authority boundaries",
+      "status": "complete",
+      "dependsOn": [
+        "W-1"
+      ],
+      "criterionIds": [
+        "AC-1",
+        "AC-4",
+        "AC-5"
+      ],
+      "obligationIds": [
+        "O-2"
+      ],
+      "testing": {
+        "approach": "test-after",
+        "reason": "Discovery and documentation qualification validates the completed boundary against generated and full-repository gates."
+      }
+    }
+  ],
+  "artifacts": [],
+  "evidence": [
+    {
+      "id": "E-e8c8d58f-713a-485c-a819-f30f3b183f3e",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && npm run test:todo && npm run test:swe"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T01:46:57.015Z",
+      "completedAt": "2026-09-26T01:47:03.020Z",
+      "durationMs": 6005,
+      "contractFingerprint": "sha256:366b2c67daefb5582c714565b8712bf362c97939f218cfb65526e59752a1db35",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/integrations/todo.ts",
+            "extensions/pi-todo/index.ts",
+            "src/pi-todo/public.ts",
+            "src/pi-todo/workflow-integration.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-ownership.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/pi-todo-workflow-backend.test.ts"
+          ],
+          "hash": "sha256:d514e43f57bfc97b5481b2e5532649e939f17bfd9da61fdc6a897595fdccf46a"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/integrations/todo.ts",
+            "extensions/pi-todo/index.ts",
+            "src/pi-todo/public.ts",
+            "src/pi-todo/workflow-integration.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-ownership.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/pi-todo-workflow-backend.test.ts"
+          ],
+          "hash": "sha256:d514e43f57bfc97b5481b2e5532649e939f17bfd9da61fdc6a897595fdccf46a"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_L0HpDf01pWyqb0d1b75DKRg6|fc_022ae5bc3d2df145016ab72410a64887d2a0baac5c5c29f7bd",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:981fdea0a8d095cc7c4e42ae490c959a9dcd8b612a1627962a7512633765525c"
+    },
+    {
+      "id": "E-e0d4a970-9467-4e5f-8756-62f9fcb20265",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && npm run test:todo && npm run test:swe"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T01:48:05.577Z",
+      "completedAt": "2026-09-26T01:48:11.714Z",
+      "durationMs": 6137,
+      "contractFingerprint": "sha256:366b2c67daefb5582c714565b8712bf362c97939f218cfb65526e59752a1db35",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/integrations/todo.ts",
+            "extensions/pi-todo/index.ts",
+            "src/pi-todo/public.ts",
+            "src/pi-todo/workflow-integration.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-ownership.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/pi-todo-workflow-backend.test.ts"
+          ],
+          "hash": "sha256:550cc9f373934412a9e89bd9b3f512723f0a85aa5c6f5cc3fc07c685351b981b"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/integrations/todo.ts",
+            "extensions/pi-todo/index.ts",
+            "src/pi-todo/public.ts",
+            "src/pi-todo/workflow-integration.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-ownership.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/pi-todo-workflow-backend.test.ts"
+          ],
+          "hash": "sha256:550cc9f373934412a9e89bd9b3f512723f0a85aa5c6f5cc3fc07c685351b981b"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_yGQn9EF0EQth8UB8OjNlRf0e|fc_022ae5bc3d2df145016ab724556eb887d2bdd7ab1910a51b88",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:8c69ed5a77d37f4becfab728fae145d2b45985fb217fc89282282999da95b203"
+    },
+    {
+      "id": "E-206ace54-9ff7-49b0-9bb9-f2f36793dede",
+      "kind": "model-review",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "passed",
+      "reviewedAt": "2026-09-26T01:48:55.982Z",
+      "contractFingerprint": "sha256:366b2c67daefb5582c714565b8712bf362c97939f218cfb65526e59752a1db35",
+      "source": {
+        "kind": "bounded-paths",
+        "paths": [
+          "extensions/pi-swe/index.ts",
+          "extensions/pi-swe/integrations/todo.ts",
+          "extensions/pi-todo/index.ts",
+          "src/pi-todo/public.ts",
+          "src/pi-todo/workflow-integration.ts",
+          "test/pi-swe-runtime.test.ts",
+          "test/pi-todo-characterization.test.ts",
+          "test/pi-todo-ownership.test.ts",
+          "test/pi-todo-qualification.test.ts",
+          "test/pi-todo-workflow-backend.test.ts"
+        ],
+        "hash": "sha256:550cc9f373934412a9e89bd9b3f512723f0a85aa5c6f5cc3fc07c685351b981b"
+      },
+      "dimensions": [
+        "correctness",
+        "authority-separation",
+        "registration-order",
+        "failure-closure",
+        "persistence-compatibility",
+        "concurrency-and-refresh-ordering"
+      ],
+      "summary": "Self-review of the source-bound standalone boundary found no blocking defects. pi-todo alone owns todo registration and lightweight persistence; pi-swe alone owns SWE registration and workflow mutation. The native event request/announcement handshake supports both load orders without private sibling imports, and the waitUntil focus event preserves mutation/result refresh ordering. The published provider exposes only a TodoBackend adapter whose workflow mutations are start and markImplemented; completion, verification, evidence, revision, and structural changes remain denied. Focused tests pass for each extension alone, both orders, session restart/fork replay, focus refresh, malformed focused authority fail-closed behavior, and denied crossings.",
+      "provenance": {
+        "kind": "pi-model-self-review",
+        "sessionId": "01a0db5d-1fac-70b5-a2ab-e86957c0bc5f"
+      }
+    },
+    {
+      "id": "E-56f3c5eb-3b25-4910-903e-38fabfd6f6a1",
+      "kind": "machine-command",
+      "workId": "W-2",
+      "obligationIds": [
+        "O-2"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && npm run check && npm run check:commands && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T01:51:20.471Z",
+      "completedAt": "2026-09-26T01:51:33.988Z",
+      "durationMs": 13517,
+      "contractFingerprint": "sha256:366b2c67daefb5582c714565b8712bf362c97939f218cfb65526e59752a1db35",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "CONTRIBUTING.md",
+            "catalog/gentic-inventory.json",
+            "docs/pi-extension-architecture-review/02-pi-swe.md",
+            "docs/pi-extension-architecture-review/README.md",
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-catalog/IDEA_BANK.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/extension.anatomy.json",
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/integrations/todo.ts",
+            "extensions/pi-todo/README.md",
+            "extensions/pi-todo/extension.anatomy.json",
+            "extensions/pi-todo/index.ts",
+            "profiles/full.json",
+            "scripts/check-performance-budgets.ts",
+            "src/pi-todo/contract.ts",
+            "src/pi-todo/public.ts",
+            "src/pi-todo/workflow-integration.ts",
+            "src/release/inventory.ts",
+            "test/gentic-demo.test.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-ownership.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/pi-todo-workflow-backend.test.ts",
+            "test/release-inventory.test.ts"
+          ],
+          "hash": "sha256:0d7d8aaa268470547b084be1d1f17caf40bc15b5333663de56088e865cc8377e"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "CONTRIBUTING.md",
+            "catalog/gentic-inventory.json",
+            "docs/pi-extension-architecture-review/02-pi-swe.md",
+            "docs/pi-extension-architecture-review/README.md",
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-catalog/IDEA_BANK.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/extension.anatomy.json",
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/integrations/todo.ts",
+            "extensions/pi-todo/README.md",
+            "extensions/pi-todo/extension.anatomy.json",
+            "extensions/pi-todo/index.ts",
+            "profiles/full.json",
+            "scripts/check-performance-budgets.ts",
+            "src/pi-todo/contract.ts",
+            "src/pi-todo/public.ts",
+            "src/pi-todo/workflow-integration.ts",
+            "src/release/inventory.ts",
+            "test/gentic-demo.test.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-ownership.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/pi-todo-workflow-backend.test.ts",
+            "test/release-inventory.test.ts"
+          ],
+          "hash": "sha256:0d7d8aaa268470547b084be1d1f17caf40bc15b5333663de56088e865cc8377e"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_fvQq86JMZJNQzeY8aj8KFwpz|fc_022ae5bc3d2df145016ab7251830e887d294ff256372bc8081",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:f4ff2f0e68b42f796f97c61e1aea48142464fcb491ca25e223ed100ed0947107"
+    },
+    {
+      "id": "E-bebf80ed-0a94-4900-99bf-fd6c37a1374d",
+      "kind": "machine-command",
+      "workId": "W-2",
+      "obligationIds": [
+        "O-2"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && npm run check && npm run check:commands && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T01:58:23.175Z",
+      "completedAt": "2026-09-26T01:58:36.597Z",
+      "durationMs": 13422,
+      "contractFingerprint": "sha256:366b2c67daefb5582c714565b8712bf362c97939f218cfb65526e59752a1db35",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "CONTRIBUTING.md",
+            "catalog/gentic-inventory.json",
+            "docs/pi-extension-architecture-review/02-pi-swe.md",
+            "docs/pi-extension-architecture-review/README.md",
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-catalog/IDEA_BANK.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/extension.anatomy.json",
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/integrations/todo.ts",
+            "extensions/pi-swe/src/pi/register.ts",
+            "extensions/pi-todo/README.md",
+            "extensions/pi-todo/extension.anatomy.json",
+            "extensions/pi-todo/index.ts",
+            "profiles/full.json",
+            "scripts/check-performance-budgets.ts",
+            "src/pi-todo/contract.ts",
+            "src/pi-todo/public.ts",
+            "src/pi-todo/workflow-integration.ts",
+            "src/release/inventory.ts",
+            "test/gentic-demo.test.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-ownership.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/pi-todo-workflow-backend.test.ts",
+            "test/release-inventory.test.ts"
+          ],
+          "hash": "sha256:80d95f275c08ba3ea4abc9b2c454540088774a23ba42dd72da926e3c76bb2def"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "CONTRIBUTING.md",
+            "catalog/gentic-inventory.json",
+            "docs/pi-extension-architecture-review/02-pi-swe.md",
+            "docs/pi-extension-architecture-review/README.md",
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-catalog/IDEA_BANK.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/extension.anatomy.json",
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/integrations/todo.ts",
+            "extensions/pi-swe/src/pi/register.ts",
+            "extensions/pi-todo/README.md",
+            "extensions/pi-todo/extension.anatomy.json",
+            "extensions/pi-todo/index.ts",
+            "profiles/full.json",
+            "scripts/check-performance-budgets.ts",
+            "src/pi-todo/contract.ts",
+            "src/pi-todo/public.ts",
+            "src/pi-todo/workflow-integration.ts",
+            "src/release/inventory.ts",
+            "test/gentic-demo.test.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-ownership.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/pi-todo-workflow-backend.test.ts",
+            "test/release-inventory.test.ts"
+          ],
+          "hash": "sha256:80d95f275c08ba3ea4abc9b2c454540088774a23ba42dd72da926e3c76bb2def"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_AMWMtvVYGMo33ua6DTlYUKNA|fc_022ae5bc3d2df145016ab726bede8487d2a7d11d012aeacccb",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:b9f279e04b78f93f8edef50c615671ac7bff8e41cb2c65c0d91cdaf4cc5dae3e"
+    },
+    {
+      "id": "E-7703b6a6-a86f-451b-a5a5-97b1b4ddcd2c",
+      "kind": "machine-command",
+      "workId": "W-2",
+      "obligationIds": [
+        "O-2"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && npm run check && npm run check:commands && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T01:58:58.492Z",
+      "completedAt": "2026-09-26T01:59:11.733Z",
+      "durationMs": 13241,
+      "contractFingerprint": "sha256:366b2c67daefb5582c714565b8712bf362c97939f218cfb65526e59752a1db35",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "CONTRIBUTING.md",
+            "catalog/gentic-inventory.json",
+            "docs/pi-extension-architecture-review/02-pi-swe.md",
+            "docs/pi-extension-architecture-review/README.md",
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-catalog/IDEA_BANK.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/extension.anatomy.json",
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/integrations/todo.ts",
+            "extensions/pi-swe/src/pi/register.ts",
+            "extensions/pi-todo/README.md",
+            "extensions/pi-todo/extension.anatomy.json",
+            "extensions/pi-todo/index.ts",
+            "profiles/full.json",
+            "scripts/check-performance-budgets.ts",
+            "src/pi-todo/contract.ts",
+            "src/pi-todo/public.ts",
+            "src/pi-todo/workflow-integration.ts",
+            "src/release/inventory.ts",
+            "test/gentic-demo.test.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-ownership.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/pi-todo-workflow-backend.test.ts",
+            "test/release-inventory.test.ts"
+          ],
+          "hash": "sha256:21bb91b5d02dd5145a78be4eb7573b8d472840e17f77607d4bb2541bb411f489"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "CONTRIBUTING.md",
+            "catalog/gentic-inventory.json",
+            "docs/pi-extension-architecture-review/02-pi-swe.md",
+            "docs/pi-extension-architecture-review/README.md",
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-catalog/IDEA_BANK.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/extension.anatomy.json",
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/integrations/todo.ts",
+            "extensions/pi-swe/src/pi/register.ts",
+            "extensions/pi-todo/README.md",
+            "extensions/pi-todo/extension.anatomy.json",
+            "extensions/pi-todo/index.ts",
+            "profiles/full.json",
+            "scripts/check-performance-budgets.ts",
+            "src/pi-todo/contract.ts",
+            "src/pi-todo/public.ts",
+            "src/pi-todo/workflow-integration.ts",
+            "src/release/inventory.ts",
+            "test/gentic-demo.test.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-ownership.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/pi-todo-workflow-backend.test.ts",
+            "test/release-inventory.test.ts"
+          ],
+          "hash": "sha256:21bb91b5d02dd5145a78be4eb7573b8d472840e17f77607d4bb2541bb411f489"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_hYv19PL7XpmZuVZWasbByJec|fc_022ae5bc3d2df145016ab726e2555c87d2822654b6e03e2e61",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:efbdfa7db63a26a19f77c821ea86d59a98a9bf83cc9835e8a4687bbb0ce0d1db"
+    },
+    {
+      "id": "E-785a6b07-5de3-44cc-9e26-f3eaceafea82",
+      "kind": "machine-command",
+      "workId": "W-2",
+      "obligationIds": [
+        "O-2"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck && npm run check && npm run check:commands && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T02:06:22.358Z",
+      "completedAt": "2026-09-26T02:06:35.697Z",
+      "durationMs": 13339,
+      "contractFingerprint": "sha256:366b2c67daefb5582c714565b8712bf362c97939f218cfb65526e59752a1db35",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "CONTRIBUTING.md",
+            "catalog/gentic-inventory.json",
+            "docs/pi-extension-architecture-review/02-pi-swe.md",
+            "docs/pi-extension-architecture-review/README.md",
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-catalog/IDEA_BANK.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/extension.anatomy.json",
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/integrations/todo.ts",
+            "extensions/pi-swe/src/pi/register.ts",
+            "extensions/pi-todo/README.md",
+            "extensions/pi-todo/extension.anatomy.json",
+            "extensions/pi-todo/index.ts",
+            "profiles/full.json",
+            "scripts/check-performance-budgets.ts",
+            "src/pi-todo/contract.ts",
+            "src/pi-todo/public.ts",
+            "src/pi-todo/thin-surface.ts",
+            "src/pi-todo/workflow-integration.ts",
+            "src/release/inventory.ts",
+            "test/gentic-demo.test.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-ownership.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/pi-todo-workflow-backend.test.ts",
+            "test/release-inventory.test.ts"
+          ],
+          "hash": "sha256:354b597caa22a8a9f327cc49e55e589e7a1dff5d6deb5fd504887462d9d80aa4"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "CONTRIBUTING.md",
+            "catalog/gentic-inventory.json",
+            "docs/pi-extension-architecture-review/02-pi-swe.md",
+            "docs/pi-extension-architecture-review/README.md",
+            "docs/pi-package-resources.md",
+            "extensions/README.md",
+            "extensions/pi-catalog/IDEA_BANK.md",
+            "extensions/pi-swe/README.md",
+            "extensions/pi-swe/extension.anatomy.json",
+            "extensions/pi-swe/index.ts",
+            "extensions/pi-swe/integrations/todo.ts",
+            "extensions/pi-swe/src/pi/register.ts",
+            "extensions/pi-todo/README.md",
+            "extensions/pi-todo/extension.anatomy.json",
+            "extensions/pi-todo/index.ts",
+            "profiles/full.json",
+            "scripts/check-performance-budgets.ts",
+            "src/pi-todo/contract.ts",
+            "src/pi-todo/public.ts",
+            "src/pi-todo/thin-surface.ts",
+            "src/pi-todo/workflow-integration.ts",
+            "src/release/inventory.ts",
+            "test/gentic-demo.test.ts",
+            "test/pi-swe-runtime.test.ts",
+            "test/pi-todo-characterization.test.ts",
+            "test/pi-todo-ownership.test.ts",
+            "test/pi-todo-qualification.test.ts",
+            "test/pi-todo-workflow-backend.test.ts",
+            "test/release-inventory.test.ts"
+          ],
+          "hash": "sha256:354b597caa22a8a9f327cc49e55e589e7a1dff5d6deb5fd504887462d9d80aa4"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_0eEWfxCKuaHlex7agCTFMAjN|fc_022ae5bc3d2df145016ab7289e13d887d2a6493fe441346193",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:b7ba1c0c8e30e888ec59c3014b84552ac3efa43c5d52b50cdd2e253c233b7493"
+    },
+    {
+      "id": "E-67174f6f-dfa7-4a56-b6a8-32d30f46e303",
+      "kind": "independent-review",
+      "workId": "W-2",
+      "obligationIds": [
+        "O-2"
+      ],
+      "outcome": "passed",
+      "reviewedAt": "2026-09-26T02:12:31.994Z",
+      "contractFingerprint": "sha256:366b2c67daefb5582c714565b8712bf362c97939f218cfb65526e59752a1db35",
+      "source": {
+        "kind": "bounded-paths",
+        "paths": [
+          "CONTRIBUTING.md",
+          "catalog/gentic-inventory.json",
+          "docs/pi-extension-architecture-review/02-pi-swe.md",
+          "docs/pi-extension-architecture-review/README.md",
+          "docs/pi-package-resources.md",
+          "extensions/README.md",
+          "extensions/pi-catalog/IDEA_BANK.md",
+          "extensions/pi-swe/README.md",
+          "extensions/pi-swe/extension.anatomy.json",
+          "extensions/pi-swe/index.ts",
+          "extensions/pi-swe/integrations/todo.ts",
+          "extensions/pi-swe/src/pi/register.ts",
+          "extensions/pi-todo/README.md",
+          "extensions/pi-todo/extension.anatomy.json",
+          "extensions/pi-todo/index.ts",
+          "profiles/full.json",
+          "scripts/check-performance-budgets.ts",
+          "src/pi-todo/contract.ts",
+          "src/pi-todo/public.ts",
+          "src/pi-todo/thin-surface.ts",
+          "src/pi-todo/workflow-integration.ts",
+          "src/release/inventory.ts",
+          "test/gentic-demo.test.ts",
+          "test/pi-swe-runtime.test.ts",
+          "test/pi-todo-characterization.test.ts",
+          "test/pi-todo-ownership.test.ts",
+          "test/pi-todo-qualification.test.ts",
+          "test/pi-todo-workflow-backend.test.ts",
+          "test/release-inventory.test.ts"
+        ],
+        "hash": "sha256:354b597caa22a8a9f327cc49e55e589e7a1dff5d6deb5fd504887462d9d80aa4"
+      },
+      "dimensions": [
+        "correctness",
+        "extension-discovery",
+        "authority-separation",
+        "registration-order-independence",
+        "persistence-and-restart-compatibility",
+        "failure-closure",
+        "test-and-metadata-coverage"
+      ],
+      "summary": "Independently review the twice-corrected standalone pi-todo extraction. Prior reviews found (1) restored focus did not refresh Todo in todo-first order and (2) cleared focus left stale workflow presentation while malformed restored authority could reject startup. Corrections now: SWE session_start awaits contained projection refresh for restored and cleared focus; continuation ignores invalid restored authority without clearing it; Todo lifecycle refresh displays unavailable rather than falling back on provider failure; both load orders test focused, cleared, restored, and malformed startup. Verify those fixes plus standalone ownership, native public event integration, no private sibling imports/registry/ledger, finish-to-markImplemented-only, persistence/scopes/names compatibility, and metadata/docs. Current full gate passes typecheck, check, check:commands, 272 tests.",
+      "provenance": {
+        "kind": "pi-interactive-session-review",
+        "transport": "interactive-shell",
+        "reviewerSessionId": "pi-todo-independent-review-3",
+        "recorderSessionId": "01a0db5d-1fac-70b5-a2ab-e86957c0bc5f"
+      }
+    }
+  ],
+  "decisions": [
+    {
+      "id": "D-1",
+      "text": "Use Pi native extension events and public contracts for optional workflow projection rather than direct sibling imports or a registry.",
+      "basis": "Pi documentation identifies pi.events as the supported cross-extension communication surface and event registration is available in either load order."
+    },
+    {
+      "id": "D-2",
+      "text": "Keep Todo and SWE as separately discoverable extension entrypoints.",
+      "basis": "Pi discovers extension subdirectories with index.ts independently, allowing either product to be absent."
+    }
+  ],
+  "risks": [
+    {
+      "id": "R-1",
+      "text": "Cross-extension integration becomes registration-order dependent or misses focus changes.",
+      "mitigation": "Use symmetric event handshake/subscription behavior and test both load orders plus dynamic refresh."
+    },
+    {
+      "id": "R-2",
+      "text": "Todo accidentally gains workflow completion or evidence authority.",
+      "mitigation": "Expose only projection/status/start/markImplemented operations and test denied completion/evidence crossings."
+    },
+    {
+      "id": "R-3",
+      "text": "Generated discovery metadata or public behavior drifts.",
+      "mitigation": "Regenerate/check catalog and inventory and run focused plus full repository gates."
+    }
+  ]
+}

@@ -7,7 +7,8 @@ The code is generally careful and unusually well-tested. The weak point is **arc
 | Extension       | Surface                                       | Verdict                               |
 | --------------- | --------------------------------------------- | ------------------------------------- |
 | `pi-hud`        | widget, command, 9 events                     | **Poorly designed**                   |
-| `pi-swe`        | `swe` + `todo`, tools, commands, UI, 6 events | **Overgrown / poorly bounded**        |
+| `pi-swe`        | `swe`, durable workflow lifecycle and UI      | **Todo boundary separated**           |
+| `pi-todo`       | `todo`, session/project state, optional projection | **Independent / well bounded**    |
 | `pi-context`    | command, pressure monitoring, exports         | **Overengineered**                    |
 | `pi-primitives` | prompt-policy framework                       | **Wrong abstraction**                 |
 | `pi-commands`   | `clear`, `scaffold`                           | **Mixed; scaffolder boundary is bad** |
@@ -18,7 +19,7 @@ The code is generally careful and unusually well-tested. The weak point is **arc
 ## Priority order
 
 1. Remove `pi-hud` imports from sibling `src/` trees.
-2. Separate `todo` from `pi-swe`.
+2. Separate `todo` from `pi-swe`. **Completed:** independently discovered entrypoints with Pi-event integration.
 3. Retire `pi-primitives`.
 4. Move scaffold templates out of `pi-catalog`.
 5. Replace `pi-context` object introspection with a typed Pi telemetry API.
