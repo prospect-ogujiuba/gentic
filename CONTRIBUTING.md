@@ -50,7 +50,8 @@ Do not hand-edit a command barrel, add a nested package manifest, or add a new p
 | Context/HUD | `extensions/pi-context`, `extensions/pi-hud` | `test/pi-context-*.test.ts`, `test/pi-hud-*.test.ts` |
 | Safety policy/git | `config/pi-permission-system.json`, `extensions/pi-git` | `npm run test:permissions`, `test/pi-git.test.ts` |
 | SWE workflows | `extensions/pi-swe` | `npm run test:swe` |
-| Session/project Todo and workflow projection | `extensions/pi-todo`, `src/pi-todo` | `npm run test:todo` |
+| Session/project Todo | `extensions/pi-todo/src` | `npm run test:todo` |
+| Shared Todo contracts and workflow projection | `src/todo-contracts`, `extensions/pi-swe/integrations/todo.ts` | `npm run test:todo`, `npm run test:swe` |
 | Shared prompt behavior | `extensions/pi-primitives` | `npm run test:primitives` |
 | Package resources | owner-local or root `skills/`, `prompts/`, `themes/` | `npm run check:resources` |
 

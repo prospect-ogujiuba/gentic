@@ -1,4 +1,4 @@
-import { TodoDocketModal } from "../../../../src/pi-todo/ui/shared-modal.ts";
+import { TodoDocketModal } from "../../../../src/ui/todo-view/modal.ts";
 import type { SweDocket } from "./docket.ts";
 import type { SweTheme } from "./theme.ts";
 

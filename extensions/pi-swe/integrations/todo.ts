@@ -3,12 +3,12 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { SweService } from "../src/app/service.ts";
 import type { SweSurfaceController } from "../src/pi/register.ts";
 import { readyWork, type Initiative, type WorkItem } from "../src/domain/initiative.ts";
-import type { TodoPublicAction, TodoPublicRequest } from "../../../src/pi-todo/contract.ts";
+import type { TodoPublicAction, TodoPublicRequest } from "../../../src/todo-contracts/contract.ts";
 import {
   TODO_WORKFLOW_PROVIDER_AVAILABLE_EVENT,
   TODO_WORKFLOW_PROVIDER_REQUEST_EVENT,
   type TodoWorkflowProvider,
-} from "../../../src/pi-todo/workflow-integration.ts";
+} from "../../../src/todo-contracts/workflow-integration.ts";
 import {
   NO_TODO_CAPABILITIES,
   type TodoBackend,
@@ -17,9 +17,9 @@ import {
   type TodoView,
   type TodoViewItem,
   type TodoViewStatus,
-} from "../../../src/pi-todo/provider.ts";
-import { WorkflowTodoError } from "../../../src/pi-todo/provider.ts";
-export { WorkflowTodoError } from "../../../src/pi-todo/provider.ts";
+} from "../../../src/todo-contracts/provider.ts";
+import { WorkflowTodoError } from "../../../src/todo-contracts/provider.ts";
+export { WorkflowTodoError } from "../../../src/todo-contracts/provider.ts";
 
 /** Publish the optional projection through Pi's native cross-extension event bus. */
 export function registerWorkflowTodoProvider(pi: ExtensionAPI, swe: SweSurfaceController): void {

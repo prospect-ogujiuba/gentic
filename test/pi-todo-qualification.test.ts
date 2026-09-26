@@ -45,20 +45,24 @@ test("pi-swe and pi-todo entrypoints own disjoint public registrations", async (
   await access(new URL("../extensions/pi-todo/index.ts", import.meta.url));
   await assert.rejects(access(new URL("../src/lifecycle-coordination.ts", import.meta.url)));
 
-  const todoFiles = (await readdir(new URL("../src/pi-todo/", import.meta.url), { recursive: true }))
+  const todoFiles = (await readdir(new URL("../extensions/pi-todo/src/", import.meta.url), { recursive: true }))
     .filter((path) => path.endsWith(".ts"));
-  assert.ok(todoFiles.includes("thin-surface.ts"));
-  assert.ok(todoFiles.includes("provider.ts"));
-  assert.ok(todoFiles.includes("workflow-integration.ts"));
-  assert.ok(!todoFiles.includes("workflow-backend.ts"));
-  assert.ok(todoFiles.includes("ui/shared-modal.ts"));
+  for (const path of ["pi/register.ts", "pi/todo-surface.ts", "pi/command-adapter.ts", "domain/state-core.ts", "app/project-store.ts", "app/project-backend.ts", "ui/docket.ts", "ui/modal.ts"]) {
+    assert.ok(todoFiles.includes(path), `Todo owns ${path}`);
+  }
+  await assert.rejects(access(new URL("../src/pi-todo/", import.meta.url)));
+  await access(new URL("../src/todo-contracts/workflow-integration.ts", import.meta.url));
+  await access(new URL("../src/ui/todo-view/modal.ts", import.meta.url));
 
   const register = await readFile(new URL("../extensions/pi-swe/src/pi/register.ts", import.meta.url), "utf8");
   assert.doesNotMatch(register, /registerLightweightTodoSurface|BranchTodoCore|ProjectTodoStore/);
   const sweEntrypoint = await readFile(new URL("../extensions/pi-swe/index.ts", import.meta.url), "utf8");
   const todoEntrypoint = await readFile(new URL("../extensions/pi-todo/index.ts", import.meta.url), "utf8");
   assert.doesNotMatch(sweEntrypoint, /registerLightweightTodoSurface/);
-  assert.match(todoEntrypoint, /registerLightweightTodoSurface/);
+  assert.match(todoEntrypoint, /registerTodo/);
+  assert.match(todoEntrypoint, /\.\/src\/pi\/register\.ts/);
+  const todoRegister = await readFile(new URL("../extensions/pi-todo/src/pi/register.ts", import.meta.url), "utf8");
+  assert.match(todoRegister, /registerLightweightTodoSurface/);
   assert.doesNotMatch(todoEntrypoint, /extensions\/pi-swe|\.\.\/pi-swe/);
   assert.doesNotMatch(register, /lifecycle-coordination|registerSweActivityProbe/);
 });

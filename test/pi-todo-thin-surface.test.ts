@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { getTodoCommandCompletions, registerLightweightTodoSurface } from "../src/pi-todo/thin-surface.ts";
+import { getTodoCommandCompletions, registerLightweightTodoSurface } from "../extensions/pi-todo/src/pi/todo-surface.ts";
 
 type RegisteredTool = {
   parameters: { properties: {

@@ -14,7 +14,7 @@ Pause, interruption, fork, and resume do not rewind repository state. Session en
 
 The pi-swe discovery entrypoint registers only the `swe` command and structured tool. The independently discovered `extensions/pi-todo/index.ts` owns Todo registration, session events, and project persistence, so either extension works when the other is absent. `integrations/todo.ts` projects workflow state and delegates only start/implemented transitions to `SweService`.
 
-The two entrypoints communicate only through Pi's native `pi.events` bus and the public provider contract in `src/pi-todo/workflow-integration.ts`. A request/announcement handshake supports both registration orders; focus-change events refresh Todo presentation. There are no private sibling imports, shared runtime registry, second ledger, or registration-order dependency.
+The two entrypoints communicate only through Pi's native `pi.events` bus and the public provider contract in `src/todo-contracts/workflow-integration.ts`. A request/announcement handshake supports both registration orders; focus-change events refresh Todo presentation. Shared view rendering lives in `src/ui/todo-view/`, while Todo's state, persistence, registration, and standalone UI adapters live in `extensions/pi-todo/src/`. There are no private sibling imports, shared runtime registry, second ledger, or registration-order dependency.
 
 When pi-todo is loaded, its surface presents three separate authorities:
 

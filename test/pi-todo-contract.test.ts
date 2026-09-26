@@ -7,7 +7,7 @@ import {
   TODO_SCOPES,
   isTodoPublicAction,
   isTodoScope,
-} from "../src/pi-todo/contract.ts";
+} from "../src/todo-contracts/contract.ts";
 
 test("lightweight todo contract exposes only essential focus-list actions", () => {
   assert.deepEqual(TODO_PUBLIC_ACTIONS, [

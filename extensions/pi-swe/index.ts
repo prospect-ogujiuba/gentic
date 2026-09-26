@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { TODO_WORKFLOW_FOCUS_CHANGED_EVENT } from "../../src/pi-todo/workflow-integration.ts";
+import { TODO_WORKFLOW_FOCUS_CHANGED_EVENT } from "../../src/todo-contracts/workflow-integration.ts";
 import { registerWorkflowTodoProvider } from "./integrations/todo.ts";
 import { registerSweSurface } from "./src/pi/register.ts";
 

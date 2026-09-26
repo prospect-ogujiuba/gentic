@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { ProjectTodoBackend } from "../src/pi-todo/project-backend.ts";
-import { PROJECT_TODO_FILE, ProjectTodoStore, ProjectTodoStoreError } from "../src/pi-todo/project-store.ts";
-import type { TodoCoreState } from "../src/pi-todo/state-core.ts";
-import { registerLightweightTodoSurface } from "../src/pi-todo/thin-surface.ts";
+import { ProjectTodoBackend } from "../extensions/pi-todo/src/app/project-backend.ts";
+import { PROJECT_TODO_FILE, ProjectTodoStore, ProjectTodoStoreError } from "../extensions/pi-todo/src/app/project-store.ts";
+import type { TodoCoreState } from "../extensions/pi-todo/src/domain/state-core.ts";
+import { registerLightweightTodoSurface } from "../extensions/pi-todo/src/pi/todo-surface.ts";
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "pi-project-todos-"));
