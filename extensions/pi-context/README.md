@@ -13,7 +13,8 @@ The extension has four stable lifecycle subscriptions: `session_start`, `turn_en
 - `/pi-context` or `/pi-context summary` shows remaining context, pressure, and broad aggregate contributors.
 - `/pi-context artifact` (or `open`) explicitly writes content-safe Markdown under `.model-artifacts/system/reports/pi-context/`.
 - `/pi-context json` explicitly writes the same allowlisted snapshot as JSON.
-- Exports use canonical `YYYY-MM-DD_HHMM-<short-name>` artifact filenames, exclusive creation, and reject symlinked or escaping report paths.
+- Exports preserve canonical `YYYY-MM-DD_HHMM-<short-name>` filenames and exact rendered bytes while delegating bounded, exclusive, atomic publication to `src/services/safe-file-publication.ts`.
+- The backend rejects traversal, symlinked or replaced parents, collisions, partial publication, and every `workflow.json` destination; pi-context has no workflow authority.
 - Summary/default mode never writes an artifact.
 - Completion remains a local order-independent adapter because mode and compatibility-filter tokens may be combined; forcing this grammar through action-only navigation would remove valid combinations without improving guidance.
 

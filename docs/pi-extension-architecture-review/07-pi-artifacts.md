@@ -20,13 +20,13 @@
 
 Its synchronous filesystem calls are acceptable because writes are small and infrequent.
 
-The only mild issue is duplicated secure-publication machinery relative to `pi-swe` and `pi-context`.
+The former secure-publication duplication with `pi-context` is resolved by the supported `src/services/safe-file-publication.ts` backend. pi-artifacts retains canonical naming, validation, metadata, and tool registration; pi-context retains rendering and export naming. The backend owns only bounded path validation, safe directory creation, staging, file/directory sync, exclusive atomic publication, collision handling, and inode-aware cleanup.
 
-## Recommended fix
+pi-swe deliberately does not use this backend. Its private `SweService`/store path remains the only writer of initiative `workflow.json` and retains stable parent-relative and lifecycle-specific authority publication. The shared backend explicitly denies `workflow.json`, so extracting common artifact/report mechanics does not broaden workflow authority.
 
-Optionally extract a shared safe-filesystem utility.
+## Resolution
 
-Otherwise, leave the extension alone.
+No further safe-filesystem extraction is recommended. Extend the centralized adversarial matrix in `docs/model-artifacts.md` and its focused tests when adding a compatible artifact/report consumer; do not migrate unrelated writes or pi-swe authority publication.
 
 ## Related priorities
 

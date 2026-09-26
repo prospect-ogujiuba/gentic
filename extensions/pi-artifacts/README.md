@@ -27,17 +27,16 @@ System output:
 
 ## Safety and ownership
 
-Paths are normalized, project-relative, and restricted to canonical scopes and kinds. Topic, namespace, and name segments must be kebab-case. Creation rejects observed symlinked parents, traversal, invalid scope/kind combinations, empty or oversized content, and existing destinations. Publishing is atomic for cooperative writers and never overwrites another artifact.
+Paths are normalized, project-relative, and restricted to canonical scopes and kinds. Topic, namespace, and name segments must be kebab-case. Creation rejects symlinked or replaced parents, traversal, invalid scope/kind combinations, empty or oversized content, and existing destinations. `src/services/safe-file-publication.ts` owns bounded staging, file sync, stable directory-descriptor publication, exclusive hard-link creation, destination verification, inode-aware cleanup, and directory sync. Publishing never overwrites another artifact and fails closed when the runtime cannot expose `/proc/self/fd` or `/dev/fd`.
 
-pi-artifacts operates inside a trusted local worktree. It does not claim to sandbox a hostile process that can concurrently rename or replace artifact parent directories; OS-level `openat`/directory-handle publication is outside this extension's portable Node API boundary.
-
-The generic writer cannot create or modify `.model-artifacts/initiatives/<topic>/workflow.json`; that file is pi-swe authority. Consumers may attach the returned artifact path and SHA-256 hash to their own durable state.
+The shared backend explicitly rejects every `workflow.json` destination. That authority remains solely with pi-swe's private `SweService`/store publication path; pi-artifacts supplies no bypass. Consumers may attach the returned artifact path and SHA-256 hash to their own durable state. The centralized adversarial matrix is documented in `docs/model-artifacts.md`.
 
 ## Anatomy
 
 - `src/domain/types.ts`: public requests, results, scopes, and kinds
 - `src/domain/normalize.ts`: canonical paths and timestamps
-- `src/app/service.ts`: bounded, exclusive, atomic creation
+- `src/app/service.ts`: artifact validation, metadata, and shared-backend adapter
+- `../../src/services/safe-file-publication.ts`: bounded, exclusive, atomic artifact/report publication
 - `src/pi/register.ts`: the model-callable tool adapter
 
 ## Tests

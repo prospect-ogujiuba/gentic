@@ -2,8 +2,8 @@
   "kind": "gentic.swe.initiative",
   "schemaVersion": 1,
   "id": "05-pi-artifacts-publication-backend",
-  "revision": 3,
-  "status": "draft",
+  "revision": 27,
+  "status": "complete",
   "objective": "Extract one supported safe-file-publication backend for pi-artifacts and compatible context reports, preserving canonical paths, bounded content, collision and symlink defenses, atomic exclusive publication, and pi-swe's exclusive ownership of workflow.json.",
   "policies": {
     "commitOnWorkCompletion": true,
@@ -156,7 +156,7 @@
       "id": "W-1",
       "kind": "task",
       "title": "Characterize artifact and report publication security",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [],
       "criterionIds": [
         "AC-2",
@@ -175,7 +175,7 @@
       "id": "W-2",
       "kind": "task",
       "title": "Extract and adopt the safe publication backend",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "W-1"
       ],
@@ -197,7 +197,7 @@
       "id": "W-3",
       "kind": "task",
       "title": "Document ownership and qualify publication safety",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "W-2"
       ],
@@ -214,7 +214,739 @@
     }
   ],
   "artifacts": [],
-  "evidence": [],
+  "evidence": [
+    {
+      "id": "E-a1f9c894-994a-4c61-87ac-eff8fa8807f8",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-artifacts.test.ts test/pi-context-native-pressure-export.test.ts test/pi-safe-file-publication-characterization.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T08:37:11.998Z",
+      "completedAt": "2026-09-26T08:37:13.107Z",
+      "durationMs": 1109,
+      "contractFingerprint": "sha256:7d40495e8d4c906f3a5342f9d738b3dccb4cf19a4f462fd7863e31d145ce89c9",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-artifacts/src/app/service.ts",
+            "extensions/pi-artifacts/src/domain/normalize.ts",
+            "extensions/pi-context/src/app/native-export.ts",
+            "test/pi-safe-file-publication-characterization.test.ts"
+          ],
+          "hash": "sha256:0ce2eb81524b386dc72238fc1447e7acf52feda4dc669b7453fb90bb4b9ab7ce"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-artifacts/src/app/service.ts",
+            "extensions/pi-artifacts/src/domain/normalize.ts",
+            "extensions/pi-context/src/app/native-export.ts",
+            "test/pi-safe-file-publication-characterization.test.ts"
+          ],
+          "hash": "sha256:0ce2eb81524b386dc72238fc1447e7acf52feda4dc669b7453fb90bb4b9ab7ce"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_2oKnjqxUIUrlXWf5FDPPTT96|fc_052536a4e2be86b5016ab7843781f487d2bd64c764040311cf",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:89cad4cfe8bd58c7e10c78470a8ea18ff82a8b700add29dcfe2bd8cb30bf3437"
+    },
+    {
+      "id": "E-49bf7930-8cf7-44bb-9454-a3026675ce36",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-safe-file-publication-characterization.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T08:38:08.952Z",
+      "completedAt": "2026-09-26T08:38:09.570Z",
+      "durationMs": 618,
+      "contractFingerprint": "sha256:7d40495e8d4c906f3a5342f9d738b3dccb4cf19a4f462fd7863e31d145ce89c9",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/src/app/native-export.ts",
+            "test/pi-safe-file-publication-characterization.test.ts"
+          ],
+          "hash": "sha256:045863ca53d90554a211489843c777044207ecc54c13cab8749c25ad1d456c7a"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-context/src/app/native-export.ts",
+            "test/pi-safe-file-publication-characterization.test.ts"
+          ],
+          "hash": "sha256:045863ca53d90554a211489843c777044207ecc54c13cab8749c25ad1d456c7a"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_e1UrOgLhh0oSFoMbCcSauMY4|fc_052536a4e2be86b5016ab78470911487d2af69ed9a464fc3ad",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:63389cded6f4eac803d8d45795c8553a283dd31062f9666cdee70a875b2833f8"
+    },
+    {
+      "id": "E-89b73625-b8dd-4ae6-b0c2-58ae3c26ed4b",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-artifacts.test.ts test/pi-context-native-pressure-export.test.ts test/pi-safe-file-publication-characterization.test.ts"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T08:38:35.302Z",
+      "completedAt": "2026-09-26T08:38:35.978Z",
+      "durationMs": 676,
+      "contractFingerprint": "sha256:7d40495e8d4c906f3a5342f9d738b3dccb4cf19a4f462fd7863e31d145ce89c9",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-artifacts/src/app/service.ts",
+            "extensions/pi-context/src/app/native-export.ts",
+            "test/pi-safe-file-publication-characterization.test.ts"
+          ],
+          "hash": "sha256:b2eb37d98f1a32a56c995813e7e3ffbcdc4b30f661b300784c240e40a1176ff3"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-artifacts/src/app/service.ts",
+            "extensions/pi-context/src/app/native-export.ts",
+            "test/pi-safe-file-publication-characterization.test.ts"
+          ],
+          "hash": "sha256:b2eb37d98f1a32a56c995813e7e3ffbcdc4b30f661b300784c240e40a1176ff3"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_uXPJspPLVsbDi44byrTEf9au|fc_052536a4e2be86b5016ab7848aab4487d28ce1d1f8d339b838",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:7a2d14a145b5db582504ed41c90bd8971419dc0553677bddd0e330a246ed9a67"
+    },
+    {
+      "id": "E-5cca125e-3bac-4804-ad10-92e42b2b8046",
+      "kind": "machine-command",
+      "workId": "W-2",
+      "obligationIds": [
+        "O-2"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/safe-file-publication.test.ts test/pi-safe-file-publication-characterization.test.ts test/pi-artifacts.test.ts test/pi-context-native-pressure-export.test.ts && npm run typecheck && npm run check:dependencies"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T08:41:17.553Z",
+      "completedAt": "2026-09-26T08:41:23.311Z",
+      "durationMs": 5758,
+      "contractFingerprint": "sha256:7d40495e8d4c906f3a5342f9d738b3dccb4cf19a4f462fd7863e31d145ce89c9",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-artifacts/src/app/service.ts",
+            "extensions/pi-context/src/app/native-export.ts",
+            "src/services/safe-file-publication.ts",
+            "test/pi-safe-file-publication-characterization.test.ts",
+            "test/safe-file-publication.test.ts"
+          ],
+          "hash": "sha256:0154af1633d61b079045cb368ff3d70b674e0ddbef1ee38b8cf8db8a52c4ba68"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-artifacts/src/app/service.ts",
+            "extensions/pi-context/src/app/native-export.ts",
+            "src/services/safe-file-publication.ts",
+            "test/pi-safe-file-publication-characterization.test.ts",
+            "test/safe-file-publication.test.ts"
+          ],
+          "hash": "sha256:0154af1633d61b079045cb368ff3d70b674e0ddbef1ee38b8cf8db8a52c4ba68"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_2duEY1fI1GMneMpJr6K8NXGA|fc_052536a4e2be86b5016ab7852ce2e087d2b40d6e53697e5e91",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:74d6a5b7cbcbb3c2029d220c8ed4c75645102450101c58c2ba7cdd32318b30aa"
+    },
+    {
+      "id": "E-5102318a-7c1f-49b0-ae1b-40d7709cc49e",
+      "kind": "machine-command",
+      "workId": "W-2",
+      "obligationIds": [
+        "O-2"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/safe-file-publication.test.ts test/pi-safe-file-publication-characterization.test.ts test/pi-artifacts.test.ts test/pi-context-native-pressure-export.test.ts && npm run typecheck && npm run check:dependencies"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T08:42:39.721Z",
+      "completedAt": "2026-09-26T08:42:45.092Z",
+      "durationMs": 5371,
+      "contractFingerprint": "sha256:7d40495e8d4c906f3a5342f9d738b3dccb4cf19a4f462fd7863e31d145ce89c9",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-artifacts/src/app/service.ts",
+            "extensions/pi-context/src/app/native-export.ts",
+            "src/services/safe-file-publication.ts",
+            "test/pi-safe-file-publication-characterization.test.ts",
+            "test/safe-file-publication.test.ts"
+          ],
+          "hash": "sha256:25eb265b68eca4da77e11712e95dc8a2359539043fbf289c33e28dc4221c4d06"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-artifacts/src/app/service.ts",
+            "extensions/pi-context/src/app/native-export.ts",
+            "src/services/safe-file-publication.ts",
+            "test/pi-safe-file-publication-characterization.test.ts",
+            "test/safe-file-publication.test.ts"
+          ],
+          "hash": "sha256:25eb265b68eca4da77e11712e95dc8a2359539043fbf289c33e28dc4221c4d06"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_SQQLN9yW4r6zhcBGVMSMy2oq|fc_052536a4e2be86b5016ab7857ede5487d2938a7bd34bb4a40b",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:283eef15d9ee1be864c54f5a471099171d856d21f684b973a0f1dea0231aad15"
+    },
+    {
+      "id": "E-fe2fd7f9-a0a6-450d-9758-60c81fe682e3",
+      "kind": "model-review",
+      "workId": "W-2",
+      "obligationIds": [
+        "O-2"
+      ],
+      "outcome": "passed",
+      "reviewedAt": "2026-09-26T08:43:04.012Z",
+      "contractFingerprint": "sha256:7d40495e8d4c906f3a5342f9d738b3dccb4cf19a4f462fd7863e31d145ce89c9",
+      "source": {
+        "kind": "bounded-paths",
+        "paths": [
+          "extensions/pi-artifacts/src/app/service.ts",
+          "extensions/pi-context/src/app/native-export.ts",
+          "src/services/safe-file-publication.ts",
+          "test/pi-safe-file-publication-characterization.test.ts",
+          "test/safe-file-publication.test.ts"
+        ],
+        "hash": "sha256:25eb265b68eca4da77e11712e95dc8a2359539043fbf289c33e28dc4221c4d06"
+      },
+      "dimensions": [
+        "self-review: path containment and workflow authority",
+        "self-review: atomicity, collision, interruption cleanup",
+        "self-review: consumer path and byte compatibility",
+        "self-review: dependency and registration isolation"
+      ],
+      "summary": "Explicit source-bound self-review of src/services/safe-file-publication.ts and both migrated consumers. Corrected duplicated pi-context directory publication, added parent-directory fsync after creation, and made cleanup inode-aware so a swapped path cannot cause deletion of an unrelated file. Re-reviewed normalized-path validation, explicit workflow.json denial, exclusive hard-link publication, staged-file fsync, destination verification, consumer error mapping, and exact rendering/path preservation; no remaining blocking findings.",
+      "provenance": {
+        "kind": "pi-model-self-review",
+        "sessionId": "01a0dcda-461c-74a0-a7d3-44716ee08c3c"
+      }
+    },
+    {
+      "id": "E-2481dcf9-73a0-472c-bd55-e096addc7974",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-artifacts.test.ts test/pi-context-native-pressure-export.test.ts test/pi-safe-file-publication-characterization.test.ts test/safe-file-publication.test.ts test/pi-swe*.test.ts && npm run typecheck && npm run check:dependencies && npm run check:commands && npm run check:performance && npm run check && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T08:44:19.333Z",
+      "completedAt": "2026-09-26T08:44:27.395Z",
+      "durationMs": 8062,
+      "contractFingerprint": "sha256:7d40495e8d4c906f3a5342f9d738b3dccb4cf19a4f462fd7863e31d145ce89c9",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            ".model-artifacts/initiatives/05-pi-artifacts-publication-backend/workflow.json",
+            "docs/model-artifacts.md",
+            "docs/pi-extension-architecture-review/07-pi-artifacts.md",
+            "extensions/pi-artifacts/README.md",
+            "extensions/pi-artifacts/src/app/service.ts",
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/src/app/native-export.ts",
+            "src/services/safe-file-publication.ts",
+            "test/pi-safe-file-publication-characterization.test.ts",
+            "test/safe-file-publication.test.ts"
+          ],
+          "hash": "sha256:a314dc2fc1b3068d233ba729504faf8e80a363e807af3d87597b81c605fa06a3"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            ".model-artifacts/initiatives/05-pi-artifacts-publication-backend/workflow.json",
+            "docs/model-artifacts.md",
+            "docs/pi-extension-architecture-review/07-pi-artifacts.md",
+            "extensions/pi-artifacts/README.md",
+            "extensions/pi-artifacts/src/app/service.ts",
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/src/app/native-export.ts",
+            "src/services/safe-file-publication.ts",
+            "test/pi-safe-file-publication-characterization.test.ts",
+            "test/safe-file-publication.test.ts"
+          ],
+          "hash": "sha256:a314dc2fc1b3068d233ba729504faf8e80a363e807af3d87597b81c605fa06a3"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_RXnebJ6oieSlMYeC4s8YXdy8|fc_052536a4e2be86b5016ab785e1f23c87d2a30565d661a11cac",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:c7692733a6b3616af8afdacbf5c9d15cdb936ae1065f2ca81c55c1a3dc534206"
+    },
+    {
+      "id": "E-865fb7a0-d159-4e38-9a2d-373799b3a0bb",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-artifacts.test.ts test/pi-context-native-pressure-export.test.ts test/pi-safe-file-publication-characterization.test.ts test/safe-file-publication.test.ts test/pi-swe*.test.ts && npm run typecheck && npm run check:dependencies && npm run check:commands && npm run check:performance && npm run check && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T08:44:47.154Z",
+      "completedAt": "2026-09-26T08:45:01.530Z",
+      "durationMs": 14376,
+      "contractFingerprint": "sha256:7d40495e8d4c906f3a5342f9d738b3dccb4cf19a4f462fd7863e31d145ce89c9",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            ".model-artifacts/initiatives/05-pi-artifacts-publication-backend/workflow.json",
+            "catalog/gentic-inventory.json",
+            "docs/model-artifacts.md",
+            "docs/pi-extension-architecture-review/07-pi-artifacts.md",
+            "extensions/pi-artifacts/README.md",
+            "extensions/pi-artifacts/src/app/service.ts",
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/src/app/native-export.ts",
+            "src/services/safe-file-publication.ts",
+            "test/pi-safe-file-publication-characterization.test.ts",
+            "test/safe-file-publication.test.ts"
+          ],
+          "hash": "sha256:aecf8cc505bdbe154641f8dc1c4e02a365b09c0c8dc4ccdef7fd353c58ece102"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            ".model-artifacts/initiatives/05-pi-artifacts-publication-backend/workflow.json",
+            "catalog/gentic-inventory.json",
+            "docs/model-artifacts.md",
+            "docs/pi-extension-architecture-review/07-pi-artifacts.md",
+            "extensions/pi-artifacts/README.md",
+            "extensions/pi-artifacts/src/app/service.ts",
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/src/app/native-export.ts",
+            "src/services/safe-file-publication.ts",
+            "test/pi-safe-file-publication-characterization.test.ts",
+            "test/safe-file-publication.test.ts"
+          ],
+          "hash": "sha256:aecf8cc505bdbe154641f8dc1c4e02a365b09c0c8dc4ccdef7fd353c58ece102"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_Ok42G0w0FHYqJ5B9kjRh7dep|fc_052536a4e2be86b5016ab785fda71487d29b672728266911f8",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:a735d408ce5fa379dc588e4bb13b462e53c4bd4a33c2828ef0a8bd5c00f1cdea"
+    },
+    {
+      "id": "E-3bc927c6-46c8-4129-bb17-a17d9cea7161",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-artifacts.test.ts test/pi-context-native-pressure-export.test.ts test/pi-safe-file-publication-characterization.test.ts test/safe-file-publication.test.ts test/pi-swe*.test.ts && npm run typecheck && npm run check:dependencies && npm run check:commands && npm run check:performance && npm run check && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T08:49:40.893Z",
+      "completedAt": "2026-09-26T08:49:55.090Z",
+      "durationMs": 14197,
+      "contractFingerprint": "sha256:7d40495e8d4c906f3a5342f9d738b3dccb4cf19a4f462fd7863e31d145ce89c9",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            ".model-artifacts/initiatives/05-pi-artifacts-publication-backend/workflow.json",
+            "catalog/gentic-inventory.json",
+            "docs/model-artifacts.md",
+            "docs/pi-extension-architecture-review/07-pi-artifacts.md",
+            "extensions/pi-artifacts/README.md",
+            "extensions/pi-artifacts/src/app/service.ts",
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/src/app/native-export.ts",
+            "src/services/safe-file-publication.ts",
+            "test/pi-safe-file-publication-characterization.test.ts",
+            "test/safe-file-publication.test.ts"
+          ],
+          "hash": "sha256:41ea735834666c25b02948a576a75f0d57aff34ce6be77aa45007cafba8ca111"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            ".model-artifacts/initiatives/05-pi-artifacts-publication-backend/workflow.json",
+            "catalog/gentic-inventory.json",
+            "docs/model-artifacts.md",
+            "docs/pi-extension-architecture-review/07-pi-artifacts.md",
+            "extensions/pi-artifacts/README.md",
+            "extensions/pi-artifacts/src/app/service.ts",
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/src/app/native-export.ts",
+            "src/services/safe-file-publication.ts",
+            "test/pi-safe-file-publication-characterization.test.ts",
+            "test/safe-file-publication.test.ts"
+          ],
+          "hash": "sha256:41ea735834666c25b02948a576a75f0d57aff34ce6be77aa45007cafba8ca111"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_LSjHCMzGQry7KB5ttnnaLKne|fc_052536a4e2be86b5016ab7872362a487d2b7645114e89ebd09",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:57465aaa853dd994a79d8cf310a46a12e8503f192c8f3e399692bb26a39d72e4"
+    },
+    {
+      "id": "E-b4125a5e-1af0-43a1-b830-1ed0f74273da",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-artifacts.test.ts test/pi-context-native-pressure-export.test.ts test/pi-safe-file-publication-characterization.test.ts test/safe-file-publication.test.ts test/pi-swe*.test.ts && npm run typecheck && npm run check:dependencies && npm run check:commands && npm run check:performance && npm run check && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T08:54:33.225Z",
+      "completedAt": "2026-09-26T08:54:47.475Z",
+      "durationMs": 14250,
+      "contractFingerprint": "sha256:7d40495e8d4c906f3a5342f9d738b3dccb4cf19a4f462fd7863e31d145ce89c9",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            ".model-artifacts/initiatives/05-pi-artifacts-publication-backend/workflow.json",
+            "catalog/gentic-inventory.json",
+            "docs/model-artifacts.md",
+            "docs/pi-extension-architecture-review/07-pi-artifacts.md",
+            "extensions/pi-artifacts/README.md",
+            "extensions/pi-artifacts/src/app/service.ts",
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/src/app/native-export.ts",
+            "src/services/safe-file-publication.ts",
+            "test/pi-safe-file-publication-characterization.test.ts",
+            "test/safe-file-publication.test.ts"
+          ],
+          "hash": "sha256:e52516d06770770b219a964f1bb1fafdb71b723be2c4000735eaf0b6aa238dbd"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            ".model-artifacts/initiatives/05-pi-artifacts-publication-backend/workflow.json",
+            "catalog/gentic-inventory.json",
+            "docs/model-artifacts.md",
+            "docs/pi-extension-architecture-review/07-pi-artifacts.md",
+            "extensions/pi-artifacts/README.md",
+            "extensions/pi-artifacts/src/app/service.ts",
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/src/app/native-export.ts",
+            "src/services/safe-file-publication.ts",
+            "test/pi-safe-file-publication-characterization.test.ts",
+            "test/safe-file-publication.test.ts"
+          ],
+          "hash": "sha256:e52516d06770770b219a964f1bb1fafdb71b723be2c4000735eaf0b6aa238dbd"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_XTjZfl3c7NVXNtJk1cdw1Zq1|fc_052536a4e2be86b5016ab78847c01887d29dce5e51aa54542e",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:caa5f0470d044e142a7afc108fbd519e83116146b1dd30c2edbeb57ffee870cc"
+    },
+    {
+      "id": "E-331fd1ea-7e80-44f5-a34d-d68b0dcc5a44",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-artifacts.test.ts test/pi-context-native-pressure-export.test.ts test/pi-safe-file-publication-characterization.test.ts test/safe-file-publication.test.ts test/pi-swe*.test.ts && npm run typecheck && npm run check:dependencies && npm run check:commands && npm run check:performance && npm run check && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T08:59:36.349Z",
+      "completedAt": "2026-09-26T08:59:50.637Z",
+      "durationMs": 14288,
+      "contractFingerprint": "sha256:7d40495e8d4c906f3a5342f9d738b3dccb4cf19a4f462fd7863e31d145ce89c9",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            ".model-artifacts/initiatives/05-pi-artifacts-publication-backend/workflow.json",
+            "catalog/gentic-inventory.json",
+            "docs/model-artifacts.md",
+            "docs/pi-extension-architecture-review/07-pi-artifacts.md",
+            "extensions/pi-artifacts/README.md",
+            "extensions/pi-artifacts/src/app/service.ts",
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/src/app/native-export.ts",
+            "src/services/safe-file-publication.ts",
+            "test/pi-safe-file-publication-characterization.test.ts",
+            "test/safe-file-publication.test.ts"
+          ],
+          "hash": "sha256:4d6d94e39a7f618c1899f5d43e4278bbcb38867f6cf989444bc2ffdead3ce177"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            ".model-artifacts/initiatives/05-pi-artifacts-publication-backend/workflow.json",
+            "catalog/gentic-inventory.json",
+            "docs/model-artifacts.md",
+            "docs/pi-extension-architecture-review/07-pi-artifacts.md",
+            "extensions/pi-artifacts/README.md",
+            "extensions/pi-artifacts/src/app/service.ts",
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/src/app/native-export.ts",
+            "src/services/safe-file-publication.ts",
+            "test/pi-safe-file-publication-characterization.test.ts",
+            "test/safe-file-publication.test.ts"
+          ],
+          "hash": "sha256:4d6d94e39a7f618c1899f5d43e4278bbcb38867f6cf989444bc2ffdead3ce177"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_6yTzIIiGWClC5huHSSYneXSN|fc_052536a4e2be86b5016ab78976d00c87d29ea2d1c50dfc662d",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:7b3d293dd3396fff52ac5f9403a0b7a0970baba315c2dd74a33514926f45d658"
+    },
+    {
+      "id": "E-fb65e695-ec79-455e-930c-b79e1c6a705e",
+      "kind": "independent-review",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "reviewedAt": "2026-09-26T09:06:09.745Z",
+      "contractFingerprint": "sha256:7d40495e8d4c906f3a5342f9d738b3dccb4cf19a4f462fd7863e31d145ce89c9",
+      "source": {
+        "kind": "bounded-paths",
+        "paths": [
+          ".model-artifacts/initiatives/05-pi-artifacts-publication-backend/workflow.json",
+          "catalog/gentic-inventory.json",
+          "docs/model-artifacts.md",
+          "docs/pi-extension-architecture-review/07-pi-artifacts.md",
+          "extensions/pi-artifacts/README.md",
+          "extensions/pi-artifacts/src/app/service.ts",
+          "extensions/pi-context/README.md",
+          "extensions/pi-context/src/app/native-export.ts",
+          "src/services/safe-file-publication.ts",
+          "test/pi-safe-file-publication-characterization.test.ts",
+          "test/safe-file-publication.test.ts"
+        ],
+        "hash": "sha256:240eb8cc1d99c17477e94e31991c6da8a8c09bdb1ae4154f1b160c5c998ff2e1"
+      },
+      "dimensions": [
+        "security: stable descriptor traversal, directory creation, link, cleanup and sync swap points",
+        "boundary: workflow.json and descendants denied; pi-swe exclusive authority",
+        "compatibility: pi-artifacts and pi-context paths, bytes, bounds and errors",
+        "architecture: least-capability backend and consumer isolation"
+      ],
+      "summary": "Final review after remediating both independently found blockers: directory creation now walks stable parent descriptors, workflow.json is denied in every path segment, and new regressions pass alongside all 286 repository tests.",
+      "provenance": {
+        "kind": "pi-interactive-session-review",
+        "transport": "interactive-shell",
+        "reviewerSessionId": "publication-review-pass",
+        "recorderSessionId": "01a0dcda-461c-74a0-a7d3-44716ee08c3c"
+      }
+    },
+    {
+      "id": "E-7ba9e85a-72d7-44dc-980f-6e02a1ab3fa1",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-artifacts.test.ts test/pi-context-native-pressure-export.test.ts test/pi-safe-file-publication-characterization.test.ts test/safe-file-publication.test.ts test/pi-swe*.test.ts && npm run typecheck && npm run check:dependencies && npm run check:commands && npm run check:performance && npm run check && npm test"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T09:06:37.742Z",
+      "completedAt": "2026-09-26T09:06:52.089Z",
+      "durationMs": 14347,
+      "contractFingerprint": "sha256:7d40495e8d4c906f3a5342f9d738b3dccb4cf19a4f462fd7863e31d145ce89c9",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "catalog/gentic-inventory.json",
+            "docs/model-artifacts.md",
+            "docs/pi-extension-architecture-review/07-pi-artifacts.md",
+            "extensions/pi-artifacts/README.md",
+            "extensions/pi-artifacts/src/app/service.ts",
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/src/app/native-export.ts",
+            "src/services/safe-file-publication.ts",
+            "test/pi-safe-file-publication-characterization.test.ts",
+            "test/safe-file-publication.test.ts"
+          ],
+          "hash": "sha256:202940488dae98f66217ed0d6a42a7340456ef3e4137a7cba52add4a905a7681"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "catalog/gentic-inventory.json",
+            "docs/model-artifacts.md",
+            "docs/pi-extension-architecture-review/07-pi-artifacts.md",
+            "extensions/pi-artifacts/README.md",
+            "extensions/pi-artifacts/src/app/service.ts",
+            "extensions/pi-context/README.md",
+            "extensions/pi-context/src/app/native-export.ts",
+            "src/services/safe-file-publication.ts",
+            "test/pi-safe-file-publication-characterization.test.ts",
+            "test/safe-file-publication.test.ts"
+          ],
+          "hash": "sha256:202940488dae98f66217ed0d6a42a7340456ef3e4137a7cba52add4a905a7681"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_97GIVSYVlwDfraZfT6cLtyli|fc_052536a4e2be86b5016ab78b1c47a887d2926091206c9e49df",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:ab25571f45165cbfb108d5327d35474c5ae076446826c63912bc2fd80b70a981"
+    },
+    {
+      "id": "E-c6727bdf-c001-4247-a113-e7c169d9c0ab",
+      "kind": "independent-review",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "reviewedAt": "2026-09-26T09:11:20.367Z",
+      "contractFingerprint": "sha256:7d40495e8d4c906f3a5342f9d738b3dccb4cf19a4f462fd7863e31d145ce89c9",
+      "source": {
+        "kind": "bounded-paths",
+        "paths": [
+          "catalog/gentic-inventory.json",
+          "docs/model-artifacts.md",
+          "docs/pi-extension-architecture-review/07-pi-artifacts.md",
+          "extensions/pi-artifacts/README.md",
+          "extensions/pi-artifacts/src/app/service.ts",
+          "extensions/pi-context/README.md",
+          "extensions/pi-context/src/app/native-export.ts",
+          "src/services/safe-file-publication.ts",
+          "test/pi-safe-file-publication-characterization.test.ts",
+          "test/safe-file-publication.test.ts"
+        ],
+        "hash": "sha256:202940488dae98f66217ed0d6a42a7340456ef3e4137a7cba52add4a905a7681"
+      },
+      "dimensions": [
+        "security: stable descriptor traversal, directory creation, link, cleanup and sync swap points",
+        "boundary: workflow.json and descendants denied; pi-swe exclusive authority",
+        "compatibility: pi-artifacts and pi-context paths, bytes, bounds and errors",
+        "architecture: least-capability backend and consumer isolation"
+      ],
+      "summary": "Final source-bound review of the unchanged qualified implementation, excluding mutable workflow bookkeeping from the source snapshot; all 286 repository tests and gates pass and prior independent findings are fixed.",
+      "provenance": {
+        "kind": "pi-interactive-session-review",
+        "transport": "interactive-shell",
+        "reviewerSessionId": "publication-review-evidence",
+        "recorderSessionId": "01a0dcda-461c-74a0-a7d3-44716ee08c3c"
+      }
+    }
+  ],
   "decisions": [
     {
       "id": "D-1",
