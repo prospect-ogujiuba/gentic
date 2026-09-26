@@ -2,11 +2,11 @@
   "kind": "gentic.swe.initiative",
   "schemaVersion": 1,
   "id": "07-pi-primitives-retirement",
-  "revision": 2,
-  "status": "draft",
+  "revision": 26,
+  "status": "complete",
   "objective": "Retire pi-primitives as a parallel plugin/resource framework by migrating each policy to native Pi resources or explicit extension policy code, narrowing the existing extension path to a compatibility policy bundle, and deferring physical rename or scaffold removal until an approved breaking-change window.",
   "policies": {
-    "commitOnWorkCompletion": true,
+    "commitOnWorkCompletion": false,
     "independentReviewOnCompletion": true
   },
   "scope": {
@@ -160,7 +160,7 @@
       "id": "W-1",
       "kind": "task",
       "title": "Characterize and map every primitive to a native destination",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [],
       "criterionIds": [
         "AC-1",
@@ -178,7 +178,7 @@
       "id": "W-2",
       "kind": "task",
       "title": "Migrate policies and remove the internal primitive framework",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "W-1"
       ],
@@ -199,7 +199,7 @@
       "id": "W-3",
       "kind": "task",
       "title": "Apply compatibility gates and qualify retirement",
-      "status": "pending",
+      "status": "complete",
       "dependsOn": [
         "W-2"
       ],
@@ -219,7 +219,599 @@
     }
   ],
   "artifacts": [],
-  "evidence": [],
+  "evidence": [
+    {
+      "id": "E-fb2c4552-0f07-49e3-b924-5c25a5f4b5d4",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run test:primitives"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T14:20:19.463Z",
+      "completedAt": "2026-09-26T14:20:19.967Z",
+      "durationMs": 504,
+      "contractFingerprint": "sha256:67ae99377728eb2b6330353ade44f2ae16976384870199ffc3072e157a05278e",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-primitives/index.ts",
+            "test/pi-primitives.test.ts"
+          ],
+          "hash": "sha256:b4170e5b4c7b6b61a62d71450709d9770b7e431acc5aa0eb1d793d74d1db1fbc"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-primitives/index.ts",
+            "test/pi-primitives.test.ts"
+          ],
+          "hash": "sha256:b4170e5b4c7b6b61a62d71450709d9770b7e431acc5aa0eb1d793d74d1db1fbc"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_yUOYj6yr3oPU14xoEMEOrFJV|fc_0f354869d19129d4016ab7d4a2e3dc87d2a26084c164d77eb8",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:3b7693cd025e4d95b46c4cb10e7fbfd0056b118d1d7e7b237380a6c8b78e53bb"
+    },
+    {
+      "id": "E-364c323e-6eed-4dea-b975-48ac71d7fd3f",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run test:primitives"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T14:20:36.455Z",
+      "completedAt": "2026-09-26T14:20:36.955Z",
+      "durationMs": 500,
+      "contractFingerprint": "sha256:67ae99377728eb2b6330353ade44f2ae16976384870199ffc3072e157a05278e",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-primitives/index.ts",
+            "test/pi-primitives.test.ts"
+          ],
+          "hash": "sha256:76d104bb3b1ccfefeda48dc04ff03e98bf5b4e39bb1eb6c1e4ec91b73a3d7d56"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-primitives/index.ts",
+            "test/pi-primitives.test.ts"
+          ],
+          "hash": "sha256:76d104bb3b1ccfefeda48dc04ff03e98bf5b4e39bb1eb6c1e4ec91b73a3d7d56"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_2OnhYuUrlk0YBeYD92oH492j|fc_0f354869d19129d4016ab7d4b3fc1c87d29822add5b902a68e",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:0a59c01e27ae33af858b3076b4dd24782b06c71959a512eeb273a8e346ca0c4c"
+    },
+    {
+      "id": "E-c76a5201-c34a-4e32-a87b-a0bb4056ab60",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run test:primitives"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T14:20:59.989Z",
+      "completedAt": "2026-09-26T14:21:00.505Z",
+      "durationMs": 516,
+      "contractFingerprint": "sha256:67ae99377728eb2b6330353ade44f2ae16976384870199ffc3072e157a05278e",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-primitives/index.ts",
+            "test/pi-primitives.test.ts"
+          ],
+          "hash": "sha256:95aac043167283bc99dd3d71781687110e2e44b821a1493a84f6c979d8f690b5"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-primitives/index.ts",
+            "test/pi-primitives.test.ts"
+          ],
+          "hash": "sha256:95aac043167283bc99dd3d71781687110e2e44b821a1493a84f6c979d8f690b5"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_lWJYG5l447OgXVvbjd99eV5E|fc_0f354869d19129d4016ab7d4cb3dd087d282350d012430aafc",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:91015798bc3e70f6ba3d4514f527c29947e3e3a77e272c75e5873347a00c01ba"
+    },
+    {
+      "id": "E-8637b650-c321-41d4-b50d-7adf42290fa4",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run test:primitives"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T14:21:32.096Z",
+      "completedAt": "2026-09-26T14:21:32.578Z",
+      "durationMs": 482,
+      "contractFingerprint": "sha256:67ae99377728eb2b6330353ade44f2ae16976384870199ffc3072e157a05278e",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-primitives/index.ts",
+            "test/pi-primitives.test.ts"
+          ],
+          "hash": "sha256:8a818ff306f6c93a276a2059f4477437298619f65fed311da0ae1da2a9212b13"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-primitives/index.ts",
+            "test/pi-primitives.test.ts"
+          ],
+          "hash": "sha256:8a818ff306f6c93a276a2059f4477437298619f65fed311da0ae1da2a9212b13"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_AZPaQP2ikJbGHU8mtvKuN309|fc_0f354869d19129d4016ab7d4eb767487d2a05cb8051e35b08f",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:88366718abc1e2f8a9f9ab81a3fbb5f11ee73830cf21e31360324d0e6c0c865c"
+    },
+    {
+      "id": "E-543fdf00-0737-420e-9f9a-cb000c9107f3",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "failed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run test:primitives"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T14:21:44.186Z",
+      "completedAt": "2026-09-26T14:21:44.665Z",
+      "durationMs": 479,
+      "contractFingerprint": "sha256:67ae99377728eb2b6330353ade44f2ae16976384870199ffc3072e157a05278e",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-primitives/index.ts",
+            "test/pi-primitives.test.ts"
+          ],
+          "hash": "sha256:16a65eaa634de6643689bccc80df8675eec4845e9b01d17a1b59abf106d04c3b"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-primitives/index.ts",
+            "test/pi-primitives.test.ts"
+          ],
+          "hash": "sha256:16a65eaa634de6643689bccc80df8675eec4845e9b01d17a1b59abf106d04c3b"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_Icz4VATEgddPe9ApzKwIDLA1|fc_0f354869d19129d4016ab7d4f7b8a887d2b7e6144213b870d6",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:487defb690c11d1c98ad82767cdc418fe5c21478c6fa43c634166489a9bf56e3"
+    },
+    {
+      "id": "E-d5798dc3-c2c4-495a-9fe1-b900ab4135ef",
+      "kind": "machine-command",
+      "workId": "W-1",
+      "obligationIds": [
+        "O-1"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run test:primitives"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T14:21:56.592Z",
+      "completedAt": "2026-09-26T14:21:57.063Z",
+      "durationMs": 471,
+      "contractFingerprint": "sha256:67ae99377728eb2b6330353ade44f2ae16976384870199ffc3072e157a05278e",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-primitives/index.ts",
+            "test/pi-primitives.test.ts"
+          ],
+          "hash": "sha256:f9499e2816a1c075dd4d90876693975aacfec5e30fb0958dd49e9d7d56e1efb1"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-primitives/index.ts",
+            "test/pi-primitives.test.ts"
+          ],
+          "hash": "sha256:f9499e2816a1c075dd4d90876693975aacfec5e30fb0958dd49e9d7d56e1efb1"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_OgWEHIDfjlvpqgu9njidykBJ|fc_0f354869d19129d4016ab7d50413b087d286702901ecd00661",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:7f8ba509c6c7a4855dcc0237a601554cfb19c8f4cb5eda91b4e2629c54a0a681"
+    },
+    {
+      "id": "E-04334345-01d5-4233-9d21-53687fa685a7",
+      "kind": "machine-command",
+      "workId": "W-2",
+      "obligationIds": [
+        "O-2"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "node --experimental-strip-types --test test/pi-primitives*.test.ts > /tmp/gentic-primitives-w2.log 2>&1"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T14:39:54.060Z",
+      "completedAt": "2026-09-26T14:39:56.926Z",
+      "durationMs": 2866,
+      "contractFingerprint": "sha256:67ae99377728eb2b6330353ade44f2ae16976384870199ffc3072e157a05278e",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-primitives/index.ts",
+            "extensions/pi-primitives/primitives/concise-output/index.ts",
+            "extensions/pi-primitives/primitives/implementation-file-completion/index.ts",
+            "extensions/pi-primitives/primitives/model-artifacts/index.ts",
+            "extensions/pi-primitives/prompt-input.ts",
+            "extensions/pi-primitives/prompt-policy.ts",
+            "extensions/pi-primitives/triggers.ts",
+            "test/pi-primitives-fuzz.test.ts",
+            "test/pi-primitives-mutation.test.ts",
+            "test/pi-primitives.test.ts"
+          ],
+          "hash": "sha256:767aff87feba85668bb5ced1173e9b0f9bb92cd3f8da99fa7e95fc290eff1d37"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "extensions/pi-primitives/index.ts",
+            "extensions/pi-primitives/primitives/concise-output/index.ts",
+            "extensions/pi-primitives/primitives/implementation-file-completion/index.ts",
+            "extensions/pi-primitives/primitives/model-artifacts/index.ts",
+            "extensions/pi-primitives/prompt-input.ts",
+            "extensions/pi-primitives/prompt-policy.ts",
+            "extensions/pi-primitives/triggers.ts",
+            "test/pi-primitives-fuzz.test.ts",
+            "test/pi-primitives-mutation.test.ts",
+            "test/pi-primitives.test.ts"
+          ],
+          "hash": "sha256:767aff87feba85668bb5ced1173e9b0f9bb92cd3f8da99fa7e95fc290eff1d37"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_WAmf496c7I355IUlkpeKdp0q|fc_0039bd6bf0e7d64d016ab7d93892cc87d29611b11c8c118fe3",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:efefc15c24ee8645a3f5f6958389db729c1577eb6b32aeac4caab2a86d90daa3"
+    },
+    {
+      "id": "E-e0b2a532-4c57-4100-8c6d-decb9940733b",
+      "kind": "model-review",
+      "workId": "W-2",
+      "obligationIds": [
+        "O-2"
+      ],
+      "outcome": "passed",
+      "reviewedAt": "2026-09-26T14:41:10.836Z",
+      "contractFingerprint": "sha256:67ae99377728eb2b6330353ade44f2ae16976384870199ffc3072e157a05278e",
+      "source": {
+        "kind": "bounded-paths",
+        "paths": [
+          "extensions/pi-primitives/index.ts",
+          "extensions/pi-primitives/primitives/concise-output/index.ts",
+          "extensions/pi-primitives/primitives/implementation-file-completion/index.ts",
+          "extensions/pi-primitives/primitives/model-artifacts/index.ts",
+          "extensions/pi-primitives/prompt-input.ts",
+          "extensions/pi-primitives/prompt-policy.ts",
+          "extensions/pi-primitives/triggers.ts",
+          "test/pi-primitives-fuzz.test.ts",
+          "test/pi-primitives-mutation.test.ts",
+          "test/pi-primitives.test.ts"
+        ],
+        "hash": "sha256:767aff87feba85668bb5ced1173e9b0f9bb92cd3f8da99fa7e95fc290eff1d37"
+      },
+      "dimensions": [
+        "native-policy-boundaries",
+        "no-replacement-registry",
+        "bounded-configuration",
+        "behavior-preservation"
+      ],
+      "summary": "Source-bound model self-review: index.ts now calls three explicit policy entrypoints in order, with per-policy recovery, and accepts only configPath. No arbitrary definitions, registry, context factory, generic resource loader or discovery remains. Built-in policies read fixed injection URLs and own literal predicates; bounded input extraction and pure prompt transformation are ordinary data helpers. Legacy trigger-file helpers remain only for deferred scaffold compatibility, outside runtime imports. Config preserves enabled/disabled semantics, byte and diagnostic limits; unknown fields/names are diagnosed and whimsical is a deprecated no-op. Focused 25 tests pass including fuzz and boundary mutation checks. Scaffold integration and repository-wide qualification are W-3. This is self-review, not independent review.",
+      "provenance": {
+        "kind": "pi-model-self-review",
+        "sessionId": "01a0de0f-b415-7081-ba9d-29baf5a5f3b3"
+      }
+    },
+    {
+      "id": "E-a09bf190-faca-4015-a1e2-126f86fc3763",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run generate:inventory > /tmp/gentic-primitives-inventory.log 2>&1 && npm run typecheck > /tmp/gentic-primitives-typecheck.log 2>&1 && npm run check > /tmp/gentic-primitives-check.log 2>&1 && npm run check:commands > /tmp/gentic-primitives-commands.log 2>&1 && npm run check:performance > /tmp/gentic-primitives-performance.log 2>&1 && npm test > /tmp/gentic-primitives-full.log 2>&1"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T14:44:45.539Z",
+      "completedAt": "2026-09-26T14:45:01.186Z",
+      "durationMs": 15647,
+      "contractFingerprint": "sha256:67ae99377728eb2b6330353ade44f2ae16976384870199ffc3072e157a05278e",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "docs/plugin-guide.md",
+            "extensions/pi-commands/commands/scaffold.ts",
+            "extensions/pi-commands/templates/primitive/README.md",
+            "extensions/pi-commands/templates/primitive/index.template.ts",
+            "extensions/pi-primitives/README.md",
+            "extensions/pi-primitives/index.ts",
+            "extensions/pi-primitives/primitives/concise-output/index.ts",
+            "extensions/pi-primitives/primitives/implementation-file-completion/index.ts",
+            "extensions/pi-primitives/primitives/model-artifacts/index.ts",
+            "extensions/pi-primitives/prompt-input.ts",
+            "extensions/pi-primitives/prompt-policy.ts",
+            "extensions/pi-primitives/triggers.ts",
+            "test/fixtures/scaffold-golden.json",
+            "test/pi-commands-scaffold.test.ts",
+            "test/pi-primitives-fuzz.test.ts",
+            "test/pi-primitives-mutation.test.ts",
+            "test/pi-primitives.test.ts"
+          ],
+          "hash": "sha256:63d5e5fbf659542cf9a52fdc2e78bbcd00b30385a624036ebb9ef0f41bbeba7a"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "docs/plugin-guide.md",
+            "extensions/pi-commands/commands/scaffold.ts",
+            "extensions/pi-commands/templates/primitive/README.md",
+            "extensions/pi-commands/templates/primitive/index.template.ts",
+            "extensions/pi-primitives/README.md",
+            "extensions/pi-primitives/index.ts",
+            "extensions/pi-primitives/primitives/concise-output/index.ts",
+            "extensions/pi-primitives/primitives/implementation-file-completion/index.ts",
+            "extensions/pi-primitives/primitives/model-artifacts/index.ts",
+            "extensions/pi-primitives/prompt-input.ts",
+            "extensions/pi-primitives/prompt-policy.ts",
+            "extensions/pi-primitives/triggers.ts",
+            "test/fixtures/scaffold-golden.json",
+            "test/pi-commands-scaffold.test.ts",
+            "test/pi-primitives-fuzz.test.ts",
+            "test/pi-primitives-mutation.test.ts",
+            "test/pi-primitives.test.ts"
+          ],
+          "hash": "sha256:63d5e5fbf659542cf9a52fdc2e78bbcd00b30385a624036ebb9ef0f41bbeba7a"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_VfZ1eHkbLVwp4cYyIwNK6hO9|fc_0039bd6bf0e7d64d016ab7da59c5ec87d287ba186068bc1555",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:efefc15c24ee8645a3f5f6958389db729c1577eb6b32aeac4caab2a86d90daa3"
+    },
+    {
+      "id": "E-b62d8b80-762a-45a7-96bc-6dfc5ca9d57f",
+      "kind": "machine-command",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "execution": {
+        "executable": "bash",
+        "args": [
+          "-lc",
+          "npm run typecheck > /tmp/gentic-primitives-typecheck.log 2>&1 && npm run check > /tmp/gentic-primitives-check.log 2>&1 && npm run check:commands > /tmp/gentic-primitives-commands.log 2>&1 && npm run check:performance > /tmp/gentic-primitives-performance.log 2>&1 && npm test > /tmp/gentic-primitives-full.log 2>&1"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-26T14:46:00.941Z",
+      "completedAt": "2026-09-26T14:46:17.016Z",
+      "durationMs": 16075,
+      "contractFingerprint": "sha256:67ae99377728eb2b6330353ade44f2ae16976384870199ffc3072e157a05278e",
+      "source": {
+        "before": {
+          "kind": "bounded-paths",
+          "paths": [
+            "catalog/gentic-inventory.json",
+            "docs/plugin-guide.md",
+            "extensions/pi-commands/commands/scaffold.ts",
+            "extensions/pi-commands/templates/primitive/README.md",
+            "extensions/pi-commands/templates/primitive/index.template.ts",
+            "extensions/pi-primitives/README.md",
+            "extensions/pi-primitives/config.json",
+            "extensions/pi-primitives/index.ts",
+            "extensions/pi-primitives/primitives/concise-output/index.ts",
+            "extensions/pi-primitives/primitives/concise-output/injection.md",
+            "extensions/pi-primitives/primitives/implementation-file-completion/index.ts",
+            "extensions/pi-primitives/primitives/implementation-file-completion/injection.md",
+            "extensions/pi-primitives/primitives/model-artifacts/index.ts",
+            "extensions/pi-primitives/primitives/model-artifacts/injection.md",
+            "extensions/pi-primitives/prompt-input.ts",
+            "extensions/pi-primitives/prompt-policy.ts",
+            "extensions/pi-primitives/triggers.ts",
+            "package.json",
+            "profiles/core.json",
+            "profiles/full.json",
+            "test/fixtures/scaffold-golden.json",
+            "test/pi-commands-scaffold.test.ts",
+            "test/pi-primitives-fuzz.test.ts",
+            "test/pi-primitives-mutation.test.ts",
+            "test/pi-primitives.test.ts"
+          ],
+          "hash": "sha256:5e12300cd40edeee091b11f2c73697a1d5c44ee873fe3e2ca55e9fd802362bc1"
+        },
+        "after": {
+          "kind": "bounded-paths",
+          "paths": [
+            "catalog/gentic-inventory.json",
+            "docs/plugin-guide.md",
+            "extensions/pi-commands/commands/scaffold.ts",
+            "extensions/pi-commands/templates/primitive/README.md",
+            "extensions/pi-commands/templates/primitive/index.template.ts",
+            "extensions/pi-primitives/README.md",
+            "extensions/pi-primitives/config.json",
+            "extensions/pi-primitives/index.ts",
+            "extensions/pi-primitives/primitives/concise-output/index.ts",
+            "extensions/pi-primitives/primitives/concise-output/injection.md",
+            "extensions/pi-primitives/primitives/implementation-file-completion/index.ts",
+            "extensions/pi-primitives/primitives/implementation-file-completion/injection.md",
+            "extensions/pi-primitives/primitives/model-artifacts/index.ts",
+            "extensions/pi-primitives/primitives/model-artifacts/injection.md",
+            "extensions/pi-primitives/prompt-input.ts",
+            "extensions/pi-primitives/prompt-policy.ts",
+            "extensions/pi-primitives/triggers.ts",
+            "package.json",
+            "profiles/core.json",
+            "profiles/full.json",
+            "test/fixtures/scaffold-golden.json",
+            "test/pi-commands-scaffold.test.ts",
+            "test/pi-primitives-fuzz.test.ts",
+            "test/pi-primitives-mutation.test.ts",
+            "test/pi-primitives.test.ts"
+          ],
+          "hash": "sha256:5e12300cd40edeee091b11f2c73697a1d5c44ee873fe3e2ca55e9fd802362bc1"
+        }
+      },
+      "provenance": {
+        "kind": "pi-tool-observation",
+        "toolCallId": "call_VsAZIwjGmvdnGypMHQlZyvKP|fc_0039bd6bf0e7d64d016ab7daa5baa087d2822049dc82afbfc0",
+        "permissionBoundary": "ordinary-bash-tool-call"
+      },
+      "outputHash": "sha256:efefc15c24ee8645a3f5f6958389db729c1577eb6b32aeac4caab2a86d90daa3"
+    },
+    {
+      "id": "E-6818a1ee-7175-470e-a303-c58a47efd557",
+      "kind": "independent-review",
+      "workId": "W-3",
+      "obligationIds": [
+        "O-3"
+      ],
+      "outcome": "passed",
+      "reviewedAt": "2026-09-26T14:49:31.346Z",
+      "contractFingerprint": "sha256:67ae99377728eb2b6330353ade44f2ae16976384870199ffc3072e157a05278e",
+      "source": {
+        "kind": "bounded-paths",
+        "paths": [
+          "catalog/gentic-inventory.json",
+          "docs/plugin-guide.md",
+          "extensions/pi-commands/commands/scaffold.ts",
+          "extensions/pi-commands/templates/primitive/README.md",
+          "extensions/pi-commands/templates/primitive/index.template.ts",
+          "extensions/pi-primitives/README.md",
+          "extensions/pi-primitives/config.json",
+          "extensions/pi-primitives/index.ts",
+          "extensions/pi-primitives/primitives/concise-output/index.ts",
+          "extensions/pi-primitives/primitives/concise-output/injection.md",
+          "extensions/pi-primitives/primitives/implementation-file-completion/index.ts",
+          "extensions/pi-primitives/primitives/implementation-file-completion/injection.md",
+          "extensions/pi-primitives/primitives/model-artifacts/index.ts",
+          "extensions/pi-primitives/primitives/model-artifacts/injection.md",
+          "extensions/pi-primitives/prompt-input.ts",
+          "extensions/pi-primitives/prompt-policy.ts",
+          "extensions/pi-primitives/triggers.ts",
+          "package.json",
+          "profiles/core.json",
+          "profiles/full.json",
+          "test/fixtures/scaffold-golden.json",
+          "test/pi-commands-scaffold.test.ts",
+          "test/pi-primitives-fuzz.test.ts",
+          "test/pi-primitives-mutation.test.ts",
+          "test/pi-primitives.test.ts"
+        ],
+        "hash": "sha256:5e12300cd40edeee091b11f2c73697a1d5c44ee873fe3e2ca55e9fd802362bc1"
+      },
+      "dimensions": [
+        "framework-retirement",
+        "prompt-semantics",
+        "configuration-compatibility",
+        "scaffold-compatibility",
+        "test-coverage"
+      ],
+      "summary": "Review actual source and diff for framework retirement, preserved prompt/config/path behavior, and retained native scaffold compatibility. All qualification commands passed. Read-only review; no edits or commits.",
+      "provenance": {
+        "kind": "pi-interactive-session-review",
+        "transport": "interactive-shell",
+        "reviewerSessionId": "gentle-meadow",
+        "recorderSessionId": "01a0de0f-b415-7081-ba9d-29baf5a5f3b3"
+      }
+    }
+  ],
   "decisions": [
     {
       "id": "D-1",
