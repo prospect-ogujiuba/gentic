@@ -130,6 +130,10 @@
         "extensions/pi-commands/commands/index.ts",
         "extensions/pi-commands/commands/scaffold.ts",
         "extensions/pi-commands/index.ts",
+        "extensions/pi-commands/scaffold/application.ts",
+        "extensions/pi-commands/scaffold/planning.ts",
+        "extensions/pi-commands/scaffold/rendering.ts",
+        "extensions/pi-commands/scaffold/types.ts",
         "extensions/pi-commands/types.ts",
         "src/command-guidance.ts"
       ],

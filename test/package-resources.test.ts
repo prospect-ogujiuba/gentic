@@ -26,6 +26,9 @@ test("Gentic package resources validate as one collision-free native surface", (
   const { inventory, issues } = validatePackageResources(root);
   assert.deepEqual(issues, []);
   assert.equal(inventory.themes.length, 12);
+  for (const paths of [inventory.extensions, inventory.skills, inventory.prompts, inventory.themes]) {
+    assert.equal(paths.some((path) => path.startsWith("extensions/pi-commands/templates/")), false, "scaffold templates stay inert");
+  }
   assert.ok(inventory.prompts.includes("prompts/add-prompt.md"));
   assert.ok(inventory.skills.includes("skills/add-skill/SKILL.md"));
   assert.equal(inventory.skills.includes("skills/swe-orchestration/SKILL.md"), false);

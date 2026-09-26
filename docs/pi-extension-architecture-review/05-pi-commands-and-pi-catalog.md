@@ -7,7 +7,11 @@
 - `pi-commands`: **Mixed; scaffolder boundary is bad**
 - `pi-catalog`: **Mixed; confused ownership**
 
-## Findings
+## Resolution
+
+Templates now live beside their consumer in `extensions/pi-commands/templates/`. The public command remains in `commands/scaffold.ts`; `scaffold/planning.ts`, `scaffold/rendering.ts`, and `scaffold/application.ts` separate planning, rendering, and transactional writes. `pi-catalog` remains runtime discovery only. Golden previews and applied-tree tests preserve every supported kind, including primitive.
+
+## Original findings (historical)
 
 The scaffolder lives in:
 
@@ -15,17 +19,9 @@ The scaffolder lives in:
 extensions/pi-commands/commands/scaffold.ts
 ```
 
-Its templates live in:
+Its templates originally lived inside the unrelated runtime-discovery extension, with a hard-coded cross-extension filesystem dependency.
 
-```text
-extensions/pi-catalog/templates/
-```
-
-The dependency is hard-coded at `scaffold.ts:46`.
-
-That means the command extension depends on the filesystem internals of an unrelated runtime-discovery extension.
-
-`scaffold.ts` is also a 374-line module that combines:
+The original `scaffold.ts` was a 374-line module that combined:
 
 - argument parsing
 - kind definitions

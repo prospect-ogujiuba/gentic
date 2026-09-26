@@ -1,0 +1,427 @@
+{
+  "extension/minimal": {
+    "preview": {
+      "kind": "extension",
+      "name": "sample-2-name",
+      "mode": "dry-run",
+      "variant": "minimal",
+      "projectRoot": "<project>",
+      "files": [
+        {
+          "template": "extension-simple/README.template.md",
+          "target": "extensions/sample-2-name/README.md",
+          "description": "minimal extension README",
+          "renderedContent": "# sample-2-name\n\n**What it does:** TODO: describe extension sample-2-name\n\n**Commands/tools it registers:** native extension\n\n**Pi events it listens to:** none yet\n\n**State/config files it reads/writes:** none yet\n\n**Tests to run:** `npm run typecheck && npm test`\n\n**Known boundaries/non-goals:** TODO: list non-goals\n",
+          "summary": "# sample-2-name"
+        },
+        {
+          "template": "extension-simple/index.template.ts",
+          "target": "extensions/sample-2-name/index.ts",
+          "description": "minimal extension entrypoint",
+          "renderedContent": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\n\nexport default function sample2Name(pi: ExtensionAPI): void {\n  pi.on(\"session_start\", (_event, ctx) => {\n    ctx.ui.setStatus(\"sample-2-name\", \"sample-2-name ready\");\n  });\n}\n",
+          "summary": "export default function sample2Name(pi: ExtensionAPI): void {"
+        }
+      ]
+    },
+    "text": "Dry-run scaffold: extension sample-2-name minimal\nProject root: <project>\nNo files written.\n- extensions/sample-2-name/README.md — minimal extension README; # sample-2-name\n- extensions/sample-2-name/index.ts — minimal extension entrypoint; export default function sample2Name(pi: ExtensionAPI): void {"
+  },
+  "extension/layered": {
+    "preview": {
+      "kind": "extension",
+      "name": "sample-2-name",
+      "mode": "dry-run",
+      "variant": "layered",
+      "projectRoot": "<project>",
+      "files": [
+        {
+          "template": "extension-layered/README.template.md",
+          "target": "extensions/sample-2-name/README.md",
+          "description": "layered extension README",
+          "renderedContent": "# sample-2-name\n\n**What it does:** TODO: describe extension sample-2-name\n\n**Commands/tools it registers:** native extension\n\n**Pi events it listens to:** none yet\n\n**State/config files it reads/writes:** none yet\n\n**Internal module map:**\n\n- `index.ts`: Pi-facing public entrypoint.\n- `src/app/`: orchestration and use cases.\n- `src/domain/`: durable types, policy, invariants, and reducers.\n- `src/pi/`: Pi API adapters, session storage, and event wiring.\n- `src/ui/`: rendering and user-facing text.\n\n**Tests to run:** `npm run typecheck && npm test`\n\n**Known boundaries/non-goals:** TODO: list non-goals\n",
+          "summary": "# sample-2-name"
+        },
+        {
+          "template": "extension-layered/index.template.ts",
+          "target": "extensions/sample-2-name/index.ts",
+          "description": "layered extension entrypoint",
+          "renderedContent": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\n\nimport { registerSample2Name } from \"./src/pi/register.ts\";\n\nexport default function sample2Name(pi: ExtensionAPI): void {\n  registerSample2Name(pi);\n}\n",
+          "summary": "import { registerSample2Name } from \"./src/pi/register.ts\";"
+        },
+        {
+          "template": "extension-layered/src/domain/types.template.ts",
+          "target": "extensions/sample-2-name/src/domain/types.ts",
+          "description": "domain types",
+          "renderedContent": "export interface Sample2NameState {\n  readonly enabled: boolean;\n}\n\nexport const initialSample2NameState: Sample2NameState = {\n  enabled: true,\n};\n",
+          "summary": "export interface Sample2NameState {"
+        },
+        {
+          "template": "extension-layered/src/app/use-case.template.ts",
+          "target": "extensions/sample-2-name/src/app/use-case.ts",
+          "description": "application use case",
+          "renderedContent": "import type { Sample2NameState } from \"../domain/types.ts\";\n\nexport function describeSample2NameState(state: Sample2NameState): string {\n  return state.enabled ? \"enabled\" : \"disabled\";\n}\n",
+          "summary": "export function describeSample2NameState(state: Sample2NameState): string {"
+        },
+        {
+          "template": "extension-layered/src/pi/register.template.ts",
+          "target": "extensions/sample-2-name/src/pi/register.ts",
+          "description": "Pi adapter",
+          "renderedContent": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\n\nimport { describeSample2NameState } from \"../app/use-case.ts\";\nimport { initialSample2NameState } from \"../domain/types.ts\";\nimport { renderSample2NameStatus } from \"../ui/render.ts\";\n\nexport function registerSample2Name(pi: ExtensionAPI): void {\n  pi.on(\"session_start\", (_event, ctx) => {\n    const text = renderSample2NameStatus(describeSample2NameState(initialSample2NameState));\n    ctx.ui.setStatus(\"sample-2-name\", text);\n  });\n}\n",
+          "summary": "import { describeSample2NameState } from \"../app/use-case.ts\";"
+        },
+        {
+          "template": "extension-layered/src/ui/render.template.ts",
+          "target": "extensions/sample-2-name/src/ui/render.ts",
+          "description": "UI renderer",
+          "renderedContent": "export function renderSample2NameStatus(text: string): string {\n  return `Sample 2 Name ${text}`.trim();\n}\n",
+          "summary": "export function renderSample2NameStatus(text: string): string {"
+        }
+      ]
+    },
+    "text": "Dry-run scaffold: extension sample-2-name layered\nProject root: <project>\nNo files written.\n- extensions/sample-2-name/README.md — layered extension README; # sample-2-name\n- extensions/sample-2-name/index.ts — layered extension entrypoint; import { registerSample2Name } from \"./src/pi/register.ts\";\n- extensions/sample-2-name/src/domain/types.ts — domain types; export interface Sample2NameState {\n- extensions/sample-2-name/src/app/use-case.ts — application use case; export function describeSample2NameState(state: Sample2NameState): string {\n- extensions/sample-2-name/src/pi/register.ts — Pi adapter; import { describeSample2NameState } from \"../app/use-case.ts\";\n- extensions/sample-2-name/src/ui/render.ts — UI renderer; export function renderSample2NameStatus(text: string): string {"
+  },
+  "tool/default": {
+    "preview": {
+      "kind": "tool",
+      "name": "sample-2-name",
+      "mode": "dry-run",
+      "projectRoot": "<project>",
+      "files": [
+        {
+          "template": "native/README.template.md",
+          "target": "extensions/sample-2-name/README.md",
+          "description": "tool extension README",
+          "renderedContent": "# sample-2-name\n\nTODO: describe tool sample-2-name\n\nGenerated from the Gentic Pi tool template for `@earendil-works/pi-coding-agent` 0.87.1.\n\n## Verification\n\n```sh\nnpm run typecheck && npm test\n```\n",
+          "summary": "# sample-2-name"
+        },
+        {
+          "template": "tool/index.template.ts",
+          "target": "extensions/sample-2-name/index.ts",
+          "description": "native tool extension",
+          "renderedContent": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nimport { Type } from \"typebox\";\n\nexport default function sample2Name(pi: ExtensionAPI): void {\n  pi.registerTool({\n    name: \"sample-2-name\",\n    label: \"Sample 2 Name\",\n    description: \"TODO: describe tool sample-2-name\",\n    parameters: Type.Object({ input: Type.Optional(Type.String()) }),\n    async execute(_toolCallId, params) {\n      return { content: [{ type: \"text\", text: params.input ?? \"sample-2-name ready\" }], details: {} };\n    },\n  });\n}\n",
+          "summary": "import { Type } from \"typebox\";"
+        }
+      ]
+    },
+    "text": "Dry-run scaffold: tool sample-2-name\nProject root: <project>\nNo files written.\n- extensions/sample-2-name/README.md — tool extension README; # sample-2-name\n- extensions/sample-2-name/index.ts — native tool extension; import { Type } from \"typebox\";"
+  },
+  "command/default": {
+    "preview": {
+      "kind": "command",
+      "name": "sample-2-name",
+      "mode": "dry-run",
+      "projectRoot": "<project>",
+      "files": [
+        {
+          "template": "native/README.template.md",
+          "target": "extensions/sample-2-name/README.md",
+          "description": "command extension README",
+          "renderedContent": "# sample-2-name\n\nTODO: describe command sample-2-name\n\nGenerated from the Gentic Pi command template for `@earendil-works/pi-coding-agent` 0.87.1.\n\n## Verification\n\n```sh\nnpm run typecheck && npm test\n```\n",
+          "summary": "# sample-2-name"
+        },
+        {
+          "template": "command/index.template.ts",
+          "target": "extensions/sample-2-name/index.ts",
+          "description": "native command extension",
+          "renderedContent": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\n\nexport default function sample2Name(pi: ExtensionAPI): void {\n  pi.registerCommand(\"sample-2-name\", {\n    description: \"TODO: describe command sample-2-name\",\n    handler: async (args, ctx) => ctx.ui.notify(args || \"sample-2-name done\", \"info\"),\n  });\n}\n",
+          "summary": "export default function sample2Name(pi: ExtensionAPI): void {"
+        }
+      ]
+    },
+    "text": "Dry-run scaffold: command sample-2-name\nProject root: <project>\nNo files written.\n- extensions/sample-2-name/README.md — command extension README; # sample-2-name\n- extensions/sample-2-name/index.ts — native command extension; export default function sample2Name(pi: ExtensionAPI): void {"
+  },
+  "event/default": {
+    "preview": {
+      "kind": "event",
+      "name": "sample-2-name",
+      "mode": "dry-run",
+      "projectRoot": "<project>",
+      "files": [
+        {
+          "template": "native/README.template.md",
+          "target": "extensions/sample-2-name/README.md",
+          "description": "event extension README",
+          "renderedContent": "# sample-2-name\n\nTODO: describe event sample-2-name\n\nGenerated from the Gentic Pi event template for `@earendil-works/pi-coding-agent` 0.87.1.\n\n## Verification\n\n```sh\nnpm run typecheck && npm test\n```\n",
+          "summary": "# sample-2-name"
+        },
+        {
+          "template": "event/index.template.ts",
+          "target": "extensions/sample-2-name/index.ts",
+          "description": "native event extension",
+          "renderedContent": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\n\nexport default function sample2Name(pi: ExtensionAPI): void {\n  pi.on(\"session_start\", (_event, ctx) => {\n    ctx.ui.setStatus(\"sample-2-name\", \"sample-2-name ready\");\n  });\n}\n",
+          "summary": "export default function sample2Name(pi: ExtensionAPI): void {"
+        }
+      ]
+    },
+    "text": "Dry-run scaffold: event sample-2-name\nProject root: <project>\nNo files written.\n- extensions/sample-2-name/README.md — event extension README; # sample-2-name\n- extensions/sample-2-name/index.ts — native event extension; export default function sample2Name(pi: ExtensionAPI): void {"
+  },
+  "shortcut/default": {
+    "preview": {
+      "kind": "shortcut",
+      "name": "sample-2-name",
+      "mode": "dry-run",
+      "projectRoot": "<project>",
+      "files": [
+        {
+          "template": "native/README.template.md",
+          "target": "extensions/sample-2-name/README.md",
+          "description": "shortcut extension README",
+          "renderedContent": "# sample-2-name\n\nTODO: describe shortcut sample-2-name\n\nGenerated from the Gentic Pi shortcut template for `@earendil-works/pi-coding-agent` 0.87.1.\n\n## Verification\n\n```sh\nnpm run typecheck && npm test\n```\n",
+          "summary": "# sample-2-name"
+        },
+        {
+          "template": "shortcut/index.template.ts",
+          "target": "extensions/sample-2-name/index.ts",
+          "description": "native shortcut extension",
+          "renderedContent": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\n\nexport default function sample2Name(pi: ExtensionAPI): void {\n  pi.registerShortcut(\"ctrl+shift+x\", {\n    description: \"TODO: describe shortcut sample-2-name\",\n    handler: async (ctx) => ctx.ui.notify(\"sample-2-name\", \"info\"),\n  });\n}\n",
+          "summary": "export default function sample2Name(pi: ExtensionAPI): void {"
+        }
+      ]
+    },
+    "text": "Dry-run scaffold: shortcut sample-2-name\nProject root: <project>\nNo files written.\n- extensions/sample-2-name/README.md — shortcut extension README; # sample-2-name\n- extensions/sample-2-name/index.ts — native shortcut extension; export default function sample2Name(pi: ExtensionAPI): void {"
+  },
+  "flag/default": {
+    "preview": {
+      "kind": "flag",
+      "name": "sample-2-name",
+      "mode": "dry-run",
+      "projectRoot": "<project>",
+      "files": [
+        {
+          "template": "native/README.template.md",
+          "target": "extensions/sample-2-name/README.md",
+          "description": "flag extension README",
+          "renderedContent": "# sample-2-name\n\nTODO: describe flag sample-2-name\n\nGenerated from the Gentic Pi flag template for `@earendil-works/pi-coding-agent` 0.87.1.\n\n## Verification\n\n```sh\nnpm run typecheck && npm test\n```\n",
+          "summary": "# sample-2-name"
+        },
+        {
+          "template": "flag/index.template.ts",
+          "target": "extensions/sample-2-name/index.ts",
+          "description": "native flag extension",
+          "renderedContent": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\n\nexport default function sample2Name(pi: ExtensionAPI): void {\n  pi.registerFlag(\"sample-2-name\", {\n    description: \"TODO: describe flag sample-2-name\",\n    type: \"boolean\",\n    default: false,\n  });\n}\n",
+          "summary": "export default function sample2Name(pi: ExtensionAPI): void {"
+        }
+      ]
+    },
+    "text": "Dry-run scaffold: flag sample-2-name\nProject root: <project>\nNo files written.\n- extensions/sample-2-name/README.md — flag extension README; # sample-2-name\n- extensions/sample-2-name/index.ts — native flag extension; export default function sample2Name(pi: ExtensionAPI): void {"
+  },
+  "provider/default": {
+    "preview": {
+      "kind": "provider",
+      "name": "sample-2-name",
+      "mode": "dry-run",
+      "projectRoot": "<project>",
+      "files": [
+        {
+          "template": "native/README.template.md",
+          "target": "extensions/sample-2-name/README.md",
+          "description": "provider extension README",
+          "renderedContent": "# sample-2-name\n\nTODO: describe provider sample-2-name\n\nGenerated from the Gentic Pi provider template for `@earendil-works/pi-coding-agent` 0.87.1.\n\n## Verification\n\n```sh\nnpm run typecheck && npm test\n```\n",
+          "summary": "# sample-2-name"
+        },
+        {
+          "template": "provider/index.template.ts",
+          "target": "extensions/sample-2-name/index.ts",
+          "description": "native provider extension",
+          "renderedContent": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\n\nexport default function sample2Name(pi: ExtensionAPI): void {\n  pi.registerProvider(\"sample-2-name\", {\n    baseUrl: \"https://api.example.com/v1\",\n    apiKey: \"$PROVIDER_API_KEY\",\n    api: \"openai-responses\",\n    models: [],\n  });\n}\n",
+          "summary": "export default function sample2Name(pi: ExtensionAPI): void {"
+        }
+      ]
+    },
+    "text": "Dry-run scaffold: provider sample-2-name\nProject root: <project>\nNo files written.\n- extensions/sample-2-name/README.md — provider extension README; # sample-2-name\n- extensions/sample-2-name/index.ts — native provider extension; export default function sample2Name(pi: ExtensionAPI): void {"
+  },
+  "widget/default": {
+    "preview": {
+      "kind": "widget",
+      "name": "sample-2-name",
+      "mode": "dry-run",
+      "projectRoot": "<project>",
+      "files": [
+        {
+          "template": "native/README.template.md",
+          "target": "extensions/sample-2-name/README.md",
+          "description": "widget extension README",
+          "renderedContent": "# sample-2-name\n\nTODO: describe widget sample-2-name\n\nGenerated from the Gentic Pi widget template for `@earendil-works/pi-coding-agent` 0.87.1.\n\n## Verification\n\n```sh\nnpm run typecheck && npm test\n```\n",
+          "summary": "# sample-2-name"
+        },
+        {
+          "template": "widget/index.template.ts",
+          "target": "extensions/sample-2-name/index.ts",
+          "description": "native widget extension",
+          "renderedContent": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\n\nexport default function sample2Name(pi: ExtensionAPI): void {\n  pi.on(\"session_start\", (_event, ctx) => {\n    ctx.ui.setWidget(\"sample-2-name\", [\"Sample 2 Name ready\"]);\n  });\n}\n",
+          "summary": "export default function sample2Name(pi: ExtensionAPI): void {"
+        }
+      ]
+    },
+    "text": "Dry-run scaffold: widget sample-2-name\nProject root: <project>\nNo files written.\n- extensions/sample-2-name/README.md — widget extension README; # sample-2-name\n- extensions/sample-2-name/index.ts — native widget extension; export default function sample2Name(pi: ExtensionAPI): void {"
+  },
+  "footer/default": {
+    "preview": {
+      "kind": "footer",
+      "name": "sample-2-name",
+      "mode": "dry-run",
+      "projectRoot": "<project>",
+      "files": [
+        {
+          "template": "native/README.template.md",
+          "target": "extensions/sample-2-name/README.md",
+          "description": "footer extension README",
+          "renderedContent": "# sample-2-name\n\nTODO: describe footer sample-2-name\n\nGenerated from the Gentic Pi footer template for `@earendil-works/pi-coding-agent` 0.87.1.\n\n## Verification\n\n```sh\nnpm run typecheck && npm test\n```\n",
+          "summary": "# sample-2-name"
+        },
+        {
+          "template": "footer/index.template.ts",
+          "target": "extensions/sample-2-name/index.ts",
+          "description": "native footer extension",
+          "renderedContent": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nimport { Text } from \"@earendil-works/pi-tui\";\n\nexport default function sample2Name(pi: ExtensionAPI): void {\n  pi.on(\"session_start\", (_event, ctx) => {\n    ctx.ui.setFooter((_tui, theme) => new Text(theme.fg(\"muted\", \"Sample 2 Name\"), 0, 0));\n  });\n}\n",
+          "summary": "import { Text } from \"@earendil-works/pi-tui\";"
+        }
+      ]
+    },
+    "text": "Dry-run scaffold: footer sample-2-name\nProject root: <project>\nNo files written.\n- extensions/sample-2-name/README.md — footer extension README; # sample-2-name\n- extensions/sample-2-name/index.ts — native footer extension; import { Text } from \"@earendil-works/pi-tui\";"
+  },
+  "overlay/default": {
+    "preview": {
+      "kind": "overlay",
+      "name": "sample-2-name",
+      "mode": "dry-run",
+      "projectRoot": "<project>",
+      "files": [
+        {
+          "template": "native/README.template.md",
+          "target": "extensions/sample-2-name/README.md",
+          "description": "overlay extension README",
+          "renderedContent": "# sample-2-name\n\nTODO: describe overlay sample-2-name\n\nGenerated from the Gentic Pi overlay template for `@earendil-works/pi-coding-agent` 0.87.1.\n\n## Verification\n\n```sh\nnpm run typecheck && npm test\n```\n",
+          "summary": "# sample-2-name"
+        },
+        {
+          "template": "overlay/index.template.ts",
+          "target": "extensions/sample-2-name/index.ts",
+          "description": "native overlay extension",
+          "renderedContent": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nimport type { Component } from \"@earendil-works/pi-tui\";\n\nclass Sample2NameOverlay implements Component {\n  private readonly close: () => void;\n  constructor(close: () => void) { this.close = close; }\n  render(width: number): string[] { return [\"Sample 2 Name (press any key to close)\".slice(0, width)]; }\n  invalidate(): void {}\n  handleInput(): void { this.close(); }\n}\n\nexport default function sample2Name(pi: ExtensionAPI): void {\n  pi.registerCommand(\"sample-2-name\", {\n    description: \"TODO: describe overlay sample-2-name\",\n    handler: async (_args, ctx) => {\n      await ctx.ui.custom((_tui, _theme, _keybindings, done) => new Sample2NameOverlay(() => done(undefined)), { overlay: true });\n    },\n  });\n}\n",
+          "summary": "class Sample2NameOverlay implements Component {"
+        }
+      ]
+    },
+    "text": "Dry-run scaffold: overlay sample-2-name\nProject root: <project>\nNo files written.\n- extensions/sample-2-name/README.md — overlay extension README; # sample-2-name\n- extensions/sample-2-name/index.ts — native overlay extension; class Sample2NameOverlay implements Component {"
+  },
+  "skill/simple": {
+    "preview": {
+      "kind": "skill",
+      "name": "sample-2-name",
+      "mode": "dry-run",
+      "variant": "simple",
+      "projectRoot": "<project>",
+      "files": [
+        {
+          "template": "skill-simple/SKILL.template.md",
+          "target": "skills/sample-2-name/SKILL.md",
+          "description": "simple skill definition",
+          "renderedContent": "---\nname: sample-2-name\ndescription: TODO: describe skill sample-2-name\n---\n\n# Sample 2 Name\n\nUse this skill when the sample-2-name workflow is requested.\n\n## Inputs\n\n- task input\n\n## Workflow\n\n1. Inspect the request.\n2. Do the smallest useful work.\n3. Report changed paths.\n\n## Success criteria\n\n- TODO: define success\n",
+          "summary": "name: sample-2-name"
+        }
+      ]
+    },
+    "text": "Dry-run scaffold: skill sample-2-name simple\nProject root: <project>\nNo files written.\n- skills/sample-2-name/SKILL.md — simple skill definition; name: sample-2-name"
+  },
+  "skill/directory": {
+    "preview": {
+      "kind": "skill",
+      "name": "sample-2-name",
+      "mode": "dry-run",
+      "variant": "directory",
+      "projectRoot": "<project>",
+      "files": [
+        {
+          "template": "skill-directory/SKILL.template.md",
+          "target": "skills/sample-2-name/SKILL.md",
+          "description": "directory skill definition",
+          "renderedContent": "---\nname: sample-2-name\ndescription: TODO: describe skill sample-2-name\n---\n\n# Sample 2 Name\n\nUse this skill when the sample-2-name workflow is requested.\n\n## Inputs\n\n- task input\n\n## Workflow\n\n1. Read the local references only when needed: `references/reference.md`.\n2. Run helper scripts only when they materially improve repeatability: `scripts/helper.sh`.\n3. Complete the task and report the changed paths or generated artifacts.\n\n## Verification\n\n- Run the relevant targeted check.\n",
+          "summary": "name: sample-2-name"
+        },
+        {
+          "template": "skill-directory/references/reference.template.md",
+          "target": "skills/sample-2-name/references/reference.md",
+          "description": "skill reference",
+          "renderedContent": "# Sample 2 Name reference\n\nKeep detailed reference material here so `SKILL.md` stays focused and loadable on demand.\n\n## Notes\n\n- Add detailed reference material here.\n",
+          "summary": "# Sample 2 Name reference"
+        },
+        {
+          "template": "skill-directory/scripts/helper.template.sh",
+          "target": "skills/sample-2-name/scripts/helper.sh",
+          "description": "skill helper",
+          "renderedContent": "#!/usr/bin/env bash\nset -euo pipefail\n\n# Helper for sample-2-name. Keep side effects explicit and documented.\necho \"sample-2-name helper ready\"\n",
+          "summary": "#!/usr/bin/env bash"
+        }
+      ]
+    },
+    "text": "Dry-run scaffold: skill sample-2-name directory\nProject root: <project>\nNo files written.\n- skills/sample-2-name/SKILL.md — directory skill definition; name: sample-2-name\n- skills/sample-2-name/references/reference.md — skill reference; # Sample 2 Name reference\n- skills/sample-2-name/scripts/helper.sh — skill helper; #!/usr/bin/env bash"
+  },
+  "prompt/default": {
+    "preview": {
+      "kind": "prompt",
+      "name": "sample-2-name",
+      "mode": "dry-run",
+      "projectRoot": "<project>",
+      "files": [
+        {
+          "template": "prompt-simple/prompt.template.md",
+          "target": "prompts/sample-2-name.md",
+          "description": "prompt template",
+          "renderedContent": "---\ndescription: TODO: describe prompt sample-2-name\nargument-hint: \"<args>\"\n---\nTODO: define the sample-2-name prompt task.\n\nInputs:\n\n- `$1`: primary input\n- `$@`: all prompt arguments\n\nSuccess criteria:\n\n- TODO: define success\n",
+          "summary": "description: TODO: describe prompt sample-2-name"
+        }
+      ]
+    },
+    "text": "Dry-run scaffold: prompt sample-2-name\nProject root: <project>\nNo files written.\n- prompts/sample-2-name.md — prompt template; description: TODO: describe prompt sample-2-name"
+  },
+  "theme/default": {
+    "preview": {
+      "kind": "theme",
+      "name": "sample-2-name",
+      "mode": "dry-run",
+      "projectRoot": "<project>",
+      "files": [
+        {
+          "template": "theme/theme.template.json",
+          "target": "themes/sample-2-name.json",
+          "description": "Pi theme",
+          "renderedContent": "{\n  \"name\": \"sample-2-name\",\n  \"colors\": {\n    \"accent\": \"#7aa2f7\",\n    \"border\": \"#565f89\",\n    \"borderAccent\": \"#7aa2f7\",\n    \"borderMuted\": \"#3b4261\",\n    \"success\": \"#9ece6a\",\n    \"error\": \"#f7768e\",\n    \"warning\": \"#e0af68\",\n    \"muted\": \"#565f89\",\n    \"dim\": \"#414868\",\n    \"text\": \"#c0caf5\",\n    \"thinkingText\": \"#a9b1d6\",\n    \"selectedBg\": \"#33467c\",\n    \"userMessageBg\": \"#24283b\",\n    \"userMessageText\": \"#c0caf5\",\n    \"customMessageBg\": \"#1f2335\",\n    \"customMessageText\": \"#c0caf5\",\n    \"customMessageLabel\": \"#7dcfff\",\n    \"toolPendingBg\": \"#24283b\",\n    \"toolSuccessBg\": \"#1f2d24\",\n    \"toolErrorBg\": \"#3b2028\",\n    \"toolTitle\": \"#7dcfff\",\n    \"toolOutput\": \"#a9b1d6\",\n    \"mdHeading\": \"#bb9af7\",\n    \"mdLink\": \"#7dcfff\",\n    \"mdLinkUrl\": \"#565f89\",\n    \"mdCode\": \"#9ece6a\",\n    \"mdCodeBlock\": \"#a9b1d6\",\n    \"mdCodeBlockBorder\": \"#3b4261\",\n    \"mdQuote\": \"#e0af68\",\n    \"mdQuoteBorder\": \"#3b4261\",\n    \"mdHr\": \"#3b4261\",\n    \"mdListBullet\": \"#7aa2f7\",\n    \"toolDiffAdded\": \"#9ece6a\",\n    \"toolDiffRemoved\": \"#f7768e\",\n    \"toolDiffContext\": \"#565f89\",\n    \"syntaxComment\": \"#565f89\",\n    \"syntaxKeyword\": \"#bb9af7\",\n    \"syntaxFunction\": \"#7aa2f7\",\n    \"syntaxVariable\": \"#c0caf5\",\n    \"syntaxString\": \"#9ece6a\",\n    \"syntaxNumber\": \"#ff9e64\",\n    \"syntaxType\": \"#2ac3de\",\n    \"syntaxOperator\": \"#89ddff\",\n    \"syntaxPunctuation\": \"#a9b1d6\",\n    \"thinkingOff\": \"#565f89\",\n    \"thinkingMinimal\": \"#73daca\",\n    \"thinkingLow\": \"#7dcfff\",\n    \"thinkingMedium\": \"#7aa2f7\",\n    \"thinkingHigh\": \"#bb9af7\",\n    \"thinkingXHigh\": \"#f7768e\",\n    \"bashMode\": \"#e0af68\"\n  }\n}\n",
+          "summary": "{"
+        }
+      ]
+    },
+    "text": "Dry-run scaffold: theme sample-2-name\nProject root: <project>\nNo files written.\n- themes/sample-2-name.json — Pi theme; {"
+  },
+  "primitive/default": {
+    "preview": {
+      "kind": "primitive",
+      "name": "sample-2-name",
+      "mode": "dry-run",
+      "projectRoot": "<project>",
+      "files": [
+        {
+          "template": "primitive/index.template.ts",
+          "target": "extensions/pi-primitives/primitives/sample-2-name/index.ts",
+          "description": "primitive entrypoint",
+          "renderedContent": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nimport type { PrimitiveContext } from \"../../index.ts\";\nimport { loadPromptPolicy } from \"../../prompt-policy.ts\";\nimport { loadPrimitiveTriggers, matchesPrimitivePrompt } from \"../../triggers.ts\";\n\nexport default function sample2NamePrimitive(pi: ExtensionAPI, ctx: PrimitiveContext): void {\n  const applyPolicy = loadPromptPolicy(ctx);\n  const triggers = loadPrimitiveTriggers(ctx);\n\n  pi.on(\"before_agent_start\", (event) => {\n    if (!matchesPrimitivePrompt(event, triggers)) return;\n    return applyPolicy(event.systemPrompt);\n  });\n}\n",
+          "summary": "import { loadPromptPolicy } from \"../../prompt-policy.ts\";"
+        },
+        {
+          "template": "primitive/supporting-file.template.md",
+          "target": "extensions/pi-primitives/primitives/sample-2-name/injection.md",
+          "description": "bounded primitive prompt policy",
+          "renderedContent": "# sample-2-name\n\nTODO: describe primitive sample-2-name\n",
+          "summary": "# sample-2-name"
+        },
+        {
+          "template": "primitive/triggers.template.json",
+          "target": "extensions/pi-primitives/primitives/sample-2-name/triggers.json",
+          "description": "primitive triggers",
+          "renderedContent": "{\n  \"phrases\": [\n    \"sample-2-name\"\n  ],\n  \"pathPatterns\": [\n    \"(?:^|/)sample-2-name(?:/|$)\"\n  ]\n}\n",
+          "summary": "{"
+        }
+      ]
+    },
+    "text": "Dry-run scaffold: primitive sample-2-name\nProject root: <project>\nNo files written.\n- extensions/pi-primitives/primitives/sample-2-name/index.ts — primitive entrypoint; import { loadPromptPolicy } from \"../../prompt-policy.ts\";\n- extensions/pi-primitives/primitives/sample-2-name/injection.md — bounded primitive prompt policy; # sample-2-name\n- extensions/pi-primitives/primitives/sample-2-name/triggers.json — primitive triggers; {"
+  }
+}

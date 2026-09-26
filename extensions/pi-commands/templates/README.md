@@ -1,4 +1,4 @@
-# pi-catalog templates
+# pi-commands templates
 
 Inert source templates used by `/scaffold`. `.template.*` names prevent Pi package discovery inside this tree.
 

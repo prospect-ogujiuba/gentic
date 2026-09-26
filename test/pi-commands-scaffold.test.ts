@@ -8,12 +8,17 @@ import test from "node:test";
 
 import {
   applyScaffold,
+  completeScaffoldArgument,
   createScaffoldPreview,
   formatScaffoldApplyResult,
   formatScaffoldPreview,
   resolveScaffoldProjectRoot,
   scaffoldCommand,
 } from "../extensions/pi-commands/commands/scaffold.ts";
+
+import { createScaffoldPlan, parseScaffoldArgs } from "../extensions/pi-commands/scaffold/planning.ts";
+import { renderScaffoldPlan } from "../extensions/pi-commands/scaffold/rendering.ts";
+import { applyScaffoldPreview } from "../extensions/pi-commands/scaffold/application.ts";
 
 const root = new URL("..", import.meta.url).pathname;
 const extensionKinds = ["tool", "command", "event", "shortcut", "flag", "provider", "widget", "footer", "overlay"] as const;
@@ -44,6 +49,123 @@ function registerScaffoldCommand(cwd: string) {
     ctx: { cwd, ui: { notify(message: string, type?: string) { notifications.push({ message, type }); } } },
   };
 }
+
+const goldenVariants = [
+  ["extension", "minimal"], ["extension", "layered"],
+  ...extensionKinds.map((kind) => [kind, undefined] as const),
+  ["skill", "simple"], ["skill", "directory"],
+  ["prompt", undefined], ["theme", undefined], ["primitive", undefined],
+] as const;
+
+test("all scaffold variants preserve golden previews and applied bytes", () => {
+  const golden = JSON.parse(readFileSync(new URL("fixtures/scaffold-golden.json", import.meta.url), "utf8"));
+  for (const [kind, variant] of goldenVariants) {
+    const project = createProject();
+    try {
+      const preview = createScaffoldPreview(kind, "sample-2-name", variant, "dry-run", options(project));
+      const key = `${kind}/${variant ?? "default"}`;
+      assert.deepEqual({ ...preview, projectRoot: "<project>" }, { ...golden[key].preview, variant }, key);
+      assert.equal(formatScaffoldPreview(preview).replace(project, "<project>"), golden[key].text, key);
+      const result = applyScaffold(kind, "sample-2-name", variant, options(project));
+      assert.deepEqual(result.createdPaths, preview.files.map((file) => file.target));
+      assert.deepEqual(result.updatedPaths, []);
+      for (const file of preview.files) assert.equal(readFileSync(join(project, file.target), "utf8"), file.renderedContent);
+      assert.throws(() => applyScaffold(kind, "sample-2-name", variant, options(project)), /Refusing to overwrite/);
+    } finally { rmSync(project, { recursive: true, force: true }); }
+  }
+});
+
+test("all variants roll back every staging and commit checkpoint", () => {
+  for (const [kind, variant] of goldenVariants) {
+    const project = createProject();
+    try {
+      const count = createScaffoldPreview(kind, "rollback-2-name", variant, "dry-run", options(project)).files.length;
+      for (let failAtStep = 1; failAtStep <= count * 2; failAtStep++) {
+        assert.throws(() => applyScaffold(kind, "rollback-2-name", variant, { projectRoot: project, failAtStep }), /Scaffold transaction rolled back/);
+        assert.deepEqual(readdirSync(project).sort(), ["node_modules", "package.json"], `${kind} step ${failAtStep}`);
+      }
+    } finally { rmSync(project, { recursive: true, force: true }); }
+  }
+});
+
+test("scaffold parsing and completion compatibility", async () => {
+  const project = createProject();
+  try {
+    for (const [args, message] of [
+      ["", /Usage:/], ["unknown name", /Unknown scaffold kind/], ["theme", /Missing scaffold name/],
+      ["theme a --wat", /Unknown scaffold flag/], ["theme a --apply --dry-run", /Choose one scaffold mode/],
+      ["extension a --minimal --layered", /Choose one scaffold variant/],
+      ["extension a --directory", /Extension scaffolds support/], ["skill a --minimal", /Skill scaffolds support/],
+      ["theme a --simple", /do not support/],
+      ...["../bad", "a--b", "A", "a-", "2a", "a/b", "a_b"].map((name) => [`theme ${name}`, /Invalid name/] as const),
+    ] as const) {
+      const harness = registerScaffoldCommand(project);
+      await harness.command.handler(args, harness.ctx);
+      assert.match(harness.notifications[0].message, message);
+      assert.equal(harness.notifications[0].type, "warning");
+    }
+    const harness = registerScaffoldCommand(project);
+    await harness.command.handler("extension a --simple", harness.ctx);
+    assert.match(harness.notifications[0].message, /extension a minimal/);
+    assert.deepEqual(completeScaffoldArgument("").map((item) => item.label), ["extension", ...extensionKinds, "skill", "prompt", "theme", "primitive"]);
+    assert.deepEqual(completeScaffoldArgument("theme a"), []);
+    assert.deepEqual(completeScaffoldArgument("extension a --minimal ").map((item) => item.label), ["--dry-run", "--apply"]);
+    assert.deepEqual(completeScaffoldArgument("skill a --directory --apply "), []);
+    assert.deepEqual(readdirSync(project).sort(), ["node_modules", "package.json"]);
+  } finally { rmSync(project, { recursive: true, force: true }); }
+});
+
+test("planning, rendering, and application compose without early writes", () => {
+  const project = createProject();
+  try {
+    assert.deepEqual(parseScaffoldArgs("extension sample --simple"), { ok: true, kind: "extension", name: "sample", variant: "minimal", mode: "dry-run" });
+    for (const [kind, variant] of goldenVariants) {
+      const plan = createScaffoldPlan(kind, "composed-name", variant, "apply", options(project));
+      assert.ok(plan.files.every((file) => !("renderedContent" in file)));
+      const preview = renderScaffoldPlan(plan);
+      assert.deepEqual(preview, createScaffoldPreview(kind, "composed-name", variant, "apply", options(project)));
+      assert.deepEqual(readdirSync(project).sort(), ["node_modules", "package.json"]);
+      const result = applyScaffoldPreview(preview);
+      for (const file of preview.files) assert.equal(readFileSync(join(project, file.target), "utf8"), file.renderedContent);
+      assert.deepEqual(result.createdPaths, preview.files.map((file) => file.target));
+      for (const directory of ["extensions", "skills", "themes", "prompts"]) rmSync(join(project, directory), { recursive: true, force: true });
+    }
+  } finally { rmSync(project, { recursive: true, force: true }); }
+});
+
+test("rendering rejects escaping template plans and unresolved placeholders", () => {
+  const plan = createScaffoldPlan("theme", "safe-name");
+  for (const template of ["../../package.json", join(root, "package.json")]) {
+    assert.throws(() => renderScaffoldPlan({ ...plan, files: [{ ...plan.files[0], template }] }), /escapes template root/);
+  }
+  assert.throws(() => renderScaffoldPlan({ ...plan, name: "{{unresolved}}" }), /Unresolved placeholder/);
+});
+
+test("transaction module rejects duplicate and normalized-alias targets before staging", () => {
+  const project = createProject();
+  try {
+    const preview = createScaffoldPreview("theme", "safe-name", undefined, "apply", options(project));
+    for (const target of ["themes/safe-name.json", "themes/./safe-name.json", "themes//safe-name.json"]) {
+      const duplicate = { ...preview, files: [...preview.files, { ...preview.files[0], target }] };
+      assert.throws(() => applyScaffoldPreview(duplicate), /Duplicate scaffold target/);
+      assert.deepEqual(readdirSync(project).sort(), ["node_modules", "package.json"]);
+    }
+  } finally { rmSync(project, { recursive: true, force: true }); }
+});
+
+test("transaction module rejects escaping targets without writes", () => {
+  const project = createProject();
+  try {
+    const preview = createScaffoldPreview("theme", "safe-name", undefined, "apply", options(project));
+    for (const target of ["../escape.json", "/tmp/escape.json"]) {
+      assert.throws(() => applyScaffoldPreview({ ...preview, files: [{ ...preview.files[0], target }] }), /Unsafe scaffold target/);
+    }
+    writeFileSync(join(project, "themes"), "existing non-directory");
+    assert.throws(() => applyScaffoldPreview(preview), /non-directory ancestor/);
+    assert.equal(readFileSync(join(project, "themes"), "utf8"), "existing non-directory");
+    assert.deepEqual(readdirSync(project).sort(), ["node_modules", "package.json", "themes"]);
+  } finally { rmSync(project, { recursive: true, force: true }); }
+});
 
 test("scaffold dry-run is complete and project-aware", () => {
   const project = createProject();
