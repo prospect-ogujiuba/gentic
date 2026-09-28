@@ -13,7 +13,7 @@ test("native working indicator is untouched with whimsical enabled or disabled",
   const root = mkdtempSync(join(tmpdir(), "gentic-native-working-"));
   try {
     const configPath = join(root, "config.json");
-    for (const disabled of [[], ["whimsical"]]) {
+    for (const disabled of [[]]) {
       writeFileSync(configPath, JSON.stringify({ disabled }));
       const events: string[] = [];
       const report = await registerPrimitives({
@@ -21,7 +21,7 @@ test("native working indicator is untouched with whimsical enabled or disabled",
       } as never, { configPath });
       assert.deepEqual(report.failures, []);
       assert.deepEqual(report.skipped, disabled);
-      assert.equal(report.loaded.includes("whimsical"), disabled.length === 0);
+      assert.equal(report.loaded.includes("whimsical"), false);
       assert.deepEqual(events, ["before_agent_start", "before_agent_start", "before_agent_start"]);
     }
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -41,13 +41,13 @@ test("startup config failures remain visible and global disable avoids registrat
     const configPath = join(root, "config.json");
     writeFileSync(configPath, "{");
     const report = await registerPrimitives({ on() {} } as never, { configPath });
-    assert.deepEqual(report.loaded, ["concise-output", "implementation-file-completion", "model-artifacts", "whimsical"]);
+    assert.deepEqual(report.loaded, ["concise-output", "implementation-file-completion", "model-artifacts"]);
     assert.equal(report.failures[0]?.name, "config");
     assert.ok(report.failures[0]?.error);
     writeFileSync(configPath, JSON.stringify({ enabled: false }));
     assert.deepEqual(await registerPrimitives({ on() { throw new Error("must not register"); } } as never, { configPath }), {
       loaded: [],
-      skipped: ["concise-output", "implementation-file-completion", "model-artifacts", "whimsical"],
+      skipped: ["concise-output", "implementation-file-completion", "model-artifacts"],
       failures: [],
     });
 
@@ -305,7 +305,7 @@ test("fixed policy failures remain isolated with bounded diagnostics", async () 
     if (calls === 2) throw new Error(`prefix-${"x".repeat(2000)}`);
   } } as never);
   assert.equal(calls, 3);
-  assert.deepEqual(report.loaded, ["model-artifacts", "whimsical"]);
+  assert.deepEqual(report.loaded, ["model-artifacts"]);
   assert.deepEqual(report.failures.map((failure) => failure.name), ["concise-output", "implementation-file-completion"]);
   assert.equal(report.failures[0]?.error, "Unknown error");
   assert.equal(report.failures[1]?.error.length, 512);
@@ -319,9 +319,8 @@ test("fixed policy failures remain isolated with bounded diagnostics", async () 
     setStatus(key: string, value: string) { statuses.push(`${key}: ${value}`); },
     notify(message: string) { warnings.push(message); },
   } });
-  assert.deepEqual(statuses, ["pi-primitives: 2 registered, 2 failed"]);
+  assert.deepEqual(statuses, ["pi-primitives: 1 registered, 2 failed"]);
   assert.match(warnings[0]!, /concise-output: Unknown error/);
-  assert.match(warnings[1]!, /whimsical is deprecated/);
 });
 
 test("legacy scaffold trigger validation remains available without a registry", () => {
@@ -336,7 +335,7 @@ test("fixed bundle rejects unknown config names and fields while retaining valid
     const configPath = join(root, "config.json");
     writeFileSync(configPath, JSON.stringify({ disabled: ["missing-primitive", "concise-output"], plugins: [] }));
     const report = await registerPrimitives({ on() {} } as never, { configPath });
-    assert.deepEqual(report.loaded, ["implementation-file-completion", "model-artifacts", "whimsical"]);
+    assert.deepEqual(report.loaded, ["implementation-file-completion", "model-artifacts"]);
     assert.deepEqual(report.skipped, ["concise-output"]);
     assert.match(report.failures[0]!.error, /Unknown config fields: plugins/);
     assert.equal(report.failures[1]!.error, "Unknown disabled primitives: missing-primitive");

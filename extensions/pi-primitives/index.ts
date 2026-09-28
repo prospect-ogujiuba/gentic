@@ -17,7 +17,7 @@ type PrimitiveConfig = { enabled?: boolean; disabled?: string[] };
 const MAX_CONFIG_BYTES = 16384;
 const MAX_DIAGNOSTIC_LENGTH = 512;
 const CONFIG_PATH = fileURLToPath(new URL("./config.json", import.meta.url));
-const NAMES = ["concise-output", "implementation-file-completion", "model-artifacts", "whimsical"];
+const NAMES = ["concise-output", "implementation-file-completion", "model-artifacts"];
 
 function describeError(error: unknown): string {
   try {
@@ -76,9 +76,6 @@ export async function registerPrimitives(pi: ExtensionAPI, options: { configPath
   else try { modelArtifacts(pi); report.loaded.push("model-artifacts"); }
   catch (error) { report.failures.push({ name: "model-artifacts", error: describeError(error) }); }
 
-  // Legacy name remains accepted; Pi owns the working indicator.
-  if (disabled.has("whimsical")) report.skipped.push("whimsical");
-  else report.loaded.push("whimsical");
   return report;
 }
 
@@ -87,7 +84,6 @@ export function registerPrimitiveStatus(pi: ExtensionAPI, report: PrimitiveRegis
     const summary = `${report.loaded.length} registered${report.skipped.length ? `, ${report.skipped.length} disabled` : ""}${report.failures.length ? `, ${report.failures.length} failed` : ""}`;
     ctx.ui.setStatus("pi-primitives", summary);
     if (report.failures.length) ctx.ui.notify(`Primitive registration failures:\n${report.failures.map((failure) => `- ${failure.name}: ${failure.error}`).join("\n")}`, "warning");
-    if (report.loaded.includes("whimsical")) ctx.ui.notify("pi-primitives: whimsical is deprecated and has no effect; Pi owns the working indicator. Disable whimsical in config.json to silence this notice.", "info");
   });
 }
 
