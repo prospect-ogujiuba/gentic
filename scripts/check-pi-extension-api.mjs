@@ -32,7 +32,7 @@ const packageLock = JSON.parse(readFileSync(packageLockPath, "utf8"));
 const dts = readFileSync(extensionTypes, "utf8");
 const contract = readFileSync(contractPath, "utf8");
 
-const supportedPiVersion = packageJson.dependencies?.["@earendil-works/pi-coding-agent"];
+const supportedPiVersion = packageJson.devDependencies?.["@earendil-works/pi-coding-agent"];
 const lockedPiVersion = packageLock.packages?.["node_modules/@earendil-works/pi-coding-agent"]?.version;
 if (supportedPiVersion !== "0.87.1") fail(`package.json must pin the supported Pi baseline to 0.87.1, got ${String(supportedPiVersion)}`);
 if (lockedPiVersion !== supportedPiVersion) fail(`package-lock Pi version must equal the documented baseline. expected=${String(supportedPiVersion)}, got=${String(lockedPiVersion)}`);

@@ -25,7 +25,8 @@ test("pi contract names the package surface and resource vocabulary", () => {
   assert.equal(SCHEMA_VERSION, PI_CONTRACT_SCHEMA_VERSION);
   assert.equal(PI_CONTRACT_SCHEMA_VERSION_DETAIL_KEY, "schemaVersion");
   assert.equal(PI_PACKAGE_MANIFEST_KEY, "pi");
-  assert.equal(PI_CONTRACT_SOURCE.version, packageJson.dependencies["@earendil-works/pi-coding-agent"]);
+  assert.equal(PI_CONTRACT_SOURCE.version, packageJson.devDependencies["@earendil-works/pi-coding-agent"]);
+  assert.equal(packageJson.peerDependencies["@earendil-works/pi-coding-agent"], "*");
   assert.deepEqual(Object.keys(PI_NATIVE_CAPABILITY_GROUPS), [
     "commands", "tools", "events", "shortcuts", "flags", "providers", "renderers", "markdown-transformers", "ui-surfaces",
   ]);

@@ -116,7 +116,7 @@ test("seeded thrown-value fuzzing preserves fixed policy startup recovery", asyn
     const report = await registerPrimitives({ on() {
       if (++calls === 1) throw iteration % 17 === 0 ? { toString() { throw new Error("nested"); } } : new Error(payload);
     } } as never);
-    assert.deepEqual(report.loaded, ["implementation-file-completion", "model-artifacts", "whimsical"]);
+    assert.deepEqual(report.loaded, ["implementation-file-completion", "model-artifacts"]);
     assert.ok((report.failures[0]?.error.length ?? Infinity) <= 512);
     assert.doesNotMatch(report.failures[0]?.error || "", /[\r\n]/);
   }

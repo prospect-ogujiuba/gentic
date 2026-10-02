@@ -172,7 +172,7 @@ export function generateGenticInventory(rootPath: string): GenticInventory {
       name: packageJson.name,
       version: packageJson.version,
       private: packageJson.private === true,
-      piVersion: packageJson.dependencies?.["@earendil-works/pi-coding-agent"] ?? "unknown",
+      piVersion: packageJson.devDependencies?.["@earendil-works/pi-coding-agent"] ?? "unknown",
       node: packageJson.engines?.node ?? "unknown",
     },
     manifest,

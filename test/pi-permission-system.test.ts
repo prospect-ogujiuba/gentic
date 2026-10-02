@@ -12,10 +12,10 @@ function json(path: string): any {
 test("Gentic leaves pi-permission-system to a separate npm Pi package", () => {
   const pkg = json("package.json");
   const lock = json("package-lock.json");
-  assert.equal(pkg.dependencies["@gotgenes/pi-permission-system"], undefined);
+  assert.equal(pkg.dependencies?.["@gotgenes/pi-permission-system"], undefined);
   assert.equal(pkg.bundledDependencies, undefined);
   assert.equal(pkg.bundleDependencies, undefined);
-  assert.equal(lock.packages[""].dependencies["@gotgenes/pi-permission-system"], undefined);
+  assert.equal(lock.packages[""].dependencies?.["@gotgenes/pi-permission-system"], undefined);
   assert.equal(lock.packages["node_modules/@gotgenes/pi-permission-system"], undefined);
   assert.equal(pkg.pi.extensions.includes(extensionPath), false);
   assert.equal(pkg.pi.extensions.includes("./extensions/pi-gate/index.ts"), false);
